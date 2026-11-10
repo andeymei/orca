@@ -1342,6 +1342,11 @@
       "settings": "Settings",
       "label": "Settings breadcrumb",
       "close": "Close settings"
+    },
+    "search": {
+      "clear": "Clear search",
+      "results": "Settings search results",
+      "noResults": "No settings match “{{value0}}”"
     }
   },
   "menu": {
@@ -9384,8 +9389,7 @@
           "60f8a673a7": "Back to app",
           "6503182299": "Onboarding checklist",
           "82db1b7de4": "Onboarding checklist, {{value0}} of {{value1}} done. Show setup guide.",
-          "df38d612b7": "No projects added yet.",
-          "3e483e256b": "No matching project settings."
+          "df38d612b7": "No projects added yet."
         },
         "ShortcutFilterRail": {
           "28b63545bf": "Status",

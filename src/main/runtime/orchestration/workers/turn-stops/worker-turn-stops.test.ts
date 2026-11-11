@@ -423,6 +423,46 @@ describe('terminal worker turn stops', () => {
     expect(ctx.mail().map((m) => m.subject)).toEqual(['Worker stopped without reporting'])
   })
 
+  it('stays quiet after a rejected worker_done, until the coordinator writes again', () => {
+    const ctx = setup()
+    const writeToWorker = () => {
+      const mail = ctx.db.insertMessage({
+        from: 'term_coordinator',
+        to: `dispatch:${ctx.dispatch.id}`,
+        subject: 'Start',
+        runId: ctx.run.id
+      })
+      ctx.db.markAsRead([mail.id])
+    }
+    const report = (type: 'worker_done' | 'heartbeat') => {
+      const sent = ctx.db.insertMessage({
+        from: HANDLE,
+        to: `run:${ctx.run.id}`,
+        subject: 'Done',
+        type,
+        payload: JSON.stringify({ taskId: ctx.dispatch.task_id, dispatchId: ctx.dispatch.id }),
+        runId: ctx.run.id
+      })
+      ctx.db.convertLifecycleMessageToRejection(sent.id, 'worker_identity_changed', 'not the owner')
+    }
+    const stop = (stopKey: string) =>
+      reportWorkerTurnStop(
+        ctx.db,
+        { kind: 'local', dispatch: ctx.dispatch },
+        { from: HANDLE, stopKey, reason: 'finished', lastOutput: undefined },
+        ctx.deps
+      )
+    writeToWorker()
+    report('worker_done')
+    stop('turn-1')
+    expect(ctx.mail()).toEqual([])
+
+    writeToWorker()
+    report('heartbeat')
+    stop('turn-2')
+    expect(ctx.mail().map((m) => m.subject)).toEqual(['Worker stopped without reporting'])
+  })
+
   it('reports a later stall once new mail reached the worker, though its question is pending', async () => {
     const ctx = setup()
     // Mail stored before the question, even in the same second, does not end the asking turn's mute.

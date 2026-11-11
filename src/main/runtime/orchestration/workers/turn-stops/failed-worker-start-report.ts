@@ -14,7 +14,7 @@ function describeLeftover(residualResources: string): string | undefined {
     if (!entry || typeof entry !== 'object') {
       return []
     }
-    const { kind, id, name } = entry as { kind?: unknown; id?: unknown; name?: unknown }
+    const { kind, id, name }: { kind?: unknown; id?: unknown; name?: unknown } = entry
     if (typeof kind !== 'string' || typeof id !== 'string') {
       return []
     }

@@ -111,33 +111,6 @@ export abstract class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRunti
 
   /** Codex outlives a failed reconnect, so no PTY exit will ever settle its dispatch (#24791). */
   protected settleLostAgentSession(ptyId: string): void {
-    this.settleAgentGoneFromLiveTerminal(ptyId, {
-      reason: 'lost',
-      error: 'Codex lost its app-server and could not reconnect; relaunch Codex to continue',
-      workerStage: 'agent_session_lost'
-    })
-  }
-
-  /** The agent process ended but its terminal lives on as a shell, so no PTY exit will settle its dispatch. */
-  protected settlePtyAgentExit(ptyId: string): void {
-    this.settleAgentGoneFromLiveTerminal(ptyId, {
-      reason: 'exited',
-      error: 'Agent process ended',
-      workerStage: 'agent_exited',
-      // A start in flight reports its own failure.
-      skipStartingWorker: true
-    })
-  }
-
-  private settleAgentGoneFromLiveTerminal(
-    ptyId: string,
-    gone: {
-      reason: 'exited' | 'lost'
-      error: string
-      workerStage: string
-      skipStartingWorker?: boolean
-    }
-  ): void {
     const surfaces: { handle: string | undefined; paneKey?: string }[] = [
       ...this.getLeavesForPty(ptyId).map((leaf) => ({
         handle: this.handleByLeafKey.get(this.getLeafKey(leaf.tabId, leaf.leafId)),
@@ -149,25 +122,25 @@ export abstract class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRunti
         paneKey: this.paneOfPty(this.ptysById.get(ptyId)).paneKey ?? undefined
       }
     ]
+    const reason = 'Codex lost its app-server and could not reconnect; relaunch Codex to continue'
     try {
       surfaces.some(
         ({ handle, paneKey }) =>
           handle !== undefined &&
           this.failActiveDispatchAndReport(handle, paneKey, {
-            error: gone.error,
+            error: reason,
             // The terminal and worktree stay up for inspection; workerProcessExited bypasses the active-worker guard for this dead session.
-            options: { workerProcessExited: true, workerStage: gone.workerStage },
+            options: { workerProcessExited: true, workerStage: 'agent_session_lost' },
             processExited: false,
-            skipStartingWorker: gone.skipStartingWorker,
             stop: {
-              reason: gone.reason,
-              cause: `${gone.error}; its terminal is still open for inspection`,
+              reason: 'lost',
+              cause: `${reason}; its terminal is still open for inspection`,
               lastOutput: this.readPtyLastOutput(ptyId)
             }
           })
       )
     } catch (error) {
-      console.warn('[orchestration] failed to settle an agent gone from its terminal', ptyId, error)
+      console.warn('[orchestration] failed to settle a lost agent session', ptyId, error)
     }
   }
 
@@ -179,7 +152,6 @@ export abstract class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRunti
       error: string
       options: Parameters<OrchestrationDb['failDispatch']>[2]
       processExited: boolean
-      skipStartingWorker?: boolean
       stop: Pick<WorkerTurnStop, 'reason' | 'cause' | 'lastOutput'>
     }
   ): boolean {
@@ -191,9 +163,6 @@ export abstract class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRunti
     }
     // Only this runtime's in-flight stop claims the outcome; durable stopping rows from a crashed runtime cannot absorb later failures.
     const stopping = db.getWorkerDispatch?.(dispatch.id)
-    if (failure.skipStartingWorker && stopping?.state === 'starting') {
-      return true
-    }
     if (stopping?.state === 'stopping' && stopping.runtime_epoch === this.getRuntimeId()) {
       if (failure.processExited) {
         db.settleWorkerStop(dispatch.id)
@@ -201,6 +170,10 @@ export abstract class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRunti
       return true
     }
     const settled = db.failDispatch(dispatch.id, failure.error, failure.options)?.status
+    // A stop asked for earlier (unconfirmed, or by a runtime before a restart) ends as asked, not as news.
+    if (stopping?.state === 'stopping' || stopping?.state === 'stop_unknown') {
+      return true
+    }
     reportWorkerTurnStop(
       db,
       { kind: 'local', dispatch },

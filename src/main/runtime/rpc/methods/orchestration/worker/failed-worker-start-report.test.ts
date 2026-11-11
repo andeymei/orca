@@ -19,9 +19,7 @@ describe('a worker-start that fails', () => {
     })
     expect(receipt).toMatchObject({ state: 'failed' })
 
-    const mail = h.db.db
-      .prepare("SELECT subject, body FROM messages WHERE type = 'escalation'")
-      .all() as { subject: string; body: string }[]
+    const mail = h.db.getUnreadRunMailbox(h.activeRunId, 100, ['escalation'])
     expect(mail.map((message) => message.subject)).toEqual(['Worker lost without reporting'])
     expect(mail[0]?.body).toContain(
       'is gone (it never started: The host is already running as many terminals as Orca allows.)'

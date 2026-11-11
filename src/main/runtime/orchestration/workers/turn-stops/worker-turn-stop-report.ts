@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { OrchestrationDb } from '../../db/orchestration-db'
 import { dispatchReportMailbox } from '../reports/dispatch-report-mailbox'
 import { readCoordinatorMailCount } from '../../db/messages/dispatch-read-mail'
+import { rejectedReportSinceLatestMail } from '../../db/messages/rejected-worker-report'
 import type {
   DispatchContextRow,
   RemoteDispatchAttachmentRow
@@ -116,6 +117,7 @@ export function reportWorkerTurnStop(
     (deps.isWaitingForMail(`dispatch:${dispatchId}`) ||
       (stop.reason === 'finished' &&
         (db.awaitsCoordinator(dispatchId) ||
+          rejectedReportSinceLatestMail(db, dispatchId) ||
           (target.kind === 'local' && db.hasOpenHelperDispatch(dispatchId)))))
   ) {
     return

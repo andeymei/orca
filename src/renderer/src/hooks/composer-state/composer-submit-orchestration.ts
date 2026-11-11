@@ -8,6 +8,14 @@ import { useQuickSubmitSourcePreparation } from './quick-submit-source-preparati
 import { useQuickSubmitPreparation } from './quick-submit-preparation'
 import { useQuickCreationExecution } from './quick-creation-execution'
 import { useQuickSubmitAction } from './quick-submit-action'
+import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-record-fields'
+import { useAppStore } from '@/store'
+import type { Worktree } from '../../../../shared/worktree/types'
+
+/** Resolve workspace records through the catalog selector so the composer never reads them directly. */
+function selectRepoWorktrees(repoId: string): Worktree[] {
+  return selectWorktreesByRepo(useAppStore.getState())[repoId] ?? []
+}
 
 export function useComposerSubmitOrchestration(
   target: ComposerTargetState,
@@ -123,7 +131,7 @@ export function useComposerSubmitOrchestration(
     sparseEnabled: target.asyncComposerState.sparseEnabled,
     taskSourceContext: target.sourceContextState.taskSourceContext,
     telemetrySource: target.composerTargetStore.telemetrySource,
-    worktreesByRepo: target.composerTargetStore.worktreesByRepo
+    resolveRepoWorktrees: selectRepoWorktrees
   })
   const quickSubmitAction = useQuickSubmitAction({
     effectiveLinkedPR: target.derivedComposerState.effectiveLinkedPR,

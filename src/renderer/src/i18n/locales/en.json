@@ -8913,7 +8913,14 @@
           "taskCheckoutTargetTitle": "Where new tasks run",
           "taskCheckoutTargetDescription": "Start each task in a new worktree and branch, or in the project’s existing checkout on the branch it already has.",
           "taskCheckoutTargetNewWorkspace": "New workspace",
-          "taskCheckoutTargetCurrentCheckout": "Current checkout"
+          "taskCheckoutTargetCurrentCheckout": "Current checkout",
+          "taskCheckoutTargetKeywordTarget": "task target",
+          "taskCheckoutTargetKeywordCheckout": "checkout",
+          "taskCheckoutTargetKeywordWorktree": "worktree",
+          "taskCheckoutTargetKeywordCurrentBranch": "current branch",
+          "taskCheckoutTargetKeywordCurrentCheckout": "current checkout",
+          "taskCheckoutTargetKeywordMain": "main",
+          "taskCheckoutTargetKeywordBranch": "branch"
         },
         "HiddenExperimentalGroup": {
           "7c4e18d2f6": "Arms the bold-glitch capture gestures on this machine: {{samplingShortcut}} starts a sampling burst; {{captureShortcut}} captures pane evidence to disk.",

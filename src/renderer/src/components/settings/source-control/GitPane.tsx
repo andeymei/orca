@@ -240,13 +240,19 @@ export function GitPane({
         'Start each task in a new worktree and branch, or in the project’s existing checkout on the branch it already has.'
       ),
       keywords: [
-        'task target',
-        'checkout',
-        'worktree',
-        'current branch',
-        'current checkout',
-        'main',
-        'branch'
+        t('auto.components.settings.GitPane.taskCheckoutTargetKeywordTarget', 'task target'),
+        t('auto.components.settings.GitPane.taskCheckoutTargetKeywordCheckout', 'checkout'),
+        t('auto.components.settings.GitPane.taskCheckoutTargetKeywordWorktree', 'worktree'),
+        t(
+          'auto.components.settings.GitPane.taskCheckoutTargetKeywordCurrentBranch',
+          'current branch'
+        ),
+        t(
+          'auto.components.settings.GitPane.taskCheckoutTargetKeywordCurrentCheckout',
+          'current checkout'
+        ),
+        t('auto.components.settings.GitPane.taskCheckoutTargetKeywordMain', 'main'),
+        t('auto.components.settings.GitPane.taskCheckoutTargetKeywordBranch', 'branch')
       ]
     }) ? (
       <SearchableSetting

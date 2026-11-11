@@ -8,6 +8,7 @@ import type { ComposerSourceContextModel } from './source-context-model'
 import type { ComposerSourceModel } from './composer-source-model'
 import type { ComposerSubmitModel } from './composer-submit-model'
 import type { ComposerTargetStoreModel } from './target-store-model'
+import type { Worktree } from '../../../../shared/worktree/types'
 
 export type ComposerTargetModel = ComposerTargetStoreModel &
   ComposerInitialTargetModel &
@@ -51,5 +52,7 @@ export type QuickCreationExecutionInput = Pick<
   | 'sparseEnabled'
   | 'taskSourceContext'
   | 'telemetrySource'
-  | 'worktreesByRepo'
->
+> & {
+  /** Resolves a repo's workspace records at submit time, through the catalog selector. */
+  resolveRepoWorktrees: (repoId: string) => Worktree[]
+}

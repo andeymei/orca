@@ -47,7 +47,7 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
     sparseEnabled,
     taskSourceContext,
     telemetrySource,
-    worktreesByRepo
+    resolveRepoWorktrees
   } = input
 
   const executeQuickCreation = useCallback(
@@ -104,7 +104,7 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
         checkoutTarget === 'current-checkout' &&
         submitTaskInCurrentCheckout({
           repoId,
-          worktrees: worktreesByRepo[repoId] ?? [],
+          worktrees: resolveRepoWorktrees(repoId),
           agent,
           prompt: quickDraftPrompt ?? quickPrompt,
           promptDelivery,
@@ -316,7 +316,7 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
       sparseEnabled,
       taskSourceContext,
       telemetrySource,
-      worktreesByRepo
+      resolveRepoWorktrees
     ]
   )
 

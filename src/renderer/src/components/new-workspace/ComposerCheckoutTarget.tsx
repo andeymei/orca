@@ -3,6 +3,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useTranslate } from '@/i18n/use-translate'
 import { cn } from '@/lib/class-names'
 import type { TaskCheckoutTarget } from '../../../../shared/new-workspace/task-checkout-target'
+import { isTaskCheckoutTarget } from '../../../../shared/new-workspace/task-checkout-target'
 
 type Props = {
   value: TaskCheckoutTarget
@@ -30,7 +31,11 @@ export function ComposerCheckoutTarget({
       <RadioGroup
         aria-label={title}
         value={value}
-        onValueChange={(next) => onChange(next as TaskCheckoutTarget)}
+        onValueChange={(next) => {
+          if (isTaskCheckoutTarget(next)) {
+            onChange(next)
+          }
+        }}
       >
         <div
           className={cn(

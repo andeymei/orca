@@ -6,15 +6,16 @@ const release = require('./electron-builder.config.cjs')
 // arm64 optional dependencies. This variant keeps every canonical setting and narrows only
 // the mac target arch to Intel.
 //
-// `ORCA_SKIP_ELECTRON_CHECKSUM_DOWNLOAD` is opt-in: @electron/get re-fetches SHASUMS256.txt
-// on every run (cacheMode: Bypass), so that file — and not the Electron zip — is what a
-// filtering proxy usually drops. Skipping it leaves the zip's own verification untouched
-// whenever the zip is actually downloaded.
+// `ORCA_ELECTRON_ARCHIVE_VERIFIED` is set by build-mac-x64-local.mjs only after it checked
+// the cached Electron archive against a pinned digest. @electron/get re-fetches
+// SHASUMS256.txt on every run (cacheMode: Bypass), and that file — not the archive — is what
+// a filtering proxy usually drops. Skipping the re-fetch is therefore only safe once the
+// archive itself has been verified; the flag alone cannot disable verification.
 module.exports = {
   ...release,
   electronDownload: {
     ...release.electronDownload,
-    ...(process.env.ORCA_SKIP_ELECTRON_CHECKSUM_DOWNLOAD === '1' ? { isVerifyChecksum: false } : {})
+    ...(process.env.ORCA_ELECTRON_ARCHIVE_VERIFIED === '1' ? { isVerifyChecksum: false } : {})
   },
   mac: {
     ...release.mac,

@@ -344,6 +344,14 @@ point for every `package.json` script. `config/` also carries the vitest configs
 `tsconfig.*.json` project files, the ten `oxlint-*.json` configs, ast-grep rules, pnpm patches, and
 the electron-builder config.
 
+**The repo root is a closed set.** A CI step ("Reject new root-level files and folders", in
+`pr.yml`) rejects any root-level entry that is not already in the base tree and not listed in
+`REVIEWED_ROOT_ENTRIES` in `.github/scripts/check-root-directory-entries.mjs` — currently `.claude`,
+`.mcp.json`, `CLAUDE.md`, `cloud`, `opencode.json`. The rationale is that root files bloat the
+GitHub landing page. Put new files under an existing top-level directory; if a root entry is truly
+needed, add it to that reviewed list and run the guard locally:
+`node .github/scripts/check-root-directory-entries.mjs <base-sha> HEAD`.
+
 ## Conventions that bite
 
 Read `AGENTS.md` for the full list. The ones that most often break a change:

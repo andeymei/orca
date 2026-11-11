@@ -59,7 +59,7 @@ describe('a worker whose terminal is gone after a restart', () => {
     const plan = planLegacyWorkerTerminalRecovery(db.listLegacyWorkerTerminalRecoveryRows())
     const lostWorkers = {
       reportDeps: { getDb: () => db, isWaitingForMail: () => false, notify },
-      lastOutput: () => 'gh pr checks 596 --watch'
+      lastOutput: async () => 'gh pr checks 596 --watch'
     }
     for (const candidate of plan.candidates) {
       persistence.reconcileMissing(candidate, lostWorkers)
@@ -67,11 +67,12 @@ describe('a worker whose terminal is gone after a restart', () => {
     return { persistence, plan, notify, lostWorkers }
   }
 
-  it('tells the coordinator once that it is lost, with its last output', () => {
+  it('tells the coordinator once that it is lost, with its last output', async () => {
     const { runId, dispatchId } = runningWorker()
     const { persistence, plan, notify, lostWorkers } = recover()
     // A second pass over the same candidate must not repeat the alert.
     persistence.reconcileMissing(plan.candidates[0]!, lostWorkers)
+    await vi.waitFor(() => expect(notify).toHaveBeenCalled())
 
     expect(db.getDispatchContextById(dispatchId)?.status).toBe('failed')
     const mail = db.getUnreadMessages(`run:${runId}`, ['escalation'])

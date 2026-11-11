@@ -22,7 +22,7 @@ import { worktreeIdsEqual } from '../../../../shared/worktree/id'
 /** Where a running worker a recovery pass finds gone is reported, with its terminal's last lines. */
 export type LostWorkerReport = {
   reportDeps: WorkerTurnStopReportDeps
-  lastOutput: (ptyId: string) => string | undefined
+  lastOutput: (ptyId: string) => Promise<string | undefined>
 }
 
 export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
@@ -138,18 +138,24 @@ export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
         worker.state === 'abandoned' &&
         (settled === 'failed' || settled === 'circuit_broken')
       ) {
-        reportWorkerTurnStop(
-          db,
-          { kind: 'local', dispatch: before },
-          {
-            from: candidate.terminalHandle,
-            reason: 'lost',
-            cause: 'its terminal was gone when Orca restarted',
-            lastOutput: lostWorkers.lastOutput(candidate.ptyId),
-            settled
-          },
-          lostWorkers.reportDeps
-        )
+        // Its last output is read from saved history, so the report follows the settlement.
+        void lostWorkers
+          .lastOutput(candidate.ptyId)
+          .catch(() => undefined)
+          .then((lastOutput) =>
+            reportWorkerTurnStop(
+              db,
+              { kind: 'local', dispatch: before },
+              {
+                from: candidate.terminalHandle,
+                reason: 'lost',
+                cause: 'its terminal was gone when Orca restarted',
+                lastOutput,
+                settled
+              },
+              lostWorkers.reportDeps
+            )
+          )
       }
       return true
     } catch (error) {

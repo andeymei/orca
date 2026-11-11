@@ -95,7 +95,14 @@ export abstract class OrcaRuntimeWithSerializeAgentPromptSubmission extends Orca
     if (verdicts.includes('unverifiable')) {
       return 'unverifiable'
     }
-    return verdicts.includes('exited') ? 'exited' : null
+    if (!verdicts.includes('exited')) {
+      return null
+    }
+    // A live probe reports a death once, whoever asked; a retained exit since a time may be a predecessor's.
+    if (exitedSince === undefined) {
+      this.settlePtyAgentExit(ptyId)
+    }
+    return 'exited'
   }
 
   protected confirmPtyAgentExit(ptyId: string, recoverCompletedHook = false): void {

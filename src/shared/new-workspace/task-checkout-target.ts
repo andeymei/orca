@@ -3,6 +3,9 @@ export const TASK_CHECKOUT_TARGETS = ['new-workspace', 'current-checkout'] as co
 
 export type TaskCheckoutTarget = (typeof TASK_CHECKOUT_TARGETS)[number]
 
+/** Tasks develop on the branch the repo already has unless the user asks for a separate worktree. */
+export const DEFAULT_TASK_CHECKOUT_TARGET: TaskCheckoutTarget = 'current-checkout'
+
 export function isTaskCheckoutTarget(value: unknown): value is TaskCheckoutTarget {
   return typeof value === 'string' && TASK_CHECKOUT_TARGETS.some((target) => target === value)
 }

@@ -11,6 +11,7 @@ import { useQuickSubmitAction } from './quick-submit-action'
 import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-record-fields'
 import { useAppStore } from '@/store'
 import type { Worktree } from '../../../../shared/worktree/types'
+import { resolveEffectiveCheckoutTarget } from '@/lib/workspace/creation/current-checkout-worktree'
 
 /** Resolve workspace records through the catalog selector so the composer never reads them directly. */
 function selectRepoWorktrees(repoId: string): Worktree[] {
@@ -22,6 +23,13 @@ export function useComposerSubmitOrchestration(
   external: ComposerExternalSyncState,
   source: ComposerSourceState
 ): ComposerSubmitState {
+  const repoId = target.initialTargetState.repoId
+  // Why: a repo without a checkout cannot host the task, so setup and creation must agree on the target.
+  const checkoutTarget = resolveEffectiveCheckoutTarget({
+    checkoutTarget: target.workspaceIdentityState.checkoutTarget,
+    worktrees: selectRepoWorktrees(repoId),
+    repoId
+  })
   const folderSubmitOrchestration = useFolderSubmitOrchestration({
     clearNewWorkspaceDraft: target.composerTargetStore.clearNewWorkspaceDraft,
     createFolderWorkspace: target.composerTargetStore.createFolderWorkspace,
@@ -78,7 +86,7 @@ export function useComposerSubmitOrchestration(
     branchAutoNameRef: target.asyncComposerState.branchAutoNameRef,
     branchNameOverridePreservesNameEdits:
       target.workspaceIdentityState.branchNameOverridePreservesNameEdits,
-    checkoutTarget: target.workspaceIdentityState.checkoutTarget,
+    checkoutTarget,
     checkedHooksContextKey: target.asyncComposerState.checkedHooksContextKey,
     commitHookCheckIfCurrent: target.providerRuntimeSync.commitHookCheckIfCurrent,
     enableIssueAutomation: target.composerTargetStore.enableIssueAutomation,
@@ -102,7 +110,7 @@ export function useComposerSubmitOrchestration(
     smartNameMode: target.workspaceIdentityState.smartNameMode
   })
   const quickCreationExecution = useQuickCreationExecution({
-    checkoutTarget: target.workspaceIdentityState.checkoutTarget,
+    checkoutTarget,
     clearNewWorkspaceDraft: target.composerTargetStore.clearNewWorkspaceDraft,
     createMultiple: target.asyncComposerState.createMultiple,
     effectivePresetId: target.derivedComposerState.effectivePresetId,

@@ -17,6 +17,7 @@ import {
 import { DEFAULT_SOURCE_CONTROL_GROUP_ORDER } from './source-control/listing/source-control-group-order'
 import { DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT } from './terminal/replay/terminal-scrollback-policy'
 import { NESTED_WORKER_MAX_DEPTH_DEFAULT } from './orchestration/workers/nested-worker-depth'
+import { DEFAULT_TASK_CHECKOUT_TARGET } from './new-workspace/task-checkout-target'
 
 export function buildDefaultSettings(args: {
   workspaceDir: string
@@ -43,7 +44,7 @@ export function buildDefaultSettings(args: {
     autoRenameBranchFromWorkDefaultedOn: true,
     branchPrefix: 'git-username',
     branchPrefixCustom: '',
-    taskCheckoutTarget: 'new-workspace',
+    taskCheckoutTarget: DEFAULT_TASK_CHECKOUT_TARGET,
     jiraIssueKeyCasing: 'lowercase',
     theme: 'system',
     pluginAppTheme: null,

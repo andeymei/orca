@@ -1,5 +1,8 @@
 import type { ComposerModel } from './composer-model'
-import { getCurrentCheckoutBranchForRepo } from '@/lib/workspace/creation/current-checkout-worktree'
+import {
+  getCurrentCheckoutBranchForRepo,
+  resolveEffectiveCheckoutTarget
+} from '@/lib/workspace/creation/current-checkout-worktree'
 import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-record-fields'
 import { useAppStore } from '@/store'
 import type { TaskCheckoutTarget } from '../../../../shared/new-workspace/task-checkout-target'
@@ -22,12 +25,14 @@ export function buildComposerCheckoutTargetProps(
       currentCheckoutBranch: null
     }
   }
+  const worktrees = selectWorktreesByRepo(useAppStore.getState())[state.repoId] ?? []
   return {
-    checkoutTarget: state.checkoutTarget,
+    checkoutTarget: resolveEffectiveCheckoutTarget({
+      checkoutTarget: state.checkoutTarget,
+      worktrees,
+      repoId: state.repoId
+    }),
     onCheckoutTargetChange: state.setCheckoutTarget,
-    currentCheckoutBranch: getCurrentCheckoutBranchForRepo(
-      selectWorktreesByRepo(useAppStore.getState())[state.repoId] ?? [],
-      state.repoId
-    )
+    currentCheckoutBranch: getCurrentCheckoutBranchForRepo(worktrees, state.repoId)
   }
 }

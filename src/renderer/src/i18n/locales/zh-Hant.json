@@ -21869,6 +21869,17 @@
       "newName": "新分支名稱",
       "automaticName": "自動命名"
     },
+    "checkoutTarget": {
+      "title": "任務執行位置",
+      "currentWithBranch": "目前檢出（{{branch}}）",
+      "current": "目前檢出",
+      "newWorkspace": "新增工作區",
+      "newWorkspaceHint": "為此任務建立一個分支與獨立的工作樹。",
+      "currentCheckoutHint": "在專案現有的檢出目錄中執行任務，只有需要時 agent 才會自行建立分支。",
+      "currentCheckoutUnavailableHint": "此專案還沒有可執行的檢出目錄。",
+      "taskLabel": "任務",
+      "taskPlaceholder": "描述 agent 需要做什麼"
+    },
     "links": {
       "foreignReview": "此審查屬於另一個存放庫。請新增來自此工作區存放庫的審查。",
       "repositoryLoading": "存放庫身分資訊仍在載入。待其可用後重試。",

@@ -22296,6 +22296,17 @@
       "newName": "新分支名称",
       "automaticName": "自动命名"
     },
+    "checkoutTarget": {
+      "title": "任务运行位置",
+      "currentWithBranch": "当前检出（{{branch}}）",
+      "current": "当前检出",
+      "newWorkspace": "新建工作区",
+      "newWorkspaceHint": "为该任务创建一个分支和独立的工作树。",
+      "currentCheckoutHint": "在项目现有的检出目录中运行任务，只有需要时 agent 才会自行创建分支。",
+      "currentCheckoutUnavailableHint": "该项目还没有可运行的检出目录。",
+      "taskLabel": "任务",
+      "taskPlaceholder": "描述 agent 需要做什么"
+    },
     "links": {
       "foreignReview": "此评审属于其他仓库，请添加此工作区所属仓库的评审",
       "repositoryLoading": "仓库标识仍在加载，待其可用后重试",

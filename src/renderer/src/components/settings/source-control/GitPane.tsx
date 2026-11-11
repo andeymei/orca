@@ -3,6 +3,7 @@ import type { GlobalSettings } from '../../../../../shared/global-settings-types
 import type { SourceControlGroupOrder } from '../../../../../shared/ui-chrome-types'
 import type { SourceControlAiSettingsPatch } from '../../../../../shared/source-control/ai/settings/source-control-ai-settings-types'
 import type { TaskCheckoutTarget } from '../../../../../shared/new-workspace/task-checkout-target'
+import { DEFAULT_TASK_CHECKOUT_TARGET } from '../../../../../shared/new-workspace/task-checkout-target'
 import { normalizeSourceControlGroupOrder } from '../../../../../shared/source-control/listing/source-control-group-order'
 import { Input } from '../../ui/input'
 import { Label } from '../../ui/label'
@@ -285,7 +286,7 @@ export function GitPane({
           </p>
         </div>
         <SettingsSegmentedControl<TaskCheckoutTarget>
-          value={settings.taskCheckoutTarget ?? 'new-workspace'}
+          value={settings.taskCheckoutTarget ?? DEFAULT_TASK_CHECKOUT_TARGET}
           onChange={(next) => updateSettings({ taskCheckoutTarget: next })}
           ariaLabel={t(
             'auto.components.settings.GitPane.taskCheckoutTargetTitle',

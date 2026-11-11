@@ -38,6 +38,8 @@ import {
   type RuntimeMessageWaiter
 } from '../orchestration/mailbox/runtime-message-waiters'
 import type { WorkerTurnStopReportDeps } from '../orchestration/workers/turn-stops/worker-turn-stop-report'
+import type { LostWorkerReport } from '../orchestration/terminal-authority/runtime-legacy-worker-terminal-recovery-persistence'
+import { terminalLastOutput } from '../terminal/output/tail/terminal-tail-read'
 import type { RuntimeSkillCommands } from '../integrations/skill/runtime-skill-command-surface'
 import { RuntimeTerminalStreamConsumers } from '../terminal/output/runtime-terminal-stream-consumers'
 import type { RecentPtyOutputBuffer } from '../terminal/output/recent-pty-output-buffer'
@@ -309,6 +311,11 @@ export abstract class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWith
     getDb: () => this._orchestrationDb,
     isWaitingForMail: (mailbox) => (this.messageWaiters.get(mailbox)?.size ?? 0) > 0,
     notify: (handle, messageType) => this.notifyMessageArrived(handle, messageType)
+  }
+
+  protected readonly lostWorkerReport: LostWorkerReport = {
+    reportDeps: this.workerTurnStopReportDeps,
+    lastOutput: (ptyId) => terminalLastOutput(this.ptysById.get(ptyId))
   }
 
   protected readonly skillCommands!: RuntimeSkillCommands

@@ -114,10 +114,15 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
         )
       }
       if (!terminalHandle) {
-        throw new OrchestrationError(
-          'dispatch_not_found',
-          `Worker Dispatch ${params.dispatch} has no agent terminal.`
-        )
+        throw worker?.state === 'failed'
+          ? new OrchestrationError(
+              'worker_never_started',
+              `Worker Dispatch ${params.dispatch} never started: ${worker.last_error ?? 'its start failed'}`
+            )
+          : new OrchestrationError(
+              'dispatch_not_found',
+              `Worker Dispatch ${params.dispatch} has no agent terminal.`
+            )
       }
       const resource = db.getWorkerTerminalResourceByOwner(params.dispatch)
       if (resource && ['releasing', 'unknown', 'released'].includes(resource.release_state)) {

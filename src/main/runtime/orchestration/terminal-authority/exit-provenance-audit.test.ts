@@ -131,7 +131,7 @@ describe('STA-4603/STA-4536 exit provenance', () => {
     const db = createDb()
     const runtime = createRuntime(db)
     const ctx = dispatchOnHandle(db, 'closed by a person')
-    runtime.onPtyData(PTY_ID, 'Waiting for CI on the pull request\r\n', Date.now())
+    runtime.onPtyData(PTY_ID, 'Waiting for CI on the pull request\r\n', 1)
     runtime.markPtyStopRequested(PTY_ID)
     runtime.onPtyExit(PTY_ID, 0)
     // A repeated exit report must not repeat the alert.

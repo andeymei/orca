@@ -220,6 +220,7 @@ function makePostRevealWorkerRecoveryHarness(
     crewChanges: new CrewChanges(),
     listSessionDispatchesForPresentation: () => [],
     reconcileMissingWorkerTerminal: vi.fn(),
+    getDispatchContextById: () => undefined,
     getActiveDispatchForTerminal: () => undefined,
     findActiveRemoteAttachmentForPane: () => undefined,
     listLegacyWorkerTerminalRecoveryRows: () => [

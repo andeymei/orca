@@ -13,6 +13,7 @@ import type {
 import type { SetupConfig } from '../../../../shared/orca-hook-setup-config'
 import type { WorkspaceCreateErrorDisplay } from '@/lib/workspace/creation/workspace-create-error-format'
 import type { SmartNameMode } from '../../../../shared/new-workspace/smart-workspace-source-results'
+import type { TaskCheckoutTarget } from '../../../../shared/new-workspace/task-checkout-target'
 import type SmartWorkspaceNameField from './SmartWorkspaceNameField'
 import type { SmartWorkspaceNameSelection } from '@/components/new-workspace/smart-workspace-name-field-model'
 import type { GitHubWorkItem } from '../../../../shared/github/work-item-types'
@@ -102,6 +103,10 @@ export type NewWorkspaceComposerCardProps = {
   onClearSmartNameSelection: () => void
   reuseEligibleBranch?: string | null
   canReuseSelectedBranch: boolean
+  checkoutTarget: TaskCheckoutTarget
+  onCheckoutTargetChange: (next: TaskCheckoutTarget) => void
+  /** Branch the project's own checkout has, e.g. main; null when it has none to develop on. */
+  currentCheckoutBranch: string | null
   reuseSelectedBranch: boolean
   onReuseSelectedBranchChange: (next: boolean) => void
   onOpenSelectedBranchWorkspace?: () => void

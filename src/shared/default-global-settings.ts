@@ -43,6 +43,7 @@ export function buildDefaultSettings(args: {
     autoRenameBranchFromWorkDefaultedOn: true,
     branchPrefix: 'git-username',
     branchPrefixCustom: '',
+    taskCheckoutTarget: 'new-workspace',
     jiraIssueKeyCasing: 'lowercase',
     theme: 'system',
     pluginAppTheme: null,

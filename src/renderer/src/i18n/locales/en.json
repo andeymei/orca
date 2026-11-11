@@ -2068,6 +2068,13 @@
               "searchFailed": "Unable to search with {{value0}}."
             }
           }
+        },
+        "creation": {
+          "current": {
+            "checkout": {
+              "activationFailed": "Unable to open this project’s current checkout."
+            }
+          }
         }
       },
       "worktree": {
@@ -2634,7 +2641,8 @@
       "composerState": {
         "runtimeTargetSelection": {
           "selectProjectFirst": "Select a project first."
-        }
+        },
+        "currentCheckoutLaunchFailed": "Could not start the task in this project’s current checkout."
       }
     },
     "components": {
@@ -8901,7 +8909,11 @@
           "f2765fbbf6": "GitLab API budget",
           "8cdbaf4b03": "Jira key casing",
           "fdbcd676b0": "GitHub API budget",
-          "074f7aa0d6": "Default compare base"
+          "074f7aa0d6": "Default compare base",
+          "taskCheckoutTargetTitle": "Where new tasks run",
+          "taskCheckoutTargetDescription": "Start each task in a new worktree and branch, or in the project’s existing checkout on the branch it already has.",
+          "taskCheckoutTargetNewWorkspace": "New workspace",
+          "taskCheckoutTargetCurrentCheckout": "Current checkout"
         },
         "HiddenExperimentalGroup": {
           "7c4e18d2f6": "Arms the bold-glitch capture gestures on this machine: {{samplingShortcut}} starts a sampling burst; {{captureShortcut}} captures pane evidence to disk.",
@@ -11129,7 +11141,14 @@
             "410e821889": "Keep local main up to date",
             "f760fc929e": "Jira key casing",
             "52d52b099d": "GitHub API budget",
-            "25eac7e904": "Branch prefix"
+            "25eac7e904": "Branch prefix",
+            "taskCheckoutTarget": "Where new tasks run",
+            "taskCheckoutTargetDescription": "Start each task in a new worktree and branch, or in the project’s existing checkout on the branch it already has.",
+            "checkoutTarget": "checkout",
+            "currentCheckout": "current checkout",
+            "taskTarget": "task target",
+            "worktree": "worktree",
+            "mainBranch": "main"
           }
         },
         "input": {
@@ -23645,6 +23664,17 @@
         "provisionFailed": "The VM was not created, or creation was interrupted. Open Settings to destroy or remove it."
       },
       "suspendFailed": "Failed to suspend VM workspace"
+    },
+    "checkoutTarget": {
+      "title": "Where the task runs",
+      "currentWithBranch": "Current checkout ({{branch}})",
+      "current": "Current checkout",
+      "newWorkspace": "New workspace",
+      "newWorkspaceHint": "Create a branch and a separate worktree for this task.",
+      "currentCheckoutHint": "Run the task in the project’s existing checkout. The agent branches only if it needs to.",
+      "currentCheckoutUnavailableHint": "This project has no checkout to run in yet.",
+      "taskLabel": "Task",
+      "taskPlaceholder": "Describe what the agent should do"
     }
   },
   "tabHoverCard": {

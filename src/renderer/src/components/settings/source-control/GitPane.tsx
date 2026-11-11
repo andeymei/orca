@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { GlobalSettings } from '../../../../../shared/global-settings-types'
 import type { SourceControlGroupOrder } from '../../../../../shared/ui-chrome-types'
 import type { SourceControlAiSettingsPatch } from '../../../../../shared/source-control/ai/settings/source-control-ai-settings-types'
+import type { TaskCheckoutTarget } from '../../../../../shared/new-workspace/task-checkout-target'
 import { normalizeSourceControlGroupOrder } from '../../../../../shared/source-control/listing/source-control-group-order'
 import { Input } from '../../ui/input'
 import { Label } from '../../ui/label'
@@ -230,6 +231,78 @@ export function GitPane({
           />
         )}
         {isBranchPrefixInputMode && <BranchPrefixFeedback rawPrefix={branchPrefixInputValue} />}
+      </SearchableSetting>
+    ) : null,
+    matchesSettingsSearch(searchQuery, {
+      title: t('auto.components.settings.GitPane.taskCheckoutTargetTitle', 'Where new tasks run'),
+      description: t(
+        'auto.components.settings.GitPane.taskCheckoutTargetDescription',
+        'Start each task in a new worktree and branch, or in the project’s existing checkout on the branch it already has.'
+      ),
+      keywords: [
+        'task target',
+        'checkout',
+        'worktree',
+        'current branch',
+        'current checkout',
+        'main',
+        'branch'
+      ]
+    }) ? (
+      <SearchableSetting
+        key="task-checkout-target"
+        title={t('auto.components.settings.GitPane.taskCheckoutTargetTitle', 'Where new tasks run')}
+        description={t(
+          'auto.components.settings.GitPane.taskCheckoutTargetDescription',
+          'Start each task in a new worktree and branch, or in the project’s existing checkout on the branch it already has.'
+        )}
+        keywords={[
+          'task target',
+          'checkout',
+          'worktree',
+          'current branch',
+          'current checkout',
+          'main',
+          'branch'
+        ]}
+        className="space-y-3 py-3"
+      >
+        <div className="space-y-0.5">
+          <Label>
+            {t('auto.components.settings.GitPane.taskCheckoutTargetTitle', 'Where new tasks run')}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'auto.components.settings.GitPane.taskCheckoutTargetDescription',
+              'Start each task in a new worktree and branch, or in the project’s existing checkout on the branch it already has.'
+            )}
+          </p>
+        </div>
+        <SettingsSegmentedControl<TaskCheckoutTarget>
+          value={settings.taskCheckoutTarget ?? 'new-workspace'}
+          onChange={(next) => updateSettings({ taskCheckoutTarget: next })}
+          ariaLabel={t(
+            'auto.components.settings.GitPane.taskCheckoutTargetTitle',
+            'Where new tasks run'
+          )}
+          size="sm"
+          options={[
+            {
+              value: 'new-workspace',
+              label: t(
+                'auto.components.settings.GitPane.taskCheckoutTargetNewWorkspace',
+                'New workspace'
+              )
+            },
+            {
+              value: 'current-checkout',
+              label: t(
+                'auto.components.settings.GitPane.taskCheckoutTargetCurrentCheckout',
+                'Current checkout'
+              )
+            }
+          ]}
+        />
       </SearchableSetting>
     ) : null,
     matchesSettingsSearch(searchQuery, {

@@ -39,6 +39,11 @@ function branchProps(): React.ComponentProps<typeof NewWorkspaceComposerNameSect
     reuseSelectedBranch: true,
     onReuseSelectedBranchChange: vi.fn(),
     baseBranch: 'refs/remotes/origin/feature/payments',
+    checkoutTarget: 'new-workspace',
+    onCheckoutTargetChange: vi.fn(),
+    currentCheckoutBranch: null,
+    note: '',
+    onNoteChange: vi.fn(),
     onNamePlainEnter: vi.fn()
   }
 }
@@ -89,6 +94,7 @@ describe('NewWorkspaceComposerNameSection branch reuse', () => {
     )
 
     const openButton = screen.getByRole('button', { name: 'Open existing workspace' })
+    await user.tab()
     await user.tab()
     await user.tab()
     await user.tab()

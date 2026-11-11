@@ -49,6 +49,11 @@ function BranchReusePreview({
           setBranchName(undefined)
         }}
         onOpenSelectedBranchWorkspace={busy && reuse ? () => {} : undefined}
+        checkoutTarget="new-workspace"
+        onCheckoutTargetChange={() => {}}
+        currentCheckoutBranch={null}
+        note=""
+        onNoteChange={() => {}}
         baseBranch={
           remote ? `refs/remotes/origin/${existingBranch}` : `refs/heads/${existingBranch}`
         }

@@ -6,6 +6,8 @@ import { useTranslate } from '@/i18n/use-translate'
 import { shouldShowComposerBaseRefPicker } from './base-ref-picker-visibility'
 import { ComposerBaseRefPicker } from './ComposerBaseRefPicker'
 import { ComposerBranchChoice } from './ComposerBranchChoice'
+import { ComposerCheckoutTarget } from './ComposerCheckoutTarget'
+import { ComposerTaskNoteField } from './ComposerTaskNoteField'
 import type { NewWorkspaceComposerCardProps } from './new-workspace-composer-card-props'
 
 type NewWorkspaceComposerNameSectionProps = Pick<
@@ -38,6 +40,9 @@ type NewWorkspaceComposerNameSectionProps = Pick<
   | 'smartNameMode'
   | 'forkPushWarning'
   | 'canReuseSelectedBranch'
+  | 'checkoutTarget'
+  | 'onCheckoutTargetChange'
+  | 'currentCheckoutBranch'
   | 'reuseSelectedBranch'
   | 'reuseEligibleBranch'
   | 'branchNameOverride'
@@ -46,6 +51,8 @@ type NewWorkspaceComposerNameSectionProps = Pick<
   | 'onOpenSelectedBranchWorkspace'
   | 'baseBranch'
   | 'onBaseBranchChange'
+  | 'note'
+  | 'onNoteChange'
   | 'startFromResetHint'
 > & {
   onNamePlainEnter: () => void
@@ -81,6 +88,9 @@ export function NewWorkspaceComposerNameSection({
   onNamePlainEnter,
   forkPushWarning,
   canReuseSelectedBranch,
+  checkoutTarget,
+  onCheckoutTargetChange,
+  currentCheckoutBranch,
   reuseSelectedBranch,
   reuseEligibleBranch,
   branchNameOverride,
@@ -89,11 +99,15 @@ export function NewWorkspaceComposerNameSection({
   onOpenSelectedBranchWorkspace,
   baseBranch,
   onBaseBranchChange,
+  note,
+  onNoteChange,
   startFromResetHint
 }: NewWorkspaceComposerNameSectionProps): React.JSX.Element {
   const t = useTranslate()
+  const runsInCurrentCheckout = checkoutTarget === 'current-checkout'
   const showBaseRefPicker =
     Boolean(onBaseBranchChange) &&
+    !runsInCurrentCheckout &&
     shouldShowComposerBaseRefPicker({
       selectedRepoIsGit,
       branchesEnabled,
@@ -104,7 +118,7 @@ export function NewWorkspaceComposerNameSection({
     <div className="min-w-0 space-y-1" data-contextual-tour-target="workspace-creation-name">
       <div className="flex items-center justify-between gap-2">
         <label className="min-w-0 truncate text-xs font-medium text-muted-foreground">
-          {selectedRepoIsGit
+          {selectedRepoIsGit && !runsInCurrentCheckout
             ? t('auto.components.NewWorkspaceComposerCard.ac3748dcda', 'Create From')
             : t('auto.components.NewWorkspaceComposerCard.0ee17638fe', 'Workspace name')}{' '}
           <span className="text-muted-foreground/70">
@@ -153,6 +167,28 @@ export function NewWorkspaceComposerNameSection({
         onActiveSourceModeChange={onSmartNameModeChange}
         onPlainEnter={onNamePlainEnter}
       />
+      {selectedRepoIsGit ? (
+        <div className="pt-3">
+          <ComposerCheckoutTarget
+            value={checkoutTarget}
+            onChange={onCheckoutTargetChange}
+            currentCheckoutBranch={currentCheckoutBranch}
+          />
+        </div>
+      ) : null}
+      {runsInCurrentCheckout ? (
+        <div className="pt-3">
+          <ComposerTaskNoteField
+            label={t('workspace.checkoutTarget.taskLabel', 'Task')}
+            placeholder={t(
+              'workspace.checkoutTarget.taskPlaceholder',
+              'Describe what the agent should do'
+            )}
+            note={note}
+            onNoteChange={onNoteChange}
+          />
+        </div>
+      ) : null}
       {forkPushWarning ? (
         <p className="flex items-start gap-1.5 text-[11px] text-yellow-600 dark:text-yellow-500">
           <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
@@ -162,10 +198,10 @@ export function NewWorkspaceComposerNameSection({
       <div
         className={cn(
           'grid overflow-hidden transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
-          canReuseSelectedBranch ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          canReuseSelectedBranch && !runsInCurrentCheckout ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         )}
-        aria-hidden={!canReuseSelectedBranch}
-        inert={!canReuseSelectedBranch}
+        aria-hidden={!canReuseSelectedBranch || runsInCurrentCheckout}
+        inert={!canReuseSelectedBranch || runsInCurrentCheckout}
       >
         <div className="min-h-0">
           <div className="pt-3">

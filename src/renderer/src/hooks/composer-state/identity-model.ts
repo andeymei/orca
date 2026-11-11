@@ -3,6 +3,7 @@ import type { TuiAgent } from '../../../../shared/agent-launch/catalog/tui-agent
 import type { GitPushTarget } from '../../../../shared/worktree/types'
 import type { SmartNameMode } from '../../../../shared/new-workspace/smart-workspace-source-results'
 import type { CreateWorktreeArgs } from '../../../../shared/worktree/create-types'
+import type { TaskCheckoutTarget } from '../../../../shared/new-workspace/task-checkout-target'
 
 export type ComposerIdentityModel = {
   linkedIssue: string
@@ -22,6 +23,8 @@ export type ComposerIdentityModel = {
   branchNameOverride: string | undefined
   branchIntent?: CreateWorktreeArgs['branchIntent']
   setBranchIntent: React.Dispatch<React.SetStateAction<CreateWorktreeArgs['branchIntent']>>
+  checkoutTarget: TaskCheckoutTarget
+  setCheckoutTarget: React.Dispatch<React.SetStateAction<TaskCheckoutTarget>>
   setBranchNameOverride: React.Dispatch<React.SetStateAction<string | undefined>>
   parentWorktreeId: string | null
   setParentWorktreeId: React.Dispatch<React.SetStateAction<string | null>>

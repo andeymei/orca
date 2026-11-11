@@ -43,6 +43,7 @@ import type {
   TaskViewPresetId
 } from './ui-chrome-types'
 import type { WorktreeVisibilityDefaults } from './repo-types'
+import type { TaskCheckoutTarget } from './new-workspace/task-checkout-target'
 
 export type { WorktreeVisibilityDefaults } from './repo-types'
 
@@ -67,6 +68,8 @@ export type GlobalSettings = GlobalSettingsBase & {
   autoRenameBranchFromWorkDefaultedOn?: boolean
   branchPrefix: BranchPrefixStrategy
   branchPrefixCustom: string
+  /** Where a new task runs: a fresh worktree, or the repo's existing checkout on its current branch. */
+  taskCheckoutTarget: TaskCheckoutTarget
   /** Jira key casing for newly generated Jira-linked workspace and branch names.
    *  Existing workspaces and user-typed names are never rewritten. */
   jiraIssueKeyCasing?: JiraIssueKeyCasing

@@ -5,18 +5,11 @@ import {
   getComposerWorkspaceSetupLabels,
   getComposerSetupStartupLabel
 } from './workspace-setup-composer-copy'
-import { toast } from 'sonner'
 import SparseCheckoutPresetSelect from '@/components/sparse/SparseCheckoutPresetSelect'
 import { cn } from '@/lib/class-names'
-import { TEXT_CONTROL_PASTE_DIRECT_MAX_BYTES } from '@/lib/text-input/paste/text-control-paste-model'
-import {
-  measureTextControlPasteByteLength,
-  pasteTextIntoTextControl,
-  shouldHandleTextControlPaste
-} from '@/lib/text-input/paste/text-control-paste'
-import { translate } from '@/i18n/i18n'
 import { useTranslate } from '@/i18n/use-translate'
 import { ComposerParentWorktreePicker } from './ComposerParentWorktreePicker'
+import { ComposerTaskNoteField } from './ComposerTaskNoteField'
 import type { NewWorkspaceComposerCardProps } from './new-workspace-composer-card-props'
 
 type NewWorkspaceComposerAdvancedSectionProps = Pick<
@@ -30,6 +23,7 @@ type NewWorkspaceComposerAdvancedSectionProps = Pick<
   | 'selectedRepoIsGit'
   | 'branchesEnabled'
   | 'canReuseSelectedBranch'
+  | 'checkoutTarget'
   | 'branchNameOverride'
   | 'onBranchNameOverrideChange'
   | 'parentWorktreeId'
@@ -73,6 +67,7 @@ export function NewWorkspaceComposerAdvancedSection({
   selectedRepoIsGit,
   branchesEnabled = true,
   canReuseSelectedBranch,
+  checkoutTarget,
   branchNameInputId,
   branchNameOverride,
   onBranchNameOverrideChange,
@@ -101,37 +96,8 @@ export function NewWorkspaceComposerAdvancedSection({
   canUseSparseCheckout
 }: NewWorkspaceComposerAdvancedSectionProps): React.JSX.Element {
   const t = useTranslate()
-  const handleNotePaste = React.useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const text = event.clipboardData.getData('text/plain')
-    const byteLengthMeasurement = measureTextControlPasteByteLength(text, {
-      stopAfterBytes: TEXT_CONTROL_PASTE_DIRECT_MAX_BYTES
-    })
-    if (
-      !byteLengthMeasurement.exceededLimit &&
-      !shouldHandleTextControlPaste(text, { measuredByteLength: byteLengthMeasurement.byteLength })
-    ) {
-      return
-    }
-
-    event.preventDefault()
-    event.stopPropagation()
-    const textarea = event.currentTarget
-    void pasteTextIntoTextControl(textarea, text, {
-      source: 'clipboard',
-      canContinue: (target) => target.ownerDocument.activeElement === target
-    })
-      .then((result) => {
-        if (result.status === 'rejected' && result.reason === 'too-large') {
-          toast.error(
-            translate(
-              'auto.components.NewWorkspaceComposerCard.notePasteTooLarge',
-              'Paste is too large for the note field.'
-            )
-          )
-        }
-      })
-      .catch(() => {})
-  }, [])
+  // Why: the current checkout already exists, so nothing about creating a workspace applies to it.
+  const runsInCurrentCheckout = checkoutTarget === 'current-checkout'
 
   return (
     <div
@@ -173,6 +139,7 @@ export function NewWorkspaceComposerAdvancedSection({
 
           {selectedRepoIsGit &&
           branchesEnabled &&
+          !runsInCurrentCheckout &&
           !canReuseSelectedBranch &&
           (!smartNameSelection || smartNameSelection.kind === 'branch') ? (
             <div className="space-y-1">
@@ -196,7 +163,10 @@ export function NewWorkspaceComposerAdvancedSection({
             </div>
           ) : null}
 
-          {selectedRepoIsGit && branchesEnabled && onParentWorktreeIdChange ? (
+          {selectedRepoIsGit &&
+          branchesEnabled &&
+          onParentWorktreeIdChange &&
+          !runsInCurrentCheckout ? (
             <ComposerParentWorktreePicker
               repoId={repoId}
               executionHostId={selectedRepoExecutionHostId}
@@ -208,21 +178,21 @@ export function NewWorkspaceComposerAdvancedSection({
             />
           ) : null}
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">
-              {t('auto.components.NewWorkspaceComposerCard.f8728aa4f9', 'Note')}
-            </label>
-            <textarea
-              value={note}
-              onChange={(event) => onNoteChange(event.target.value)}
-              onPaste={handleNotePaste}
-              placeholder={t('auto.components.NewWorkspaceComposerCard.090cfedeb4', 'Write a note')}
-              rows={1}
-              className="w-full min-w-0 resize-none overflow-y-auto scrollbar-sleek rounded-md border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [field-sizing:content] max-h-40"
-            />
-          </div>
+          {runsInCurrentCheckout ? null : (
+            <div className="space-y-1">
+              <ComposerTaskNoteField
+                label={t('auto.components.NewWorkspaceComposerCard.f8728aa4f9', 'Note')}
+                placeholder={t(
+                  'auto.components.NewWorkspaceComposerCard.090cfedeb4',
+                  'Write a note'
+                )}
+                note={note}
+                onNoteChange={onNoteChange}
+              />
+            </div>
+          )}
 
-          {setupControlsEnabled && setupConfig ? (
+          {setupControlsEnabled && setupConfig && !runsInCurrentCheckout ? (
             <WorkspaceSetupSection
               setupConfig={setupConfig}
               copy={selectWorkspaceSetupCopy(setupConfig, getComposerWorkspaceSetupLabels(t))}
@@ -245,7 +215,7 @@ export function NewWorkspaceComposerAdvancedSection({
             />
           ) : null}
 
-          {sparseControlsEnabled ? (
+          {sparseControlsEnabled && !runsInCurrentCheckout ? (
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
                 {t('auto.components.NewWorkspaceComposerCard.d861de981b', 'Sparse checkout')}

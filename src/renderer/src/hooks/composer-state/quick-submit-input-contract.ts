@@ -5,6 +5,7 @@ export type QuickSubmitPreparationInput = Pick<
   | 'branchAutoNameRef'
   | 'branchIntent'
   | 'branchNameOverridePreservesNameEdits'
+  | 'checkoutTarget'
   | 'checkedHooksContextKey'
   | 'commitHookCheckIfCurrent'
   | 'enableIssueAutomation'

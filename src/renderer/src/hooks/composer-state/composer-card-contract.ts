@@ -85,6 +85,10 @@ export type ComposerCardActionProps = {
   onClearSmartNameSelection: ComposerModel['handleClearSmartNameSelection']
   reuseEligibleBranch?: ComposerModel['reuseEligibleBranch']
   canReuseSelectedBranch: boolean
+  checkoutTarget: ComposerModel['checkoutTarget']
+  onCheckoutTargetChange: (next: ComposerModel['checkoutTarget']) => void
+  /** Branch the project's own checkout has, e.g. main; null when it has none to develop on. */
+  currentCheckoutBranch: string | null
   onOpenSelectedBranchWorkspace?: () => void
   onReuseSelectedBranchChange: ComposerModel['handleReuseSelectedBranchChange']
   showCreateMultiple: boolean

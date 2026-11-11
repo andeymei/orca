@@ -70,6 +70,7 @@ export function useComposerSubmitOrchestration(
     branchAutoNameRef: target.asyncComposerState.branchAutoNameRef,
     branchNameOverridePreservesNameEdits:
       target.workspaceIdentityState.branchNameOverridePreservesNameEdits,
+    checkoutTarget: target.workspaceIdentityState.checkoutTarget,
     checkedHooksContextKey: target.asyncComposerState.checkedHooksContextKey,
     commitHookCheckIfCurrent: target.providerRuntimeSync.commitHookCheckIfCurrent,
     enableIssueAutomation: target.composerTargetStore.enableIssueAutomation,
@@ -93,6 +94,7 @@ export function useComposerSubmitOrchestration(
     smartNameMode: target.workspaceIdentityState.smartNameMode
   })
   const quickCreationExecution = useQuickCreationExecution({
+    checkoutTarget: target.workspaceIdentityState.checkoutTarget,
     clearNewWorkspaceDraft: target.composerTargetStore.clearNewWorkspaceDraft,
     createMultiple: target.asyncComposerState.createMultiple,
     effectivePresetId: target.derivedComposerState.effectivePresetId,
@@ -120,7 +122,8 @@ export function useComposerSubmitOrchestration(
     settings: target.composerTargetStore.settings,
     sparseEnabled: target.asyncComposerState.sparseEnabled,
     taskSourceContext: target.sourceContextState.taskSourceContext,
-    telemetrySource: target.composerTargetStore.telemetrySource
+    telemetrySource: target.composerTargetStore.telemetrySource,
+    worktreesByRepo: target.composerTargetStore.worktreesByRepo
   })
   const quickSubmitAction = useQuickSubmitAction({
     effectiveLinkedPR: target.derivedComposerState.effectiveLinkedPR,

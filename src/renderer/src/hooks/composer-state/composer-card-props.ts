@@ -5,6 +5,7 @@ import type { ComposerModel } from './composer-model'
 import { resolveComposerAgentRows } from './composer-agent-rows-target'
 import type { ComposerCardActionProps, ComposerCardSourceProps } from './composer-card-contract'
 import { activateAndRevealWorktree } from '@/lib/workspace/activation/worktree-activation'
+import { buildComposerCheckoutTargetProps } from './composer-checkout-target-props'
 import '@/lib/workspace/ownership/worktree-runtime-owner-index'
 import { worktreeOwnerHostIds } from '@/lib/workspace/ownership/workspace-catalog-owner-index'
 import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-record-fields'
@@ -143,6 +144,7 @@ export function buildComposerCardProps(state: ComposerModel) {
     sparseError
   })
   const createDisabled = isProjectGroupTarget ? folderCreateDisabled : repoCreateDisabled
+  const checkoutTargetProps = buildComposerCheckoutTargetProps(state, isProjectGroupTarget)
   const cardProps: ComposerCardSourceProps & ComposerCardActionProps = {
     eligibleRepos: isProjectGroupTarget ? folderSourceRepos : eligibleRepos,
     selectedRepo: isProjectGroupTarget
@@ -192,6 +194,7 @@ export function buildComposerCardProps(state: ComposerModel) {
       !isProjectGroupTarget &&
       reuseEligibleBranch !== null &&
       smartNameSelection?.kind === 'branch',
+    ...checkoutTargetProps,
     reuseSelectedBranch,
     onReuseSelectedBranchChange: handleReuseSelectedBranchChange,
     onOpenSelectedBranchWorkspace:
@@ -209,7 +212,8 @@ export function buildComposerCardProps(state: ComposerModel) {
           }
         : undefined,
     // Create multiple applies to Git worktrees; folder creation still closes afterward.
-    showCreateMultiple: !isProjectGroupTarget,
+    showCreateMultiple:
+      !isProjectGroupTarget && checkoutTargetProps.checkoutTarget !== 'current-checkout',
     createMultiple,
     onCreateMultipleChange: setCreateMultiple,
     agentPrompt,

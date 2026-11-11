@@ -106,6 +106,7 @@ function useSetupComposer(repo: Repo) {
     branchAutoNameRef,
     branchIntent: 'create-new',
     branchNameOverridePreservesNameEdits: false,
+    checkoutTarget: 'new-workspace',
     checkedHooksContextKey: repo.id,
     commitHookCheckIfCurrent: () => true,
     enableIssueAutomation: false,

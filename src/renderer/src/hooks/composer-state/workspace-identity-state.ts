@@ -18,6 +18,7 @@ type WorkspaceIdentityStateInput = Pick<
 
 import { useState, useMemo, useCallback, type SetStateAction } from 'react'
 import type { CreateWorktreeArgs } from '../../../../shared/worktree/create-types'
+import type { TaskCheckoutTarget } from '../../../../shared/new-workspace/task-checkout-target'
 import {
   getWorkspaceSourceProvider,
   isGitLabIssueUrl
@@ -123,6 +124,11 @@ export function useWorkspaceIdentityState(input: WorkspaceIdentityStateInput) {
     initialLinearBranchName
   )
   const [branchIntent, setBranchIntent] = useState<CreateWorktreeArgs['branchIntent']>()
+
+  // Why: some repos are developed on the branch already checked out, so the checkout target is a first-class choice.
+  const [checkoutTarget, setCheckoutTarget] = useState<TaskCheckoutTarget>(
+    settings?.taskCheckoutTarget ?? 'new-workspace'
+  )
   const setBranchNameOverride = useCallback((value: SetStateAction<string | undefined>) => {
     setBranchIntent(undefined)
     updateBranchNameOverride(value)
@@ -231,6 +237,8 @@ export function useWorkspaceIdentityState(input: WorkspaceIdentityStateInput) {
     branchNameOverride,
     branchIntent,
     setBranchIntent,
+    checkoutTarget,
+    setCheckoutTarget,
     setBranchNameOverride,
     parentWorktreeId,
     setParentWorktreeId,

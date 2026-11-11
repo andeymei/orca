@@ -132,5 +132,29 @@ export const getGitPaneSearchEntries = createLocalizedCatalog(() => [
       )
     ]
   },
+  {
+    title: translate(
+      'auto.components.settings.git.search.taskCheckoutTarget',
+      'Where new tasks run'
+    ),
+    description: translate(
+      'auto.components.settings.git.search.taskCheckoutTargetDescription',
+      'Start each task in a new worktree and branch, or in the project’s existing checkout on the branch it already has.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.git.search.checkoutTarget', 'checkout'),
+      ...translateSearchKeyword(
+        'auto.components.settings.git.search.currentCheckout',
+        'current checkout'
+      ),
+      ...translateSearchKeyword('auto.components.settings.git.search.taskTarget', 'task target'),
+      ...translateSearchKeyword('auto.components.settings.git.search.worktree', 'worktree'),
+      ...translateSearchKeyword(
+        'auto.components.settings.git.search.currentBranch',
+        'current branch'
+      ),
+      ...translateSearchKeyword('auto.components.settings.git.search.mainBranch', 'main')
+    ]
+  },
   ...getAutoRenameBranchSearchEntries()
 ])

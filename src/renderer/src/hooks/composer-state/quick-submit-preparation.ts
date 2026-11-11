@@ -24,6 +24,7 @@ export function useQuickSubmitPreparation(input: QuickSubmitPreparationInput) {
     branchAutoNameRef,
     branchIntent,
     branchNameOverridePreservesNameEdits,
+    checkoutTarget,
     checkedHooksContextKey,
     commitHookCheckIfCurrent,
     enableIssueAutomation,
@@ -99,6 +100,7 @@ export function useQuickSubmitPreparation(input: QuickSubmitPreparationInput) {
 
       if (
         submitSetupSupported &&
+        checkoutTarget !== 'current-checkout' &&
         (setupSupport !== 'supported' || setupPolicy === 'ask') &&
         selectedRepoHookContextKey &&
         (setupSupport !== 'supported' || checkedHooksContextKey !== selectedRepoHookContextKey)
@@ -121,8 +123,11 @@ export function useQuickSubmitPreparation(input: QuickSubmitPreparationInput) {
       }
 
       if (submitSetupConfig && setupPolicy === 'ask' && !setupDecision) {
-        revealSetupChoice()
-        return null
+        // Why: an existing checkout already ran its setup, so no workspace is created to ask about.
+        if (checkoutTarget !== 'current-checkout') {
+          revealSetupChoice()
+          return null
+        }
       }
 
       // Hosts that predate folder setup ignore the decision for folders.
@@ -224,6 +229,7 @@ export function useQuickSubmitPreparation(input: QuickSubmitPreparationInput) {
     [
       branchNameOverridePreservesNameEdits,
       branchIntent,
+      checkoutTarget,
       checkedHooksContextKey,
       commitHookCheckIfCurrent,
       enableIssueAutomation,

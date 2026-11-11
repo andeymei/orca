@@ -8,6 +8,7 @@ import { useAppStore } from '@/store'
 import { isWorkspaceStatusAllowedOnHost } from '@/store/workspaces/status/host-workspace-status-columns'
 import { settleComposerSubmit } from '@/lib/workspace/creation/composer-submit-cancellation'
 import { runBackgroundWorktreeCreation } from '@/lib/workspace/creation/worktree-creation-flow'
+import { submitTaskInCurrentCheckout } from './current-checkout-task-launch'
 import type { ComposerCreateHandoff } from '@/lib/workspace/creation/composer-create-handoff'
 import { translate } from '@/i18n/i18n'
 import { prepareQuickComposerStartup } from './quick-startup-plan'
@@ -18,6 +19,7 @@ import { resolveAgentSessionLaunchRoute } from '@/lib/agent-session/launch/routi
 export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
   const {
     clearNewWorkspaceDraft,
+    checkoutTarget,
     createMultiple,
     effectivePresetId,
     ephemeralVmRecipes,
@@ -44,7 +46,8 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
     settings,
     sparseEnabled,
     taskSourceContext,
-    telemetrySource
+    telemetrySource,
+    worktreesByRepo
   } = input
 
   const executeQuickCreation = useCallback(
@@ -95,6 +98,24 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
       const { prompt: quickPrompt, draftPrompt: quickDraftPrompt } =
         resolveQuickCreateLinkedWorkItemPrompt(promptLinkedWorkItem, trimmedNote)
 
+      const promptDelivery = quickDraftPrompt ? 'draft' : 'auto-submit'
+
+      if (
+        checkoutTarget === 'current-checkout' &&
+        submitTaskInCurrentCheckout({
+          repoId,
+          worktrees: worktreesByRepo[repoId] ?? [],
+          agent,
+          prompt: quickDraftPrompt ?? quickPrompt,
+          promptDelivery,
+          persistDraft,
+          clearNewWorkspaceDraft,
+          onCreated
+        })
+      ) {
+        return
+      }
+
       const startupPolicySettlement = await settleComposerSubmit(
         persistSetupAgentStartupPolicy(),
         isSubmissionCancelled
@@ -129,7 +150,6 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
         }
       }
 
-      const promptDelivery = quickDraftPrompt ? 'draft' : 'auto-submit'
       // Why: the verdict is persisted on the request as data and re-entered once the worktree exists.
       const agentLaunchRoute = !agent
         ? 'terminal-tui'
@@ -267,6 +287,7 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
       }
     },
     [
+      checkoutTarget,
       clearNewWorkspaceDraft,
       createMultiple,
       effectivePresetId,
@@ -294,7 +315,8 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
       settings,
       sparseEnabled,
       taskSourceContext,
-      telemetrySource
+      telemetrySource,
+      worktreesByRepo
     ]
   )
 

@@ -22,6 +22,7 @@ export type ComposerModel = ComposerTargetModel & ComposerSourceModel & Composer
 
 export type QuickCreationExecutionInput = Pick<
   ComposerModel,
+  | 'checkoutTarget'
   | 'clearNewWorkspaceDraft'
   | 'createMultiple'
   | 'effectivePresetId'
@@ -50,4 +51,5 @@ export type QuickCreationExecutionInput = Pick<
   | 'sparseEnabled'
   | 'taskSourceContext'
   | 'telemetrySource'
+  | 'worktreesByRepo'
 >

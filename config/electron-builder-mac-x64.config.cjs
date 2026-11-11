@@ -1,4 +1,9 @@
+const { homedir } = require('node:os')
+const { join } = require('node:path')
 const release = require('./electron-builder.config.cjs')
+const {
+  verifyAndStageElectronArchive
+} = require('./scripts/desktop-distribution/macos/electron-archive-integrity.cjs')
 
 // The canonical config pins the mac targets to `arch: ['x64', 'arm64']`, and an explicit
 // per-target arch list wins over electron-builder's `--x64` flag — so `electron-builder
@@ -6,16 +11,36 @@ const release = require('./electron-builder.config.cjs')
 // arm64 optional dependencies. This variant keeps every canonical setting and narrows only
 // the mac target arch to Intel.
 //
-// `ORCA_ELECTRON_ARCHIVE_VERIFIED` is set by build-mac-x64-local.mjs only after it checked
-// the cached Electron archive against a pinned digest. @electron/get re-fetches
-// SHASUMS256.txt on every run (cacheMode: Bypass), and that file — not the archive — is what
-// a filtering proxy usually drops. Skipping the re-fetch is therefore only safe once the
-// archive itself has been verified; the flag alone cannot disable verification.
+// @electron/get re-fetches the release's SHASUMS256.txt on every run (cacheMode: Bypass),
+// and that request — not the archive — is what a filtering proxy usually drops. Skipping it
+// is only safe once the archive itself is verified, so the verification runs here, in the
+// same process that goes on to consume the archive, and fails closed on every error path.
+// The environment variable only asks for the skip; it cannot assert that it happened.
+//
+// The verified archive is staged into a cache root this build owns and electron-builder
+// reads it from there, so the bytes it consumes are the bytes that were hashed against the
+// pin. The root sits outside the repository because `out/` is not excluded from app.asar.
+const skipChecksumDownload = process.env.ORCA_SKIP_ELECTRON_CHECKSUM_DOWNLOAD === '1'
+let stagedArchive
+if (skipChecksumDownload) {
+  const packageJson = require('../package.json')
+  const version = packageJson.devDependencies?.electron ?? packageJson.dependencies?.electron
+  stagedArchive = verifyAndStageElectronArchive({
+    version,
+    platform: 'darwin',
+    arch: 'x64',
+    stagingRoot: join(homedir(), '.cache', 'orca', 'electron-archive')
+  })
+  console.log(
+    `[electron-builder-mac-x64] verified ${stagedArchive.archivePath} against its pinned digest`
+  )
+}
+
 module.exports = {
   ...release,
   electronDownload: {
     ...release.electronDownload,
-    ...(process.env.ORCA_ELECTRON_ARCHIVE_VERIFIED === '1' ? { isVerifyChecksum: false } : {})
+    ...(skipChecksumDownload ? { isVerifyChecksum: false, cache: stagedArchive.cacheRoot } : {})
   },
   mac: {
     ...release.mac,

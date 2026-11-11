@@ -17500,6 +17500,12 @@
         },
         "MarkdownDefaultViewContextMenu": {
           "label": "Default Markdown View"
+        },
+        "BinaryFileDefaultAppButton": {
+          "downloadFailed": "Failed to download '{{value0}}'.",
+          "open": "Open with default app",
+          "downloadOpen": "Download & open with default app",
+          "openFailed": "No app on this computer opened this file."
         }
       },
       "diff": {

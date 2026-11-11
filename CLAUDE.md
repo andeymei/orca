@@ -8,14 +8,14 @@ Orca is an Electron + React desktop IDE for running CLI coding agents (Claude Co
 Copilot, …) in parallel, each in its own git worktree. It also ships an `orca` CLI, a React Native
 mobile companion, and a cloud relay.
 
-This checkout is a fork of `github.com/stablyai/orca`, working on the fork's `main`. Remotes:
+This checkout is the Orca fork `github.com/andeymei/orca`, working on its `main`. There is exactly
+one remote:
 
-- `origin` → `github.com/andeymei/orca` (this fork — push here)
-- `upstream` → `github.com/stablyai/orca` (pull upstream changes from here)
+- `origin` → `github.com/andeymei/orca` — pull and push here
 
-The local `main` branch tracks `origin/main` and the working tree is kept byte-identical to it, so
-`git fetch upstream && git merge upstream/main` is how you take upstream changes. Branch your work
-off `main`.
+Upstream `stablyai/orca` is **not** a remote in this checkout and is not part of the workflow.
+`origin/main` is the single source of truth: the local `main` tracks it and the working tree is
+kept byte-identical to it. Branch your work off `main`.
 
 A local branch `base/v1.4.256` is kept as a reference to the last release tag. That tag was cut from
 a release-prep branch and **diverges from `main`** (~200 commits / ~5,800 files behind), so it is

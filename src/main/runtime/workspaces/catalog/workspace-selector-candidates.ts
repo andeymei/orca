@@ -6,6 +6,8 @@ import {
 } from '../../../../shared/folder-workspaces/folder-workspace-execution-host'
 import { folderIdOfSelector, folderWorkspaceKey } from '../../../../shared/workspace-scope'
 import { runtimePathsEqual, type ResolvedWorktree } from './runtime-worktree-path-identity'
+import { pathMatchesAtSameRealPath } from '../../../workspaces/catalog/project-realpath-identity'
+import type { Repo } from '../../../../shared/repo-types'
 
 /** A selector's match: a repo-backed row, or a folder workspace with its derived host (null when underivable). */
 export type WorkspaceSelectorCandidate =
@@ -22,6 +24,30 @@ export type WorkspaceSelectorChoice = {
 
 export type FolderCatalog = QualifiedFolderHostState<FolderWorkspace> & {
   folderWorkspaces: readonly FolderWorkspace[]
+}
+
+/**
+ * The repo rows a path selector names.
+ *
+ * A literal path match wins outright; only when none is found are the stored paths compared
+ * through their realpaths, because git reports a repository's root as its realpath and a path
+ * that traverses a symlink then names the same checkout under a different string.
+ */
+export async function matchRepoRowsByPath(
+  repos: readonly Repo[],
+  candidate: string
+): Promise<Repo[]> {
+  const literal = repos.filter((repo) => runtimePathsEqual(repo.path, candidate))
+  if (literal.length > 0) {
+    return literal
+  }
+  const matched: Repo[] = []
+  for (const repo of repos) {
+    if (await pathMatchesAtSameRealPath(repo.path, candidate)) {
+      matched.push(repo)
+    }
+  }
+  return matched
 }
 
 /** `matchFolders` (a request opt-in) lets path: and name: match folders beside repo-backed rows;

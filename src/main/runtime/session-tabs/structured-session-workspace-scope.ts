@@ -22,6 +22,7 @@ import type { RuntimeWorkspaceCatalog } from '../workspaces/catalog/workspace-ca
 import type { RuntimeWorkspaceSelectors } from '../workspaces/workspace-selectors'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/host/structured-agent-session-registry'
 import type { NotificationAttentionAcknowledgement } from '../../../shared/notification-settings-types'
+import { matchRepoRowsByPath } from '../workspaces/catalog/workspace-selector-candidates'
 
 export abstract class StructuredSessionWorkspaceScope extends OrcaRuntimeWithStructuredSessionAccountHome {
   protected abstract resolveFolderWorkspaceSelector(
@@ -104,7 +105,7 @@ export abstract class StructuredSessionWorkspaceScope extends OrcaRuntimeWithStr
 
   /** The one workspace a catalog read names, derived from its selector and the repo rows without
    *  listing worktrees: a model picker's cost must not grow with the fleet. */
-  private structuredAgentCatalogTarget(selector: string) {
+  private async structuredAgentCatalogTarget(selector: string) {
     const folder = this.resolveFolderWorkspaceSelector(selector)
     if (folder) {
       return {
@@ -116,7 +117,7 @@ export abstract class StructuredSessionWorkspaceScope extends OrcaRuntimeWithStr
     }
     let worktreeId = this.getValidatedExplicitWorktreeIdSelector(selector)
     if (selector.startsWith('path:')) {
-      const repos = this.selectReposBySelector(selector)
+      const repos = await matchRepoRowsByPath(this.store?.getRepos() ?? [], selector.slice(5))
       // The same path on two hosts names no one workspace.
       if (new Set(repos.map(getRepoExecutionHostId)).size !== 1) {
         return null
@@ -135,7 +136,7 @@ export abstract class StructuredSessionWorkspaceScope extends OrcaRuntimeWithStr
     try {
       const target = isFloatingWorkspaceSelector(selector)
         ? await this.resolveRuntimeFileTarget(selector)
-        : this.structuredAgentCatalogTarget(selector)
+        : await this.structuredAgentCatalogTarget(selector)
       return target && isNativeLocalLocation(this.structuredAgentSessionLocationForTarget(target))
         ? target.worktree.path
         : null

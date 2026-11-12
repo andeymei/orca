@@ -15,7 +15,6 @@ import {
   type RuntimeRepoSelector
 } from './catalog/runtime-repo-selector'
 import type { Repo } from '../../../shared/repo-types'
-import { pathMatchesAtSameRealPath } from '../../workspaces/catalog/project-realpath-identity'
 import { isFolderRepo } from '../../../shared/repo-kind'
 import type { RuntimeStore } from '../construction/runtime-store-contract'
 import type { RuntimeWorkspaceCatalog } from './catalog/workspace-catalog'
@@ -30,6 +29,7 @@ import {
   folderCandidate,
   folderCatalogOf,
   matchFolderWorkspaceRows,
+  matchRepoRowsByPath,
   resolveKeyedFolderWorkspace,
   selectWorkspaceCandidate,
   type WorkspaceSelectorCandidate,
@@ -232,18 +232,17 @@ export abstract class RuntimeWorkspaceSelectors extends RuntimeProjectLaunchCont
       return repos.filter((repo) => repo.id === selector.slice(3))
     }
     if (selector.startsWith('path:')) {
-      return this.matchReposByPath(repos, selector.slice(5))
+      return repos.filter((repo) => runtimePathsEqual(repo.path, selector.slice(5)))
     }
     if (selector.startsWith('name:')) {
       return repos.filter((repo) => repo.displayName === selector.slice(5))
     }
-    const literal = repos.filter(
+    return repos.filter(
       (repo) =>
         repo.id === selector ||
         runtimePathsEqual(repo.path, selector) ||
         repo.displayName === selector
     )
-    return literal.length > 0 ? literal : this.matchReposByPath(repos, selector)
   }
 
   /**
@@ -251,19 +250,20 @@ export abstract class RuntimeWorkspaceSelectors extends RuntimeProjectLaunchCont
    * through their realpaths, because git reports a repository's root as its realpath and a path
    * that traverses a symlink then names the same checkout under a different string.
    */
-  private matchReposByPath(repos: Repo[], candidate: string): Repo[] {
-    const literal = repos.filter((repo) => runtimePathsEqual(repo.path, candidate))
+  protected async selectReposBySelectorAsync(selector: string): Promise<Repo[]> {
+    const literal = this.selectReposBySelector(selector)
     if (literal.length > 0) {
       return literal
     }
-    return repos.filter((repo) => pathMatchesAtSameRealPath(repo.path, candidate))
+    const candidate = selector.startsWith('path:') ? selector.slice(5) : selector
+    return matchRepoRowsByPath(this.store?.getRepos() ?? [], candidate)
   }
 
   protected async resolveRepoSelector(selector: RuntimeRepoSelector): Promise<Repo> {
     if (!this.store) {
       throw new Error('repo_not_found')
     }
-    const matches = this.selectReposBySelector(runtimeRepoSelectorText(selector))
+    const matches = await this.selectReposBySelectorAsync(runtimeRepoSelectorText(selector))
     const hostId = runtimeRepoSelectorHostId(selector)
     const candidates = hostId
       ? matches.filter((repo) => getRepoExecutionHostId(repo) === hostId)

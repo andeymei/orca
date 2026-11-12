@@ -827,6 +827,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'agentSession.accountUsage': OptionsParams,
   'agentSession.acknowledgeAttention': AcknowledgeAttentionParams,
   'agentSession.agents': AgentsParams,
+  'agentSession.backgroundList': null,
   'agentSession.cancel': CancelParams,
   'agentSession.cancelUsageLimitContinue': CancelUsageLimitContinueParams,
   'agentSession.close': OptionsParams,

@@ -1,5 +1,6 @@
 import { createHash, createHmac } from 'node:crypto'
 import { Hono, type Context } from 'hono'
+import { listAuthAuditEvents, recordAuthAuditEvent } from './audit-log.js'
 import {
   consumeAuthorizationCode,
   issueAuthorizationCode,
@@ -18,7 +19,7 @@ import {
 } from './cloud-profile.js'
 import type { AuthConfig } from './config.js'
 import { decodeHostPublicKey, deriveRelayHostId, newSecret } from './auth-identity.js'
-import { LoginAttemptLimiter } from './login-attempt-limiter.js'
+import { LoginAttemptStore } from './login-attempt-store.js'
 import { renderLoginPage } from './login-page.js'
 import { hashPassword, verifyPassword } from './password-hash.js'
 import {
@@ -72,6 +73,14 @@ function readStringField(body: unknown, field: string): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function readNumberQuery(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
 function errorPayload(code: string): { error: string } {
   return { error: code }
 }
@@ -95,7 +104,7 @@ function clientAddress(c: Context): string {
 
 export function createAuthApp(input: AuthAppInput): Hono {
   const { config, database, signer } = input
-  const limiter = new LoginAttemptLimiter()
+  const limiter = new LoginAttemptStore(database)
   const app = new Hono()
   const refreshTokenKey = createHmac('sha256', input.sessionSecret)
     .update('orca-auth-refresh')
@@ -257,19 +266,37 @@ export function createAuthApp(input: AuthAppInput): Hono {
       return page('Enter an email and a password.')
     }
     const address = clientAddress(c)
-    if (limiter.isBlocked(`email:${email}`) || limiter.isBlocked(`ip:${address}`)) {
+    if ((await limiter.isBlocked(`email:${email}`)) || (await limiter.isBlocked(`ip:${address}`))) {
+      await recordAuthAuditEvent(database, {
+        eventType: 'login.blocked',
+        actorEmail: email,
+        ipAddress: address
+      })
       return c.text('too many sign-in attempts', 429)
     }
     const user = await findUserByEmail(database, email)
     const storedHash = user?.passwordHash ?? (await dummyPasswordHash())
     const passwordMatches = await verifyPassword(password, storedHash)
     if (!user || !passwordMatches) {
-      limiter.recordFailure(`email:${email}`)
-      limiter.recordFailure(`ip:${address}`)
+      await limiter.recordFailure(`email:${email}`)
+      await limiter.recordFailure(`ip:${address}`)
+      await recordAuthAuditEvent(database, {
+        eventType: 'login.failed',
+        actorEmail: email,
+        ipAddress: address,
+        detail: { reason: 'invalid_credentials' }
+      })
       return page('Invalid email or password.')
     }
-    limiter.recordSuccess(`email:${email}`)
-    limiter.recordSuccess(`ip:${address}`)
+    await limiter.recordSuccess(`email:${email}`)
+    await limiter.recordSuccess(`ip:${address}`)
+    await recordAuthAuditEvent(database, {
+      eventType: 'login.succeeded',
+      userId: user.userId,
+      actorEmail: email,
+      ipAddress: address,
+      detail: { clientId: request.clientId }
+    })
     c.header(
       'Set-Cookie',
       loginCookieHeader(user.userId, input.sessionSecret, LOGIN_COOKIE_MAX_AGE_SECONDS, cookieSecure)
@@ -318,6 +345,13 @@ export function createAuthApp(input: AuthAppInput): Hono {
       userId: user.userId,
       cloudProfileId
     })
+    await recordAuthAuditEvent(database, {
+      eventType: 'session.issued',
+      userId: user.userId,
+      actorEmail: user.email,
+      ipAddress: clientAddress(c),
+      detail: { cloudProfileId }
+    })
     return c.json(await sessionPayload(session))
   })
 
@@ -331,6 +365,11 @@ export function createAuthApp(input: AuthAppInput): Hono {
     if (!grant) {
       return c.json(errorPayload('invalid_refresh_token'), 401)
     }
+    await recordAuthAuditEvent(database, {
+      eventType: 'session.refreshed',
+      userId: grant.userId,
+      ipAddress: clientAddress(c)
+    })
     return c.json(await sessionPayload(grant))
   })
 
@@ -372,6 +411,12 @@ export function createAuthApp(input: AuthAppInput): Hono {
       userId: claims.userId,
       cloudProfileId
     })
+    await recordAuthAuditEvent(database, {
+      eventType: 'profile.created',
+      userId: claims.userId,
+      ipAddress: clientAddress(c),
+      detail: { cloudProfileId }
+    })
     return c.json(await sessionPayload(grant))
   })
 
@@ -387,6 +432,12 @@ export function createAuthApp(input: AuthAppInput): Hono {
       return c.json(errorPayload('org_not_found'), 404)
     }
     await setActiveOrganization(database, claims.cloudProfileId, orgId)
+    await recordAuthAuditEvent(database, {
+      eventType: 'organization.changed',
+      userId: claims.userId,
+      ipAddress: clientAddress(c),
+      detail: { orgId }
+    })
     const cloud = await describeCloudProfile(database, claims.cloudProfileId)
     return c.json({
       ...(cloud === null ? {} : { cloud }),
@@ -411,6 +462,11 @@ export function createAuthApp(input: AuthAppInput): Hono {
       await revokeSession(database, refreshToken)
     }
     c.header('Set-Cookie', clearedLoginCookieHeader(cookieSecure))
+    await recordAuthAuditEvent(database, {
+      eventType: 'session.revoked',
+      userId: claims.userId,
+      ipAddress: clientAddress(c)
+    })
     return c.json({ ok: true })
   })
 
@@ -438,12 +494,39 @@ export function createAuthApp(input: AuthAppInput): Hono {
       ttlMs: config.relayTokenTtlMs,
       audience: config.relayTokenAudience
     })
+    await recordAuthAuditEvent(database, {
+      eventType: 'relay_token.issued',
+      userId: claims.userId,
+      ipAddress: clientAddress(c),
+      detail: { relayHostId }
+    })
     return c.json({ relayToken: minted.token, expiresAt: minted.expiresAt })
   })
 
   app.post('/v1/desktop/auth/connector-token', (c) =>
     c.json(errorPayload('connector_not_supported'), 501)
   )
+
+  // The signed-in client reads its own trail: which sign-ins, token issuances and org
+  // switches happened, and when. A caller never sees another account's events.
+  app.get('/v1/desktop/auth/audit-events', async (c) => {
+    const claims = await requireAccessToken(c)
+    if (!claims) {
+      return c.json(errorPayload('invalid_access_token'), 401)
+    }
+    const user = await findUserById(database, claims.userId)
+    const since = readNumberQuery(c.req.query('since'))
+    const until = readNumberQuery(c.req.query('until'))
+    const limit = readNumberQuery(c.req.query('limit'))
+    const events = await listAuthAuditEvents(database, {
+      actorUserId: claims.userId,
+      ...(user === null ? {} : { actorEmail: user.email }),
+      ...(since === undefined ? {} : { since }),
+      ...(until === undefined ? {} : { until }),
+      ...(limit === undefined ? {} : { limit })
+    })
+    return c.json({ events })
+  })
 
   app.get('/v1/desktop/orgs/:orgId/members', async (c) => {
     const claims = await requireAccessToken(c)
@@ -488,6 +571,7 @@ export function createAuthApp(input: AuthAppInput): Hono {
     await database.query('DELETE FROM auth_sessions WHERE refresh_expires_at < ?', [
       now - 7 * 24 * 60 * 60 * 1000
     ])
+    await limiter.purgeStale(now - 24 * 60 * 60 * 1000)
   }
 
   return app

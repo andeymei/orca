@@ -56,6 +56,27 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS auth_sessions_expires_at ON auth_sessions(refresh_expires_at);
+
+-- The login brake lives here so a restart cannot clear a ban.
+CREATE TABLE IF NOT EXISTS auth_login_attempts (
+  attempt_key TEXT PRIMARY KEY,
+  failures INTEGER NOT NULL,
+  blocked_until BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_audit_events (
+  event_id TEXT PRIMARY KEY,
+  user_id TEXT,
+  actor_email TEXT,
+  event_type TEXT NOT NULL,
+  ip_address TEXT,
+  detail TEXT,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS auth_audit_events_created_at ON auth_audit_events(created_at);
+CREATE INDEX IF NOT EXISTS auth_audit_events_user_id ON auth_audit_events(user_id);
+CREATE INDEX IF NOT EXISTS auth_audit_events_actor_email ON auth_audit_events(actor_email);
 `
 
 export function authSchemaStatements(): string[] {

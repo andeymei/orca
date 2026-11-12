@@ -15,6 +15,11 @@
 | 内网部署（192.168.10.13:18080）                 | ✅ 已上线，三容器运行中                   |
 | 桌面端脚本级链路（真实客户端代码打真实服务）    | ✅ 已验证                                 |
 | relay WebSocket 腿（升级 + token 鉴权）         | ✅ 已验证                                 |
+| 登录限流落库（T-07）                            | ✅ 已实现并部署，重启后封禁不失效         |
+| 审计事件（T-08）                                | ✅ 已实现并部署，可按用户与时间检索       |
+| 真实 PostgreSQL（T-09）                         | ✅ PG 16 实跑通过（生产仍跑 SQLite）      |
+| 部署配置入库（T-06）                            | ✅ `cloud/apps/auth/deploy/`              |
+| CI 补 auth 容器扫描（T-10）                     | ✅ 已进 matrix                            |
 | 桌面端 UI 登录                                  | ⬜ 未做                                   |
 | 真机配对（手机腿 + E2EE 握手）                  | ⬜ 未做                                   |
 | 域名（`orca.ctjt.cn` / `c1.ctjt.cn`）与网关反代 | ⬜ 等外部配置                             |
@@ -26,6 +31,8 @@
 | 服务入口 | `192.168.10.13:18080`（唯一对外，**纯 HTTP**；TLS 由公网网关 113.106.112.17 终结）                                      |
 | SSH      | `ssh -p 2222 root@192.168.10.13`（22 端口不通）                                                                         |
 | 部署目录 | `/opt/orca-deploy`（compose + `nginx.conf` + `routing.inc` + `tls/` + `data/`），源码副本 `/opt/orca-cloud`             |
+| 部署模板 | 仓库里 `cloud/apps/auth/deploy/`（compose / nginx / routing / RUNBOOK，不含密钥）                                       |
+| 健康检查 | `/health` `/ready` → relay；`/auth/health` `/auth/ready` → 账号服务                                                     |
 | 容器     | `orca-auth-1` / `orca-relay-1` / `orca-edge-1`                                                                          |
 | 账号     | `operator@ctjt.cn`；密码在服务器 `data/auth/orca-auth-bootstrap-credentials.json`（0600）                               |
 | 签名密钥 | `data/auth/orca-auth-signing-key.pem`（0600，**丢了 relay 的 JWKS 缓存会失配**）                                        |
@@ -43,10 +50,14 @@ ssh -p 2222 root@192.168.10.13 'set -e
   rm -rf /opt/orca-cloud && mkdir -p /opt/orca-cloud
   tar -xzf /tmp/orca-cloud-src.tar.gz -C /opt/orca-cloud
   cd /opt/orca-cloud && docker build -f apps/auth/Dockerfile -t orca-cloud-auth:local .
-  cd /opt/orca-deploy && docker compose -p orca up -d --force-recreate auth'
+  cd /opt/orca-deploy && set -a && . ./.env.domain && . ./.env && set +a     && docker compose -p orca up -d --force-recreate auth'
 ```
 
 > `docker build` 末尾的构建上下文 `.` 不能省，否则 buildx 报 `requires 1 argument`。
+>
+> **`docker compose` 之前必须 `set -a && . ./.env.domain && . ./.env`**：
+> 宿主机上的 `.env` 只有两个密钥，域名类的变量全在 `.env.domain` 里；
+> 不加载的话 `docker compose` 会报 `required variable ORCA_AUTH_PUBLIC_URL is missing a value`。
 
 **本地校验**（仓库外的临时目录，未入库）：
 
@@ -86,6 +97,12 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
   ```
 - **验收**：应用内账号态为已登录；`capabilities.flags['relay.use'] === true`。
 - **依赖**：T-01、T-02。
+- **2026-11-12 复核**：T-01/T-02 其实只挡着 **cell 域名**（`c1.ctjt.cn`）和手机腿；
+  **桌面端登录只需要 director 这一个 origin**，而 `https://orca.ctjt.cn` 已经通了
+  （`/health`、`/.well-known/jwks.json` 都是 200，authorize → 登录 → 换 token 全链路实测通过）。
+  所以 T-03 可以现在就做；真正卡住 T-04 的只有 cell 域名。
+  另：**cell 可以和 director 同源**（relay 的 `ORCA_RELAY_CELL_URL` 只要是规范 origin），
+  真要绕开 T-01，把 cell 指回 `https://orca.ctjt.cn` 即可 —— 代价是失去独立的 cell 主机名。
 
 #### T-04 ⬜ 真机配对（手机腿 + E2EE 握手）
 
@@ -104,34 +121,37 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
 - **验收**：抓包确认隧道内看不到明文 password。
 - **备注**：唯一一个"现在就在裸奔"的项，优先级高于其余 P1。
 
-#### T-06 ⬜ 部署配置纳入版本库
+#### T-06 ✅ 部署配置纳入版本库
 
-- **现状**：compose / `nginx.conf` / `routing.inc` / 切换脚本 / RUNBOOK 只存在服务器 `/opt/orca-deploy` 与本地临时目录，**仓库里没有**。
-- **取舍**：上游惯例是把 deployment 配置放私有 repo（`cloud/README.md:66-68`）。要么照惯例，要么把**不含密钥**的部分放进 `cloud/apps/auth/deploy/`。
-- **验收**：新人照 README 能一条命令拉起服务。
+- **产出**：`cloud/apps/auth/deploy/` —— `docker-compose.yml` / `nginx.conf` / `routing.inc` / `.env.example` / `RUNBOOK.md`，**不含任何密钥**（`.env` 与 `data/` 被 `cloud/.gitignore` 挡掉）。
+- **验收**：新人照 RUNBOOK 能一条命令拉起服务。
+- **顺带修的两处**：
+  - 边缘把 `X-Forwarded-For` 改成 `$remote_addr`（覆盖客户端自带的头）。原来的 `$proxy_add_x_forwarded_for` 会把客户端伪造的头留在第一位，**登录限流的「来源 IP」维度可以被伪造而形同虚设**。
+  - 账号服务自己的 `/health` `/ready` 被 relay 的兜底路由吃掉了，新增 `/auth/health` `/auth/ready` 两个前缀，监控才能分别盯两个服务。
 
-#### T-07 ⬜ 登录限流落库
+#### T-07 ✅ 登录限流落库
 
-- **现状**：`login-attempt-limiter.ts` 用内存 `Map` 计数，注释明写 "resets on restart" → 重启即可绕过。
-- **内容**：改为落库（`auth_login_attempts` 表）或 IP 维度走共享存储。
-- **验收**：重启服务后封禁不失效。
+- **产出**：`auth_login_attempts` 表 + `login-attempt-store.ts`（替换原来的内存 `login-attempt-limiter.ts`）。计数、封禁、清零全部走数据库，在事务内完成。
+- **验收**：实测通过 —— 10 次错误口令后返回 429；**重启容器后仍然是 429**（封禁不失效）。
+- **已知边界**：网关没有透传真实客户端 IP，所以诚实流量在服务侧看到的是网关地址，**IP 维度实际是「整个网关」的闸门**，账号维度才是精确到人的那道闸。
 
-#### T-08 ⬜ 审计事件
+#### T-08 ✅ 审计事件
 
-- **现状**：只有 3 行 console 输出，登录成功/失败、token 签发、登出、组织变更都没有记录。
-- **内容**：`auth_audit_events` 表 + 结构化日志。**禁止把 token / 密码写进日志。**
-- **验收**：能按用户与时间检索登录与令牌事件。
+- **产出**：`auth_audit_events` 表 + `audit-log.ts`。事件类型：`login.succeeded` / `login.failed` / `login.blocked` / `session.issued` / `session.refreshed` / `session.revoked` / `relay_token.issued` / `profile.created` / `organization.changed`。
+- **检索**：`GET /v1/desktop/auth/audit-events`（带 Bearer），只返回调用者自己的事件，支持 `since` / `until` / `limit`。
+- **不写敏感值**：detail 里名字像凭据的键（token / password / secret / authorization / cookie / code_verifier / private）一律替换成 `[redacted]`，落库与日志都是替换后的版本。
 
-#### T-09 ⬜ 真实 PostgreSQL
+#### T-09 ✅ 真实 PostgreSQL
 
-- **现状**：跑的是 SQLite。SQL 已按 PG 方言审查（别名避开 `user` 等保留字、BIGINT 读数兼容），**但没实跑**。
-- **内容**：PG 16/17 上建表 + 全量测试 + `/session`、`/capabilities` 真连一次。
-- **验收**：PG 环境跑通同一套契约检查。
+- **产出**：`cloud/apps/auth/src/postgres-auth.test.ts` —— 同一套契约（登录 → `/session` → `/capabilities` → 限流落库 → 审计落库）在 PG 上跑；CI 的 `test` job 已经有 `postgres:16-alpine` 服务与 `ORCA_CLOUD_DATABASE_TEST_URL`，所以这条路径在 CI 里也会跑。
+- **实测**：PG 16 上建表（15 条语句全部执行）、同一套契约检查通过；`BIGINT` 在 PG 下以字符串返回，读数路径已兼容。
+- **现状**：**生产仍然跑 SQLite**（`ORCA_AUTH_DATABASE_URL` 为空）。切 PG 只需改环境变量并把 `data/` 里的 SQLite 库迁过去。
 
-#### T-10 ⬜ CI 补 auth 的容器扫描
+#### T-10 ✅ CI 补 auth 的容器扫描
 
-- **现状**：`.github/workflows/cloud-verify.yml` 已对整个 cloud workspace 跑 `build`/`typecheck`/`test` ✓，但容器安全扫描 matrix 是 `app: [relay, push]`，**auth 没进扫描**。
-- **验收**：`apps/auth` 进 matrix，Trivy 扫描无高危。
+- **改动**：`.github/workflows/cloud-verify.yml` 的容器扫描 matrix 从 `[relay, push]` 变成 `[relay, push, auth]`。
+- **验证**：CI 里那条 "Smoke test the nonroot Node runtime" 在本地对 auth 镜像实跑通过（非 root、无 npm/pnpm、`apps/auth/dist/app.js` 可导入）。
+- **待确认**：Trivy 扫描要等 CI 跑完才知道有没有可修复的高危（本地与内网服务器都没有 Trivy）。
 
 ### P2 — 功能补全（按需）
 
@@ -173,6 +193,7 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
 
 ### 推进记录
 
-| 日期       | 任务                                     | 结果                                                                                                |
-| ---------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 2026-11-12 | 实现 auth 服务骨架 + 内网部署 + 契约验证 | 21 项契约全过；桌面端真实客户端代码与 relay WS 腿验证通过；域名方案落定（网关终结 TLS，内网 18080） |
+| 日期       | 任务                                                                                     | 结果                                                                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-12 | 实现 auth 服务骨架 + 内网部署 + 契约验证                                                 | 21 项契约全过；桌面端真实客户端代码与 relay WS 腿验证通过；域名方案落定（网关终结 TLS，内网 18080）                                           |
+| 2026-11-12 | P1 批量：T-06 部署配置入库 / T-07 限流落库 / T-08 审计事件 / T-09 真实 PG / T-10 CI 扫描 | 全部实装并部署；重启后封禁仍生效（实测 429）；PG 16 上同一套契约跑通；边缘改覆盖 `X-Forwarded-For`（原来可被客户端伪造）；新增 `/auth/health` |

@@ -29,6 +29,8 @@ the validation required before rolling out the updated images and host pins.
   the APNs key and sends to phones through APNs and FCM, and its wire contract.
   Deployment and operations are owned by the private `stablyai/orca-cloud` repository.
 - `packages/connector-contract`: the connector wire contract (experimental).
+- `apps/auth`: the self-hosted account service that issues the desktop sessions and the
+  relay tokens. Its deployment bundle lives in `apps/auth/deploy/`.
 
 ## Mobile push gateway
 
@@ -68,8 +70,13 @@ workflows live in the private `stablyai/orca-cloud` repository. That repository 
 an immutable public source revision and combines it with its deployment configuration.
 
 `Cloud Verify` here builds and tests public runtime code, audits dependencies, scans
-relay and push images, and checks for secrets without cloud credentials. Private CI
+relay, push and auth images, and checks for secrets without cloud credentials. Private CI
 also validates Terraform, scans the SQL proxy and broker, and runs deployment contracts.
+
+`apps/auth/deploy/` holds the self-hosted stack this repository runs: the compose file,
+the edge nginx config, an environment template and the operator runbook. It carries no
+secrets — `.env` and `data/` stay out of version control. See
+[the runbook](apps/auth/deploy/RUNBOOK.md).
 
 ## Local development
 

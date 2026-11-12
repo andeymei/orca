@@ -81,6 +81,29 @@ async function signIn(
   return { code, state }
 }
 
+async function signInWithPassword(
+  app: Awaited<ReturnType<typeof createHarness>>['app'],
+  password: string
+): Promise<Response> {
+  return await app.request(authorizeUrl(), {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: 'orca-desktop',
+      response_type: 'code',
+      redirect_uri: REDIRECT_URI,
+      scope: 'openid profile email offline_access',
+      nonce: 'nonce-value',
+      state: 'state-value',
+      code_challenge: CODE_CHALLENGE,
+      code_challenge_method: 'S256',
+      local_profile_id: 'local-default',
+      email: OPERATOR_EMAIL,
+      password
+    }).toString()
+  })
+}
+
 describe('Orca Cloud auth service', () => {
   it('exchanges an authorization code for a session that carries the relay entitlement', async () => {
     const { app } = await createHarness()
@@ -293,5 +316,53 @@ describe('Orca Cloud auth service', () => {
       body: '{}'
     })
     expect(capabilities.status).toBe(401)
+  })
+
+  it('keeps the sign-in brake in the database, so a restart cannot clear it', async () => {
+    const { app, database } = await createHarness()
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const response = await signInWithPassword(app, 'wrong password')
+      expect(response.status).toBe(401)
+    }
+
+    const blocked = await signInWithPassword(app, OPERATOR_PASSWORD)
+    expect(blocked.status).toBe(429)
+
+    const [row] = await database.query('SELECT * FROM auth_login_attempts')
+    expect(Number(row?.['blocked_until'] ?? 0)).toBeGreaterThan(Date.now())
+  })
+
+  it('records the sign-in trail and serves it back to the signed-in caller', async () => {
+    const { app } = await createHarness()
+    const { code, state } = await signIn(app)
+    const exchange = await app.request('https://auth.example.com/v1/desktop/auth/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        code,
+        codeVerifier: CODE_VERIFIER,
+        nonce: 'nonce-value',
+        redirectUri: REDIRECT_URI,
+        state,
+        localProfileId: 'local-default'
+      })
+    })
+    const session = (await exchange.json()) as { accessToken: string }
+
+    const response = await app.request('https://auth.example.com/v1/desktop/auth/audit-events', {
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    })
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { events: { eventType: string }[] }
+    const types = body.events.map((event) => event.eventType)
+    expect(types).toContain('login.succeeded')
+    expect(types).toContain('session.issued')
+  })
+
+  it('does not serve the audit trail to a caller without a session', async () => {
+    const { app } = await createHarness()
+    const response = await app.request('https://auth.example.com/v1/desktop/auth/audit-events')
+    expect(response.status).toBe(401)
   })
 })

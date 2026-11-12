@@ -553,6 +553,8 @@ ORCA_CLOUD_DEV_AUTH=1   # 仅未打包 + NODE_ENV!=production：本地伪造会�
 | `src/token-signer.ts`                         | ES256 access/relay token 签发与验签        |
 | `src/signing-key.ts`                          | 签名密钥加载/生成、JWKS                    |
 | `src/password-hash.ts`                        | 异步 scrypt                                |
+| `src/login-attempt-store.ts`                  | 落库的登录限流（账号 + 来源 IP 两个维度）  |
+| `src/audit-log.ts`                            | 审计事件落库、结构化日志与检索             |
 | `src/cloud-profile.ts` / `src/auth-user.ts`   | 账号、组织、云档案                         |
 | `src/login-page.ts` / `src/session-cookie.ts` | 登录页与登录态 cookie                      |
 | `src/bootstrap-user.ts`                       | 首次启动播种账号（密码写 0600 文件）       |
@@ -570,17 +572,21 @@ ORCA_CLOUD_DEV_AUTH=1   # 仅未打包 + NODE_ENV!=production：本地伪造会�
 ### 已做的安全加固
 
 - 密码哈希用**异步** scrypt（N=2^14）， 不阻塞事件循环；**账号不存在时也跑一次等时假哈希**， 消除用户枚举的时序侧信道。
-- 登录限流按**账号 + 来源 IP** 两个维度计数。
+- 登录限流按**账号 + 来源 IP** 两个维度计数，**计数落库**（`auth_login_attempts`），重启服务不会清零封禁。
 - 登录页带 `Content-Security-Policy` / `X-Frame-Options` / `Cache-Control: no-store`。
 - 登录 cookie 在 `publicUrl` 为 https 时带 `Secure`。
 - 授权码与过期会话定期清理。
 - redirect_uri 只接受 loopback 的 `/auth/callback`；`client_id`、`state`、`nonce`、`code_challenge`、`local_profile_id` 全部校验。
 - **access token 与会话绑定**： token 载荷带 `sid`，每个受保护端点在验签后再查一次会话是否被吊销；
   登出会同时吊销该会话，token 立刻失效，而不是等 TTL 到期。
+- **审计事件落库**（`auth_audit_events`）：登录成功/失败、会话签发/刷新/吊销、relay token 签发、
+  档案与组织变更都有记录；detail 里名字像凭据的键一律替换成 `[redacted]`。
 
 ### 已知未覆盖
 
-- **未在真实 PostgreSQL 上跑过**（开发机无 Docker）。 SQL 已按 PG 方言审查（表别名避开 `user` 等保留字；
+- **生产仍跑 SQLite**。 PostgreSQL 16 已实跑通过（`src/postgres-auth.test.ts` 在 PG 上跑同一套契约，
+  CI 的 `test` job 也带 `postgres:16-alpine`），但 `ORCA_AUTH_DATABASE_URL` 在生产仍为空；
+  切 PG 只需改环境变量并迁移 `data/` 里的 SQLite 库。 旧注记：SQL 已按 PG 方言审查（表别名避开 `user` 等保留字；
   `BIGINT` 列在 PG 下以字符串返回，读数路径已兼容）。
 - **已签发的 relay token 在登出后仍可用到 TTL**（默认 5 分钟）：relay 侧只验签、不回查 auth 会话，
   这是设计上的边界，不是缺陷。

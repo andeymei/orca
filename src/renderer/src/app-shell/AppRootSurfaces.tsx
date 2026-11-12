@@ -14,6 +14,7 @@ import RecentTabSwitcher from '../components/tab-bar/RecentTabSwitcher'
 import { SkillFreshnessUpdateDialog } from '../components/skills/freshness/SkillFreshnessUpdateDialog'
 import { StarNagAgentValueMomentObserver } from '../components/star-nag/StarNagAgentValueMomentObserver'
 import { NativeChatResumeOnRestartModal } from '../components/native-chat-recovery/NativeChatResumeRuntimeModal'
+import { BackgroundAgentsModal } from './background-agents-modal'
 import { StarNagToastHost } from '../components/star-nag/StarNagToastHost'
 import { TelemetryFirstLaunchSurface } from '../components/TelemetryFirstLaunchSurface'
 import { ZoomOverlay } from '../components/ZoomOverlay'
@@ -221,6 +222,7 @@ export const AppRootSurfaces = memo(function AppRootSurfaces(props: {
             <NativeChatAccountUsageDialog />
           </ModalBoundary>
         ) : null}
+        <BackgroundAgentsModal />
         {/* Own store, not activeModal: another modal must never evict a running move. */}
         <WslMoveDialogHost />
         {/* Opened by toast, SSH host row and terminal pane. */}

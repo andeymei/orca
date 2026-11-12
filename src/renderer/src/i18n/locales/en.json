@@ -5071,6 +5071,9 @@
             "filePathsCannotContainEmptySegments": "File paths cannot contain empty segments.",
             "filePathsCannotContainDotSegments": "File paths cannot contain . or .. segments.",
             "filePathsCannotContainTildeSegments": "File paths cannot contain ~ segments."
+          },
+          "TabBarBackgroundAgentsItem": {
+            "label": "Background agents…"
           }
         }
       },
@@ -20017,6 +20020,19 @@
           "pipelinePending": "Pipeline pending",
           "pipelineUnresolved": "Pipeline unresolved"
         }
+      },
+      "backgroundAgents": {
+        "stateRunning": "Still running",
+        "stateInterrupted": "Interrupted when Orca closed",
+        "stateSlept": "Sleeping",
+        "stateIdle": "Waiting",
+        "untitled": "Untitled chat",
+        "title": "Background agents",
+        "description": "Chats that are not on screen. Open one to pick it back up.",
+        "searchPlaceholder": "Search background agents",
+        "searchLabel": "Search background agents",
+        "loading": "Loading background agents",
+        "empty": "No background agents"
       }
     },
     "i18n": {

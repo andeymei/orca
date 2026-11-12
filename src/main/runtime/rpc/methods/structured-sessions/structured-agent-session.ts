@@ -30,6 +30,7 @@ import { STRUCTURED_AGENT_SESSION_REGENERATE_NAME_METHODS } from './conversation
 import { STRUCTURED_AGENT_SESSION_RENAME_METHODS } from './conversation/structured-agent-session-rename'
 import { STRUCTURED_AGENT_SESSION_QUEUED_METHODS } from './conversation/structured-agent-session-queued-methods'
 import { STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS } from './conversation/structured-agent-session-restart-resume'
+import { STRUCTURED_AGENT_SESSION_BACKGROUND_METHODS } from './conversation/structured-agent-session-background'
 import { STRUCTURED_AGENT_SESSION_STATUS_METHODS } from './subscriptions/structured-agent-session-status-stream'
 import { structuredAgentSessionSubscriptionBase as subscriptionBaseFor } from './subscriptions/structured-agent-session-subscription-id'
 import { STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS } from './subscriptions/structured-agent-session-turn-completion-stream'
@@ -213,6 +214,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
   ...STRUCTURED_AGENT_SESSION_REGENERATE_NAME_METHODS,
   ...STRUCTURED_AGENT_SESSION_RENAME_METHODS,
   ...STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS,
+  ...STRUCTURED_AGENT_SESSION_BACKGROUND_METHODS,
   ...STRUCTURED_AGENT_SESSION_USAGE_LIMIT_CONTINUE_METHODS,
   ...STRUCTURED_AGENT_SESSION_STATUS_METHODS,
   ...STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS,

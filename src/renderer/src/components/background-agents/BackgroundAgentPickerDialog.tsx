@@ -13,11 +13,13 @@ import { resolveWorktreeDisplayName } from '@/lib/workspace/display/worktree-def
 import { getWorktreePathBasenameFromId } from '../../../../shared/worktree/id'
 import { activateAiVaultStructuredSession } from '@/lib/agent-session/open/activate-ai-vault-structured-session'
 import type { AgentSessionBackgroundSession } from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
+import type { AgentSessionBackgroundTerminal } from '../../../../shared/agent-session/lifecycle/agent-session-background-terminal'
 import { useBackgroundAgentSessions } from './use-background-agent-sessions'
 import {
-  backgroundAgentSessionStateLabel,
-  filterBackgroundAgentSessions,
-  groupBackgroundAgentSessions
+  backgroundAgentRowStateLabel,
+  filterBackgroundAgentRows,
+  groupBackgroundAgentRows,
+  type BackgroundAgentRow
 } from './background-agent-session-list'
 
 function workspaceNameFor(workspaceId: string): string {
@@ -29,33 +31,41 @@ function workspaceNameFor(workspaceId: string): string {
   )
 }
 
-function BackgroundAgentSessionRow({
-  session,
-  onOpen
+function BackgroundAgentRowView({
+  row,
+  onOpenChat,
+  onOpenTerminal
 }: {
-  session: AgentSessionBackgroundSession
-  onOpen: (session: AgentSessionBackgroundSession) => void
+  row: BackgroundAgentRow
+  onOpenChat: (session: AgentSessionBackgroundSession) => void
+  onOpenTerminal: (terminal: AgentSessionBackgroundTerminal) => void
 }): React.JSX.Element {
   const t = useTranslate()
-  const agentLabel = formatAgentTypeLabel(session.agent)
+  const agent = row.kind === 'chat' ? row.chat.agent : row.terminal.agent
+  const agentLabel = formatAgentTypeLabel(agent)
   const title =
-    session.title.trim() || t('auto.components.backgroundAgents.untitled', 'Untitled chat')
+    (row.kind === 'chat' ? row.chat.title.trim() : row.terminal.title.trim()) ||
+    t('auto.components.backgroundAgents.untitled', 'Untitled chat')
+  // A terminal carries no last-activity time; only a chat knows when it was last used.
+  const updatedAt = row.kind === 'chat' ? row.chat.updatedAt : undefined
   return (
     <button
       type="button"
       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring"
-      onClick={() => onOpen(session)}
+      onClick={() => (row.kind === 'chat' ? onOpenChat(row.chat) : onOpenTerminal(row.terminal))}
     >
       <span role="img" aria-label={agentLabel} className="inline-flex shrink-0">
-        <AgentIcon agent={agentTypeToIconAgent(session.agent)} size={13} />
+        <AgentIcon agent={agentTypeToIconAgent(agent)} size={13} />
       </span>
       <span className="min-w-0 flex-1 truncate text-xs text-foreground/90">{title}</span>
       <span className="shrink-0 text-2xs text-muted-foreground">
-        {backgroundAgentSessionStateLabel(session.state, t)}
+        {backgroundAgentRowStateLabel(row, t)}
       </span>
-      <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
-        {formatShortTimeAgo(session.updatedAt)}
-      </span>
+      {updatedAt === undefined ? null : (
+        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
+          {formatShortTimeAgo(updatedAt)}
+        </span>
+      )}
     </button>
   )
 }
@@ -69,10 +79,8 @@ export function BackgroundAgentPickerDialog(): React.JSX.Element | null {
   const { state } = useBackgroundAgentSessions(open)
 
   const groups = useMemo(() => {
-    const sessions = state.state === 'ready' ? state.sessions : []
-    return groupBackgroundAgentSessions(
-      filterBackgroundAgentSessions(sessions, query, workspaceNameFor)
-    )
+    const rows = state.state === 'ready' ? state.rows : []
+    return groupBackgroundAgentRows(filterBackgroundAgentRows(rows, query, workspaceNameFor))
   }, [state, query])
 
   if (!open) {
@@ -85,6 +93,18 @@ export function BackgroundAgentPickerDialog(): React.JSX.Element | null {
       agent: session.agent,
       structuredSession: { sessionId: session.sessionId, workspaceId: session.workspaceId }
     })
+  }
+
+  const openTerminal = (terminal: AgentSessionBackgroundTerminal): void => {
+    closeModal()
+    const store = useAppStore.getState()
+    if (store.activeWorktreeId !== terminal.workspaceId) {
+      // The agent runs in another workspace; land there before its tab.
+      if (!store.setActiveWorktree(terminal.workspaceId, terminal.executionHostId)) {
+        return
+      }
+    }
+    store.activateTab(terminal.tabId, { worktreeId: terminal.workspaceId })
   }
 
   return (
@@ -104,7 +124,7 @@ export function BackgroundAgentPickerDialog(): React.JSX.Element | null {
           <DialogDescription>
             {t(
               'auto.components.backgroundAgents.description',
-              'Chats that are not on screen. Open one to pick it back up.'
+              'Agents and chats that are not on screen. Open one to pick it back up.'
             )}
           </DialogDescription>
         </DialogHeader>
@@ -137,11 +157,12 @@ export function BackgroundAgentPickerDialog(): React.JSX.Element | null {
               <div className="px-2 pt-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {workspaceNameFor(group.workspaceId)}
               </div>
-              {group.sessions.map((session) => (
-                <BackgroundAgentSessionRow
-                  key={session.sessionId}
-                  session={session}
-                  onOpen={openSession}
+              {group.rows.map((row) => (
+                <BackgroundAgentRowView
+                  key={row.kind === 'chat' ? row.chat.sessionId : row.terminal.tabId}
+                  row={row}
+                  onOpenChat={openSession}
+                  onOpenTerminal={openTerminal}
                 />
               ))}
             </div>

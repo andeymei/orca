@@ -2,54 +2,76 @@ import type {
   AgentSessionBackgroundSession,
   AgentSessionBackgroundState
 } from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
+import type { AgentSessionBackgroundTerminal } from '../../../../shared/agent-session/lifecycle/agent-session-background-terminal'
 
-export type BackgroundAgentSessionGroup = {
+/** One row in the picker: a chat Orca keeps in the AI Vault, or a terminal running an agent. */
+export type BackgroundAgentRow =
+  | { kind: 'chat'; chat: AgentSessionBackgroundSession }
+  | { kind: 'terminal'; terminal: AgentSessionBackgroundTerminal }
+
+export type BackgroundAgentGroup = {
   workspaceId: string
-  sessions: readonly AgentSessionBackgroundSession[]
+  rows: readonly BackgroundAgentRow[]
 }
 
-/** Chats of one workspace, so the user sees where a background chat would land. */
-export function groupBackgroundAgentSessions(
-  sessions: readonly AgentSessionBackgroundSession[]
-): BackgroundAgentSessionGroup[] {
-  const groups = new Map<string, AgentSessionBackgroundSession[]>()
-  for (const session of sessions) {
-    const group = groups.get(session.workspaceId)
+/** Rows of one workspace, so the user sees where a background agent would land. */
+export function groupBackgroundAgentRows(
+  rows: readonly BackgroundAgentRow[]
+): BackgroundAgentGroup[] {
+  const groups = new Map<string, BackgroundAgentRow[]>()
+  for (const row of rows) {
+    const workspaceId = row.kind === 'chat' ? row.chat.workspaceId : row.terminal.workspaceId
+    const group = groups.get(workspaceId)
     if (group) {
-      group.push(session)
+      group.push(row)
     } else {
-      groups.set(session.workspaceId, [session])
+      groups.set(workspaceId, [row])
     }
   }
-  return [...groups].map(([workspaceId, groupSessions]) => ({
+  return [...groups].map(([workspaceId, groupRows]) => ({
     workspaceId,
-    sessions: groupSessions
+    rows: groupRows
   }))
 }
 
-/** Match what the user can see: the chat's name, the agent that owns it, or the workspace it lives in. */
-export function filterBackgroundAgentSessions(
-  sessions: readonly AgentSessionBackgroundSession[],
+/** Match what the user can see: the agent's name, the agent that owns it, or the workspace it lives in. */
+export function filterBackgroundAgentRows(
+  rows: readonly BackgroundAgentRow[],
   query: string,
   workspaceName: (workspaceId: string) => string
-): AgentSessionBackgroundSession[] {
+): BackgroundAgentRow[] {
   const needle = query.trim().toLowerCase()
   if (needle === '') {
-    return [...sessions]
+    return [...rows]
   }
-  return sessions.filter((session) => {
-    const haystacks = [
-      session.title,
-      session.agent,
-      workspaceName(session.workspaceId),
-      session.launchDirectory ?? ''
-    ]
+  return rows.filter((row) => {
+    const haystacks =
+      row.kind === 'chat'
+        ? [
+            row.chat.title,
+            row.chat.agent,
+            workspaceName(row.chat.workspaceId),
+            row.chat.launchDirectory ?? ''
+          ]
+        : [row.terminal.title, row.terminal.agent, workspaceName(row.terminal.workspaceId)]
     return haystacks.some((value) => value.toLowerCase().includes(needle))
   })
 }
 
-/** What the chat is doing now, in the user's words. */
-export function backgroundAgentSessionStateLabel(
+/** What the agent is doing now, in the user's words. */
+export function backgroundAgentRowStateLabel(
+  row: BackgroundAgentRow,
+  t: (key: string, fallback: string) => string
+): string {
+  if (row.kind === 'terminal') {
+    return row.terminal.state === 'working'
+      ? t('auto.components.backgroundAgents.stateRunning', 'Still running')
+      : t('auto.components.backgroundAgents.stateIdle', 'Waiting')
+  }
+  return backgroundAgentSessionStateLabel(row.chat.state, t)
+}
+
+function backgroundAgentSessionStateLabel(
   state: AgentSessionBackgroundState,
   t: (key: string, fallback: string) => string
 ): string {

@@ -20028,7 +20028,7 @@
         "stateIdle": "Waiting",
         "untitled": "Untitled chat",
         "title": "Background agents",
-        "description": "Chats that are not on screen. Open one to pick it back up.",
+        "description": "Agents and chats that are not on screen. Open one to pick it back up.",
         "searchPlaceholder": "Search background agents",
         "searchLabel": "Search background agents",
         "loading": "Loading background agents",

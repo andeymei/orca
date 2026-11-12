@@ -48,9 +48,11 @@ function markDirty(row: 'NEW' | 'OLD', trigger: (typeof HISTORY_TRIGGERS)[number
         ]
       : [])
   ]
-  return `INSERT OR IGNORE INTO temp.agent_sender_dirty (kind, key)
+  // Why unqualified: SQLite rejects a schema-qualified table in a trigger body's DML, and a
+  // TEMP trigger body resolves an unqualified name to the temp schema.
+  return `INSERT OR IGNORE INTO agent_sender_dirty (kind, key)
   SELECT kind, key FROM (${keys.join(' UNION ALL ')}) AS changed WHERE key IS NOT NULL AND EXISTS (
-    SELECT 1 FROM temp.agent_sender_tracked AS tracked
+    SELECT 1 FROM agent_sender_tracked AS tracked
     WHERE tracked.kind = changed.kind AND tracked.key = changed.key);`
 }
 
@@ -73,13 +75,13 @@ ${projectionMutationTriggers(
     columns: trigger.columns,
     mark: (row) => markDirty(row, trigger)
   })),
-  'UPDATE temp.agent_sender_generation SET history = history + 1;'
+  'UPDATE agent_sender_generation SET history = history + 1;'
 )}
 ${['insert', 'delete', 'update']
   .map(
     (name) => `CREATE TEMP TRIGGER IF NOT EXISTS agent_sender_federated_dispatches_${name}
 AFTER ${name === 'update' ? 'UPDATE OF environment_id' : name.toUpperCase()} ON main.federated_dispatches
-BEGIN UPDATE temp.agent_sender_generation SET principals = principals + 1; END;`
+BEGIN UPDATE agent_sender_generation SET principals = principals + 1; END;`
   )
   .join('\n')}`
 

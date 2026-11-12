@@ -33,6 +33,7 @@ import { createRequire } from 'node:module'
 import os from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import { writePersistedStateFixture } from './startup-bench-state-fixture.mjs'
+import { electronIsolatedKeychainArgs } from '../../../src/shared/electron-isolated-profile-switches.ts'
 
 const scriptDir = import.meta.dirname
 const repoRoot = resolve(scriptDir, '..', '..', '..')
@@ -269,7 +270,7 @@ function runIteration({ exe, timeoutMs, lingerMs, waitForEvent, launchEnv }) {
   return new Promise((resolvePromise) => {
     // Resolve electron package’s platform executable; hardcoded electron.exe breaks macOS/Linux.
     const command = exe ?? require('electron')
-    const commandArgs = exe ? [] : [repoRoot]
+    const commandArgs = [...electronIsolatedKeychainArgs(), ...(exe ? [] : [repoRoot])]
     const events = []
     const startedAt = process.hrtime.bigint()
     const child = spawn(command, commandArgs, {

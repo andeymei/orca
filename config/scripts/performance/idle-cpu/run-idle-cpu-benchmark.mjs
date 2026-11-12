@@ -23,6 +23,7 @@ import {
   stopRendererTimingProbe
 } from './idle-cpu-renderer-timing-probe.mjs'
 import { installSyntheticVisibleSpinners } from './idle-cpu-synthetic-spinners.mjs'
+import { electronIsolatedKeychainArgs } from '../../../../src/shared/electron-isolated-profile-switches.ts'
 
 const DEFAULT_WARMUP_MS = 15_000
 const DEFAULT_SAMPLE_MS = 30_000
@@ -250,9 +251,10 @@ function createIdleRepo(worktreeCount) {
 
 function launchArgs(mainPath, headful) {
   if (headful || process.platform !== 'linux') {
-    return [mainPath]
+    return [...electronIsolatedKeychainArgs(), mainPath]
   }
   return [
+    ...electronIsolatedKeychainArgs(),
     '--disable-gpu',
     '--disable-gpu-compositing',
     '--disable-gpu-sandbox',

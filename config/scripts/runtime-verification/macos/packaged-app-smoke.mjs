@@ -16,6 +16,7 @@ import { createWriteStream, mkdirSync, readFileSync, realpathSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright-core'
+import { electronIsolatedKeychainArgs } from '../../../../src/shared/electron-isolated-profile-switches.ts'
 
 const APP_PATH = resolve(
   process.env.ORCA_PACKAGED_APP_PATH ?? process.argv[2] ?? 'dist/mac/Orca.app'
@@ -93,19 +94,23 @@ createFixtureRepo(fixtureRepo)
 const isolatedHome = realpathSync.native(homeDir)
 
 const appLog = createWriteStream(join(RUN_DIR, 'app.log'), { flags: 'a' })
-const app = spawn(join(APP_PATH, 'Contents/MacOS/Orca'), [`--remote-debugging-port=${CDP_PORT}`], {
-  env: {
-    ...process.env,
-    HOME: isolatedHome,
-    USERPROFILE: isolatedHome,
-    ORCA_E2E_USER_DATA_DIR: userDataDir,
-    ORCA_E2E_HOME_DIR: isolatedHome,
-    ORCA_DISABLE_MACOS_LOGIN_SHELL: '1',
-    // Agent-launched Electron never shows, focuses or activates a window.
-    ORCA_BACKGROUND_LAUNCH: '1'
-  },
-  stdio: ['ignore', 'pipe', 'pipe']
-})
+const app = spawn(
+  join(APP_PATH, 'Contents/MacOS/Orca'),
+  [...electronIsolatedKeychainArgs(), `--remote-debugging-port=${CDP_PORT}`],
+  {
+    env: {
+      ...process.env,
+      HOME: isolatedHome,
+      USERPROFILE: isolatedHome,
+      ORCA_E2E_USER_DATA_DIR: userDataDir,
+      ORCA_E2E_HOME_DIR: isolatedHome,
+      ORCA_DISABLE_MACOS_LOGIN_SHELL: '1',
+      // Agent-launched Electron never shows, focuses or activates a window.
+      ORCA_BACKGROUND_LAUNCH: '1'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  }
+)
 app.stdout.pipe(appLog)
 app.stderr.pipe(appLog)
 

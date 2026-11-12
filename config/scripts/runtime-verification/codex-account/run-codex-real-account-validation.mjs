@@ -27,6 +27,7 @@ import {
   cleanupValidationDaemons,
   closeValidationElectronApp
 } from './codex-validation-process-shutdown.mjs'
+import { electronIsolatedKeychainArgs } from '../../../../src/shared/electron-isolated-profile-switches.ts'
 
 const RESTRICTED_ENV_KEYS = [
   'HOME',
@@ -507,7 +508,7 @@ async function main() {
     if (!options.dryRun) {
       const mainPath = buildAppIfNeeded(repoRoot, options.skipBuild)
       app = await electron.launch({
-        args: [mainPath],
+        args: [...electronIsolatedKeychainArgs(), mainPath],
         // Why: a validation run must not pull the window over the developer's work.
         env: { ...launchEnv, ORCA_BACKGROUND_LAUNCH: '1' }
       })

@@ -31,6 +31,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
+import { electronIsolatedKeychainArgs } from '../../../src/shared/electron-isolated-profile-switches.ts'
 
 const scriptDir = import.meta.dirname
 const repoRoot = resolve(scriptDir, '..', '..')
@@ -302,7 +303,7 @@ async function main() {
   }
 
   const command = args.exe ?? require('electron')
-  const commandArgs = args.exe ? [] : [repoRoot]
+  const commandArgs = [...electronIsolatedKeychainArgs(), ...(args.exe ? [] : [repoRoot])]
   const startedAtWallMs = Date.now()
   const child = spawn(command, commandArgs, { env, stdio: ['ignore', 'ignore', 'pipe'] })
 

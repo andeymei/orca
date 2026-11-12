@@ -1,8 +1,9 @@
 import { dirname } from 'node:path'
+import { electronIsolatedKeychainArgs } from '../../../src/shared/electron-isolated-profile-switches'
 
 export function getElectronIsolatedKeychainArgs(): string[] {
   // Isolated macOS profiles must not invoke the system keychain UI.
-  return process.platform === 'darwin' ? ['--password-store=basic', '--use-mock-keychain'] : []
+  return electronIsolatedKeychainArgs()
 }
 
 export function getOrcaElectronLaunchArgs(mainPath: string, headful: boolean): string[] {

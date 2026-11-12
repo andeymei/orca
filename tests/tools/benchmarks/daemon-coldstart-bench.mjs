@@ -22,6 +22,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import { join, resolve } from 'node:path'
+import { electronIsolatedKeychainArgs } from '../../../src/shared/electron-isolated-profile-switches.ts'
 
 const scriptDir = import.meta.dirname
 const repoRoot = resolve(scriptDir, '..', '..')
@@ -163,7 +164,7 @@ function parseStartupLine(line) {
 function runIteration({ exe, fixtureDir, timeoutMs, lingerMs }) {
   return new Promise((resolvePromise) => {
     const command = exe ?? join(repoRoot, 'node_modules', 'electron', 'dist', 'electron.exe')
-    const commandArgs = exe ? [] : [repoRoot]
+    const commandArgs = [...electronIsolatedKeychainArgs(), ...(exe ? [] : [repoRoot])]
     const events = []
     const startedAt = process.hrtime.bigint()
     // Why: daemon timings must not include real-home Codex work or let a

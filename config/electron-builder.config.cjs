@@ -275,8 +275,11 @@ module.exports = {
     '!cloud{,/**/*}',
     // Release archives and other build staging are not runtime resources.
     '!.build{,/**/*}',
-    // Worktree-local Vite dependency caches are development inputs.
-    '!.cache/vite{,.lock}{,/**/*}',
+    // Worktree-local caches are development inputs. The tools that rewrite them run while a
+    // local package is being built: a file that grows mid-pack shifts the asar data section
+    // off its header, and the app then exits before the main bundle loads.
+    '!.cache{,/**/*}',
+    '!.tmp{,/**/*}',
     '!docs{,/**/*}',
     '!mobile{,/**/*}',
     '!native{,/**/*}',
@@ -292,7 +295,8 @@ module.exports = {
     // Local build logs and rollback copies are never application resources.
     '!notes{,/**/*}',
     // Local tooling directories are not runtime inputs and may contain symlink loops.
-    '!{.claude,.grok,.agents,.codex}{,/**/*}',
+    // The session logs under them are rewritten while a local package is being built.
+    '!{.claude,.grok,.agents,.codex,.remember}{,/**/*}',
     '!Casks{,/**/*}',
     '!{AGENTS.md,CLAUDE.md,DEVELOPING.md,bundle-size-progress.md,ORCHESTRATION_IMPLEMENTATION_CHECKLIST.md,ORCHESTRATION_STRUCTURED_OUTPUT_DESIGN.md}',
     '!out/**/*.test.js',

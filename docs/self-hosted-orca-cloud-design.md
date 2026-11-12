@@ -443,9 +443,9 @@ sessions(session_id PK, user_id, cloud_profile_id, access_token_hash,
 `*.ctjt.cn` + `ctjt.cn` 的 Let's Encrypt **泛域名证书**。 因此 **TLS 在网关终结**，
 内网服务只需要提供纯 HTTP 端口让网关反代。
 
-| 域名           | 角色                      | 说明                                     |
-| -------------- | ------------------------- | ---------------------------------------- |
-| `orca.ctjt.cn` | 账号服务 + relay director | 桌面端两个环境变量都指向它               |
+| 域名           | 角色                      | 说明                                      |
+| -------------- | ------------------------- | ----------------------------------------- |
+| `orca.ctjt.cn` | 账号服务 + relay director | 桌面端两个环境变量都指向它                |
 | `c1.ctjt.cn`   | relay cell                | 单层子域，正好落在 `*.ctjt.cn` 证书覆盖内 |
 
 - **cell 用单层子域**： `*.ctjt.cn` 只覆盖一层， `c1.orca.ctjt.cn` 是两层， 不在证书覆盖范围内。
@@ -453,8 +453,8 @@ sessions(session_id PK, user_id, cloud_profile_id, access_token_hash,
   （桌面端会校验探测来源的主机名以 `.${director 主机名}` 结尾，
   `relay-region-catalog-fetch.ts:74-76`）， 校验失败被上层 catch， 退化成「不提示区域」，
   **不影响配对与连接**。 `/v1/regions` 本来就是空的， 连这个校验都不会触发。
-- **内网端口**： 网关反代到 `http://192.168.10.13:18080`； 宿主机的 80 / 443 不被本服务占用，
-  443 留给网关侧； 18443 保留自签入口作过渡。
+- **内网端口**： 网关反代到 `http://192.168.10.13:18080`（纯 HTTP）； 宿主机的 80 / 443 不被本服务占用，
+  443 留给网关侧。 早期的「IP + 自签证书」过渡入口（18443）已下线。
 - **网关那条 server 规则必须带 WebSocket 头**（relay 的手机腿/桌面腿靠它）：
   `proxy_http_version 1.1` + `Upgrade`/`Connection` + `proxy_read_timeout 900s`。
 - **若以后改成网关 TCP/SNI 透传**： 内网自己出证书， 那时需要 Let's Encrypt **DNS-01**

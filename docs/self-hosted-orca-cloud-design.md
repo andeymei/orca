@@ -439,24 +439,28 @@ sessions(session_id PK, user_id, cloud_profile_id, access_token_hash,
 
 #### 本次实际采用的方案（2026-11）
 
-| 域名              | 角色                      | 说明                              |
-| ----------------- | ------------------------- | --------------------------------- |
-| `orca.ctjt.cn`    | 账号服务 + relay director | 桌面端两个环境变量都指向它        |
-| `c1.orca.ctjt.cn` | relay cell                | 必须是 director 的**子域**， 见下 |
+公网入口在 **113.106.112.17**（公司网关），那上面已经跑着 nginx 并持有
+`*.ctjt.cn` + `ctjt.cn` 的 Let's Encrypt **泛域名证书**。 因此 **TLS 在网关终结**，
+内网服务只需要提供纯 HTTP 端口让网关反代。
 
-- **cell 必须是 director 的子域**： 桌面端的区域探测会校验探测来源的主机名以 `.${director 主机名}` 结尾
-  （`relay-region-catalog-fetch.ts:74-76`）， 同源或平级域名都会让探测抛错。
-- **证书**： Let's Encrypt **DNS-01**（服务器是内网地址， HTTP-01 走不通）；acme.sh 装在服务器上， 自带续期 cron。
-- **DNS 需要加的记录**：
+| 域名           | 角色                      | 说明                                     |
+| -------------- | ------------------------- | ---------------------------------------- |
+| `orca.ctjt.cn` | 账号服务 + relay director | 桌面端两个环境变量都指向它               |
+| `c1.ctjt.cn`   | relay cell                | 单层子域，正好落在 `*.ctjt.cn` 证书覆盖内 |
 
-  | 类型 | 名称                              | 值                   |
-  | ---- | --------------------------------- | -------------------- |
-  | A    | `orca.ctjt.cn`                    | `192.168.10.13`      |
-  | A    | `c1.orca.ctjt.cn`                 | `192.168.10.13`      |
-  | TXT  | `_acme-challenge.orca.ctjt.cn`    | acme.sh 生成的挑战值 |
-  | TXT  | `_acme-challenge.c1.orca.ctjt.cn` | acme.sh 生成的挑战值 |
-
-- **手工 DNS-01 的代价**： acme.sh 每次续期都要人工再贴一次 TXT。 要自动化就用阿里云 RAM 子账号
+- **cell 用单层子域**： `*.ctjt.cn` 只覆盖一层， `c1.orca.ctjt.cn` 是两层， 不在证书覆盖范围内。
+  代价是 cell 不再是 director 的子域 —— 这只影响**区域偏好提示**
+  （桌面端会校验探测来源的主机名以 `.${director 主机名}` 结尾，
+  `relay-region-catalog-fetch.ts:74-76`）， 校验失败被上层 catch， 退化成「不提示区域」，
+  **不影响配对与连接**。 `/v1/regions` 本来就是空的， 连这个校验都不会触发。
+- **内网端口**： 网关反代到 `http://192.168.10.13:18080`； 宿主机的 80 / 443 不被本服务占用，
+  443 留给网关侧； 18443 保留自签入口作过渡。
+- **网关那条 server 规则必须带 WebSocket 头**（relay 的手机腿/桌面腿靠它）：
+  `proxy_http_version 1.1` + `Upgrade`/`Connection` + `proxy_read_timeout 900s`。
+- **若以后改成网关 TCP/SNI 透传**： 内网自己出证书， 那时需要 Let's Encrypt **DNS-01**
+  （服务器是内网地址， HTTP-01 走不通）；acme.sh 已装在服务器上， 自带续期 cron，
+  届时需要加 2 条 `_acme-challenge.*` 的 TXT， 且 cell 可以改回 `c1.orca.ctjt.cn`。
+  **手工 DNS-01 每次续期都要人工再贴一次 TXT**； 要自动化就用阿里云 RAM 子账号
   （仅 DNS 权限）的 AccessKey 走 acme.sh 的 `dns_ali` 插件。
 
 ### 10.3 桌面端环境变量

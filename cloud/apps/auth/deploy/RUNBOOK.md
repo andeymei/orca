@@ -84,6 +84,21 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 区域目录 `/v1/regions` **应当返回空数组**：合并角色的 relay 不自我登记，
 非空目录会让桌面端的区域探测抛错（`relay probe origin does not belong to the director`）。
 
+**换 cell 域名要改两处**，只改环境变量不够：
+
+1. `.env` 里的 `ORCA_RELAY_CELL_URL`（改完要 `docker compose up -d --force-recreate relay`）；
+2. relay 库里的 `relay_cells.cell_url` 那一行 —— 它被钉死，心跳发现与配置不一致会抛
+   `cell_origin_mismatch`，`/v1/assign` 会继续吐旧 origin：
+
+   ```bash
+   docker exec orca-relay-1 node --input-type=module -e '
+   import { DatabaseSync } from "node:sqlite";
+   const db = new DatabaseSync("/data/relay/orca-relay.sqlite");
+   db.prepare("UPDATE relay_cells SET cell_url = ? WHERE cell_id = ?")
+     .run("https://<新的 cell 域名>", "<cell id>");
+   '
+   ```
+
 ## 升级
 
 改完 `cloud/` 里的代码后重建镜像并重启，**不要删 `data/`**：
@@ -103,5 +118,6 @@ cd deploy && docker compose --env-file .env up -d --force-recreate auth
 | 桌面端提示 "Orca Cloud sign-in is not configured for this build." | `ORCA_CLOUD_API_URL` 不是 https（打包版只允许 https，loopback 除外） |
 | 登录页 400                        | `client_id` / `redirect_uri` / `code_challenge` 不合规                |
 | 手机连不上 relay                   | 网关反代缺 WebSocket 头，或 `ORCA_RELAY_CELL_URL` 的域名解析不了     |
+| `/v1/assign` 返回的还是旧 cell 域名 | relay 库里的 `relay_cells.cell_url` 没跟着改（见上）                |
 | relay 报验签失败                  | auth 的签名私钥换了，relay 缓存的 JWKS 还没刷新                       |
 | 429 too many sign-in attempts    | 登录限流已触发（账号 + 来源 IP 两个维度，计数落库，重启不清零）      |

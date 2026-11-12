@@ -8,35 +8,35 @@
 
 ## 1. 当前状态
 
-| 项                                              | 状态                                         |
-| ----------------------------------------------- | -------------------------------------------- |
-| auth 服务（`cloud/apps/auth`）                  | ✅ 已实现并部署，契约检查 21 项全过          |
-| relay（`cloud/apps/relay`，上游开源）           | ✅ 已部署并对接，director + cell 合并角色    |
-| 内网部署（192.168.10.13:18080）                 | ✅ 已上线，三容器运行中                      |
-| 桌面端脚本级链路（真实客户端代码打真实服务）    | ✅ 已验证                                    |
-| relay WebSocket 腿（升级 + token 鉴权）         | ✅ 已验证                                    |
-| 登录限流落库（T-07）                            | ✅ 已实现并部署，重启后封禁不失效            |
-| 审计事件（T-08）                                | ✅ 已实现并部署，可按用户与时间检索          |
-| 真实 PostgreSQL（T-09）                         | ✅ PG 16 实跑通过（生产仍跑 SQLite）         |
-| 部署配置入库（T-06）                            | ✅ `cloud/apps/auth/deploy/`                 |
-| CI 补 auth 容器扫描（T-10）                     | ✅ 已进 matrix                               |
-| 桌面端 UI 登录                                  | ✅ 已完成（真实 Electron 应用 + 真实浏览器） |
-| 真机配对（手机腿 + E2EE 握手）                  | ⬜ 未做                                      |
-| 域名（`orca.ctjt.cn` / `c1.ctjt.cn`）与网关反代 | ⬜ 等外部配置                                |
+| 项                                           | 状态                                         |
+| -------------------------------------------- | -------------------------------------------- |
+| auth 服务（`cloud/apps/auth`）               | ✅ 已实现并部署，契约检查 21 项全过          |
+| relay（`cloud/apps/relay`，上游开源）        | ✅ 已部署并对接，director + cell 合并角色    |
+| 内网部署（192.168.10.13:18080）              | ✅ 已上线，三容器运行中                      |
+| 桌面端脚本级链路（真实客户端代码打真实服务） | ✅ 已验证                                    |
+| relay WebSocket 腿（升级 + token 鉴权）      | ✅ 已验证                                    |
+| 登录限流落库（T-07）                         | ✅ 已实现并部署，重启后封禁不失效            |
+| 审计事件（T-08）                             | ✅ 已实现并部署，可按用户与时间检索          |
+| 真实 PostgreSQL（T-09）                      | ✅ PG 16 实跑通过（生产仍跑 SQLite）         |
+| 部署配置入库（T-06）                         | ✅ `cloud/apps/auth/deploy/`                 |
+| CI 补 auth 容器扫描（T-10）                  | ✅ 已进 matrix                               |
+| 桌面端 UI 登录                               | ✅ 已完成（真实 Electron 应用 + 真实浏览器） |
+| 真机配对（手机腿 + E2EE 握手）               | ⬜ 未做                                      |
+| 域名与网关反代                               | 🟡 DNS + 证书已就绪，网关缺 WebSocket 头     |
 
 ### 交接信息
 
-| 项       | 值                                                                                                                      |
-| -------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 服务入口 | `192.168.10.13:18080`（唯一对外，**纯 HTTP**；TLS 由公网网关 113.106.112.17 终结）                                      |
-| SSH      | `ssh -p 2222 root@192.168.10.13`（22 端口不通）                                                                         |
-| 部署目录 | `/opt/orca-deploy`（compose + `nginx.conf` + `routing.inc` + `tls/` + `data/`），源码副本 `/opt/orca-cloud`             |
-| 部署模板 | 仓库里 `cloud/apps/auth/deploy/`（compose / nginx / routing / RUNBOOK，不含密钥）                                       |
-| 健康检查 | `/health` `/ready` → relay；`/auth/health` `/auth/ready` → 账号服务                                                     |
-| 容器     | `orca-auth-1` / `orca-relay-1` / `orca-edge-1`                                                                          |
-| 账号     | `operator@ctjt.cn`；密码在服务器 `data/auth/orca-auth-bootstrap-credentials.json`（0600）                               |
-| 签名密钥 | `data/auth/orca-auth-signing-key.pem`（0600，**丢了 relay 的 JWKS 缓存会失配**）                                        |
-| 对外地址 | 账号 + director = `https://orca.ctjt.cn`；relay cell = `https://c1.ctjt.cn`（写死在 env，域名改名要改环境变量重建容器） |
+| 项       | 值                                                                                                                                                        |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 服务入口 | `192.168.10.13:18080`（唯一对外，**纯 HTTP**；TLS 由公网网关 113.106.112.17 终结）                                                                        |
+| SSH      | `ssh -p 2222 root@192.168.10.13`（22 端口不通）                                                                                                           |
+| 部署目录 | `/opt/orca-deploy`（compose + `nginx.conf` + `routing.inc` + `tls/` + `data/`），源码副本 `/opt/orca-cloud`                                               |
+| 部署模板 | 仓库里 `cloud/apps/auth/deploy/`（compose / nginx / routing / RUNBOOK，不含密钥）                                                                         |
+| 健康检查 | `/health` `/ready` → relay；`/auth/health` `/auth/ready` → 账号服务                                                                                       |
+| 容器     | `orca-auth-1` / `orca-relay-1` / `orca-edge-1`                                                                                                            |
+| 账号     | `operator@ctjt.cn`；密码在服务器 `data/auth/orca-auth-bootstrap-credentials.json`（0600）                                                                 |
+| 签名密钥 | `data/auth/orca-auth-signing-key.pem`（0600，**丢了 relay 的 JWKS 缓存会失配**）                                                                          |
+| 对外地址 | 账号 + director = `https://orca.ctjt.cn`；relay cell = `https://c1.orca.ctjt.cn`（写死在 env **和** relay 库的 `relay_cells.cell_url`，改域名要两处都改） |
 
 **重建镜像**（改完 auth 代码走一遍）：
 
@@ -74,18 +74,32 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
 
 ### P0 — 阻塞"真的能用"
 
-#### T-01 ⛔ 阿里云 A 记录：`c1.ctjt.cn`
+#### T-01 ✅ 阿里云 A 记录 + 证书：`c1.orca.ctjt.cn`
 
-- **内容**：加 A 记录 `c1.ctjt.cn` → `113.106.112.17`。`orca.ctjt.cn` 已存在，**cell 域名目前解析不了**。
-- **验收**：`dig +short c1.ctjt.cn` 返回 `113.106.112.17`。
-- **依赖**：外部（DNS 面板）。
+- **实测（2026-11-12）**：`c1.orca.ctjt.cn` → `113.106.112.17`，`https://c1.orca.ctjt.cn/health` 返回 200，
+  网关为它单独签了证书（`CN=c1.orca.ctjt.cn`）。**cell 域名用两层子域，是 director 的子域**。
+- **⚠ 换 cell 域名要改两处**： relay 的 `ORCA_RELAY_CELL_URL` 环境变量，**以及** relay 库里的
+  `relay_cells.cell_url`（那一行被钉死，心跳发现不一致会抛 `cell_origin_mismatch`，
+  `/v1/assign` 仍吐旧 origin —— 2026-11-12 实测踩过）。
 
 #### T-02 ⛔ 网关 nginx 反代规则
 
-- **内容**（在公网网关 113.106.112.17 上）：`server_name orca.ctjt.cn c1.ctjt.cn;` → `proxy_pass http://192.168.10.13:18080;`
+- **内容**（在公网网关 113.106.112.17 上）：`server_name orca.ctjt.cn c1.orca.ctjt.cn;` → `proxy_pass http://192.168.10.13:18080;`
 - **要点**：`proxy_http_version 1.1` + `Upgrade`/`Connection` 头（**必须有，否则 relay 的手机腿/桌面腿连不上**）；`proxy_read_timeout 900s`（relay 空闲 10 分钟）。
-- **验收**：从公网 `curl https://orca.ctjt.cn/health` 返回 200；`wss://c1.ctjt.cn/v1/connect/<hostId>` 能完成 WS 升级。
+- **验收**：从公网 `curl https://orca.ctjt.cn/health` 返回 200；`wss://c1.orca.ctjt.cn/v1/connect/<hostId>` 能完成 WS 升级。
 - **依赖**：外部（网关）；**依赖 T-01**。
+- **🟡 2026-11-12 实测**：HTTP 部分已经通了（`/health`、`/auth/health`、`/v1/assign` 都正常），
+  但**网关那条规则还缺 WebSocket 头**： 同一路径经内网边缘是 `101`，
+  经公网网关是 `404`（被当成普通 GET 转给 relay，relay 没有对应路由）。
+  手机腿（`/v1/connect/<hostId>`）与桌面腿（`/v1/host/control`）**现在都连不上**，
+  两个域名都一样。 网关上加这四行即可：
+
+  ```nginx
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection $connection_upgrade;
+  proxy_read_timeout 900s;
+  ```
 
 #### T-03 ✅ 桌面端 UI 登录
 
@@ -106,7 +120,7 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
 
 #### T-04 ⬜ 真机配对（手机腿 + E2EE 握手）
 
-- **内容**：桌面 `relay-session-broker.createPairingRelay()` 拿到 `inviteToken` → 生成 `orca://pair?code=…` → 手机连 `wss://c1.ctjt.cn/v1/connect/{relayHostId}` → `relay-auth` → `relay-hello` → host-challenge/ack → conn-open → E2EE 数据。
+- **内容**：桌面 `relay-session-broker.createPairingRelay()` 拿到 `inviteToken` → 生成 `orca://pair?code=…` → 手机连 `wss://c1.orca.ctjt.cn/v1/connect/{relayHostId}` → `relay-auth` → `relay-hello` → host-challenge/ack → conn-open → E2EE 数据。
 - **已验证的边界**：WS 升级与 token 鉴权（有效 token → 101，无效 token → 401）。**E2EE 握手与手机 App 尚未验证。**
 - **验收**：手机端能连上并看到桌面会话；数据走加密通道。
 - **依赖**：T-03。
@@ -178,7 +192,10 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
 
 ## 3. 刻意不做的事
 
-- **不要给 cell 补 director 库登记**（`/v1/regions` 保持为空）：`c1.ctjt.cn` 不是 `orca.ctjt.cn` 的子域，桌面端会校验探测来源主机名以 `.${director 主机名}` 结尾（`relay-region-catalog-fetch.ts:74-76`）。目录一旦非空，区域探测会抛错（被上层 catch，只丢区域偏好，不影响配对）。空目录反而最稳。
+- **不要给 cell 补 director 库登记**（`/v1/regions` 保持为空）： 目录一旦非空，区域探测可能抛错
+  （被上层 catch，只丢区域偏好，不影响配对）。 现在的 cell 域名 `c1.orca.ctjt.cn` **是** director 的子域，
+  桌面端的来源归属校验（`relay-region-catalog-fetch.ts:74-76`）本来就能过，
+  但空目录仍然最稳 —— 合并角色没有自登记，区域偏好退化成默认值。
 - **不要在仓库里提交任何密钥**：会话密钥、ES256 私钥、阿里云 AccessKey、账号密码一律留在服务器（0600 文件）或环境变量。
 
 ---
@@ -193,8 +210,9 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
 
 ### 推进记录
 
-| 日期       | 任务                                                                                     | 结果                                                                                                                                                      |
-| ---------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-12 | 实现 auth 服务骨架 + 内网部署 + 契约验证                                                 | 21 项契约全过；桌面端真实客户端代码与 relay WS 腿验证通过；域名方案落定（网关终结 TLS，内网 18080）                                                       |
-| 2026-11-12 | P1 批量：T-06 部署配置入库 / T-07 限流落库 / T-08 审计事件 / T-09 真实 PG / T-10 CI 扫描 | 全部实装并部署；重启后封禁仍生效（实测 429）；PG 16 上同一套契约跑通；边缘改覆盖 `X-Forwarded-For`（原来可被客户端伪造）；新增 `/auth/health`             |
-| 2026-11-12 | T-03 桌面端 UI 登录                                                                      | 真实 Electron 应用 + 真实 Chrome 走完 PKCE 登录；应用内账号态 `connected`，`relay.use === true`。发现 Chrome 对「公网 → 127.0.0.1」跳转的本地网络访问限制 |
+| 日期       | 任务                                                                                     | 结果                                                                                                                                                                                       |
+| ---------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-11-12 | 实现 auth 服务骨架 + 内网部署 + 契约验证                                                 | 21 项契约全过；桌面端真实客户端代码与 relay WS 腿验证通过；域名方案落定（网关终结 TLS，内网 18080）                                                                                        |
+| 2026-11-12 | P1 批量：T-06 部署配置入库 / T-07 限流落库 / T-08 审计事件 / T-09 真实 PG / T-10 CI 扫描 | 全部实装并部署；重启后封禁仍生效（实测 429）；PG 16 上同一套契约跑通；边缘改覆盖 `X-Forwarded-For`（原来可被客户端伪造）；新增 `/auth/health`                                              |
+| 2026-11-12 | T-03 桌面端 UI 登录                                                                      | 真实 Electron 应用 + 真实 Chrome 走完 PKCE 登录；应用内账号态 `connected`，`relay.use === true`。发现 Chrome 对「公网 → 127.0.0.1」跳转的本地网络访问限制                                  |
+| 2026-11-12 | cell 域名换成 `c1.orca.ctjt.cn`                                                          | DNS + 证书 + 网关路由都通了；relay 的 `ORCA_RELAY_CELL_URL` 与库里 `relay_cells.cell_url` 两处都改了，`/v1/assign` 现在返回新 origin。**遗留：网关缺 WebSocket 头，手机腿/桌面腿仍连不上** |

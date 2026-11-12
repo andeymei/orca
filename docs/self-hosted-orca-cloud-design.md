@@ -446,20 +446,26 @@ sessions(session_id PK, user_id, cloud_profile_id, access_token_hash,
 `*.ctjt.cn` + `ctjt.cn` 的 Let's Encrypt **泛域名证书**。 因此 **TLS 在网关终结**，
 内网服务只需要提供纯 HTTP 端口让网关反代。
 
-| 域名           | 角色                      | 说明                                      |
-| -------------- | ------------------------- | ----------------------------------------- |
-| `orca.ctjt.cn` | 账号服务 + relay director | 桌面端两个环境变量都指向它                |
-| `c1.ctjt.cn`   | relay cell                | 单层子域，正好落在 `*.ctjt.cn` 证书覆盖内 |
+| 域名              | 角色                      | 说明                                            |
+| ----------------- | ------------------------- | ----------------------------------------------- |
+| `orca.ctjt.cn`    | 账号服务 + relay director | 桌面端两个环境变量都指向它                      |
+| `c1.orca.ctjt.cn` | relay cell                | **director 的子域**；网关上给它单独签了一张证书 |
 
-- **cell 用单层子域**： `*.ctjt.cn` 只覆盖一层， `c1.orca.ctjt.cn` 是两层， 不在证书覆盖范围内。
-  代价是 cell 不再是 director 的子域 —— 这只影响**区域偏好提示**
-  （桌面端会校验探测来源的主机名以 `.${director 主机名}` 结尾，
-  `relay-region-catalog-fetch.ts:74-76`）， 校验失败被上层 catch， 退化成「不提示区域」，
-  **不影响配对与连接**。 `/v1/regions` 本来就是空的， 连这个校验都不会触发。
+- **cell 用 director 的子域**（2026-11-12 实测落地）： `c1.orca.ctjt.cn` 是两层子域，
+  `*.ctjt.cn` 泛域名证书**覆盖不到**，所以网关上为它单独签了一张证书
+  （`CN=c1.orca.ctjt.cn`，SAN 只有它自己）。
+  这个选择反而更好： cell 是 director 的子域， 桌面端「探测来源主机名要以 `.${director 主机名}` 结尾」
+  的校验（`relay-region-catalog-fetch.ts:74-76`）**能通过**， 区域偏好不会退化。
+- **换 cell 域名要动两处持久状态**（2026-11-12 实测）： 一是 relay 的环境变量
+  `ORCA_RELAY_CELL_URL`， 二是 relay 库里 `relay_cells.cell_url` —— 后者被
+  `relay_cells` 行钉死， 心跳发现与配置不一致会抛 `cell_origin_mismatch`，
+  `/v1/assign` 仍然吐旧 origin。 改完环境变量还要同步改那一行（合并角色只有一个 cell 行）。
 - **内网端口**： 网关反代到 `http://192.168.10.13:18080`（纯 HTTP）； 宿主机的 80 / 443 不被本服务占用，
   443 留给网关侧。 早期的「IP + 自签证书」过渡入口（18443）已下线。
 - **网关那条 server 规则必须带 WebSocket 头**（relay 的手机腿/桌面腿靠它）：
   `proxy_http_version 1.1` + `Upgrade`/`Connection` + `proxy_read_timeout 900s`。
+  **2026-11-12 实测：网关上的这条规则当时还缺这组头** —— 同一条路径经内网边缘是 101，
+  经网关是 404（被当成普通 GET 转给 relay）， 手机腿与桌面腿都会连不上。
 - **若以后改成网关 TCP/SNI 透传**： 内网自己出证书， 那时需要 Let's Encrypt **DNS-01**
   （服务器是内网地址， HTTP-01 走不通）；acme.sh 已装在服务器上， 自带续期 cron，
   届时需要加 2 条 `_acme-challenge.*` 的 TXT， 且 cell 可以改回 `c1.orca.ctjt.cn`。
@@ -611,11 +617,12 @@ ORCA_CLOUD_DEV_AUTH=1   # 仅未打包 + NODE_ENV!=production：本地伪造会�
 - **桌面端真实客户端代码全链路通过**：直接调用 `exchangeOrcaCloudAuthCode` /
   `refreshOrcaCloudCapabilities` / `createOrcaCloudProfile` / `selectOrcaCloudOrg` /
   `exchangeRelayAuthorization` / `requestRelayAssignment` / `revokeOrcaCloudSession`，
-  `requestRelayAssignment` 返回 `cellUrl=https://c1.ctjt.cn`。
+  `requestRelayAssignment` 返回 `cellUrl=https://c1.orca.ctjt.cn`。
 - **relay 的 WS 腿可用**：经 nginx 后 `wss://…/v1/host/control` 带有效 relay token 升级成功（101）；
   无效 token 被 relay 以 401 拒绝（说明 relay 确实在用 auth 签发的 ES256 token 验签，JWKS 走内网 http）。
 - **`/v1/regions` 返回空数组**：区域目录只列出「已在 director 库登记、admission=general、心跳新鲜」的 cell，
   合并角色没有自登记，因此区域偏好退化为默认值；单 cell 部署下不影响 `/v1/assign`。
+  （cell 现在是 director 的子域，登记与否都不会让区域探测出错，详见 §10.2。）
 - **手机腿的硬限制**：手机系统不信任自签 IP 证书（Android/iOS 都不会默认信任），所以**真机配对必须先有
   真实域名 + 公网证书**（或 Tailscale `*.ts.net`）。配对 offer 的 schema 只要求「规范 HTTPS origin」，
   IP + 端口在结构上合法，卡住的只是证书信任。

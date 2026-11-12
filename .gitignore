@@ -107,6 +107,7 @@ docs/**
 !docs/agent-skill-sharing-implementation-checklist.md
 !docs/mobile-terminal-shortcut-bar.md
 !docs/self-hosted-orca-cloud-design.md
+!docs/self-hosted-orca-cloud-tasks.md
 
 .stably/*
 !.stably/docs/

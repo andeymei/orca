@@ -36,6 +36,9 @@ const {
   verifyPackagedWindowsAgentHook
 } = require('./scripts/desktop-distribution/runtime-verification/verify-packaged-windows-agent-hook.cjs')
 const {
+  verifyPackagedAsarIntegrity
+} = require('./scripts/desktop-distribution/runtime-verification/packaged-asar-integrity.cjs')
+const {
   ensureBundledWaylandClipboard,
   finalizePackagedWaylandClipboard
 } = require('./wayland-clipboard-resources.cjs')
@@ -296,7 +299,7 @@ module.exports = {
     '!notes{,/**/*}',
     // Local tooling directories are not runtime inputs and may contain symlink loops.
     // The session logs under them are rewritten while a local package is being built.
-    '!{.claude,.grok,.agents,.codex,.remember}{,/**/*}',
+    '!{.claude,.grok,.agents,.codex,.remember,.anti-slop-plugin}{,/**/*}',
     '!Casks{,/**/*}',
     '!{AGENTS.md,CLAUDE.md,DEVELOPING.md,bundle-size-progress.md,ORCHESTRATION_IMPLEMENTATION_CHECKLIST.md,ORCHESTRATION_STRUCTURED_OUTPUT_DESIGN.md}',
     '!out/**/*.test.js',
@@ -418,6 +421,9 @@ module.exports = {
     if (!existsSync(resourcesDir)) {
       throw new Error(`Missing packaged resources directory: ${resourcesDir}`)
     }
+    // A packed file that changes size while the archive is written shifts the asar data
+    // section off its header, and the app then exits before the main bundle loads.
+    verifyPackagedAsarIntegrity(join(resourcesDir, 'app.asar'))
     // FpmTarget replaces this with deb/rpm while building those artifacts from the shared app tree.
     if (context.electronPlatformName === 'linux') {
       writeFileSync(join(resourcesDir, 'package-type'), 'AppImage')

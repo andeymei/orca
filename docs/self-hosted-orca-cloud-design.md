@@ -10,6 +10,9 @@
 > **实现状态**：本规格已实现为 `cloud/apps/auth`（Hono + jose + `@orca-cloud/cloud-database`，
 > SQLite/Postgres 双支持，自带 Dockerfile）。下文的契约即该实现的契约；
 > §15 记录了实现相对初版规格的取舍。
+>
+> **后续工作**：剩余任务、外部依赖与推进约定见
+> [`self-hosted-orca-cloud-tasks.md`](./self-hosted-orca-cloud-tasks.md)。
 
 ---
 

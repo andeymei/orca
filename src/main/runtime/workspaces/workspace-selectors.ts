@@ -15,6 +15,7 @@ import {
   type RuntimeRepoSelector
 } from './catalog/runtime-repo-selector'
 import type { Repo } from '../../../shared/repo-types'
+import { pathMatchesAtSameRealPath } from '../../workspaces/catalog/project-realpath-identity'
 import { isFolderRepo } from '../../../shared/repo-kind'
 import type { RuntimeStore } from '../construction/runtime-store-contract'
 import type { RuntimeWorkspaceCatalog } from './catalog/workspace-catalog'
@@ -231,17 +232,31 @@ export abstract class RuntimeWorkspaceSelectors extends RuntimeProjectLaunchCont
       return repos.filter((repo) => repo.id === selector.slice(3))
     }
     if (selector.startsWith('path:')) {
-      return repos.filter((repo) => runtimePathsEqual(repo.path, selector.slice(5)))
+      return this.matchReposByPath(repos, selector.slice(5))
     }
     if (selector.startsWith('name:')) {
       return repos.filter((repo) => repo.displayName === selector.slice(5))
     }
-    return repos.filter(
+    const literal = repos.filter(
       (repo) =>
         repo.id === selector ||
         runtimePathsEqual(repo.path, selector) ||
         repo.displayName === selector
     )
+    return literal.length > 0 ? literal : this.matchReposByPath(repos, selector)
+  }
+
+  /**
+   * A literal path match wins outright; only when none is found do the stored paths get compared
+   * through their realpaths, because git reports a repository's root as its realpath and a path
+   * that traverses a symlink then names the same checkout under a different string.
+   */
+  private matchReposByPath(repos: Repo[], candidate: string): Repo[] {
+    const literal = repos.filter((repo) => runtimePathsEqual(repo.path, candidate))
+    if (literal.length > 0) {
+      return literal
+    }
+    return repos.filter((repo) => pathMatchesAtSameRealPath(repo.path, candidate))
   }
 
   protected async resolveRepoSelector(selector: RuntimeRepoSelector): Promise<Repo> {

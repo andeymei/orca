@@ -1,4 +1,5 @@
 import { realpath } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import { normalizeRuntimePathForComparison } from '../../../shared/cross-platform-path'
 
 async function realpathKey(path: string): Promise<string | null> {
@@ -7,6 +8,29 @@ async function realpathKey(path: string): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+function syncRealpathKey(path: string): string | null {
+  try {
+    return normalizeRuntimePathForComparison(realpathSync(path))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Compare two paths that may name the same checkout through different strings.
+ *
+ * Git reports a repository's root as its realpath, so a path that traverses a symlink names the
+ * same checkout under a different string than the one stored for it.
+ */
+export function pathMatchesAtSameRealPath(left: string, right: string): boolean {
+  if (normalizeRuntimePathForComparison(left) === normalizeRuntimePathForComparison(right)) {
+    return true
+  }
+  const leftReal = syncRealpathKey(left)
+  const rightReal = syncRealpathKey(right)
+  return leftReal !== null && rightReal !== null && leftReal === rightReal
 }
 
 /** Resolve symlink aliases so the same checkout cannot be registered twice. */

@@ -583,15 +583,17 @@ ORCA_CLOUD_DEV_AUTH=1   # 仅未打包 + NODE_ENV!=production：本地伪造会�
   这是设计上的边界，不是缺陷。
 - 推送、connector、组织成员写操作未实现。
 
-### 内网部署实测（192.168.10.13:18443）
+### 内网部署实测（192.168.10.13:18080）
 
-三个容器跑在一台共享内网服务器上（自建 CA + 自签 IP 证书，nginx 做 TLS 终结与路径分流）：
+三个容器跑在一台共享内网服务器上（nginx 只做路径分流与 WS 升级， TLS 由公网网关终结）：
 
-| 容器           | 作用                                | 外部路径                                                   |
-| -------------- | ----------------------------------- | ---------------------------------------------------------- |
-| `orca-auth-1`  | 账号与 token 服务                   | `/v1/desktop/*`、`/.well-known/jwks.json`                  |
-| `orca-relay-1` | relay director + cell（合并角色）   | `/v1/assign`、`/v1/regions`、`/v1/connect/*`、`/v1/host/*` |
-| `orca-edge-1`  | nginx TLS 终结 + WS 升级 + 路径分流 | `0.0.0.0:18443`                                            |
+| 容器           | 作用                              | 外部路径                                                   |
+| -------------- | --------------------------------- | ---------------------------------------------------------- |
+| `orca-auth-1`  | 账号与 token 服务                 | `/v1/desktop/*`、`/.well-known/jwks.json`                  |
+| `orca-relay-1` | relay director + cell（合并角色） | `/v1/assign`、`/v1/regions`、`/v1/connect/*`、`/v1/host/*` |
+| `orca-edge-1`  | nginx 路径分流 + WS 升级          | `0.0.0.0:18080`（网关反代目标）                            |
+
+宿主机上本服务只占 18080 一个端口； 早期的「IP + 自签证书」过渡入口（18443）与 HTTP 跳转端口（80）均已下线。
 
 实测结论（脚本在 `cloud/apps/auth` 仓库外的一次性目录，未入库）：
 
@@ -600,8 +602,8 @@ ORCA_CLOUD_DEV_AUTH=1   # 仅未打包 + NODE_ENV!=production：本地伪造会�
 - **桌面端真实客户端代码全链路通过**：直接调用 `exchangeOrcaCloudAuthCode` /
   `refreshOrcaCloudCapabilities` / `createOrcaCloudProfile` / `selectOrcaCloudOrg` /
   `exchangeRelayAuthorization` / `requestRelayAssignment` / `revokeOrcaCloudSession`，
-  `requestRelayAssignment` 返回 `cellUrl=https://192.168.10.13:18443`。
-- **relay 的 WS 腿可用**：经 nginx 后 `wss://…/v1/host/control` 带有效 relay token 升级成功（101），
+  `requestRelayAssignment` 返回 `cellUrl=https://c1.ctjt.cn`。
+- **relay 的 WS 腿可用**：经 nginx 后 `wss://…/v1/host/control` 带有效 relay token 升级成功（101）；
   无效 token 被 relay 以 401 拒绝（说明 relay 确实在用 auth 签发的 ES256 token 验签，JWKS 走内网 http）。
 - **`/v1/regions` 返回空数组**：区域目录只列出「已在 director 库登记、admission=general、心跳新鲜」的 cell，
   合并角色没有自登记，因此区域偏好退化为默认值；单 cell 部署下不影响 `/v1/assign`。

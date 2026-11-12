@@ -3,14 +3,38 @@ import type {
   AgentSessionBackgroundState
 } from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
 import type { AgentSessionBackgroundTerminal } from '../../../../shared/agent-session/lifecycle/agent-session-background-terminal'
+import type { AiVaultSession } from '../../../../shared/ai-vault/contracts/ai-vault-types'
 
-/** One row in the picker: a chat Orca keeps in the AI Vault, or a terminal running an agent. */
+/** Where a row belongs: the workspace heading it groups under. */
+export type BackgroundAgentWorkspace = {
+  /** The workspace id, when Orca knows one. */
+  id: string | null
+  /** What the group heading shows. */
+  label: string
+}
+
+/** One row in the picker: a chat Orca keeps in the AI Vault, a terminal running an agent, or an
+ *  agent session this machine has but Orca does not show. */
 export type BackgroundAgentRow =
-  | { kind: 'chat'; chat: AgentSessionBackgroundSession }
-  | { kind: 'terminal'; terminal: AgentSessionBackgroundTerminal }
+  | {
+      kind: 'chat'
+      chat: AgentSessionBackgroundSession
+      workspace: BackgroundAgentWorkspace
+    }
+  | {
+      kind: 'terminal'
+      terminal: AgentSessionBackgroundTerminal
+      workspace: BackgroundAgentWorkspace
+    }
+  | {
+      kind: 'vault'
+      vault: AiVaultSession
+      workspace: BackgroundAgentWorkspace
+    }
 
 export type BackgroundAgentGroup = {
-  workspaceId: string
+  workspaceId: string | null
+  label: string
   rows: readonly BackgroundAgentRow[]
 }
 
@@ -18,20 +42,24 @@ export type BackgroundAgentGroup = {
 export function groupBackgroundAgentRows(
   rows: readonly BackgroundAgentRow[]
 ): BackgroundAgentGroup[] {
-  const groups = new Map<string, BackgroundAgentRow[]>()
+  const groups = new Map<
+    string,
+    { workspaceId: string | null; label: string; rows: BackgroundAgentRow[] }
+  >()
   for (const row of rows) {
-    const workspaceId = row.kind === 'chat' ? row.chat.workspaceId : row.terminal.workspaceId
-    const group = groups.get(workspaceId)
+    const key = row.workspace.id ?? `label:${row.workspace.label}`
+    const group = groups.get(key)
     if (group) {
-      group.push(row)
+      group.rows.push(row)
     } else {
-      groups.set(workspaceId, [row])
+      groups.set(key, {
+        workspaceId: row.workspace.id,
+        label: row.workspace.label,
+        rows: [row]
+      })
     }
   }
-  return [...groups].map(([workspaceId, groupRows]) => ({
-    workspaceId,
-    rows: groupRows
-  }))
+  return [...groups.values()]
 }
 
 /** Match what the user can see: the agent's name, the agent that owns it, or the workspace it lives in. */
@@ -53,7 +81,9 @@ export function filterBackgroundAgentRows(
             workspaceName(row.chat.workspaceId),
             row.chat.launchDirectory ?? ''
           ]
-        : [row.terminal.title, row.terminal.agent, workspaceName(row.terminal.workspaceId)]
+        : row.kind === 'terminal'
+          ? [row.terminal.title, row.terminal.agent, workspaceName(row.terminal.workspaceId)]
+          : [row.vault.title, row.vault.agent, row.workspace.label, row.vault.cwd ?? '']
     return haystacks.some((value) => value.toLowerCase().includes(needle))
   })
 }
@@ -62,11 +92,15 @@ export function filterBackgroundAgentRows(
 export function backgroundAgentRowStateLabel(
   row: BackgroundAgentRow,
   t: (key: string, fallback: string) => string
-): string {
+): string | null {
   if (row.kind === 'terminal') {
     return row.terminal.state === 'working'
       ? t('auto.components.backgroundAgents.stateRunning', 'Still running')
       : t('auto.components.backgroundAgents.stateIdle', 'Waiting')
+  }
+  if (row.kind === 'vault') {
+    // A transcript on disk says nothing about whether its agent is running now.
+    return null
   }
   return backgroundAgentSessionStateLabel(row.chat.state, t)
 }

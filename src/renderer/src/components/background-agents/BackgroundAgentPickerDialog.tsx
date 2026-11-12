@@ -14,7 +14,9 @@ import { getWorktreePathBasenameFromId } from '../../../../shared/worktree/id'
 import { activateAiVaultStructuredSession } from '@/lib/agent-session/open/activate-ai-vault-structured-session'
 import type { AgentSessionBackgroundSession } from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
 import type { AgentSessionBackgroundTerminal } from '../../../../shared/agent-session/lifecycle/agent-session-background-terminal'
+import type { AiVaultSession } from '../../../../shared/ai-vault/contracts/ai-vault-types'
 import { useBackgroundAgentSessions } from './use-background-agent-sessions'
+import { openBackgroundAgentSession } from './background-agent-vault-resume'
 import {
   backgroundAgentRowStateLabel,
   filterBackgroundAgentRows,
@@ -34,33 +36,55 @@ function workspaceNameFor(workspaceId: string): string {
 function BackgroundAgentRowView({
   row,
   onOpenChat,
-  onOpenTerminal
+  onOpenTerminal,
+  onOpenVault
 }: {
   row: BackgroundAgentRow
   onOpenChat: (session: AgentSessionBackgroundSession) => void
   onOpenTerminal: (terminal: AgentSessionBackgroundTerminal) => void
+  onOpenVault: (session: AiVaultSession) => void
 }): React.JSX.Element {
   const t = useTranslate()
-  const agent = row.kind === 'chat' ? row.chat.agent : row.terminal.agent
+  const agent =
+    row.kind === 'chat'
+      ? row.chat.agent
+      : row.kind === 'terminal'
+        ? row.terminal.agent
+        : row.vault.agent
   const agentLabel = formatAgentTypeLabel(agent)
   const title =
-    (row.kind === 'chat' ? row.chat.title.trim() : row.terminal.title.trim()) ||
-    t('auto.components.backgroundAgents.untitled', 'Untitled chat')
+    (row.kind === 'chat'
+      ? row.chat.title.trim()
+      : row.kind === 'terminal'
+        ? row.terminal.title.trim()
+        : row.vault.title.trim()) || t('auto.components.backgroundAgents.untitled', 'Untitled chat')
   // A terminal carries no last-activity time; only a chat knows when it was last used.
-  const updatedAt = row.kind === 'chat' ? row.chat.updatedAt : undefined
+  const updatedAt =
+    row.kind === 'chat'
+      ? row.chat.updatedAt
+      : row.kind === 'vault'
+        ? Date.parse(row.vault.updatedAt ?? '') || undefined
+        : undefined
+  const stateLabel = backgroundAgentRowStateLabel(row, t)
   return (
     <button
       type="button"
       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring"
-      onClick={() => (row.kind === 'chat' ? onOpenChat(row.chat) : onOpenTerminal(row.terminal))}
+      onClick={() =>
+        row.kind === 'chat'
+          ? onOpenChat(row.chat)
+          : row.kind === 'terminal'
+            ? onOpenTerminal(row.terminal)
+            : onOpenVault(row.vault)
+      }
     >
       <span role="img" aria-label={agentLabel} className="inline-flex shrink-0">
         <AgentIcon agent={agentTypeToIconAgent(agent)} size={13} />
       </span>
       <span className="min-w-0 flex-1 truncate text-xs text-foreground/90">{title}</span>
-      <span className="shrink-0 text-2xs text-muted-foreground">
-        {backgroundAgentRowStateLabel(row, t)}
-      </span>
+      {stateLabel === null ? null : (
+        <span className="shrink-0 text-2xs text-muted-foreground">{stateLabel}</span>
+      )}
       {updatedAt === undefined ? null : (
         <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
           {formatShortTimeAgo(updatedAt)}
@@ -105,6 +129,11 @@ export function BackgroundAgentPickerDialog(): React.JSX.Element | null {
       }
     }
     store.activateTab(terminal.tabId, { worktreeId: terminal.workspaceId })
+  }
+
+  const openVault = (session: AiVaultSession): void => {
+    closeModal()
+    void openBackgroundAgentSession(session)
   }
 
   return (
@@ -153,16 +182,23 @@ export function BackgroundAgentPickerDialog(): React.JSX.Element | null {
             </div>
           ) : null}
           {groups.map((group) => (
-            <div key={group.workspaceId} className="flex flex-col gap-0.5">
+            <div key={group.workspaceId ?? group.label} className="flex flex-col gap-0.5">
               <div className="px-2 pt-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {workspaceNameFor(group.workspaceId)}
+                {group.workspaceId === null ? group.label : workspaceNameFor(group.workspaceId)}
               </div>
               {group.rows.map((row) => (
                 <BackgroundAgentRowView
-                  key={row.kind === 'chat' ? row.chat.sessionId : row.terminal.tabId}
+                  key={
+                    row.kind === 'chat'
+                      ? row.chat.sessionId
+                      : row.kind === 'terminal'
+                        ? row.terminal.tabId
+                        : row.vault.sessionId
+                  }
                   row={row}
                   onOpenChat={openSession}
                   onOpenTerminal={openTerminal}
+                  onOpenVault={openVault}
                 />
               ))}
             </div>

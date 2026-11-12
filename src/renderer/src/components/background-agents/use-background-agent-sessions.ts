@@ -3,12 +3,22 @@ import { callStructuredAgentSession } from '@/runtime/native-chat/requests/struc
 import { RuntimeRpcCallError } from '@/runtime/rpc/calls/runtime-rpc-result'
 import type { AgentSessionBackgroundSession } from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
 import type { AgentSessionBackgroundTerminal } from '../../../../shared/agent-session/lifecycle/agent-session-background-terminal'
+import type { AiVaultSession } from '../../../../shared/ai-vault/contracts/ai-vault-types'
 import { useAppStore } from '@/store/index'
 import type { AppState } from '@/store/types'
 import {
   backgroundAgentTerminalRows,
   type BackgroundAgentTerminalTab
 } from './background-agent-terminal-rows'
+import {
+  aiVaultSessionWorkspace,
+  BACKGROUND_AGENT_VAULT_LIMIT,
+  backgroundAgentVaultRows
+} from './background-agent-vault-rows'
+import {
+  canOpenAiVaultSessionInOrca,
+  isAiVaultSessionOpenInOrca
+} from './background-agent-vault-resume'
 import type { BackgroundAgentRow } from './background-agent-session-list'
 
 export type BackgroundAgentSessionsState =
@@ -33,14 +43,26 @@ export async function readBackgroundAgentSessions(): Promise<BackgroundAgentSess
       return { state: 'unsupported' }
     }
   }
-  const terminals = readBackgroundAgentTerminals()
-  return {
-    state: 'ready',
-    rows: [
-      ...chats.map((chat): BackgroundAgentRow => ({ kind: 'chat', chat })),
-      ...terminals.map((terminal): BackgroundAgentRow => ({ kind: 'terminal', terminal }))
-    ]
-  }
+  const state = useAppStore.getState()
+  const vaultSessions = await readBackgroundAgentVaultSessions(state)
+  const rows: BackgroundAgentRow[] = [
+    ...chats.map((chat): BackgroundAgentRow => ({
+      kind: 'chat',
+      chat,
+      workspace: { id: chat.workspaceId, label: chat.workspaceId }
+    })),
+    ...readBackgroundAgentTerminals(state).map((terminal): BackgroundAgentRow => ({
+      kind: 'terminal',
+      terminal,
+      workspace: { id: terminal.workspaceId, label: terminal.workspaceId }
+    })),
+    ...vaultSessions.map((vault): BackgroundAgentRow => ({
+      kind: 'vault',
+      vault,
+      workspace: aiVaultSessionWorkspace(state, vault)
+    }))
+  ]
+  return { state: 'ready', rows }
 }
 
 /** The tab the user is looking at, so the picker does not offer what is already on screen. */
@@ -77,9 +99,22 @@ function backgroundAgentTerminalTabs(state: AppState): BackgroundAgentTerminalTa
 }
 
 /** The terminals running an agent; a workspace without one offers none. */
-function readBackgroundAgentTerminals(): AgentSessionBackgroundTerminal[] {
-  const state = useAppStore.getState()
+function readBackgroundAgentTerminals(state: AppState): AgentSessionBackgroundTerminal[] {
   return backgroundAgentTerminalRows(backgroundAgentTerminalTabs(state), visibleTabId(state))
+}
+
+/** The agent sessions this machine has; the AI Vault indexes the ones that ran outside Orca. */
+async function readBackgroundAgentVaultSessions(state: AppState): Promise<AiVaultSession[]> {
+  try {
+    const result = await window.api.aiVault.listSessions({ limit: BACKGROUND_AGENT_VAULT_LIMIT })
+    return backgroundAgentVaultRows(
+      result.sessions,
+      (session) =>
+        canOpenAiVaultSessionInOrca(state, session) && !isAiVaultSessionOpenInOrca(state, session)
+    )
+  } catch {
+    return []
+  }
 }
 
 /** The list is read when the picker opens, not before: it changes as chats come and go. */

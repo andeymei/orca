@@ -8,21 +8,21 @@
 
 ## 1. 当前状态
 
-| 项                                              | 状态                                      |
-| ----------------------------------------------- | ----------------------------------------- |
-| auth 服务（`cloud/apps/auth`）                  | ✅ 已实现并部署，契约检查 21 项全过       |
-| relay（`cloud/apps/relay`，上游开源）           | ✅ 已部署并对接，director + cell 合并角色 |
-| 内网部署（192.168.10.13:18080）                 | ✅ 已上线，三容器运行中                   |
-| 桌面端脚本级链路（真实客户端代码打真实服务）    | ✅ 已验证                                 |
-| relay WebSocket 腿（升级 + token 鉴权）         | ✅ 已验证                                 |
-| 登录限流落库（T-07）                            | ✅ 已实现并部署，重启后封禁不失效         |
-| 审计事件（T-08）                                | ✅ 已实现并部署，可按用户与时间检索       |
-| 真实 PostgreSQL（T-09）                         | ✅ PG 16 实跑通过（生产仍跑 SQLite）      |
-| 部署配置入库（T-06）                            | ✅ `cloud/apps/auth/deploy/`              |
-| CI 补 auth 容器扫描（T-10）                     | ✅ 已进 matrix                            |
-| 桌面端 UI 登录                                  | ⬜ 未做                                   |
-| 真机配对（手机腿 + E2EE 握手）                  | ⬜ 未做                                   |
-| 域名（`orca.ctjt.cn` / `c1.ctjt.cn`）与网关反代 | ⬜ 等外部配置                             |
+| 项                                              | 状态                                         |
+| ----------------------------------------------- | -------------------------------------------- |
+| auth 服务（`cloud/apps/auth`）                  | ✅ 已实现并部署，契约检查 21 项全过          |
+| relay（`cloud/apps/relay`，上游开源）           | ✅ 已部署并对接，director + cell 合并角色    |
+| 内网部署（192.168.10.13:18080）                 | ✅ 已上线，三容器运行中                      |
+| 桌面端脚本级链路（真实客户端代码打真实服务）    | ✅ 已验证                                    |
+| relay WebSocket 腿（升级 + token 鉴权）         | ✅ 已验证                                    |
+| 登录限流落库（T-07）                            | ✅ 已实现并部署，重启后封禁不失效            |
+| 审计事件（T-08）                                | ✅ 已实现并部署，可按用户与时间检索          |
+| 真实 PostgreSQL（T-09）                         | ✅ PG 16 实跑通过（生产仍跑 SQLite）         |
+| 部署配置入库（T-06）                            | ✅ `cloud/apps/auth/deploy/`                 |
+| CI 补 auth 容器扫描（T-10）                     | ✅ 已进 matrix                               |
+| 桌面端 UI 登录                                  | ✅ 已完成（真实 Electron 应用 + 真实浏览器） |
+| 真机配对（手机腿 + E2EE 握手）                  | ⬜ 未做                                      |
+| 域名（`orca.ctjt.cn` / `c1.ctjt.cn`）与网关反代 | ⬜ 等外部配置                                |
 
 ### 交接信息
 
@@ -87,22 +87,22 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
 - **验收**：从公网 `curl https://orca.ctjt.cn/health` 返回 200；`wss://c1.ctjt.cn/v1/connect/<hostId>` 能完成 WS 升级。
 - **依赖**：外部（网关）；**依赖 T-01**。
 
-#### T-03 ⬜ 桌面端 UI 登录
+#### T-03 ✅ 桌面端 UI 登录
 
 - **内容**：用真实 Electron 应用跑一次完整登录（浏览器点登录 → 302 回 `127.0.0.1:<随机端口>/auth/callback`）。
 - **命令**：
   ```bash
-  ORCA_CLOUD_API_URL=https://orca.ctjt.cn ORCA_CLOUD_CLIENT_ID=orca-desktop \
-  ORCA_RELAY_URL=https://orca.ctjt.cn pnpm dev
+  ORCA_BACKGROUND_LAUNCH=1 ORCA_CLOUD_API_URL=https://orca.ctjt.cn ORCA_CLOUD_CLIENT_ID=orca-desktop   ORCA_RELAY_URL=https://orca.ctjt.cn pnpm dev
   ```
-- **验收**：应用内账号态为已登录；`capabilities.flags['relay.use'] === true`。
-- **依赖**：T-01、T-02。
-- **2026-11-12 复核**：T-01/T-02 其实只挡着 **cell 域名**（`c1.ctjt.cn`）和手机腿；
-  **桌面端登录只需要 director 这一个 origin**，而 `https://orca.ctjt.cn` 已经通了
-  （`/health`、`/.well-known/jwks.json` 都是 200，authorize → 登录 → 换 token 全链路实测通过）。
-  所以 T-03 可以现在就做；真正卡住 T-04 的只有 cell 域名。
-  另：**cell 可以和 director 同源**（relay 的 `ORCA_RELAY_CELL_URL` 只要是规范 origin），
-  真要绕开 T-01，把 cell 指回 `https://orca.ctjt.cn` 即可 —— 代价是失去独立的 cell 主机名。
+- **实测**（2026-11-12）：应用内点「设置 → Orca 账户 → 登录 Orca」→ 应用起回环监听
+  `127.0.0.1:<随机端口>/auth/callback` 并打开 `https://orca.ctjt.cn/v1/desktop/auth/authorize?...`
+  （`client_id=orca-desktop`、S256 challenge、nonce、state 齐全）→ 真实 Chrome 填账号密码提交 →
+  应用收到回调并完成换 token。
+- **验收**：应用内账号态 `connected`、`operator@ctjt.cn`、**`capabilities.flags['relay.use'] === true`**。
+- **依赖**：T-01、T-02（实际只需要 director 这一个 origin，见下面的复核说明）。
+- **⚠ 踩坑**：Chrome 会把「从公网 origin 跳到 127.0.0.1」这次导航判为本地网络访问，headless 下直接
+  `ERR_ABORTED`（服务端 `login.succeeded` 已记录，但应用收不到回调）。有头浏览器一般会弹权限询问；
+  自动化时用 `--disable-features=LocalNetworkAccessChecks` 或让重定向走请求层。**真机配对（T-04）同理要留意**。
 
 #### T-04 ⬜ 真机配对（手机腿 + E2EE 握手）
 
@@ -193,7 +193,8 @@ ORCA_BASE_URL="http://192.168.10.13:18080" ORCA_TEST_PASSWORD='<密码>' node ve
 
 ### 推进记录
 
-| 日期       | 任务                                                                                     | 结果                                                                                                                                          |
-| ---------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-12 | 实现 auth 服务骨架 + 内网部署 + 契约验证                                                 | 21 项契约全过；桌面端真实客户端代码与 relay WS 腿验证通过；域名方案落定（网关终结 TLS，内网 18080）                                           |
-| 2026-11-12 | P1 批量：T-06 部署配置入库 / T-07 限流落库 / T-08 审计事件 / T-09 真实 PG / T-10 CI 扫描 | 全部实装并部署；重启后封禁仍生效（实测 429）；PG 16 上同一套契约跑通；边缘改覆盖 `X-Forwarded-For`（原来可被客户端伪造）；新增 `/auth/health` |
+| 日期       | 任务                                                                                     | 结果                                                                                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-12 | 实现 auth 服务骨架 + 内网部署 + 契约验证                                                 | 21 项契约全过；桌面端真实客户端代码与 relay WS 腿验证通过；域名方案落定（网关终结 TLS，内网 18080）                                                       |
+| 2026-11-12 | P1 批量：T-06 部署配置入库 / T-07 限流落库 / T-08 审计事件 / T-09 真实 PG / T-10 CI 扫描 | 全部实装并部署；重启后封禁仍生效（实测 429）；PG 16 上同一套契约跑通；边缘改覆盖 `X-Forwarded-For`（原来可被客户端伪造）；新增 `/auth/health`             |
+| 2026-11-12 | T-03 桌面端 UI 登录                                                                      | 真实 Electron 应用 + 真实 Chrome 走完 PKCE 登录；应用内账号态 `connected`，`relay.use === true`。发现 Chrome 对「公网 → 127.0.0.1」跳转的本地网络访问限制 |

@@ -437,12 +437,35 @@ sessions(session_id PK, user_id, cloud_profile_id, access_token_hash,
 2. **内部域名 + Let's Encrypt DNS-01**： 需有该域名的 DNS API 权限。
 3. **内网 CA + 桌面 `NODE_EXTRA_CA_CERTS`**： 只解决桌面侧； **relay 仍需公网可信证书**， 故不足够。
 
+#### 本次实际采用的方案（2026-11）
+
+| 域名              | 角色                      | 说明                              |
+| ----------------- | ------------------------- | --------------------------------- |
+| `orca.ctjt.cn`    | 账号服务 + relay director | 桌面端两个环境变量都指向它        |
+| `c1.orca.ctjt.cn` | relay cell                | 必须是 director 的**子域**， 见下 |
+
+- **cell 必须是 director 的子域**： 桌面端的区域探测会校验探测来源的主机名以 `.${director 主机名}` 结尾
+  （`relay-region-catalog-fetch.ts:74-76`）， 同源或平级域名都会让探测抛错。
+- **证书**： Let's Encrypt **DNS-01**（服务器是内网地址， HTTP-01 走不通）；acme.sh 装在服务器上， 自带续期 cron。
+- **DNS 需要加的记录**：
+
+  | 类型 | 名称                              | 值                   |
+  | ---- | --------------------------------- | -------------------- |
+  | A    | `orca.ctjt.cn`                    | `192.168.10.13`      |
+  | A    | `c1.orca.ctjt.cn`                 | `192.168.10.13`      |
+  | TXT  | `_acme-challenge.orca.ctjt.cn`    | acme.sh 生成的挑战值 |
+  | TXT  | `_acme-challenge.c1.orca.ctjt.cn` | acme.sh 生成的挑战值 |
+
+- **手工 DNS-01 的代价**： acme.sh 每次续期都要人工再贴一次 TXT。 要自动化就用阿里云 RAM 子账号
+  （仅 DNS 权限）的 AccessKey 走 acme.sh 的 `dns_ali` 插件。
+
 ### 10.3 桌面端环境变量
 
 ```bash
-ORCA_CLOUD_API_URL=https://auth.mydomain.com
+# 域名方案
+ORCA_CLOUD_API_URL=https://orca.ctjt.cn
 ORCA_CLOUD_CLIENT_ID=orca-desktop
-ORCA_RELAY_URL=https://relay.mydomain.com
+ORCA_RELAY_URL=https://orca.ctjt.cn
 # 可选：自建推送网关（§12 不在范围内）
 # ORCA_PUSH_GATEWAY_URL=https://push.mydomain.com
 ```

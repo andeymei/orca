@@ -2,21 +2,24 @@ import type { AiVaultSession } from '../../../../shared/ai-vault/contracts/ai-va
 import { isAiVaultSessionResumableContent } from '../../../../shared/ai-vault/contracts/ai-vault-types'
 import { resolveAiVaultSessionWorktreeInfo } from '../../../../shared/ai-vault/session-display/ai-vault-session-worktree'
 import type { AppState } from '@/store/types'
-import { selectFolderWorkspaces } from '@/store/workspaces/catalog/workspace-record-fields'
+import {
+  selectFolderWorkspaces,
+  selectWorktreesByRepo
+} from '@/store/workspaces/catalog/workspace-record-fields'
 import { getIndexedAllWorktrees } from '@/store/slices/worktrees/listing/worktree-catalog-index'
 import { aiVaultSessionOwnerWorkspaces } from '@/components/right-sidebar/ai-vault/session-list/ai-vault-session-worktree'
 import type { BackgroundAgentWorkspace } from './background-agent-session-list'
 
-/** The picker offers the newest sessions; the search box reaches the rest. */
+/** The panel offers the newest sessions; the search box reaches the rest. */
 export const BACKGROUND_AGENT_VAULT_LIMIT = 50
 
-/** The workspace a session belongs to, so the picker can group it and name the group. */
+/** The workspace a session belongs to, so the panel can name the group it lands in. */
 export function aiVaultSessionWorkspace(
   state: AppState,
   session: AiVaultSession
 ): BackgroundAgentWorkspace {
   const worktrees = aiVaultSessionOwnerWorkspaces(
-    getIndexedAllWorktrees(state.worktreesByRepo),
+    getIndexedAllWorktrees(selectWorktreesByRepo(state)),
     selectFolderWorkspaces(state)
   )
   const info = resolveAiVaultSessionWorktreeInfo({

@@ -15,6 +15,8 @@ import {
   BACKGROUND_AGENT_VAULT_LIMIT,
   backgroundAgentVaultRows
 } from './background-agent-vault-rows'
+import { getAiVaultResumeWorkspaceExecutionHostId } from '@/lib/agent-session/resume/history/ai-vault-resume-target'
+import { resolveAiVaultHostScopeDefaults } from '@/components/right-sidebar/ai-vault/scope/ai-vault-host-scope'
 import {
   canOpenAiVaultSessionInOrca,
   isAiVaultSessionOpenInOrca
@@ -103,10 +105,26 @@ function readBackgroundAgentTerminals(state: AppState): AgentSessionBackgroundTe
   return backgroundAgentTerminalRows(backgroundAgentTerminalTabs(state), visibleTabId(state))
 }
 
-/** The agent sessions this machine has; the AI Vault indexes the ones that ran outside Orca. */
+/**
+ * The agent sessions this machine has; the AI Vault indexes the ones that ran outside Orca.
+ *
+ * A remote workspace must see its own host's history, not this machine's: the picker follows the
+ * workspace the user is in, so a remote project's list is the remote host's.
+ */
 async function readBackgroundAgentVaultSessions(state: AppState): Promise<AiVaultSession[]> {
   try {
-    const result = await window.api.aiVault.listSessions({ limit: BACKGROUND_AGENT_VAULT_LIMIT })
+    const activeExecutionHostId = getAiVaultResumeWorkspaceExecutionHostId(
+      state,
+      state.activeWorktreeId
+    )
+    const { defaultExecutionHostScope } = resolveAiVaultHostScopeDefaults(
+      activeExecutionHostId,
+      state.activeWorktreeId
+    )
+    const result = await window.api.aiVault.listSessions({
+      limit: BACKGROUND_AGENT_VAULT_LIMIT,
+      executionHostScope: defaultExecutionHostScope
+    })
     return backgroundAgentVaultRows(
       result.sessions,
       (session) =>

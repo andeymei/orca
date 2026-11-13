@@ -3,11 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  assertBackupPathInTargetDirectory,
   backupPathFor,
   formatBackupStamp,
   listAppBackups,
+  nextAvailableBackupPath,
   pruneAppBackups,
-  readBundleVersion
+  readBundleVersion,
+  sanitizeBackupComponent
 } from './mac-app-install.mjs'
 
 function createAppBundle(root, name, version) {
@@ -96,6 +99,40 @@ describe('mac app install', () => {
 
       expect(pruneAppBackups(target, 1)).toEqual([])
       expect(listAppBackups(target).map((backup) => backup.name)).toContain('Orca.app.bak-1.4.253')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps a hostile bundle version inside the backup directory', () => {
+    expect(sanitizeBackupComponent('../../etc/passwd')).toBe('.._.._etc_passwd')
+    expect(sanitizeBackupComponent('..')).toBe('unknown')
+    expect(sanitizeBackupComponent('')).toBe('unknown')
+    expect(sanitizeBackupComponent(null)).toBe('unknown')
+
+    const backupPath = backupPathFor('/Applications/Orca.app', '../../etc/passwd', Date.now())
+    expect(backupPath.startsWith('/Applications/Orca.app.bak-')).toBe(true)
+    expect(backupPath).not.toContain('/etc/passwd')
+    expect(() =>
+      assertBackupPathInTargetDirectory(backupPath, '/Applications/Orca.app')
+    ).not.toThrow()
+    expect(() =>
+      assertBackupPathInTargetDirectory('/etc/Orca.app.bak-x', '/Applications/Orca.app')
+    ).toThrow(/outside/)
+  })
+
+  it('never writes a backup over an existing one', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-mac-install-'))
+    try {
+      const target = join(root, 'Orca.app')
+      const timestamp = Date.now()
+      const first = nextAvailableBackupPath(target, '1.4.253', timestamp)
+      createAppBundle(root, first.slice(root.length + 1), '1.4.253')
+
+      const second = nextAvailableBackupPath(target, '1.4.253', timestamp)
+      expect(second).not.toBe(first)
+      expect(second.startsWith(`${first}-`)).toBe(true)
+      expect(listAppBackups(target).map((backup) => backup.stamp)).not.toContain('')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

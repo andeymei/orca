@@ -17,14 +17,15 @@ import {
   rmSync,
   statSync
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 
 export const DEFAULT_INSTALL_TARGET = '/Applications/Orca.app'
 export const DEFAULT_BACKUP_COUNT = 3
 
 // The backup name ends in the moment it was taken, so backups sort by recency even when
-// the moved bundle carries the mtime of the app it used to be.
-const BACKUP_STAMP_PATTERN = /-(\d{8}-\d{6})$/
+// the moved bundle carries the mtime of the app it used to be. A counter suffix marks a
+// name that was already taken within the same second.
+const BACKUP_STAMP_PATTERN = /-(\d{8}-\d{6})(?:-\d+)?$/
 
 export function readBundleVersion(appPath) {
   const plistPath = join(appPath, 'Contents/Info.plist')
@@ -44,9 +45,59 @@ export function formatBackupStamp(timestamp) {
   return `${day}-${clock}`
 }
 
+/**
+ * Make a version string safe to carry in a file name.
+ *
+ * The version is read out of the installed app's Info.plist, so it is a value the machine
+ * supplies rather than one this script controls. A separator or a parent reference in it
+ * would let the backup name reach outside the directory the backups live in.
+ */
+export function sanitizeBackupComponent(version) {
+  const safe = (version ?? '').replace(/[^0-9A-Za-z.-]/g, '_')
+  if (safe === '' || safe === '.' || safe === '..') {
+    return 'unknown'
+  }
+  return safe
+}
+
 export function backupPathFor(targetApp, version, timestamp) {
-  const suffix = `${version ?? 'unknown'}-${formatBackupStamp(timestamp)}`
+  const suffix = `${sanitizeBackupComponent(version)}-${formatBackupStamp(timestamp)}`
   return join(dirname(targetApp), `${basename(targetApp)}.bak-${suffix}`)
+}
+
+/**
+ * Find a backup path that is free, so the backup is never written over an existing one.
+ *
+ * @param {string} targetApp
+ * @param {string | null} version
+ * @param {number} timestamp
+ * @returns {string}
+ */
+export function nextAvailableBackupPath(targetApp, version, timestamp) {
+  const base = backupPathFor(targetApp, version, timestamp)
+  let candidate = base
+  let counter = 1
+  while (existsSync(candidate)) {
+    candidate = `${base}-${counter}`
+    counter += 1
+  }
+  return candidate
+}
+
+/**
+ * Assert that a path stays inside the directory the backups live in.
+ *
+ * @param {string} backupPath
+ * @param {string} targetApp
+ */
+export function assertBackupPathInTargetDirectory(backupPath, targetApp) {
+  const parent = dirname(resolve(targetApp))
+  if (dirname(resolve(backupPath)) !== parent) {
+    throw new Error(`The backup path ${backupPath} is outside ${parent}`)
+  }
+  if (!basename(backupPath).startsWith(`${basename(targetApp)}.bak-`)) {
+    throw new Error(`The backup path ${backupPath} is not a backup of ${targetApp}`)
+  }
 }
 
 /**
@@ -160,9 +211,8 @@ export function installMacApp({
 
   let backupPath = null
   if (existsSync(targetApp)) {
-    backupPath = backupPathFor(targetApp, readBundleVersion(targetApp), timestamp)
-    // A build repeated within the same second would land on the same backup name.
-    rmSync(backupPath, { recursive: true, force: true })
+    backupPath = nextAvailableBackupPath(targetApp, readBundleVersion(targetApp), timestamp)
+    assertBackupPathInTargetDirectory(backupPath, targetApp)
     renameSync(targetApp, backupPath)
     console.log(`[install] moved the previous app to ${backupPath}`)
   }

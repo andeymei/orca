@@ -1,13 +1,13 @@
 // Open a saved conversation on the host that owns it, whether or not it already runs.
 //
-// The host decides: `claude agents --json` lists the conversations that run on that machine, and
-// a running conversation is opened with `claude attach` instead of being resumed. The CLI copies
-// a resumed conversation that already runs, and that copy is the second, same-named session the
-// user finds afterwards.
+// The native way to open a conversation that runs is `claude attach <id>`: it shows the running
+// agent and keeps the conversation's own id. Resuming it instead makes the CLI copy the
+// conversation into a second, same-named session — the "<title> (2)" the user finds afterwards.
 //
 // This is the fallback for a host that cannot be asked directly — an Orca older than the runtime
-// method that answers the listing. The command runs on the host, so the answer comes from the
-// host's own CLI.
+// method that reports the running conversations. The command runs on the host, so the host's own
+// CLI decides: `claude attach` fails with "No job matching" for a conversation nobody runs, and
+// the resume runs only then.
 
 import {
   getTuiAgentLaunchCommand,
@@ -23,17 +23,15 @@ import {
 /**
  * The command that opens a conversation whether or not it is already running.
  *
- * The listing runs on the host: a conversation that the host reports as running is attached to,
- * and one it does not report is resumed as before.
+ * The attach comes first because it is the native open: a conversation that runs is shown where it
+ * runs, and a conversation nobody runs makes the attach fail, which is what lets the resume follow.
  */
 export function buildClaudeAttachOrResumeStartup(args: {
   platform: NodeJS.Platform
   shell?: AgentStartupShell
   /** The short id `claude attach` takes: the conversation id's first segment. */
   agentId: string
-  /** The conversation id, as `claude agents --json` reports it. */
-  sessionId: string
-  /** The command that resumes the conversation when the host does not report it running. */
+  /** The command that resumes the conversation when the attach finds no running agent. */
   resumeCommand: string
   cwd?: string | null
   /** A configured command may point at another binary; its flags do not apply to attach. */
@@ -46,15 +44,13 @@ export function buildClaudeAttachOrResumeStartup(args: {
     shell
   })
   const agentId = quoteStartupArg(args.agentId, shell)
-  const sessionId = quoteStartupArg(args.sessionId, shell)
   const attach = `${executable} attach ${agentId}`
-  const listing = `${executable} agents --json`
   const command =
     shell === 'powershell'
-      ? `if ((${listing} | Out-String) -match ${sessionId}) { ${attach} } else { ${args.resumeCommand} }`
+      ? `${attach}; if ($LASTEXITCODE -ne 0) { ${args.resumeCommand} }`
       : shell === 'cmd'
-        ? `${listing} 2>nul | findstr /c:${sessionId} >nul && (${attach}) || (${args.resumeCommand})`
-        : `if ${listing} 2>/dev/null | grep -q ${sessionId}; then ${attach}; else ${args.resumeCommand}; fi`
+        ? `${attach} || (${args.resumeCommand})`
+        : `if ${attach}; then :; else ${args.resumeCommand}; fi`
   return {
     command,
     ...(args.cwd ? { cwd: args.cwd } : {})

@@ -7,24 +7,23 @@ import { buildClaudeAttachOrResumeStartup } from './ai-vault-attach-or-resume-st
 
 const SESSION_ID = '84693fdb-e203-4b59-81b1-ce59940554aa'
 
-/** A stub CLI that lists one running conversation and records what it was asked to do. */
-function createStubCli(runningSessionIds: readonly string[]): { program: string; log: string } {
+/** A stub CLI that opens the running conversations and records what it was asked to do. */
+function createStubCli(runningAgentIds: readonly string[]): { program: string; log: string } {
   const dir = mkdtempSync(join(tmpdir(), 'orca-attach-stub-'))
   const log = join(dir, 'calls.log')
   const program = join(dir, 'claude-stub')
-  const listing = runningSessionIds
-    .map(
-      (id) => `  { "id": "${id.slice(0, 8)}", "sessionId": "${id}", "name": "stub", "cwd": "/tmp" }`
-    )
-    .join(',\n')
   writeFileSync(
     program,
     [
       '#!/bin/sh',
       `echo "$@" >> ${JSON.stringify(log)}`,
-      'if [ "$1" = "agents" ]; then',
-      `  echo '[${runningSessionIds.length > 0 ? `\n${listing}\n` : ''}]'`,
-      '  exit 0',
+      'if [ "$1" = "attach" ]; then',
+      `  if echo " ${runningAgentIds.join(' ')} " | grep -q " $2 "; then`,
+      '    echo attached',
+      '    exit 0',
+      '  fi',
+      `  echo "No job matching '$2'."`,
+      '  exit 1',
       'fi',
       'exit 0',
       ''
@@ -39,43 +38,39 @@ function runPosixCommand(command: string): string {
 }
 
 describe('buildClaudeAttachOrResumeStartup', () => {
-  it('asks the host and attaches to a conversation the host reports running', () => {
-    const stub = createStubCli([SESSION_ID])
+  // The native open: attaching keeps the conversation's own id, so no second session appears.
+  it('attaches to a conversation that runs on the host', () => {
+    const stub = createStubCli([SESSION_ID.slice(0, 8)])
     const startup = buildClaudeAttachOrResumeStartup({
       platform: 'linux',
       agentId: SESSION_ID.slice(0, 8),
-      sessionId: SESSION_ID,
-      resumeCommand: 'claude --resume other-session',
+      resumeCommand: 'echo resumed-other-session',
       commandOverride: stub.program
     })
-    runPosixCommand(startup.command)
-    const calls = readFileSync(stub.log, 'utf8')
-    expect(calls).toContain('agents --json')
-    expect(calls).toContain(`attach ${SESSION_ID.slice(0, 8)}`)
-    expect(calls).not.toContain('--resume')
+    const output = runPosixCommand(startup.command)
+    expect(output).toContain('attached')
+    expect(output).not.toContain('resumed-other-session')
+    expect(readFileSync(stub.log, 'utf8')).toContain(`attach ${SESSION_ID.slice(0, 8)}`)
   })
 
-  it('resumes a conversation the host does not report running', () => {
+  it('resumes a conversation nobody runs', () => {
     const stub = createStubCli([])
     const startup = buildClaudeAttachOrResumeStartup({
       platform: 'linux',
       agentId: SESSION_ID.slice(0, 8),
-      sessionId: SESSION_ID,
       resumeCommand: 'echo resumed-other-session',
       commandOverride: stub.program
     })
     const output = runPosixCommand(startup.command)
     expect(output).toContain('resumed-other-session')
-    expect(readFileSync(stub.log, 'utf8')).not.toContain('attach')
   })
 
-  it('resumes when the host cannot list its conversations', () => {
+  it('resumes when the host has no Claude CLI at all', () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-attach-stub-'))
     const program = join(dir, 'missing-claude')
     const startup = buildClaudeAttachOrResumeStartup({
       platform: 'linux',
       agentId: SESSION_ID.slice(0, 8),
-      sessionId: SESSION_ID,
       resumeCommand: 'echo resumed-without-listing',
       commandOverride: program
     })
@@ -88,11 +83,10 @@ describe('buildClaudeAttachOrResumeStartup', () => {
       platform: 'win32',
       shell: 'powershell',
       agentId: SESSION_ID.slice(0, 8),
-      sessionId: SESSION_ID,
       resumeCommand: "claude --resume 'other'"
     })
     expect(startup.command).toBe(
-      `if ((claude agents --json | Out-String) -match '${SESSION_ID}') { claude attach '${SESSION_ID.slice(0, 8)}' } else { claude --resume 'other' }`
+      `claude attach '${SESSION_ID.slice(0, 8)}'; if ($LASTEXITCODE -ne 0) { claude --resume 'other' }`
     )
   })
 })

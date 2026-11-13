@@ -7,15 +7,15 @@ import type { AiVaultResumeStartup } from './ai-vault-resume-startup'
 /**
  * The startup that opens a conversation whose running state the host could not report.
  *
- * The command asks the host itself: it lists the conversations that run there and attaches to
- * one that does, so the conversation is never resumed while it runs — resuming it is what makes
- * the CLI copy it into a second, same-named session.
+ * The command asks the host itself: it attaches to the conversation the way the CLI does, and
+ * resumes it only when nobody runs it — resuming a running conversation is what makes the CLI
+ * copy it into a second, same-named session.
  */
 export function buildClaudeSessionStartupForUnknownHost(args: {
   sessionId: string
   platform: NodeJS.Platform
   shell?: AgentStartupShell
-  /** The command that resumes the conversation when the host reports it not running. */
+  /** The command that resumes the conversation when the host has no running agent for it. */
   resumeStartup: AiVaultResumeStartup
   commandOverride?: string | null
 }): AiVaultResumeStartup {
@@ -23,7 +23,6 @@ export function buildClaudeSessionStartupForUnknownHost(args: {
     platform: args.platform,
     shell: args.shell,
     agentId: claudeAttachAgentId(args.sessionId),
-    sessionId: args.sessionId,
     resumeCommand: args.resumeStartup.command,
     cwd: args.resumeStartup.cwd ?? null,
     commandOverride: args.commandOverride

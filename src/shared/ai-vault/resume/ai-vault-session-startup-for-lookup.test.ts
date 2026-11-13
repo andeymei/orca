@@ -7,13 +7,12 @@ import {
 const SESSION_ID = '84693fdb-e203-4b59-81b1-ce59940554aa'
 
 describe('buildClaudeSessionStartupForUnknownHost', () => {
-  it('asks the host and keeps the resume command as the fallback', () => {
+  it('attaches first and keeps the resume command as the fallback', () => {
     const startup = buildClaudeSessionStartupForUnknownHost({
       sessionId: SESSION_ID,
       platform: 'linux',
       resumeStartup: { command: "cd '/srv/app' && claude --resume 'other'", cwd: '/srv/app' }
     })
-    expect(startup.command).toContain('claude agents --json')
     expect(startup.command).toContain(`claude attach '${SESSION_ID.slice(0, 8)}'`)
     expect(startup.command).toContain(`else cd '/srv/app' && claude --resume 'other'; fi`)
     expect(startup.cwd).toBe('/srv/app')
@@ -26,8 +25,9 @@ describe('buildClaudeSessionStartupForUnknownHost', () => {
       shell: 'powershell',
       resumeStartup: { command: "Set-Location -LiteralPath 'D:\\app' ; claude --resume 'other'" }
     })
-    expect(startup.command).toContain('Out-String')
-    expect(startup.command).toContain(`{ claude attach '${SESSION_ID.slice(0, 8)}' }`)
+    expect(startup.command).toBe(
+      `claude attach '${SESSION_ID.slice(0, 8)}'; if ($LASTEXITCODE -ne 0) { Set-Location -LiteralPath 'D:\\app' ; claude --resume 'other' }`
+    )
   })
 })
 

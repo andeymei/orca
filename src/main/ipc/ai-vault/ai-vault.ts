@@ -30,6 +30,7 @@ import {
 } from '../../../shared/ai-vault/contracts/ai-vault-types'
 import { handleAiVaultGetFirstUserPrompt } from '../../ai-vault/session-first-user-prompt-handler'
 import { registerAiVaultResumeHandler, type AiVaultResumeHandlerOptions } from './ai-vault-resume'
+import { projectAiVaultListResult } from './ai-vault-list-projection'
 import {
   LOCAL_EXECUTION_HOST_ID,
   parseRoutableExecutionHostId,
@@ -59,10 +60,6 @@ import {
   resolveAiVaultSessionTitlesByHost,
   type RuntimeAiVaultSessionTitleResolver
 } from './ai-vault-session-title-routing'
-import {
-  OPENS_EVERY_STRUCTURED_CHAT,
-  projectStructuredAiVaultSessions
-} from '../../ai-vault/structured-session-ownership'
 import { allHostsRuntimeScanTimeoutMs } from './ai-vault-all-host-timeouts'
 import { registerAiVaultScanProgressBroadcast } from './ai-vault-scan-progress-broadcast'
 
@@ -262,7 +259,7 @@ export function registerAiVaultHandlers(options: AiVaultHandlerOptions = {}): vo
     try {
       await handlerOptions.ensureStructuredSessionOwnership?.()
       const result = await listAiVaultSessions(args, { signal: controller?.signal })
-      return projectStructuredAiVaultSessions(result, OPENS_EVERY_STRUCTURED_CHAT)
+      return projectAiVaultListResult(result)
     } catch (error) {
       // Expected cancellation is a result so Electron does not log rejected IPC as an error.
       if (!isAiVaultScanCancelledError(error)) {

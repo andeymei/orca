@@ -2,6 +2,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { pathSegments } from './session-file-discovery'
 import { resolveAbsoluteDirOverride } from '../../shared/absolute-dir-override'
+import { isSupersededClaudeTranscript } from '../../shared/ai-vault/scanning/claude-superseded-transcript'
 import type { AiVaultAgent } from '../../shared/ai-vault/contracts/ai-vault-types'
 import type { AiVaultDeletableAgent } from '../../shared/ai-vault/contracts/ai-vault-session-deletion'
 import { resolveGrokSessionsDir } from '../../shared/grok-session-paths'
@@ -95,6 +96,9 @@ export const AI_VAULT_AGENT_SOURCES: AiVaultAgentSourceTable = {
         claudeProfileProjectsDirs: options.claudeProfileProjectsDirs
       }),
     extensions: ['.jsonl'],
+    // A transcript the CLI renamed when it superseded that conversation is the same
+    // conversation, not a second one.
+    filePredicate: (filePath) => !isSupersededClaudeTranscript(filePath),
     // Subagent transcripts are read under their parent instead of duplicating History rows.
     directoryPredicate: isClaudeProjectBucketDirectory
   },

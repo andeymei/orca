@@ -14,6 +14,7 @@ import {
   type AgentStartupShell,
   withoutEnvCommand
 } from '../../agent-launch/startup/tui-agent-startup-shell'
+import { pinnableClaudeSessionId } from './claude-resume-session-id'
 import type { AiVaultAgent, AiVaultSession } from '../contracts/ai-vault-types'
 
 export function buildAiVaultResumeCommand(args: {
@@ -45,7 +46,7 @@ export function buildAiVaultResumeCommand(args: {
   const resumeCommand =
     isAntigravityReferenceSession({ agent, filePath: referencePath }) && referencePath
       ? `${baseCommand} --prompt-interactive ${quoteResumeArg(antigravityTranscriptReferencePrompt(referencePath), platform, shell)}`
-      : buildAgentResumeInvocation(agent, baseCommand, sessionArg)
+      : buildAgentResumeInvocation(agent, baseCommand, sessionArg, sessionId)
 
   return buildAiVaultResumeShellCommand({
     resumeCommand,
@@ -177,7 +178,8 @@ function defaultAiVaultResumeCommandBase(agent: AiVaultAgent): string {
 function buildAgentResumeInvocation(
   agent: AiVaultAgent,
   baseCommand: string,
-  sessionArg: string
+  sessionArg: string,
+  sessionId: string
 ): string {
   switch (agent) {
     case 'codex':
@@ -219,7 +221,7 @@ function buildAgentResumeInvocation(
       // The CLI continues a resumed conversation under a new session id when it supersedes the
       // one it was given, and names that new session "<title> (2)": the conversation then shows
       // up twice, under two names. Pinning the id keeps the conversation where it is.
-      return `${baseCommand} --resume ${sessionArg} --fork-session --session-id ${sessionArg}`
+      return pinnedClaudeResume(baseCommand, sessionArg, sessionId)
     case 'antigravity':
       return `${baseCommand} --conversation ${sessionArg}`
     case 'kiro':
@@ -254,4 +256,19 @@ function quoteResumeArg(
 /** Use quoteStartupArg for fish: sh quoting would halve path backslashes and reject a trailing one, with or without an explicit shell. */
 function quoteShellArg(value: string, platform: NodeJS.Platform): string {
   return platform === 'win32' ? quoteCmdDoubleQuoted(value) : quoteStartupArg(value, 'posix')
+}
+
+/**
+ * The resume that keeps the conversation's own id.
+ *
+ * The CLI continues a resumed conversation under a new session id when it supersedes the one it
+ * was given, and names that new session "<title> (2)": the conversation then shows up twice,
+ * under two names. Pinning the id keeps the conversation where it is.
+ */
+function pinnedClaudeResume(baseCommand: string, sessionArg: string, sessionId: string): string {
+  if (!pinnableClaudeSessionId(sessionId)) {
+    return `${baseCommand} --resume ${sessionArg}`
+  }
+  // The id is already quoted for the shell this command runs in.
+  return `${baseCommand} --resume ${sessionArg} --fork-session --session-id ${sessionArg}`
 }

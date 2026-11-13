@@ -4,6 +4,7 @@ import {
   buildAiVaultResumeCommand,
   buildAiVaultResumeShellCommand
 } from './ai-vault-resume-command'
+import { buildAiVaultLocalResumeStartup } from './ai-vault-resume-startup'
 
 describe('buildAiVaultResumeCommand', () => {
   // The CLI continues a resumed conversation under a new id when it supersedes the one it was
@@ -17,6 +18,31 @@ describe('buildAiVaultResumeCommand', () => {
     })
     expect(command).toBe(
       "claude --resume '84693fdb-e203-4b59-81b1-ce59940554aa' --fork-session --session-id '84693fdb-e203-4b59-81b1-ce59940554aa'"
+    )
+  })
+
+  it('pins the conversation id in a local Claude resume too', () => {
+    const startup = buildAiVaultLocalResumeStartup({
+      session: {
+        agent: 'claude',
+        sessionId: '84693fdb-e203-4b59-81b1-ce59940554aa',
+        cwd: '/repo/app',
+        codexHome: null,
+        filePath: '/transcripts/84693fdb-e203-4b59-81b1-ce59940554aa.jsonl',
+        resumeCommand: 'claude --resume 84693fdb-e203-4b59-81b1-ce59940554aa',
+        executionHostId: 'local'
+      },
+      host: {
+        platform: 'linux',
+        agentHostPlatform: 'linux',
+        codexHome: null,
+        liveShell: undefined
+      },
+      settings: {},
+      embedCwd: true
+    })
+    expect(startup.command).toContain(
+      "'--fork-session' '--session-id' '84693fdb-e203-4b59-81b1-ce59940554aa'"
     )
   })
 

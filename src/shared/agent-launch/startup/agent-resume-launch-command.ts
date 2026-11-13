@@ -5,6 +5,7 @@ import {
   tokenizeStartupCommand,
   type AgentStartupShell
 } from './tui-agent-startup-shell'
+import { pinnableClaudeSessionId } from '../../ai-vault/resume/claude-resume-session-id'
 
 function isClaudeResumeSelector(token: string): boolean {
   if (token === '--resume' || token.startsWith('--resume=')) {
@@ -58,7 +59,7 @@ export function buildAgentResumeLaunchCommand(
 ): string {
   const argv = resumeArgv.slice(1)
   if (agent === 'claude') {
-    return buildClaudeResumeLaunchCommand(baseCommand, argv, shell)
+    return buildClaudeResumeLaunchCommand(baseCommand, pinClaudeResumeId(argv), shell)
   }
   const resumeArgs = argv.map((arg) => quoteStartupArg(arg, shell)).join(' ')
   return resumeArgs ? `${baseCommand} ${resumeArgs}` : baseCommand
@@ -139,4 +140,34 @@ export function buildClaudeResumeLaunchCommand(
     result = `${result.slice(0, cuts[i].start)}${result.slice(cuts[i].end)}`
   }
   return terminatorStart !== null ? result : `${result} ${quotedResume}`
+}
+
+/**
+ * The resume arguments with the conversation's own id pinned.
+ *
+ * The CLI continues a resumed conversation under a new session id when it supersedes the one it
+ * was given, and names that new session "<title> (2)": the conversation then shows up twice,
+ * under two names. Pinning the id keeps the conversation where it is.
+ */
+function pinClaudeResumeId(argv: readonly string[]): readonly string[] {
+  const sessionId = claudeResumeSessionId(argv)
+  if (!sessionId) {
+    return argv
+  }
+  return [...argv, '--fork-session', '--session-id', sessionId]
+}
+
+/** The session id the recorded resume arguments name, when the CLI would accept it pinned. */
+function claudeResumeSessionId(argv: readonly string[]): string | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]
+    if (token === '--resume' || token === '-r') {
+      const value = argv[index + 1]
+      return value ? pinnableClaudeSessionId(value) : null
+    }
+    if (token.startsWith('--resume=')) {
+      return pinnableClaudeSessionId(token.slice('--resume='.length))
+    }
+  }
+  return null
 }

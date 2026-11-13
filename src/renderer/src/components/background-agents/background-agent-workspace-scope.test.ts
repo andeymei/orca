@@ -99,4 +99,9 @@ describe('createBackgroundAgentScopeMatcher', () => {
     const inScope = createBackgroundAgentScopeMatcher(['/repos/app'])
     expect(inScope(session('/repos/app-old'))).toBe(false)
   })
+
+  it('claims nothing when the workspace has no directory', () => {
+    const inScope = createBackgroundAgentScopeMatcher([])
+    expect(inScope(session('/repos/app'))).toBe(false)
+  })
 })

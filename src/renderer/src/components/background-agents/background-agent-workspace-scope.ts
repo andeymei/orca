@@ -46,13 +46,14 @@ export function resolveBackgroundAgentWorkspaceScope(
  * A session ran in this workspace when the directory it recorded is inside the workspace.
  *
  * A host that does not answer the scoped list still returns everything it knows, so the rows are
- * checked here as well.
+ * checked here as well. Without the workspace's directories nothing can be claimed as one of its
+ * sessions, and an unscoped list is never asked for.
  */
 export function createBackgroundAgentScopeMatcher(
   scopePaths: readonly string[]
 ): (session: AiVaultSession) => boolean {
   if (scopePaths.length === 0) {
-    return () => true
+    return () => false
   }
   const inScope = createAiVaultScopeCwdMatcher(scopePaths)
   return (session) => aiVaultSessionInScope(inScope, session)

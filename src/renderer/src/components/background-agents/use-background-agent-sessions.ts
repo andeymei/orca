@@ -142,6 +142,11 @@ async function readBackgroundAgentVaultSessions(
   state: AppState,
   scope: BackgroundAgentWorkspaceScope
 ): Promise<AiVaultSession[]> {
+  // Without the workspace's directories there is nothing to claim as its session, so the host is
+  // never asked for an unscoped list.
+  if (scope.scopePaths.length === 0) {
+    return []
+  }
   try {
     const activeExecutionHostId = getAiVaultResumeWorkspaceExecutionHostId(
       state,
@@ -154,7 +159,7 @@ async function readBackgroundAgentVaultSessions(
     const result = await window.api.aiVault.listSessions({
       limit: BACKGROUND_AGENT_VAULT_LIMIT,
       executionHostScope: defaultExecutionHostScope,
-      ...boundedAiVaultScopeArgs(scope.scopePaths, scope.scopePaths.length > 0)
+      ...boundedAiVaultScopeArgs(scope.scopePaths, true)
     })
     const inScope = createBackgroundAgentScopeMatcher(scope.scopePaths)
     return backgroundAgentVaultRows(

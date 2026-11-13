@@ -207,10 +207,6 @@
           "tokensAndCost_other": "{{tokens}} tokens · {{cost}}"
         }
       },
-      "backgroundAgents": {
-        "description": "Agents and chats that are not on screen. Open one to pick it back up.",
-        "title": "Background agents"
-      },
       "browser-pane": {
         "markup": {
           "errorAttach": "Could not attach the markup screenshot.",
@@ -1219,13 +1215,6 @@
           "workspaceSpaceFormat": {
             "scanningRepos_one": "Scanning {{scanned}} of {{count}} repo · {{current}}",
             "scanningRepos_other": "Scanning {{scanned}} of {{count}} repos · {{current}}"
-          }
-        }
-      },
-      "tab": {
-        "bar": {
-          "TabBarBackgroundAgentsItem": {
-            "label": "Background agents…"
           }
         }
       },

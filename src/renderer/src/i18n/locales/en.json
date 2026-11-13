@@ -5071,9 +5071,6 @@
             "filePathsCannotContainEmptySegments": "File paths cannot contain empty segments.",
             "filePathsCannotContainDotSegments": "File paths cannot contain . or .. segments.",
             "filePathsCannotContainTildeSegments": "File paths cannot contain ~ segments."
-          },
-          "TabBarBackgroundAgentsItem": {
-            "label": "Background agents…"
           }
         }
       },
@@ -20028,8 +20025,6 @@
         "stateSlept": "Sleeping",
         "stateIdle": "Waiting",
         "untitled": "Untitled chat",
-        "title": "Background agents",
-        "description": "Agents and chats that are not on screen. Open one to pick it back up.",
         "searchPlaceholder": "Search background agents",
         "searchLabel": "Search background agents",
         "loading": "Loading background agents",

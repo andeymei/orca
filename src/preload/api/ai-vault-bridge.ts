@@ -15,6 +15,7 @@ import type {
   AiVaultSubagentListArgs
 } from '../../shared/ai-vault/contracts/ai-vault-types'
 import type { AiVaultSessionTitlesArgs } from '../../shared/ai-vault/contracts/ai-vault-session-title'
+import type { ClaudeBackgroundAgent } from '../../shared/claude-background-agents'
 import type { AiVaultPrepareSessionResumeRequest } from '../../shared/ai-vault/resume/ai-vault-resume-preparation'
 import type { PreloadApi } from '../api-types'
 import {
@@ -56,6 +57,8 @@ export const aiVaultApi = {
     ipcRenderer.invoke('aiVault:prepareSessionResume', args),
   listSubagentSessions: (args: AiVaultSubagentListArgs) =>
     ipcRenderer.invoke('aiVault:listSubagentSessions', args),
+  listRunningAgents: (): Promise<ClaudeBackgroundAgent[]> =>
+    ipcRenderer.invoke('aiVault:listRunningAgents'),
   getFirstUserPrompt: (args: AiVaultFirstUserPromptArgs) =>
     ipcRenderer.invoke('aiVault:getFirstUserPrompt', args),
   deleteSession: (args: AiVaultDeleteSessionArgs): Promise<AiVaultDeleteSessionResult> =>

@@ -13,6 +13,8 @@ import { tryEnsureStructuredAgentSessionHostForResume } from '../../runtime/agen
 import { copyStructuredChatConversation } from '../../ai-vault/structured-chat-conversation-copy'
 import { wakeNativeChatTranscriptDistro } from '../../native-chat/native-chat-open-wake'
 import { wslDistroForPath } from '../../wsl/filesystem/wsl-unc-access-gate'
+import type { ClaudeBackgroundAgent } from '../../../shared/claude-background-agents'
+import { listClaudeBackgroundAgents } from '../../claude/background-agents/claude-background-agent-list'
 
 export type AiVaultResumeHandlerOptions = {
   ensureStructuredSessionOwnership?: () => Promise<void>
@@ -28,6 +30,16 @@ export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOption
     'aiVault:prepareSessionResume',
     (_event, args: AiVaultPrepareSessionResumeRequest) => prepareAiVaultSessionResume(args, options)
   )
+  // The picker needs to know which conversations already run: a running one is opened where it
+  // runs, because resuming it makes the CLI copy the conversation into a second session.
+  ipcMain.handle('aiVault:listRunningAgents', async (): Promise<ClaudeBackgroundAgent[]> => {
+    try {
+      return await listClaudeBackgroundAgents()
+    } catch (error) {
+      console.error('[ai-vault] listing running Claude agents failed:', error)
+      return []
+    }
+  })
 }
 
 export async function prepareAiVaultSessionResume(

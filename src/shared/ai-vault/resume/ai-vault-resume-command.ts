@@ -201,7 +201,6 @@ function buildAgentResumeInvocation(
       return `${baseCommand} --id ${sessionArg}`
     case 'qoder':
     case 'codebuddy':
-    case 'claude':
     case 'zcode':
     case 'cursor':
     case 'gemini':
@@ -216,6 +215,11 @@ function buildAgentResumeInvocation(
     case 'omp':
     case 'prime-agent':
       return `${baseCommand} --resume ${sessionArg}`
+    case 'claude':
+      // The CLI continues a resumed conversation under a new session id when it supersedes the
+      // one it was given, and names that new session "<title> (2)": the conversation then shows
+      // up twice, under two names. Pinning the id keeps the conversation where it is.
+      return `${baseCommand} --resume ${sessionArg} --fork-session --session-id ${sessionArg}`
     case 'antigravity':
       return `${baseCommand} --conversation ${sessionArg}`
     case 'kiro':

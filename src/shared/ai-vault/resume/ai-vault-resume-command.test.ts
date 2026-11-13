@@ -1,6 +1,35 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildAiVaultResumeShellCommand } from './ai-vault-resume-command'
+import {
+  buildAiVaultResumeCommand,
+  buildAiVaultResumeShellCommand
+} from './ai-vault-resume-command'
+
+describe('buildAiVaultResumeCommand', () => {
+  // The CLI continues a resumed conversation under a new id when it supersedes the one it was
+  // given, and names that session "<title> (2)": the conversation then shows up twice.
+  it('pins the conversation id when resuming a Claude conversation', () => {
+    const command = buildAiVaultResumeCommand({
+      agent: 'claude',
+      sessionId: '84693fdb-e203-4b59-81b1-ce59940554aa',
+      cwd: null,
+      platform: 'linux'
+    })
+    expect(command).toBe(
+      "claude --resume '84693fdb-e203-4b59-81b1-ce59940554aa' --fork-session --session-id '84693fdb-e203-4b59-81b1-ce59940554aa'"
+    )
+  })
+
+  it('leaves the other agents their own resume form', () => {
+    const command = buildAiVaultResumeCommand({
+      agent: 'codex',
+      sessionId: 'session-1',
+      cwd: null,
+      platform: 'linux'
+    })
+    expect(command).toBe("codex resume 'session-1'")
+  })
+})
 
 describe('buildAiVaultResumeShellCommand env removal', () => {
   const base = {

@@ -58,6 +58,9 @@ export function buildAiVaultRemoteResumeStartup(
     !session.resumeCommand ||
     isAntigravityReferenceSession(session) ||
     session.agent === 'omp' ||
+    // Claude Code keeps the conversation's own id when the resume pins it; the host's line does
+    // not pin it, and the CLI then continues the conversation under a second name.
+    session.agent === 'claude' ||
     (session.agent === 'codex' && session.codexHome === null) ||
     commandOverride?.trim()
   ) {

@@ -9,7 +9,7 @@ import { getIndexedAllWorktrees } from '@/store/slices/worktrees/listing/worktre
 import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-record-fields'
 import { selectKnownWorktreeById } from '@/store/workspaces/selection/known-worktree-selection'
 
-/** The workspace the picker answers for, and the directories its sessions live in. */
+/** The workspace the panel answers for, and the directories its sessions live in. */
 export type BackgroundAgentWorkspaceScope = {
   workspaceId: string | null
   scopePaths: readonly string[]

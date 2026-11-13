@@ -99,7 +99,8 @@ export async function openBackgroundAgentSession(session: AiVaultSession): Promi
         platform: host.platform,
         shell: host.liveShell,
         agentId: running.id,
-        cwd: session.cwd ?? null
+        cwd: session.cwd ?? null,
+        commandOverride: useAppStore.getState().settings?.agentCmdOverrides?.claude
       })
       await launchAiVaultSessionAndReveal(
         { agent: session.agent, worktreeId: target.worktreeId, ...startup },

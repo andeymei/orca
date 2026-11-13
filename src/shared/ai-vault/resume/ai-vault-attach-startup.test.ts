@@ -21,4 +21,24 @@ describe('buildClaudeAttachStartup', () => {
       command: "claude attach '82d5c3ec'"
     })
   })
+
+  it('attaches with the binary a configured command names', () => {
+    expect(
+      buildClaudeAttachStartup({
+        platform: 'darwin',
+        agentId: '82d5c3ec',
+        commandOverride: '/opt/claude-nightly --model opus'
+      })
+    ).toEqual({ command: "/opt/claude-nightly attach '82d5c3ec'" })
+  })
+
+  it('falls back to the catalog command when the configured one cannot be read', () => {
+    expect(
+      buildClaudeAttachStartup({
+        platform: 'darwin',
+        agentId: '82d5c3ec',
+        commandOverride: '"unclosed'
+      })
+    ).toEqual({ command: "claude attach '82d5c3ec'" })
+  })
 })

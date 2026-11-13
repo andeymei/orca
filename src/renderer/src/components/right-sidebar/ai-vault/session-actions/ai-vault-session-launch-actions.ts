@@ -156,7 +156,8 @@ export function useAiVaultSessionLaunchActions({
               platform: host.platform,
               shell: host.liveShell,
               agentId: running.id,
-              cwd: session.cwd ?? null
+              cwd: session.cwd ?? null,
+              commandOverride: agentCmdOverrides?.[session.agent]
             })
           }
           return prepareAiVaultSessionForTerminalResume(session)
@@ -166,7 +167,7 @@ export function useAiVaultSessionLaunchActions({
         (message) => describeAiVaultResumeFailure(new Error(message), session.agent)
       )
     },
-    [buildResumeStartup, launchInTerminal]
+    [agentCmdOverrides, buildResumeStartup, launchInTerminal]
   )
 
   // Native chat keeps the conversation it owns; the terminal gets a copy (see the fork builder).

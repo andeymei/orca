@@ -42,3 +42,12 @@ it('reports nothing for a host that runs no conversations Orca can open', async 
   expect(listLocalAgents).not.toHaveBeenCalled()
   expect(listRuntimeAgents).not.toHaveBeenCalled()
 })
+
+it('passes on a host that cannot report its conversations', async () => {
+  const listLocalAgents = vi.fn(async () => [])
+  const listRuntimeAgents = vi.fn(async () => null)
+  await expect(
+    listRunningAgentsForHost('runtime:env-1', { listLocalAgents, listRuntimeAgents })
+  ).resolves.toBeNull()
+  expect(listRuntimeAgents).toHaveBeenCalledWith('env-1')
+})

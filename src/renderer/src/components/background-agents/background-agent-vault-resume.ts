@@ -18,6 +18,7 @@ import {
 } from '@/components/right-sidebar/ai-vault/session-actions/ai-vault-session-launch-feedback'
 import { resolveAiVaultSessionLaunchTarget } from '@/components/right-sidebar/ai-vault/session-actions/ai-vault-session-launch-target'
 import { buildClaudeAttachStartup } from '../../../../shared/ai-vault/resume/ai-vault-attach-startup'
+import { buildClaudeSessionStartupForUnknownHost } from '../../../../shared/ai-vault/resume/ai-vault-session-startup-for-lookup'
 import { aiVaultSessionWorkspace } from './background-agent-vault-rows'
 import { findRunningAgentForSession } from '@/lib/agent-session/resume/history/claude-running-agent'
 
@@ -88,17 +89,17 @@ export async function openBackgroundAgentSession(session: AiVaultSession): Promi
   const describeFailure = (message: string): string =>
     describeAiVaultResumeFailure(new Error(message), session.agent)
   try {
-    const running = await findRunningAgentForSession(session)
-    if (running) {
-      const host = resolveAiVaultResumeHost({
-        state: useAppStore.getState(),
-        worktreeId: target.worktreeId,
-        session
-      })
+    const lookup = await findRunningAgentForSession(session)
+    const host = resolveAiVaultResumeHost({
+      state: useAppStore.getState(),
+      worktreeId: target.worktreeId,
+      session
+    })
+    if (lookup.status === 'running') {
       const startup = buildClaudeAttachStartup({
         platform: host.platform,
         shell: host.liveShell,
-        agentId: running.id,
+        agentId: lookup.agent.id,
         cwd: session.cwd ?? null,
         commandOverride: useAppStore.getState().settings?.agentCmdOverrides?.claude
       })
@@ -109,11 +110,23 @@ export async function openBackgroundAgentSession(session: AiVaultSession): Promi
       return
     }
     const prepared = await prepareAiVaultSessionForTerminalResume(session)
-    const startup = buildAiVaultResumeStartupForWorktree({
+    const resumeStartup = buildAiVaultResumeStartupForWorktree({
       state: useAppStore.getState(),
       worktreeId: target.worktreeId,
       session: prepared
     })
+    // The host could not report its conversations, so the host decides: the command asks the
+    // host's own CLI and attaches to a conversation that runs there.
+    const startup =
+      lookup.status === 'unknown'
+        ? buildClaudeSessionStartupForUnknownHost({
+            sessionId: session.sessionId,
+            platform: host.platform,
+            shell: host.liveShell,
+            resumeStartup,
+            commandOverride: useAppStore.getState().settings?.agentCmdOverrides?.claude
+          })
+        : resumeStartup
     await launchAiVaultSessionAndReveal(
       { agent: session.agent, worktreeId: target.worktreeId, ...startup },
       describeFailure

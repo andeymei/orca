@@ -107,9 +107,9 @@ export function createWebAiVaultApi(): NonNullable<Partial<PreloadApi>['aiVault'
       callRuntimeResult<AiVaultPrepareSessionResumeResult>('aiVault.prepareSessionResume', args),
     // Why: no server-side RPC for subagent transcript listing yet, so report an empty (not erroring) result.
     listSubagentSessions: () => Promise.resolve({ sessions: [], issues: [] }),
-    // Why: no server-side RPC for the paired runtime's running agents yet, so the browser reports
-    // none and resumes the conversation instead of opening a running one.
-    listRunningAgents: () => Promise.resolve([]),
+    // Why: no server-side RPC for the paired runtime's running agents yet, so the browser cannot
+    // report them and the host decides for itself when the conversation is opened.
+    listRunningAgents: () => Promise.resolve(null),
     // Why: full first-prompt re-parse is local-FS only; web/runtime falls back to preview text.
     getFirstUserPrompt: () => Promise.resolve({ prompt: null }),
     // A browser can delete only on its own paired runtime, which validates the path itself.

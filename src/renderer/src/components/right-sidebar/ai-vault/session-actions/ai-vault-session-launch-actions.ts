@@ -11,6 +11,7 @@ import {
 } from '@/lib/agent-session/resume/history/ai-vault-resume-command'
 import { findRunningAgentForSession } from '@/lib/agent-session/resume/history/claude-running-agent'
 import { buildClaudeAttachStartup } from '../../../../../../shared/ai-vault/resume/ai-vault-attach-startup'
+import { buildClaudeSessionStartupForUnknownHost } from '../../../../../../shared/ai-vault/resume/ai-vault-session-startup-for-lookup'
 import {
   assertAiVaultCopiedSessionLaunchAllowed,
   buildAiVaultCopiedSessionStartupForWorktree,
@@ -145,24 +146,36 @@ export function useAiVaultSessionLaunchActions({
         async (worktreeId) => {
           // A conversation that already runs is opened where it runs: resuming it makes the CLI
           // copy the conversation into a second, same-named session.
-          const running = await findRunningAgentForSession(session)
-          if (running) {
-            const host = resolveAiVaultResumeHost({
-              state: useAppStore.getState(),
-              worktreeId,
-              session
-            })
+          const lookup = await findRunningAgentForSession(session)
+          const host = resolveAiVaultResumeHost({
+            state: useAppStore.getState(),
+            worktreeId,
+            session
+          })
+          if (lookup.status === 'running') {
             return buildClaudeAttachStartup({
               platform: host.platform,
               shell: host.liveShell,
-              agentId: running.id,
+              agentId: lookup.agent.id,
               cwd: session.cwd ?? null,
               commandOverride: agentCmdOverrides?.[session.agent]
             })
           }
-          return prepareAiVaultSessionForTerminalResume(session)
+          const resumeStartup = await prepareAiVaultSessionForTerminalResume(session)
             .then(dropDeletedRemoteResumeCwd)
             .then((preparedSession) => buildResumeStartup(preparedSession, worktreeId))
+          if (lookup.status !== 'unknown') {
+            return resumeStartup
+          }
+          // The host could not report its conversations, so the host decides: the command asks
+          // the host's own CLI and attaches to a conversation that runs there.
+          return buildClaudeSessionStartupForUnknownHost({
+            sessionId: session.sessionId,
+            platform: host.platform,
+            shell: host.liveShell,
+            resumeStartup,
+            commandOverride: agentCmdOverrides?.[session.agent]
+          })
         },
         (message) => describeAiVaultResumeFailure(new Error(message), session.agent)
       )

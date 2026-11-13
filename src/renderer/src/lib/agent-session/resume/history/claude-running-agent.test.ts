@@ -79,13 +79,13 @@ describe('findRunningAgentForSession', () => {
   it('asks the host that owns the conversation', async () => {
     const listRunningAgents = vi.fn(async () => [agent])
     vi.stubGlobal('window', { api: { aiVault: { listRunningAgents } } })
-    const running = await findRunningAgentForSession(
+    const lookup = await findRunningAgentForSession(
       session({
         sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0',
         executionHostId: 'runtime:env-1'
       })
     )
-    expect(running?.id).toBe('8857ad86')
+    expect(lookup).toEqual({ status: 'running', agent })
     expect(listRunningAgents).toHaveBeenCalledWith({ executionHostId: 'runtime:env-1' })
   })
 
@@ -96,5 +96,26 @@ describe('findRunningAgentForSession', () => {
       session({ sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0', executionHostId: 'local' })
     )
     expect(listRunningAgents).toHaveBeenCalledWith({ executionHostId: 'local' })
+  })
+
+  it('reports a host that runs nothing as idle', async () => {
+    const listRunningAgents = vi.fn(async () => [])
+    vi.stubGlobal('window', { api: { aiVault: { listRunningAgents } } })
+    const lookup = await findRunningAgentForSession(
+      session({ sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0', executionHostId: 'local' })
+    )
+    expect(lookup).toEqual({ status: 'idle' })
+  })
+
+  it('leaves the decision to a host that cannot report', async () => {
+    const listRunningAgents = vi.fn(async () => null)
+    vi.stubGlobal('window', { api: { aiVault: { listRunningAgents } } })
+    const lookup = await findRunningAgentForSession(
+      session({
+        sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0',
+        executionHostId: 'runtime:env-1'
+      })
+    )
+    expect(lookup).toEqual({ status: 'unknown' })
   })
 })

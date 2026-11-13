@@ -60,7 +60,9 @@ export const aiVaultApi = {
     ipcRenderer.invoke('aiVault:prepareSessionResume', args),
   listSubagentSessions: (args: AiVaultSubagentListArgs) =>
     ipcRenderer.invoke('aiVault:listSubagentSessions', args),
-  listRunningAgents: (args?: ClaudeBackgroundAgentRequest): Promise<ClaudeBackgroundAgent[]> =>
+  listRunningAgents: (
+    args?: ClaudeBackgroundAgentRequest
+  ): Promise<ClaudeBackgroundAgent[] | null> =>
     ipcRenderer.invoke('aiVault:listRunningAgents', args),
   getFirstUserPrompt: (args: AiVaultFirstUserPromptArgs) =>
     ipcRenderer.invoke('aiVault:getFirstUserPrompt', args),

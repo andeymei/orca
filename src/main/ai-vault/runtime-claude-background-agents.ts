@@ -18,7 +18,7 @@ export async function listRuntimeClaudeBackgroundAgents(
   userDataPath: string,
   environmentId: string,
   timeoutMs = RUNTIME_CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS
-): Promise<ClaudeBackgroundAgent[]> {
+): Promise<ClaudeBackgroundAgent[] | null> {
   const response = await callRuntimeEnvironment(
     userDataPath,
     environmentId,
@@ -27,7 +27,9 @@ export async function listRuntimeClaudeBackgroundAgents(
     timeoutMs
   )
   if (response.ok !== true) {
-    return []
+    // The host could not answer — an Orca older than the method. The caller then asks the host
+    // itself, rather than mistaking the silence for a host that runs nothing.
+    return null
   }
   return parseClaudeBackgroundAgentsValue(response.result)
 }

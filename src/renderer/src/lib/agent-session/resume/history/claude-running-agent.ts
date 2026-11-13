@@ -1,5 +1,8 @@
 import type { AiVaultSession } from '../../../../../../shared/ai-vault/contracts/ai-vault-types'
-import type { ClaudeBackgroundAgent } from '../../../../../../shared/claude-background-agents'
+import type {
+  ClaudeBackgroundAgent,
+  ClaudeRunningAgentLookup
+} from '../../../../../../shared/claude-background-agents'
 
 /**
  * The agent already running this conversation, as the host that runs it reports it.
@@ -19,25 +22,29 @@ export function runningAgentForSession(
 }
 
 /**
- * The agent that runs this conversation, if the CLI reports one.
+ * What the host that owns the conversation says about it.
  *
  * The listing comes from the host that owns the conversation: this machine's agents cannot speak
- * for a conversation that runs on another host. An unreadable listing means "nothing runs": the
- * conversation is then resumed, which is what happened before this check existed.
+ * for a conversation that runs on another host. A host that cannot report leaves the answer
+ * unknown, and the host decides for itself when the conversation is opened.
  */
 export async function findRunningAgentForSession(
   session: AiVaultSession
-): Promise<ClaudeBackgroundAgent | null> {
+): Promise<ClaudeRunningAgentLookup> {
   // Only Claude Code lists background agents; the matcher owns the rule, this skips the call.
   if (session.agent !== 'claude') {
-    return null
+    return { status: 'idle' }
   }
   try {
     const agents = await window.api.aiVault.listRunningAgents(
       session.executionHostId ? { executionHostId: session.executionHostId } : undefined
     )
-    return runningAgentForSession(agents, session)
+    if (!agents) {
+      return { status: 'unknown' }
+    }
+    const agent = runningAgentForSession(agents, session)
+    return agent ? { status: 'running', agent } : { status: 'idle' }
   } catch {
-    return null
+    return { status: 'unknown' }
   }
 }

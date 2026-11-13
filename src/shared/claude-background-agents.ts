@@ -60,3 +60,14 @@ export function parseClaudeBackgroundAgentsValue(parsed: unknown): ClaudeBackgro
 export type ClaudeBackgroundAgentRequest = {
   executionHostId?: string
 }
+
+/**
+ * What the host that owns a conversation says about it.
+ *
+ * `unknown` is the host's own answer: it could not report its conversations — an Orca older
+ * than the method that answers the listing. The host then decides for itself.
+ */
+export type ClaudeRunningAgentLookup =
+  | { status: 'running'; agent: ClaudeBackgroundAgent }
+  | { status: 'idle' }
+  | { status: 'unknown' }

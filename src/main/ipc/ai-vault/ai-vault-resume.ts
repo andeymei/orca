@@ -13,8 +13,10 @@ import { tryEnsureStructuredAgentSessionHostForResume } from '../../runtime/agen
 import { copyStructuredChatConversation } from '../../ai-vault/structured-chat-conversation-copy'
 import { wakeNativeChatTranscriptDistro } from '../../native-chat/native-chat-open-wake'
 import { wslDistroForPath } from '../../wsl/filesystem/wsl-unc-access-gate'
-import type { ClaudeBackgroundAgent } from '../../../shared/claude-background-agents'
-import type { ClaudeBackgroundAgentRequest } from '../../../shared/claude-background-agents'
+import type {
+  ClaudeBackgroundAgent,
+  ClaudeBackgroundAgentRequest
+} from '../../../shared/claude-background-agents'
 import { listClaudeBackgroundAgents } from '../../claude/background-agents/claude-background-agent-list'
 import { listRuntimeClaudeBackgroundAgents } from '../../ai-vault/runtime-claude-background-agents'
 import { listRunningAgentsForHost } from './ai-vault-running-agents'
@@ -28,7 +30,7 @@ export type AiVaultResumeHandlerOptions = {
     args: AiVaultPrepareSessionResumeRequest
   ) => Promise<AiVaultPrepareSessionResumeResult>
   /** The agents a paired runtime host runs; a host's own listing cannot answer for another host. */
-  listRuntimeRunningAgents?: (environmentId: string) => Promise<ClaudeBackgroundAgent[]>
+  listRuntimeRunningAgents?: (environmentId: string) => Promise<ClaudeBackgroundAgent[] | null>
 }
 
 export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOptions): void {
@@ -40,7 +42,10 @@ export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOption
   // runs, because resuming it makes the CLI copy the conversation into a second session.
   ipcMain.handle(
     'aiVault:listRunningAgents',
-    async (_event, args?: ClaudeBackgroundAgentRequest): Promise<ClaudeBackgroundAgent[]> => {
+    async (
+      _event,
+      args?: ClaudeBackgroundAgentRequest
+    ): Promise<ClaudeBackgroundAgent[] | null> => {
       try {
         return await listRunningAgentsForHost(args?.executionHostId, {
           listLocalAgents: () => listClaudeBackgroundAgents(),
@@ -48,7 +53,8 @@ export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOption
         })
       } catch (error) {
         console.error('[ai-vault] listing running Claude agents failed:', error)
-        return []
+        // The host could not report; the caller asks it itself instead of resuming blindly.
+        return null
       }
     }
   )
@@ -57,7 +63,7 @@ export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOption
 /** The agents a paired runtime host runs; the host answers with its own CLI. */
 async function listRuntimeRunningAgentsOfHost(
   environmentId: string
-): Promise<ClaudeBackgroundAgent[]> {
+): Promise<ClaudeBackgroundAgent[] | null> {
   return listRuntimeClaudeBackgroundAgents(getRuntimeEnvironmentRegistryRoot(), environmentId)
 }
 

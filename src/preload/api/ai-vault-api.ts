@@ -55,8 +55,11 @@ export type AiVaultApi = {
     args: AiVaultPrepareSessionResumeRequest
   ) => Promise<AiVaultPrepareSessionResumeResult>
   listSubagentSessions: (args: AiVaultSubagentListArgs) => Promise<AiVaultSubagentListResult>
-  /** The Claude Code agents running on the host that owns the session; a running one is opened, not copied. */
-  listRunningAgents: (args?: ClaudeBackgroundAgentRequest) => Promise<ClaudeBackgroundAgent[]>
+  /** The Claude Code agents running on the host that owns the session; a running one is opened, not copied.
+   *  Null when that host cannot report them: the caller then asks the host itself. */
+  listRunningAgents: (
+    args?: ClaudeBackgroundAgentRequest
+  ) => Promise<ClaudeBackgroundAgent[] | null>
   getFirstUserPrompt: (args: AiVaultFirstUserPromptArgs) => Promise<AiVaultFirstUserPromptResult>
   /** Moves a deletable session's transcript to the OS trash; local sessions only. */
   deleteSession: (args: AiVaultDeleteSessionArgs) => Promise<AiVaultDeleteSessionResult>

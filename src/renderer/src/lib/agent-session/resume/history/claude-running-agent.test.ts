@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { runningAgentForSession } from './background-agent-running-session'
-import type { AiVaultSession } from '../../../../shared/ai-vault/contracts/ai-vault-types'
-import type { ClaudeBackgroundAgent } from '../../../../shared/claude-background-agents'
+import { runningAgentForSession } from './claude-running-agent'
+import type { AiVaultSession } from '../../../../../../shared/ai-vault/contracts/ai-vault-types'
+import type { ClaudeBackgroundAgent } from '../../../../../../shared/claude-background-agents'
 
 const agent: ClaudeBackgroundAgent = {
   id: '8857ad86',

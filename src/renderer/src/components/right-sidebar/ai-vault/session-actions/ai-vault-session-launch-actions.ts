@@ -6,8 +6,11 @@ import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import {
   buildAiVaultResumeCopyCommandForWorktree,
-  buildAiVaultResumeStartupForWorktree
+  buildAiVaultResumeStartupForWorktree,
+  resolveAiVaultResumeHost
 } from '@/lib/agent-session/resume/history/ai-vault-resume-command'
+import { findRunningAgentForSession } from '@/lib/agent-session/resume/history/claude-running-agent'
+import { buildClaudeAttachStartup } from '../../../../../../shared/ai-vault/resume/ai-vault-attach-startup'
 import {
   assertAiVaultCopiedSessionLaunchAllowed,
   buildAiVaultCopiedSessionStartupForWorktree,
@@ -139,10 +142,27 @@ export function useAiVaultSessionLaunchActions({
       launchInTerminal(
         session,
         targetWorktreeId,
-        (worktreeId) =>
-          prepareAiVaultSessionForTerminalResume(session)
+        async (worktreeId) => {
+          // A conversation that already runs is opened where it runs: resuming it makes the CLI
+          // copy the conversation into a second, same-named session.
+          const running = await findRunningAgentForSession(session)
+          if (running) {
+            const host = resolveAiVaultResumeHost({
+              state: useAppStore.getState(),
+              worktreeId,
+              session
+            })
+            return buildClaudeAttachStartup({
+              platform: host.platform,
+              shell: host.liveShell,
+              agentId: running.id,
+              cwd: session.cwd ?? null
+            })
+          }
+          return prepareAiVaultSessionForTerminalResume(session)
             .then(dropDeletedRemoteResumeCwd)
-            .then((preparedSession) => buildResumeStartup(preparedSession, worktreeId)),
+            .then((preparedSession) => buildResumeStartup(preparedSession, worktreeId))
+        },
         (message) => describeAiVaultResumeFailure(new Error(message), session.agent)
       )
     },

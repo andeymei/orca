@@ -21,6 +21,9 @@ export const executionHostIdSchema = z.string().transform((value, ctx): `runtime
   return z.NEVER
 })
 
+/** Which host answers with the agents it runs; the host needs no arguments of its own. */
+export const AiVaultListRunningAgentsParams = z.object({}).strict()
+
 export const AiVaultListSessionsParams = z
   .object({
     limit: z

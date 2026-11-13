@@ -86,6 +86,7 @@ import { CreateAgentSessionParams, EnsureAgentSessionParams } from './agent-sess
 import { ReadVisualParams } from './agent-session-visual-params'
 import {
   AiVaultDeleteSessionParams,
+  AiVaultListRunningAgentsParams,
   AiVaultListSessionsParams,
   AiVaultPrepareSessionResumeParams,
   AiVaultSessionTitlesParams
@@ -883,6 +884,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'agentTeams.prepareLaunch': AgentTeamsPrepareLaunch,
   'agentTeams.tmuxCompat': AgentTeamsTmuxCompat,
   'aiVault.deleteSession': AiVaultDeleteSessionParams,
+  'aiVault.listRunningAgents': AiVaultListRunningAgentsParams,
   'aiVault.listSessions': AiVaultListSessionsParams,
   'aiVault.prepareSessionResume': AiVaultPrepareSessionResumeParams,
   'aiVault.resolveSessionTitles': AiVaultSessionTitlesParams,

@@ -24,7 +24,10 @@ import type {
   AiVaultPrepareSessionResumeResult
 } from '../../shared/ai-vault/resume/ai-vault-resume-preparation'
 import type { ExecutionHostId, ExecutionHostScope } from '../../shared/execution-host'
-import type { ClaudeBackgroundAgent } from '../../shared/claude-background-agents'
+import type {
+  ClaudeBackgroundAgent,
+  ClaudeBackgroundAgentRequest
+} from '../../shared/claude-background-agents'
 import type {
   AiVaultScanProgress,
   AiVaultScanProgressUpdate
@@ -52,8 +55,8 @@ export type AiVaultApi = {
     args: AiVaultPrepareSessionResumeRequest
   ) => Promise<AiVaultPrepareSessionResumeResult>
   listSubagentSessions: (args: AiVaultSubagentListArgs) => Promise<AiVaultSubagentListResult>
-  /** The Claude Code agents running on this machine; a running session is opened, not copied. */
-  listRunningAgents: () => Promise<ClaudeBackgroundAgent[]>
+  /** The Claude Code agents running on the host that owns the session; a running one is opened, not copied. */
+  listRunningAgents: (args?: ClaudeBackgroundAgentRequest) => Promise<ClaudeBackgroundAgent[]>
   getFirstUserPrompt: (args: AiVaultFirstUserPromptArgs) => Promise<AiVaultFirstUserPromptResult>
   /** Moves a deletable session's transcript to the OS trash; local sessions only. */
   deleteSession: (args: AiVaultDeleteSessionArgs) => Promise<AiVaultDeleteSessionResult>

@@ -32,10 +32,12 @@ import {
 } from '../structured-sessions/structured-agent-session-policy'
 import {
   AiVaultDeleteSessionParams,
+  AiVaultListRunningAgentsParams,
   AiVaultListSessionsParams,
   AiVaultPrepareSessionResumeParams,
   AiVaultSessionTitlesParams
 } from '../../../../../shared/rpc-contract/ai-vault-params'
+import { listClaudeBackgroundAgents } from '../../../../claude/background-agents/claude-background-agent-list'
 
 export const AI_VAULT_METHODS = [
   defineMethod({
@@ -83,6 +85,14 @@ export const AI_VAULT_METHODS = [
       )
       return sessionSearchServiceStatus({}, sessionSearchTransportForClient(clientKind))
     }
+  }),
+  defineMethod({
+    name: 'aiVault.listRunningAgents',
+    permission: 'workspace',
+    params: AiVaultListRunningAgentsParams,
+    // The host answers with the agents its own Claude Code runs: another host's listing cannot
+    // speak for a conversation that runs here.
+    handler: async () => listClaudeBackgroundAgents()
   }),
   defineMethod({
     name: 'aiVault.resolveSessionTitles',

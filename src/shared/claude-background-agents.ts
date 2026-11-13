@@ -28,6 +28,11 @@ export function parseClaudeBackgroundAgents(stdout: string): ClaudeBackgroundAge
   } catch {
     return []
   }
+  return parseClaudeBackgroundAgentsValue(parsed)
+}
+
+/** The same listing, already parsed: a host answers with the value instead of the printed text. */
+export function parseClaudeBackgroundAgentsValue(parsed: unknown): ClaudeBackgroundAgent[] {
   if (!Array.isArray(parsed)) {
     return []
   }
@@ -49,4 +54,9 @@ export function parseClaudeBackgroundAgents(stdout: string): ClaudeBackgroundAge
     })
   }
   return agents
+}
+
+/** Which host the listing is wanted from; a conversation runs on the host that recorded it. */
+export type ClaudeBackgroundAgentRequest = {
+  executionHostId?: string
 }

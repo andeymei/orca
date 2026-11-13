@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { runningAgentForSession } from './claude-running-agent'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { findRunningAgentForSession, runningAgentForSession } from './claude-running-agent'
 import type { AiVaultSession } from '../../../../../../shared/ai-vault/contracts/ai-vault-types'
 import type { ClaudeBackgroundAgent } from '../../../../../../shared/claude-background-agents'
 
@@ -57,15 +57,44 @@ describe('runningAgentForSession', () => {
     ).toBeNull()
   })
 
-  it('leaves a conversation that runs on another host alone', () => {
+  it('finds a conversation that runs on another host', () => {
+    // The listing comes from the host that owns the conversation, so its agents answer for it.
     expect(
       runningAgentForSession(
         [agent],
         session({
           sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0',
-          executionHostId: 'ssh:yolocalc'
+          executionHostId: 'runtime:env-1'
         })
-      )
-    ).toBeNull()
+      )?.id
+    ).toBe('8857ad86')
+  })
+})
+
+describe('findRunningAgentForSession', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('asks the host that owns the conversation', async () => {
+    const listRunningAgents = vi.fn(async () => [agent])
+    vi.stubGlobal('window', { api: { aiVault: { listRunningAgents } } })
+    const running = await findRunningAgentForSession(
+      session({
+        sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0',
+        executionHostId: 'runtime:env-1'
+      })
+    )
+    expect(running?.id).toBe('8857ad86')
+    expect(listRunningAgents).toHaveBeenCalledWith({ executionHostId: 'runtime:env-1' })
+  })
+
+  it('asks this machine for a conversation that runs here', async () => {
+    const listRunningAgents = vi.fn(async () => [agent])
+    vi.stubGlobal('window', { api: { aiVault: { listRunningAgents } } })
+    await findRunningAgentForSession(
+      session({ sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0', executionHostId: 'local' })
+    )
+    expect(listRunningAgents).toHaveBeenCalledWith({ executionHostId: 'local' })
   })
 })

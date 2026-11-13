@@ -3,7 +3,10 @@ import { callStructuredAgentSession } from '@/runtime/native-chat/requests/struc
 import { RuntimeRpcCallError } from '@/runtime/rpc/calls/runtime-rpc-result'
 import type { AgentSessionBackgroundSession } from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
 import type { AgentSessionBackgroundTerminal } from '../../../../shared/agent-session/lifecycle/agent-session-background-terminal'
-import type { AiVaultSession } from '../../../../shared/ai-vault/contracts/ai-vault-types'
+import {
+  boundedAiVaultScopeArgs,
+  type AiVaultSession
+} from '../../../../shared/ai-vault/contracts/ai-vault-types'
 import { useAppStore } from '@/store/index'
 import type { AppState } from '@/store/types'
 import {
@@ -21,6 +24,11 @@ import {
   canOpenAiVaultSessionInOrca,
   isAiVaultSessionOpenInOrca
 } from './background-agent-vault-resume'
+import {
+  createBackgroundAgentScopeMatcher,
+  resolveBackgroundAgentWorkspaceScope,
+  type BackgroundAgentWorkspaceScope
+} from './background-agent-workspace-scope'
 import type { BackgroundAgentRow } from './background-agent-session-list'
 
 export type BackgroundAgentSessionsState =
@@ -46,18 +54,23 @@ export async function readBackgroundAgentSessions(): Promise<BackgroundAgentSess
     }
   }
   const state = useAppStore.getState()
-  const vaultSessions = await readBackgroundAgentVaultSessions(state)
+  const scope = resolveBackgroundAgentWorkspaceScope(state)
+  const vaultSessions = await readBackgroundAgentVaultSessions(state, scope)
   const rows: BackgroundAgentRow[] = [
-    ...chats.map((chat): BackgroundAgentRow => ({
-      kind: 'chat',
-      chat,
-      workspace: { id: chat.workspaceId, label: chat.workspaceId }
-    })),
-    ...readBackgroundAgentTerminals(state).map((terminal): BackgroundAgentRow => ({
-      kind: 'terminal',
-      terminal,
-      workspace: { id: terminal.workspaceId, label: terminal.workspaceId }
-    })),
+    ...chats
+      .filter((chat) => chat.workspaceId === scope.workspaceId)
+      .map((chat): BackgroundAgentRow => ({
+        kind: 'chat',
+        chat,
+        workspace: { id: chat.workspaceId, label: chat.workspaceId }
+      })),
+    ...readBackgroundAgentTerminals(state, scope.workspaceId).map(
+      (terminal): BackgroundAgentRow => ({
+        kind: 'terminal',
+        terminal,
+        workspace: { id: terminal.workspaceId, label: terminal.workspaceId }
+      })
+    ),
     ...vaultSessions.map((vault): BackgroundAgentRow => ({
       kind: 'vault',
       vault,
@@ -79,10 +92,16 @@ function visibleTabId(state: AppState): string | null {
   return group?.activeTabId ?? null
 }
 
-/** The terminal tabs of every workspace, each with the live title its agent is named by. */
-function backgroundAgentTerminalTabs(state: AppState): BackgroundAgentTerminalTab[] {
+/** The terminal tabs of one workspace, each with the live title its agent is named by. */
+function backgroundAgentTerminalTabs(
+  state: AppState,
+  workspaceId: string | null
+): BackgroundAgentTerminalTab[] {
   const tabs: BackgroundAgentTerminalTab[] = []
   for (const [worktreeId, unifiedTabs] of Object.entries(state.unifiedTabsByWorktree)) {
+    if (worktreeId !== workspaceId) {
+      continue
+    }
     const terminalTabs = state.tabsByWorktree[worktreeId] ?? []
     for (const tab of unifiedTabs) {
       if (tab.contentType !== 'terminal') {
@@ -101,17 +120,28 @@ function backgroundAgentTerminalTabs(state: AppState): BackgroundAgentTerminalTa
 }
 
 /** The terminals running an agent; a workspace without one offers none. */
-function readBackgroundAgentTerminals(state: AppState): AgentSessionBackgroundTerminal[] {
-  return backgroundAgentTerminalRows(backgroundAgentTerminalTabs(state), visibleTabId(state))
+function readBackgroundAgentTerminals(
+  state: AppState,
+  workspaceId: string | null
+): AgentSessionBackgroundTerminal[] {
+  return backgroundAgentTerminalRows(
+    backgroundAgentTerminalTabs(state, workspaceId),
+    visibleTabId(state)
+  )
 }
 
 /**
- * The agent sessions this machine has; the AI Vault indexes the ones that ran outside Orca.
+ * The agent sessions this workspace has; the AI Vault indexes the ones that ran outside Orca.
  *
- * A remote workspace must see its own host's history, not this machine's: the picker follows the
- * workspace the user is in, so a remote project's list is the remote host's.
+ * A remote workspace must see its own host's history, not this machine's: the panel follows the
+ * workspace the user is in, so a remote project's list is the remote host's. The host is asked for
+ * the workspace's own directories, and the rows are checked against them, so a session that ran
+ * somewhere else on that host stays out of the list.
  */
-async function readBackgroundAgentVaultSessions(state: AppState): Promise<AiVaultSession[]> {
+async function readBackgroundAgentVaultSessions(
+  state: AppState,
+  scope: BackgroundAgentWorkspaceScope
+): Promise<AiVaultSession[]> {
   try {
     const activeExecutionHostId = getAiVaultResumeWorkspaceExecutionHostId(
       state,
@@ -123,19 +153,23 @@ async function readBackgroundAgentVaultSessions(state: AppState): Promise<AiVaul
     )
     const result = await window.api.aiVault.listSessions({
       limit: BACKGROUND_AGENT_VAULT_LIMIT,
-      executionHostScope: defaultExecutionHostScope
+      executionHostScope: defaultExecutionHostScope,
+      ...boundedAiVaultScopeArgs(scope.scopePaths, scope.scopePaths.length > 0)
     })
+    const inScope = createBackgroundAgentScopeMatcher(scope.scopePaths)
     return backgroundAgentVaultRows(
       result.sessions,
       (session) =>
-        canOpenAiVaultSessionInOrca(state, session) && !isAiVaultSessionOpenInOrca(state, session)
+        inScope(session) &&
+        canOpenAiVaultSessionInOrca(state, session) &&
+        !isAiVaultSessionOpenInOrca(state, session)
     )
   } catch {
     return []
   }
 }
 
-/** The list is read when the picker opens, not before: it changes as chats come and go. */
+/** The list is read when the panel opens, not before: it changes as chats come and go. */
 export function useBackgroundAgentSessions(open: boolean): {
   state: BackgroundAgentSessionsState
   reload: () => void

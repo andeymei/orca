@@ -7,7 +7,6 @@ import { ShellIcon } from './shell-icons'
 import { useAppStore } from '@/store'
 import { usePluginNewFiles } from '@/store/plugins/file-creation/plugin-new-files'
 import { PluginContributionIcon } from '../plugins/PluginContributionIcon'
-import { TabBarBackgroundAgentsItem } from './tab-bar-background-agents-item'
 import type { WindowsShellMenuEntry } from './tab-bar-windows-shell-options'
 import {
   isMacOs,
@@ -201,7 +200,6 @@ export function TabBarStaticCreateMenu({
       {defaultTerminalMenuItems}
       {newBrowserMenuItem}
       {newSimulatorMenuItem}
-      <TabBarBackgroundAgentsItem />
       {mobileEmulatorIntroMenuBlock}
     </>
   ) : (
@@ -212,7 +210,6 @@ export function TabBarStaticCreateMenu({
       {pluginNewFileMenuItems}
       {openMarkdownMenuItem}
       {newSimulatorMenuItem}
-      <TabBarBackgroundAgentsItem />
       {mobileEmulatorIntroMenuBlock}
     </>
   )

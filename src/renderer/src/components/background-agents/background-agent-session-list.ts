@@ -32,36 +32,6 @@ export type BackgroundAgentRow =
       workspace: BackgroundAgentWorkspace
     }
 
-export type BackgroundAgentGroup = {
-  workspaceId: string | null
-  label: string
-  rows: readonly BackgroundAgentRow[]
-}
-
-/** Rows of one workspace, so the user sees where a background agent would land. */
-export function groupBackgroundAgentRows(
-  rows: readonly BackgroundAgentRow[]
-): BackgroundAgentGroup[] {
-  const groups = new Map<
-    string,
-    { workspaceId: string | null; label: string; rows: BackgroundAgentRow[] }
-  >()
-  for (const row of rows) {
-    const key = row.workspace.id ?? `label:${row.workspace.label}`
-    const group = groups.get(key)
-    if (group) {
-      group.rows.push(row)
-    } else {
-      groups.set(key, {
-        workspaceId: row.workspace.id,
-        label: row.workspace.label,
-        rows: [row]
-      })
-    }
-  }
-  return [...groups.values()]
-}
-
 /** Match what the user can see: the agent's name, the agent that owns it, or the workspace it lives in. */
 export function filterBackgroundAgentRows(
   rows: readonly BackgroundAgentRow[],

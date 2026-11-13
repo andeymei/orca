@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Plug, Files, GitBranch, ListChecks, Workflow } from 'lucide-react'
+import { Plug, Files, GitBranch, ListChecks, Workflow, Bot } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { useRepoById } from '@/store/repos/use-repository-catalog'
 import { isFolderRepo } from '../../../../shared/repo-kind'
@@ -84,6 +84,12 @@ export function useRightSidebarActivityItems({
         id: 'vault',
         icon: AgentSessionHistoryIcon,
         title: t('auto.components.right.sidebar.index.aiVaultSessionHistory', 'Agents'),
+        shortcut: ''
+      },
+      {
+        id: 'background-agents',
+        icon: Bot,
+        title: t('auto.components.right.sidebar.index.backgroundAgents', 'Background agents'),
         shortcut: ''
       },
       {

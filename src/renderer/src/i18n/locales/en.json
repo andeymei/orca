@@ -15149,7 +15149,8 @@
             "aiVaultSessionHistory": "Agents",
             "folderWorkspaces": "Attached worktrees",
             "parentPrChecks": "PR Checks",
-            "creatingWorkspace": "Available when the workspace is ready"
+            "creatingWorkspace": "Available when the workspace is ready",
+            "backgroundAgents": "Background agents"
           },
           "right": {
             "panel": {
@@ -20032,7 +20033,8 @@
         "searchPlaceholder": "Search background agents",
         "searchLabel": "Search background agents",
         "loading": "Loading background agents",
-        "empty": "No background agents"
+        "empty": "No background agents",
+        "refresh": "Refresh background agents"
       }
     },
     "i18n": {

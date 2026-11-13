@@ -11,6 +11,10 @@ export type ClaudeBackgroundAgent = {
 /** How many bytes of `claude agents --json` output are read; the envelope is a small array. */
 export const CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES = 256 * 1024
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 /**
  * The agents from `claude agents --json`.
  *
@@ -29,20 +33,19 @@ export function parseClaudeBackgroundAgents(stdout: string): ClaudeBackgroundAge
   }
   const agents: ClaudeBackgroundAgent[] = []
   for (const entry of parsed) {
-    if (!entry || typeof entry !== 'object') {
+    if (!isRecord(entry)) {
       continue
     }
-    const record = entry as Record<string, unknown>
-    const id = typeof record.id === 'string' ? record.id : ''
-    const sessionId = typeof record.sessionId === 'string' ? record.sessionId : ''
+    const id = typeof entry.id === 'string' ? entry.id : ''
+    const sessionId = typeof entry.sessionId === 'string' ? entry.sessionId : ''
     if (!id || !sessionId) {
       continue
     }
     agents.push({
       id,
       sessionId,
-      name: typeof record.name === 'string' ? record.name : '',
-      cwd: typeof record.cwd === 'string' ? record.cwd : ''
+      name: typeof entry.name === 'string' ? entry.name : '',
+      cwd: typeof entry.cwd === 'string' ? entry.cwd : ''
     })
   }
   return agents

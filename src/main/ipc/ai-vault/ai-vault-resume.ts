@@ -17,8 +17,8 @@ import type { ClaudeBackgroundAgent } from '../../../shared/claude-background-ag
 import type { ClaudeBackgroundAgentRequest } from '../../../shared/claude-background-agents'
 import { listClaudeBackgroundAgents } from '../../claude/background-agents/claude-background-agent-list'
 import { listRuntimeClaudeBackgroundAgents } from '../../ai-vault/runtime-claude-background-agents'
+import { listRunningAgentsForHost } from './ai-vault-running-agents'
 import { getRuntimeEnvironmentRegistryRoot } from '../runtime-environments/runtime-environment-registry-root'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 
 export type AiVaultResumeHandlerOptions = {
   ensureStructuredSessionOwnership?: () => Promise<void>
@@ -42,7 +42,10 @@ export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOption
     'aiVault:listRunningAgents',
     async (_event, args?: ClaudeBackgroundAgentRequest): Promise<ClaudeBackgroundAgent[]> => {
       try {
-        return await listRunningAgentsForHost(args?.executionHostId, options)
+        return await listRunningAgentsForHost(args?.executionHostId, {
+          listLocalAgents: () => listClaudeBackgroundAgents(),
+          listRuntimeAgents: options.listRuntimeRunningAgents ?? listRuntimeRunningAgentsOfHost
+        })
       } catch (error) {
         console.error('[ai-vault] listing running Claude agents failed:', error)
         return []
@@ -56,28 +59,6 @@ async function listRuntimeRunningAgentsOfHost(
   environmentId: string
 ): Promise<ClaudeBackgroundAgent[]> {
   return listRuntimeClaudeBackgroundAgents(getRuntimeEnvironmentRegistryRoot(), environmentId)
-}
-
-/**
- * The agents running on the host that owns the conversation.
- *
- * This machine's agents cannot speak for a conversation that runs elsewhere, so that host is
- * asked; a host that cannot answer leaves the conversation to be resumed, as before.
- */
-async function listRunningAgentsForHost(
-  executionHostId: string | undefined,
-  options: AiVaultResumeHandlerOptions
-): Promise<ClaudeBackgroundAgent[]> {
-  const hostId = executionHostId?.trim()
-  if (!hostId || hostId === LOCAL_EXECUTION_HOST_ID) {
-    return listClaudeBackgroundAgents()
-  }
-  const parsed = parseExecutionHostId(hostId)
-  if (parsed?.kind !== 'runtime' || !options.listRuntimeRunningAgents) {
-    return []
-  }
-  const list = options.listRuntimeRunningAgents ?? listRuntimeRunningAgentsOfHost
-  return list(parsed.environmentId)
 }
 
 export async function prepareAiVaultSessionResume(

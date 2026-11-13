@@ -49,6 +49,28 @@ pnpm dev:fresh [--keep] [--seed-from[=<profile dir>]]   # temporary profile, rem
 - Before a cross-architecture build (including `pnpm build:mac`, which builds x64 and arm64), run `pnpm install:release`.
 - On Linux, `pnpm build`, `pnpm build:native`, and packaging need a running Docker daemon for the clipboard helper. For native Wayland development, run `pnpm build:native` before `pnpm dev`. See the [clipboard build guide](../native/wayland-clipboard/README.md#building-and-testing).
 
+### Local package, install and verify
+
+`pnpm pack:fast` is the iteration loop for a local build. It packages the Intel app directory,
+installs it over the copy in `/Applications`, and checks that the installed app starts. It
+skips the typecheck and produces no DMG or ZIP.
+
+| Command                  | Effect                                                          |
+| ------------------------ | --------------------------------------------------------------- |
+| `pnpm pack:fast`         | package → install → verify                                      |
+| `pnpm pack:fast:build`   | package `dist/mac/Orca.app` only                                |
+| `pnpm pack:fast:install` | install over `/Applications/Orca.app`, keeping the previous one |
+| `pnpm pack:fast:verify`  | startup check against the installed app                         |
+
+Flags: `--typecheck` runs the full typecheck first, `--dmg` also produces the distributable
+DMG and ZIP, `--launch` relaunches the app after installing it, `--full` verifies with the
+complete packaged smoke suite instead of the startup check, and `--source` / `--target`
+override the built app and the install location.
+
+The release-shaped path is unchanged: `pnpm build:mac` builds both architectures and
+`pnpm build:mac:release` signs and notarizes. `pnpm pack:fast` targets this machine's
+architecture and produces an unsigned build.
+
 ## Troubleshooting
 
 - Slow main-process rebuilds: set `ORCA_DEV_MAIN_SOURCEMAPS=0` before `pnpm dev` when you don't need main-process source maps.

@@ -11,40 +11,16 @@
 // that verification happened.
 import { execFileSync } from 'node:child_process'
 import { getLocalBuildIdentity } from './build-mac-local.mjs'
+import { localBuilderEnv, redactProxy } from './local-builder-env.mjs'
 
 const identity = getLocalBuildIdentity()
 console.log(`[build:mac:x64] local update version ${identity.version}`)
 
-function redactProxy(proxyUrl) {
-  try {
-    const url = new URL(proxyUrl)
-    return `${url.hostname}:${url.port || (url.protocol === 'https:' ? '443' : '80')}`
-  } catch {
-    return '<unparsable proxy url>'
-  }
-}
-
-const proxy =
-  process.env.ORCA_BUILD_PROXY ?? process.env.HTTPS_PROXY ?? process.env.https_proxy ?? null
-const env = {
-  ...process.env,
-  ORCA_BUILD_COMMIT: identity.commit,
-  ORCA_LOCAL_BUILD_VERSION: identity.version
-}
+const { env, proxy } = localBuilderEnv(process.env)
+env.ORCA_BUILD_COMMIT = identity.commit
+env.ORCA_LOCAL_BUILD_VERSION = identity.version
 
 if (proxy) {
-  env.HTTP_PROXY = proxy
-  env.HTTPS_PROXY = proxy
-  env.http_proxy = proxy
-  env.https_proxy = proxy
-  env.NO_PROXY = env.NO_PROXY ?? 'localhost,127.0.0.1,::1'
-  env.no_proxy = env.no_proxy ?? 'localhost,127.0.0.1,::1'
-  // @electron/get routes undici through the proxy only when asked to.
-  env.ELECTRON_GET_USE_PROXY = 'true'
-  // @electron/get v3 bootstraps global-agent from its own prefixed variables.
-  env.GLOBAL_AGENT_HTTP_PROXY = proxy
-  env.GLOBAL_AGENT_HTTPS_PROXY = proxy
-  env.GLOBAL_AGENT_NO_PROXY = env.NO_PROXY
   console.log(`[build:mac:x64] using proxy ${redactProxy(proxy)}`)
 }
 

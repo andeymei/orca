@@ -21,6 +21,11 @@ import { electronIsolatedKeychainArgs } from '../../../../src/shared/electron-is
 const APP_PATH = resolve(
   process.env.ORCA_PACKAGED_APP_PATH ?? process.argv[2] ?? 'dist/mac/Orca.app'
 )
+// The startup check covers what a package can break: the app starts, the renderer mounts,
+// the packaged node-pty serves a terminal, the runtime answers RPC and the packaged CLI
+// loads. The full suite adds the worktree lifecycle, which needs a real repository and
+// takes minutes.
+const PROFILE = process.argv.includes('--quick') ? 'quick' : 'full'
 const CDP_PORT = Number(process.env.ORCA_SMOKE_CDP_PORT ?? 9333)
 const RUN_DIR = process.env.ORCA_SMOKE_RUN_DIR ?? join(tmpdir(), `orca-mac-smoke-${process.pid}`)
 const SCREENSHOT_PATH = join(RUN_DIR, 'orca-packaged-smoke.png')
@@ -30,6 +35,7 @@ const ONBOARDING_SOURCE = resolve(
 )
 
 const results = []
+console.log(`[smoke] profile=${PROFILE} app=${APP_PATH}`)
 function check(name, ok, detail = '') {
   results.push({ name, ok })
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
@@ -90,7 +96,10 @@ const fixtureRepo = join(RUN_DIR, 'fixture-repo')
 mkdirSync(homeDir, { recursive: true, mode: 0o700 })
 mkdirSync(userDataDir, { recursive: true })
 seedCompletedOnboarding(userDataDir)
-createFixtureRepo(fixtureRepo)
+if (PROFILE === 'full') {
+  // Only the worktree lifecycle needs a repository to work in.
+  createFixtureRepo(fixtureRepo)
+}
 const isolatedHome = realpathSync.native(homeDir)
 
 const appLog = createWriteStream(join(RUN_DIR, 'app.log'), { flags: 'a' })
@@ -280,78 +289,80 @@ try {
     `exit=${cliStatus.status} out=${(cliStatus.stdout ?? '').slice(0, 160)}`
   )
 
-  const repoAdd = runCli(cliPath, cliEnv, [
-    'repo',
-    'add',
-    '--path',
-    fixtureRepo,
-    '--kind',
-    'git',
-    '--json'
-  ])
-  check(
-    'packaged CLI registers a repo',
-    repoAdd.status === 0,
-    `exit=${repoAdd.status} out=${(repoAdd.stdout ?? '').slice(0, 160)} err=${(repoAdd.stderr ?? '').slice(0, 160)}`
-  )
-
-  const worktreeCreate = runCli(
-    cliPath,
-    cliEnv,
-    [
-      'worktree',
-      'create',
-      '--name',
-      'packaged-smoke',
-      '--repo',
-      `path:${fixtureRepo}`,
-      '--activate',
+  if (PROFILE === 'full') {
+    const repoAdd = runCli(cliPath, cliEnv, [
+      'repo',
+      'add',
+      '--path',
+      fixtureRepo,
+      '--kind',
+      'git',
       '--json'
-    ],
-    180_000
-  )
-  check(
-    'packaged CLI creates and activates a worktree',
-    worktreeCreate.status === 0,
-    `exit=${worktreeCreate.status} out=${(worktreeCreate.stdout ?? '').slice(0, 160)} err=${(worktreeCreate.stderr ?? '').slice(0, 160)}`
-  )
-  await sleep(4000)
+    ])
+    check(
+      'packaged CLI registers a repo',
+      repoAdd.status === 0,
+      `exit=${repoAdd.status} out=${(repoAdd.stdout ?? '').slice(0, 160)} err=${(repoAdd.stderr ?? '').slice(0, 160)}`
+    )
 
-  let paneCount = 0
-  const paneDeadline = Date.now() + 60_000
-  while (Date.now() < paneDeadline && paneCount === 0) {
-    await orcaPage.waitForTimeout(1500)
-    paneCount = await orcaPage
-      .locator('.xterm')
-      .count()
-      .catch(() => 0)
+    const worktreeCreate = runCli(
+      cliPath,
+      cliEnv,
+      [
+        'worktree',
+        'create',
+        '--name',
+        'packaged-smoke',
+        '--repo',
+        `path:${fixtureRepo}`,
+        '--activate',
+        '--json'
+      ],
+      180_000
+    )
+    check(
+      'packaged CLI creates and activates a worktree',
+      worktreeCreate.status === 0,
+      `exit=${worktreeCreate.status} out=${(worktreeCreate.stdout ?? '').slice(0, 160)} err=${(worktreeCreate.stderr ?? '').slice(0, 160)}`
+    )
+    await sleep(4000)
+
+    let paneCount = 0
+    const paneDeadline = Date.now() + 60_000
+    while (Date.now() < paneDeadline && paneCount === 0) {
+      await orcaPage.waitForTimeout(1500)
+      paneCount = await orcaPage
+        .locator('.xterm')
+        .count()
+        .catch(() => 0)
+    }
+    check('terminal pane rendered', paneCount > 0, `xterm panes=${paneCount}`)
+
+    // Ask the live PTYs to echo a marker, then read it back from the main-process buffer.
+    const echo = await orcaPage.evaluate(async (marker) => {
+      const api = window.api
+      const sessions = await api.pty.listSessions({ connectionId: null }).catch(() => [])
+      const ids = (sessions ?? []).map((session) => session.id).filter(Boolean)
+      for (const id of ids) {
+        try {
+          api.pty.write(id, `echo ${marker}\r`, 'driving')
+        } catch {
+          // The session went away mid-probe.
+        }
+      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 5000))
+      for (const id of ids) {
+        const snapshot = await api.pty
+          .getMainBufferSnapshot(id, { scrollbackRows: 100 })
+          .catch(() => null)
+        if ((snapshot?.data ?? '').includes(marker)) {
+          return { found: true, sessions: ids.length }
+        }
+      }
+      return { found: false, sessions: ids.length }
+    }, 'ORCA_PACKAGED_TERMINAL_OK')
+    check('live shell echoes a command', echo.found === true, `sessions=${echo.sessions}`)
   }
-  check('terminal pane rendered', paneCount > 0, `xterm panes=${paneCount}`)
-
-  // Ask the live PTYs to echo a marker, then read it back from the main-process buffer.
-  const echo = await orcaPage.evaluate(async (marker) => {
-    const api = window.api
-    const sessions = await api.pty.listSessions({ connectionId: null }).catch(() => [])
-    const ids = (sessions ?? []).map((session) => session.id).filter(Boolean)
-    for (const id of ids) {
-      try {
-        api.pty.write(id, `echo ${marker}\r`, 'driving')
-      } catch {
-        // The session went away mid-probe.
-      }
-    }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 5000))
-    for (const id of ids) {
-      const snapshot = await api.pty
-        .getMainBufferSnapshot(id, { scrollbackRows: 100 })
-        .catch(() => null)
-      if ((snapshot?.data ?? '').includes(marker)) {
-        return { found: true, sessions: ids.length }
-      }
-    }
-    return { found: false, sessions: ids.length }
-  }, 'ORCA_PACKAGED_TERMINAL_OK')
-  check('live shell echoes a command', echo.found === true, `sessions=${echo.sessions}`)
 
   await orcaPage.waitForTimeout(1500)
   await orcaPage.screenshot({ path: SCREENSHOT_PATH }).catch(() => {})

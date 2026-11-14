@@ -29,6 +29,7 @@ import type { WslHostsSlice } from './slices/wsl/wsl-hosts'
 import type { AgentStatusSlice } from './slices/agent-status/agent-status-slice-contract'
 import type { PaneForegroundAgentSlice } from './slices/agent-status/pane-foreground-agent'
 import type { DiffCommentsSlice } from './slices/diff-comments/create-diff-comments-slice'
+import type { AiInstructionsSlice } from './slices/ai-instructions/create-ai-instructions-slice'
 import type { DetectedAgentsSlice } from './slices/agent-inventory/create-detected-agents-slice'
 import type { RuntimeDetectedAgentsSlice } from './slices/agent-inventory/runtime-detected-agents'
 import type { WorktreeNavHistorySlice } from './slices/ui/workspace-navigation-history'
@@ -82,6 +83,7 @@ export type AppState = RepoSlice &
   AgentStatusSlice &
   PaneForegroundAgentSlice &
   DiffCommentsSlice &
+  AiInstructionsSlice &
   DetectedAgentsSlice &
   RuntimeDetectedAgentsSlice &
   WorktreeNavHistorySlice &

@@ -376,27 +376,41 @@ git commit -m "feat(ai-instruction): build the single and batch prompts"
   ```ts
   // ai-instruction-scan.ts
   export type AiInstructionToken = { text: string; type: string }
-  // 纯函数：给定每一行的 token，产出指令清单（不含上下文）。
+  // 纯函数：给定每一行的 token（text 已被切出来），产出指令清单（不含上下文）。
   export function collectAiInstructions(
     lineTokens: readonly (readonly AiInstructionToken[])[]
   ): { lineNumber: number; instruction: string; commentText: string }[]
-  // Monaco 适配层：读 model 的 token 后调用上面的纯函数。
+  // 把 Monaco 的分词结果切成上面的 token 形状：Monaco 的 Token 只有 startColumn/offset/type，没有文本，
+  // 文本要从该行切出来（token 起点到下一个 token 起点，或到行尾）。
+  export function toAiInstructionTokens(
+    lines: readonly string[],
+    tokenized: readonly (readonly { startColumn: number; offset: number; type: string }[])[]
+  ): AiInstructionToken[][]
+  // Monaco 适配层：整文件分词后调用上面的纯函数。
   export function scanAiInstructions(model: editor.ITextModel): AiInstruction[]
 
   // ai-instruction-context.ts
-  export type AiInstructionFoldingRange = { startLineNumber: number; endLineNumber: number }
-  // 纯函数：在折叠区间里挑出包含该行的最内层区间；没有就退回 ±CONTEXT_FALLBACK_LINES 行。
+  // 纯函数：该指令行的上下文窗口（上下各 CONTEXT_FALLBACK_LINES 行，夹到文件范围内）。
   export function resolveAiInstructionContextRange(
-    ranges: readonly AiInstructionFoldingRange[],
     lineNumber: number,
     lineCount: number
   ): { startLine: number; endLine: number }
-  // Monaco 适配层：读 model 的折叠区间与文本，拼出片段。
+  // Monaco 适配层：读 model 的文本，拼出片段。
   export function buildAiInstructionContext(
     model: editor.ITextModel,
     lineNumber: number
   ): { excerpt: string; startLine: number; endLine: number }
   ```
+
+> **实现前必读（2026-11-14 修订）**：本仓库用的 Monaco 是 **0.55.1**，它的**公开 `ITextModel` 上没有
+> `getLineTokens`，也没有 `getFoldingRanges`**——`ITextModel` 接口（`editor.api.d.ts`）里一个分词/折叠成员都没有。
+> `model.tokenization.getLineTokens()` 只存在于运行时内部、未在公开类型里声明；折叠区间只能通过
+> `registerFoldingRangeProvider` 注册，无法查询。
+> 因此：
+>
+> 1. **分词改用 `monaco.editor.tokenize(text, languageId)`**（Monaco 0.55 公开 API 里唯一的分词入口）。
+> 2. **上下文片段放弃折叠区间**，直接用上下各 10 行的窗口。
+>    下面 Interfaces 段与测试里凡涉及 `getLineTokens` / `getFoldingRanges` / folding range 的部分，一律按这两条执行。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -444,25 +458,16 @@ import { describe, expect, it } from 'vitest'
 import { resolveAiInstructionContextRange } from './ai-instruction-context'
 
 describe('resolveAiInstructionContextRange', () => {
-  it('picks the innermost folding range containing the line', () => {
-    expect(
-      resolveAiInstructionContextRange(
-        [
-          { startLineNumber: 1, endLineNumber: 100 },
-          { startLineNumber: 30, endLineNumber: 60 }
-        ],
-        42,
-        100
-      )
-    ).toEqual({ startLine: 30, endLine: 60 })
-  })
-
-  it('falls back to a window around the line when no range covers it', () => {
-    expect(resolveAiInstructionContextRange([], 42, 100)).toEqual({ startLine: 32, endLine: 52 })
+  it('takes a window around the line', () => {
+    expect(resolveAiInstructionContextRange(42, 100)).toEqual({ startLine: 32, endLine: 52 })
   })
 
   it('never starts before the first line', () => {
-    expect(resolveAiInstructionContextRange([], 3, 100)).toEqual({ startLine: 1, endLine: 13 })
+    expect(resolveAiInstructionContextRange(3, 100)).toEqual({ startLine: 1, endLine: 13 })
+  })
+
+  it('never ends after the last line', () => {
+    expect(resolveAiInstructionContextRange(99, 100)).toEqual({ startLine: 89, endLine: 100 })
   })
 })
 ```
@@ -477,19 +482,29 @@ Expected: FAIL —— 两个模块都不存在。
 新建 `ai-instruction-scan.ts`：
 
 - `collectAiInstructions(lineTokens)`：逐行遍历 token；**只认 token 类型名以 `comment` 开头的**（`comment`、`comment.line`、`comment.block`、`comment.doc` 等）；对每个注释 token 调 `parseAiInstructionComment(token.text)`，非 null 就产出一条 `{ lineNumber: <行号，1-based>, instruction, commentText: token.text.trim() }`。
-- `scanAiInstructions(model)`：用 `model.getLineTokens(line)` 逐行取 token 喂给 `collectAiInstructions`，再为每条指令调 `buildAiInstructionContext(model, lineNumber)` 补上 `contextExcerpt` / `contextStartLine` / `contextEndLine`，返回 `AiInstruction[]`。
+- `toAiInstructionTokens(lines, tokenized)`：Monaco 的 `Token` 只有 `startColumn` / `offset` / `type`，**没有文本**。把每一行的 token 切出文本：从该 token 的 `startColumn - 1` 切到下一个 token 的 `startColumn - 1`（同一行内），行内最后一个 token 切到该行行尾。`startColumn` 是 1-based。
+- `scanAiInstructions(model)`：
+  1. **快路径**：`const text = model.getValue()`；若 `!text.includes(AI_INSTRUCTION_MARKER)`，直接返回 `[]`——不分词。
+  2. 否则 `monaco.editor.tokenize(text, model.getLanguageId())` 整文件分词；
+  3. `toAiInstructionTokens` 把结果切成 `AiInstructionToken[][]`；
+  4. `collectAiInstructions` 产出指令；
+  5. 每条指令调 `buildAiInstructionContext(model, lineNumber)` 补上 `contextExcerpt` / `contextStartLine` / `contextEndLine`，
+     返回 `AiInstruction[]`。
+  - `monaco` 运行时命名空间用 `import * as monaco from 'monaco-editor'`（与 `src/renderer/src/lib/editor/monaco/monaco-setup.ts` 同一写法）。
+  - `model.getLanguageId()` 反映插件设定的自定义语言（`applyModelLanguage` 会把它设到 model 上），不要自己猜语言。
 
 新建 `ai-instruction-context.ts`：
 
-- `CONTEXT_FALLBACK_LINES = 10`，`CONTEXT_MAX_LINES = 60`。
-- `resolveAiInstructionContextRange(ranges, lineNumber, lineCount)`：先筛出 `startLineNumber <= lineNumber <= endLineNumber` 的区间，取跨度最小的一个；跨度超过 `CONTEXT_MAX_LINES` 就按 `lineNumber` 居中裁到 `CONTEXT_MAX_LINES` 行。没有命中就退回 `lineNumber ± CONTEXT_FALLBACK_LINES`，并夹到 `[1, lineCount]`。
-- `buildAiInstructionContext(model, lineNumber)`：用 `model.getFoldingRanges()`（可能返回 `undefined`，当空数组处理）求区间，再用
+- `CONTEXT_FALLBACK_LINES = 10`。
+- `resolveAiInstructionContextRange(lineNumber, lineCount)`：`startLine = max(1, lineNumber - CONTEXT_FALLBACK_LINES)`，
+  `endLine = min(lineCount, lineNumber + CONTEXT_FALLBACK_LINES)`。
+- `buildAiInstructionContext(model, lineNumber)`：用上面的区间，再用
   `model.getValueInRange({ startLineNumber: startLine, startColumn: 1, endLineNumber: endLine, endColumn: model.getLineMaxColumn(endLine) })` 取文本。
 
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `pnpm test src/renderer/src/components/editor/ai-instructions --maxWorkers=2`
-Expected: PASS（7 passed）。
+Expected: PASS（7 passed：扫描 4 例 + 上下文 3 例）。
 
 - [ ] **Step 5: 类型检查**
 

@@ -57,8 +57,9 @@ Orca 已有完整的「评论 → 智能体」链路，但它长在 **diff 审�
 
 用 Monaco 的分词结果判定注释，不做语言正则：
 
-- `model.getLineTokens(line)` 逐行取 token；token 类型名以 `comment` 开头才算注释（`comment`、`comment.line`、
-  `comment.block`、`comment.doc` 等）。
+- 用 **`monaco.editor.tokenize(text, languageId)`** 对整个文件分词（Monaco 0.55 公开 API 里唯一的分词入口）。
+  token 类型名以 `comment` 开头才算注释（`comment`、`comment.line`、`comment.block`、`comment.doc` 等）。
+- **快路径**：文本里不含标记子串时直接返回空，不分词——避免每次内容变化都整文件分词。
 - 注释文本 trim 后必须**以标记开头**，标记后须是空白或结尾（`@aider` 不匹配）。
 - 块注释的前导 `*`（`/** @ai … */`）在 trim 时剥掉。
 - 去掉标记后的剩余文本是**指令正文**；正文为空则该注释不是指令。
@@ -204,9 +205,15 @@ AI 指令记录各字段的填法：
 
 ### 5.4 上下文片段
 
-用 Monaco folding ranges 找**包含该指令行的最内层块**（≈ 所在函数/类），上限 60 行；取不到则退回该行 ±10 行。
+取该指令行**上下各 10 行**的窗口（首尾夹到文件范围内）。
 
-片段存进记录的 `selectedText`，并进入 prompt。智能体本来就能读文件，这段是保险不是必需。
+> 原设计用 Monaco folding ranges 求「包含该行的最内层块」，但本仓库用的 Monaco 0.55 的**公开 `ITextModel`
+> 没有任何分词或折叠成员**：`getLineTokens` / `getFoldingRanges` 都不存在（`model.tokenization.getLineTokens`
+> 只存在于运行时内部、未在公开类型里声明；折叠区间只能通过 `registerFoldingRangeProvider` 注册，无法查询）。
+> 因此上下文片段改用窗口，不做语言感知的块定位。代价：片段不再自动覆盖整个所在函数。
+> 智能体本来就能读文件，这段是保险不是必需。
+
+片段存进记录的 `selectedText`，并进入 prompt。
 
 ### 5.5 结果回写
 
@@ -259,7 +266,7 @@ Keep every `// @ai` comment in place.
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `components/editor/ai-instructions/ai-instruction-marker.ts`（新）                 | 从注释文本解析标记与指令正文                                 |
 | `components/editor/ai-instructions/ai-instruction-scan.ts`（新）                   | Monaco token 扫描出指令清单                                  |
-| `components/editor/ai-instructions/ai-instruction-context.ts`（新）                | folding ranges 求上下文片段                                  |
+| `components/editor/ai-instructions/ai-instruction-context.ts`（新）                | 上下文窗口（上下各 10 行）                                   |
 | `components/editor/ai-instructions/ai-instruction-status.ts`（新）                 | 指令 ⇄ 记录对齐，算出三态                                    |
 | `components/editor/ai-instructions/use-monaco-ai-instruction-decorations.ts`（新） | 行号槽装饰与点击                                             |
 | `components/editor/ai-instructions/ai-instruction-send-menu.tsx`（新）             | 行号槽弹层与头部批量共用                                     |

@@ -126,4 +126,19 @@ describe('buildClaudeAttachOrResumeStartup', () => {
       `if (claude agents --json | Select-String -SimpleMatch '${SESSION_ID}') { claude attach '${SESSION_ID.slice(0, 8)}' } else { claude --resume 'other' }`
     )
   })
+
+  // cmd's "&&" chain would run the resume after the attach: the attach ends when the user leaves
+  // the attached agent, and that exit code is not a verdict about the conversation.
+  it('writes a cmd branch that decides before attaching', () => {
+    const startup = buildClaudeAttachOrResumeStartup({
+      platform: 'win32',
+      shell: 'cmd',
+      agentId: SESSION_ID.slice(0, 8),
+      sessionId: SESSION_ID,
+      resumeCommand: 'claude --resume other'
+    })
+    expect(startup.command).toBe(
+      `claude agents --json 2>nul | findstr /c:"${SESSION_ID}" >nul & if errorlevel 1 (claude --resume other) else (claude attach "${SESSION_ID.slice(0, 8)}")`
+    )
+  })
 })

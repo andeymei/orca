@@ -57,7 +57,7 @@ export function buildClaudeAttachOrResumeStartup(args: {
     shell === 'powershell'
       ? `if (${listing} | Select-String -SimpleMatch ${sessionId}) { ${attach} } else { ${args.resumeCommand} }`
       : shell === 'cmd'
-        ? `${listing} 2>nul | findstr /c:${sessionId} >nul && (${attach}) || (${args.resumeCommand})`
+        ? `${listing} 2>nul | findstr /c:${sessionId} >nul & if errorlevel 1 (${args.resumeCommand}) else (${attach})`
         : `if ${listing} 2>/dev/null | grep -q ${sessionId}; then ${attach}; else ${args.resumeCommand}; fi`
   return {
     command,

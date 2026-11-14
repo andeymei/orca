@@ -1,10 +1,10 @@
-import { launchAgentInNewTab } from '@/lib/agent-session/launch/new-tab/launch-agent-in-new-tab'
-import { newAgentLaunchRequestId } from '@/lib/agent-session/launch/routing/agent-launch-request-id'
+import { launchAgentInNewTabWithOutcome } from '@/lib/agent-session/launch/new-tab/launch-agent-in-new-tab'
 import { activateAndRevealWorktreeWithOutcome } from '@/lib/workspace/activation/worktree-activation'
 import { reportAgentWorkspaceActivation } from '@/lib/workspace/activation/worktree-activation-outcome'
 import { resolveRepoWorktreeLaunchPlatform } from '@/runtime/hosts/platform/execution-host-facts'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store/index'
+import { createNonSecureContextUuid } from '../../../../../shared/non-secure-context-uuid'
 import type { TuiAgent } from '../../../../../shared/agent-launch/catalog/tui-agent'
 import type { Worktree } from '../../../../../shared/worktree/types'
 
@@ -28,8 +28,8 @@ export function launchTaskInCurrentCheckout(task: CurrentCheckoutTaskLaunch): bo
     return 'opened' in activateAndRevealWorktreeWithOutcome(worktree.id)
   }
   let revealFailed = false
-  const result = launchAgentInNewTab({
-    requestId: newAgentLaunchRequestId(),
+  const result = launchAgentInNewTabWithOutcome({
+    requestId: createNonSecureContextUuid(),
     agent,
     worktreeId: worktree.id,
     groupId: worktree.id,

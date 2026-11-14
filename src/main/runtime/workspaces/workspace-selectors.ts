@@ -18,11 +18,13 @@ import type { Repo } from '../../../shared/repo-types'
 import { isFolderRepo } from '../../../shared/repo-kind'
 import type { RuntimeStore } from '../construction/runtime-store-contract'
 import type { RuntimeWorkspaceCatalog } from './catalog/workspace-catalog'
-import { areWorktreePathsEqual } from '../../git/worktrees/catalog/worktree-path-comparison'
 import { resolveWorktreeMetaOwner } from '../../persistence/host-qualified-worktree-meta'
 import { resolveWorktreeHostRouting } from './catalog/worktree-launch-host-repo'
-import { createRepoRowExecutionHostLookup } from '../../../shared/execution-host/worktree-execution-host-resolution'
-import { mergeWorktree } from '../../ipc/worktree-metadata-merge'
+import {
+  createRepoRowExecutionHostLookup,
+  type RepoRowExecutionHostLookup
+} from '../../../shared/execution-host/worktree-execution-host-resolution'
+import { buildResolvedWorktreeFromId } from './catalog/resolved-worktree-from-id'
 import { RuntimeProjectLaunchContext } from './startup/runtime-project-launch-context'
 import { folderIdOfSelector } from '../../../shared/workspace-scope'
 import {
@@ -285,40 +287,12 @@ export abstract class RuntimeWorkspaceSelectors extends RuntimeProjectLaunchCont
     return this.store
   }
 
-  protected buildResolvedWorktreeFromId(worktreeId: string): ResolvedWorktree | null {
-    const parsed = splitWorktreeIdForFilesystem(worktreeId)
-    if (!parsed?.repoId || !parsed.worktreePath) {
-      return null
-    }
-    const owner = this.store && resolveWorktreeMetaOwner(this.store, worktreeId)
-    if (!owner) {
-      return null
-    }
-    const repo = createRepoRowExecutionHostLookup(this.store?.getRepos() ?? []).byHost(
-      parsed.repoId,
-      owner.hostId
+  protected buildResolvedWorktreeFromId(
+    worktreeId: string,
+    repos: RepoRowExecutionHostLookup<Repo> = createRepoRowExecutionHostLookup(
+      this.store?.getRepos() ?? []
     )
-    const git = {
-      path: parsed.worktreePath,
-      head: '',
-      branch: '',
-      isBare: false,
-      isMainWorktree: repo ? areWorktreePathsEqual(parsed.worktreePath, repo.path) : false
-    }
-    const meta = this.store?.getWorktreeMeta(worktreeId)
-    const merged = {
-      ...mergeWorktree(parsed.repoId, git, meta, repo?.displayName),
-      hostId: owner.hostId
-    }
-    return {
-      ...merged,
-      id: worktreeId,
-      parentWorktreeId: null,
-      childWorktreeIds: [],
-      lineage: null,
-      git,
-      displayName: merged.displayName,
-      comment: merged.comment
-    }
+  ): ResolvedWorktree | null {
+    return buildResolvedWorktreeFromId(this.store, worktreeId, repos)
   }
 }

@@ -5,6 +5,7 @@ import {
   antigravityTranscriptReferencePrompt
 } from '../../antigravity-session-origin'
 import { normalizeAiVaultResumeFilePath } from './ai-vault-resume-path'
+import { ompTranscriptProfileArgs } from '../../omp-profile'
 import { TUI_AGENT_CONFIG } from '../../agent-launch/catalog/tui-agent-config'
 import {
   clearEnvCommand,
@@ -42,11 +43,18 @@ export function buildAiVaultResumeCommand(args: {
       : shell
         ? quoteStartupArg(resumeTarget, shell)
         : quoteShellArg(resumeTarget, platform)
+  // Profile names are [a-z0-9._-] only, literal in every shell like `--resume`.
+  const ompProfileArgs = agent === 'omp' ? ompTranscriptProfileArgs(resumeTarget) : []
   const referencePath = normalizeAiVaultResumeFilePath(resumeFilePath ?? undefined, platform)
   const resumeCommand =
     isAntigravityReferenceSession({ agent, filePath: referencePath }) && referencePath
       ? `${baseCommand} --prompt-interactive ${quoteResumeArg(antigravityTranscriptReferencePrompt(referencePath), platform, shell)}`
-      : buildAgentResumeInvocation(agent, baseCommand, sessionArg, sessionId)
+      : buildAgentResumeInvocation(
+          agent,
+          [baseCommand, ...ompProfileArgs].join(' '),
+          sessionArg,
+          sessionId
+        )
 
   return buildAiVaultResumeShellCommand({
     resumeCommand,

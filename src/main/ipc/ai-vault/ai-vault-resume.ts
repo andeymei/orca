@@ -21,6 +21,8 @@ import { listClaudeBackgroundAgents } from '../../claude/background-agents/claud
 import { listRuntimeClaudeBackgroundAgents } from '../../ai-vault/runtime-claude-background-agents'
 import { listRunningAgentsForHost } from './ai-vault-running-agents'
 import { getRuntimeEnvironmentRegistryRoot } from '../runtime-environments/runtime-environment-registry-root'
+import { prepareAiVaultSessionHandoff } from './ai-vault-handoff'
+import type { AiVaultSessionHandoffArgs } from '../../../shared/ai-vault/contracts/ai-vault-session-handoff'
 
 export type AiVaultResumeHandlerOptions = {
   ensureStructuredSessionOwnership?: () => Promise<void>
@@ -57,6 +59,9 @@ export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOption
         return null
       }
     }
+  )
+  ipcMain.handle('aiVault:prepareSessionHandoff', (_event, args: AiVaultSessionHandoffArgs) =>
+    prepareAiVaultSessionHandoff(args)
   )
 }
 

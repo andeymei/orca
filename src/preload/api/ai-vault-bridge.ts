@@ -20,6 +20,7 @@ import type {
   ClaudeBackgroundAgentRequest
 } from '../../shared/claude-background-agents'
 import type { AiVaultPrepareSessionResumeRequest } from '../../shared/ai-vault/resume/ai-vault-resume-preparation'
+import type { AiVaultSessionHandoffArgs } from '../../shared/ai-vault/contracts/ai-vault-session-handoff'
 import type { PreloadApi } from '../api-types'
 import {
   AI_VAULT_SCAN_PROGRESS_CHANNEL,
@@ -58,6 +59,8 @@ export const aiVaultApi = {
     ipcRenderer.invoke('aiVault:cancelListSessions', args),
   prepareSessionResume: (args: AiVaultPrepareSessionResumeRequest) =>
     ipcRenderer.invoke('aiVault:prepareSessionResume', args),
+  prepareSessionHandoff: (args: AiVaultSessionHandoffArgs) =>
+    ipcRenderer.invoke('aiVault:prepareSessionHandoff', args),
   listSubagentSessions: (args: AiVaultSubagentListArgs) =>
     ipcRenderer.invoke('aiVault:listSubagentSessions', args),
   listRunningAgents: (

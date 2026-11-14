@@ -1,5 +1,5 @@
 // Persist line review notes on WorktreeMeta for existing orca-data.json storage and later agent handoff.
-export type DiffCommentSource = 'diff' | 'markdown'
+export type DiffCommentSource = 'diff' | 'markdown' | 'ai-instruction'
 export type DiffReviewScope = 'unstaged' | 'staged' | 'branch'
 
 export type MobileDiffReviewFileState = {
@@ -36,6 +36,10 @@ export type DiffComment = {
   updatedAt?: number
   /** Set after the note has been handed to an agent. Edits clear it. */
   sentAt?: number
+  /** Set when the agent finished the work this note requested. */
+  completedAt?: number
+  /** Agent pane that took the dispatch, as `${tabId}:${leafId}`. */
+  dispatchedPaneKey?: string
   scope?: DiffReviewScope
   oldPath?: string
   diffIdentity?: string

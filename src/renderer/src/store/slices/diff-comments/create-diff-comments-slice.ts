@@ -17,8 +17,12 @@ import {
 } from './diff-comment-persistence'
 import { selectWorktreeDiffCommentsOrEmpty } from './worktree-diff-comments-selector'
 import { readOwnedDiffComments, type DiffCommentOwner } from './diff-comment-owner'
+import {
+  createAiInstructionRecordActions,
+  type AiInstructionRecordActions
+} from './ai-instruction-record-actions'
 
-export type DiffCommentsSlice = {
+export type DiffCommentsSlice = AiInstructionRecordActions & {
   getDiffComments: (worktreeId: string | null | undefined) => DiffComment[]
   getAiInstructionComments: (worktreeId: string | null | undefined) => DiffComment[]
   addDiffComment: (
@@ -98,6 +102,8 @@ export const createDiffCommentsSlice: StateCreator<AppState, [], [], DiffComment
   set,
   get
 ) => ({
+  ...createAiInstructionRecordActions(set, get),
+
   // Why the shared selector: rendered surfaces and actions must read the same twin's notes, minus the instruction records that are not notes.
   getDiffComments: (worktreeId) =>
     withoutAiInstructionComments(selectWorktreeDiffCommentsOrEmpty(get(), worktreeId)),

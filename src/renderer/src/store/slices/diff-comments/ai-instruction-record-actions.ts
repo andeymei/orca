@@ -107,6 +107,7 @@ export function createAiInstructionRecordActions(
           const current = next[index]
           if (
             current.sentAt === sentAt &&
+            current.completedAt === undefined &&
             current.selectedText === record.selectedText &&
             current.dispatchedPaneKey === record.dispatchedPaneKey
           ) {
@@ -115,6 +116,8 @@ export function createAiInstructionRecordActions(
           next[index] = {
             ...current,
             sentAt,
+            // Why: the work is in flight again, so the record is dispatched, not finished.
+            completedAt: undefined,
             selectedText: record.selectedText,
             dispatchedPaneKey: record.dispatchedPaneKey
           }
@@ -146,7 +149,11 @@ export function createAiInstructionRecordActions(
       const result = mutateDiffComments(set, owner, (existing) => {
         let changed = false
         const next = existing.map((comment) => {
-          if (!ids.has(comment.id) || comment.completedAt === completedAt) {
+          if (
+            !ids.has(comment.id) ||
+            !isAiInstructionComment(comment) ||
+            comment.completedAt === completedAt
+          ) {
             return comment
           }
           changed = true

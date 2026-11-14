@@ -6,9 +6,13 @@ import type { Repo } from '../../../../../shared/repo-types'
 import type { Worktree } from '../../../../../shared/worktree/types'
 
 const updateMeta = vi.fn()
+const recordFeatureInteraction = vi.fn()
 
 vi.stubGlobal('window', {
-  api: { worktrees: { updateMeta }, ui: { set: vi.fn() } }
+  api: {
+    worktrees: { updateMeta },
+    ui: { set: vi.fn(), recordFeatureInteraction }
+  }
 })
 
 const REPO = 'repo-1'
@@ -50,6 +54,8 @@ function createStore() {
   store.setState({
     activeWorktreeId: WT,
     activeWorkspaceExecutionHostId: 'local',
+    // Why: the telemetry path is closed until the persisted UI is ready, so the guard below needs it open.
+    persistedUIReady: true,
     repos: [repo],
     worktreesByRepo: { [REPO]: [worktree] }
   })
@@ -67,6 +73,11 @@ function capturedOwner(store: { getState: () => AppState }): DiffCommentOwner {
 beforeEach(() => {
   updateMeta.mockReset()
   updateMeta.mockResolvedValue({})
+  recordFeatureInteraction.mockReset()
+  recordFeatureInteraction.mockResolvedValue({
+    featureInteractions: {},
+    contextualToursSeenIds: []
+  })
 })
 
 describe('AI instruction records', () => {
@@ -83,6 +94,8 @@ describe('AI instruction records', () => {
     expect(records[0].source).toBe('ai-instruction')
     expect(records[0].sentAt).toBeGreaterThan(0)
     expect(records[0].completedAt).toBeUndefined()
+    // Why: an instruction record is not a review note, so it must not feed the review-notes telemetry.
+    expect(recordFeatureInteraction).not.toHaveBeenCalled()
   })
 
   it('completes an AI instruction without deleting it', async () => {
@@ -98,6 +111,29 @@ describe('AI instruction records', () => {
     const records = store.getState().getAiInstructionComments(WT)
     expect(records).toHaveLength(1)
     expect(records[0].completedAt).toBeGreaterThan(0)
+    // Why: an instruction record is not a review note, so it must not feed the review-notes telemetry.
+    expect(recordFeatureInteraction).not.toHaveBeenCalled()
+  })
+
+  it('clears the completion stamp when the instruction is dispatched again', async () => {
+    const store = createStore()
+    const owner = capturedOwner(store)
+    await store
+      .getState()
+      .markAiInstructionsDispatched(owner, [
+        { filePath: 'src/foo.ts', lineNumber: 42, body: '指数退避重试' }
+      ])
+    const id = store.getState().getAiInstructionComments(WT)[0].id
+    await store.getState().markAiInstructionsCompleted(owner, [id])
+    expect(store.getState().getAiInstructionComments(WT)[0].completedAt).toBeGreaterThan(0)
+    await store
+      .getState()
+      .markAiInstructionsDispatched(owner, [
+        { filePath: 'src/foo.ts', lineNumber: 42, body: '指数退避重试' }
+      ])
+    const records = store.getState().getAiInstructionComments(WT)
+    expect(records).toHaveLength(1)
+    expect(records[0].completedAt).toBeUndefined()
   })
 
   it('drops records whose instruction no longer exists in the file', async () => {
@@ -117,5 +153,24 @@ describe('AI instruction records', () => {
       )
     const records = store.getState().getAiInstructionComments(WT)
     expect(records.map((r) => r.body)).toEqual(['新指令'])
+  })
+
+  it('keeps the records of other files when it drops the orphans of one file', async () => {
+    const store = createStore()
+    const owner = capturedOwner(store)
+    await store
+      .getState()
+      .markAiInstructionsDispatched(owner, [
+        { filePath: 'src/other.ts', lineNumber: 7, body: '别的指令' }
+      ])
+    await store
+      .getState()
+      .markAiInstructionsDispatched(
+        owner,
+        [{ filePath: 'src/foo.ts', lineNumber: 42, body: '新指令' }],
+        { currentInstructions: [{ lineNumber: 42, instruction: '新指令' }] }
+      )
+    const records = store.getState().getAiInstructionComments(WT)
+    expect(records.map((r) => r.body)).toEqual(['别的指令', '新指令'])
   })
 })

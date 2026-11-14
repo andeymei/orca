@@ -90,6 +90,8 @@ design-docs/
 # Planning docs stay local; allow durable documentation below.
 docs/**
 !docs/
+!docs/superpowers/
+!docs/superpowers/**
 !docs/site/
 !docs/site/**
 !docs/assets/

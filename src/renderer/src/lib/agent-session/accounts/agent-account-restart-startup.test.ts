@@ -170,8 +170,10 @@ describe('buildPaneAccountRestartStartup for Claude', () => {
         }
       })
 
+      // The conversation keeps its own id: the CLI continues a resumed conversation under a
+      // second, same-named session when the id is not pinned.
       expect(buildPaneAccountRestartStartup('claude', pane)?.command).toBe(
-        `${prefix}claude '--resume' '${SESSION_ID}'`
+        `${prefix}claude '--resume' '${SESSION_ID}' '--fork-session' '--session-id' '${SESSION_ID}'`
       )
       expect(resolveAgentResumeLaunchTarget).toHaveBeenLastCalledWith(
         expect.objectContaining({

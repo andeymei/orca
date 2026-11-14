@@ -6,8 +6,7 @@
 //
 // This is the fallback for a host that cannot be asked directly — an Orca older than the runtime
 // method that reports the running conversations. The command runs on the host, so the host's own
-// CLI decides: `claude attach` fails with "No job matching" for a conversation nobody runs, and
-// the resume runs only then.
+// CLI decides: `claude agents --json` lists the conversations that run there.
 
 import {
   getTuiAgentLaunchCommand,
@@ -23,15 +22,20 @@ import {
 /**
  * The command that opens a conversation whether or not it is already running.
  *
- * The attach comes first because it is the native open: a conversation that runs is shown where it
- * runs, and a conversation nobody runs makes the attach fail, which is what lets the resume follow.
+ * The listing decides before anything runs: a conversation the host reports as running is
+ * attached to, and one it does not report is resumed as before. Deciding first matters — the
+ * attach ends when the user leaves the attached agent, and that exit code says nothing about
+ * whether the conversation runs: a resume after it would make the CLI refuse the conversation
+ * the user just opened.
  */
 export function buildClaudeAttachOrResumeStartup(args: {
   platform: NodeJS.Platform
   shell?: AgentStartupShell
   /** The short id `claude attach` takes: the conversation id's first segment. */
   agentId: string
-  /** The command that resumes the conversation when the attach finds no running agent. */
+  /** The conversation id, as `claude agents --json` reports it. */
+  sessionId: string
+  /** The command that resumes the conversation when the host does not report it running. */
   resumeCommand: string
   cwd?: string | null
   /** A configured command may point at another binary; its flags do not apply to attach. */
@@ -44,13 +48,17 @@ export function buildClaudeAttachOrResumeStartup(args: {
     shell
   })
   const agentId = quoteStartupArg(args.agentId, shell)
+  const sessionId = quoteStartupArg(args.sessionId, shell)
   const attach = `${executable} attach ${agentId}`
+  const listing = `${executable} agents --json`
+  // Why not Out-String: its output depends on the console width and is empty without one, so
+  // the check could report "not running" for a conversation that runs.
   const command =
     shell === 'powershell'
-      ? `${attach}; if ($LASTEXITCODE -ne 0) { ${args.resumeCommand} }`
+      ? `if (${listing} | Select-String -SimpleMatch ${sessionId}) { ${attach} } else { ${args.resumeCommand} }`
       : shell === 'cmd'
-        ? `${attach} || (${args.resumeCommand})`
-        : `if ${attach}; then :; else ${args.resumeCommand}; fi`
+        ? `${listing} 2>nul | findstr /c:${sessionId} >nul && (${attach}) || (${args.resumeCommand})`
+        : `if ${listing} 2>/dev/null | grep -q ${sessionId}; then ${attach}; else ${args.resumeCommand}; fi`
   return {
     command,
     ...(args.cwd ? { cwd: args.cwd } : {})

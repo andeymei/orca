@@ -644,7 +644,7 @@ Expected: FAIL —— 模块不存在。
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `pnpm test src/renderer/src/components/editor/ai-instructions/ai-instruction-status.test.ts --maxWorkers=2`
-Expected: PASS（5 passed）。
+Expected: PASS（6 passed）。
 
 - [ ] **Step 5: 提交**
 

@@ -610,6 +610,12 @@ describe('resolveAiInstructionStatuses', () => {
     )
     expect(resolved[0].status).toBe('pending')
   })
+
+  it('carries the matched record id even while the instruction is still pending', () => {
+    const resolved = resolveAiInstructionStatuses([instruction(10, '甲')], [record('甲', 10)])
+    expect(resolved[0].status).toBe('pending')
+    expect(resolved[0].recordId).toBe('id-甲-10')
+  })
 })
 ```
 
@@ -623,10 +629,17 @@ Expected: FAIL —— 模块不存在。
 新建 `ai-instruction-status.ts`：
 
 1. 先按 `body`（指令正文）把 `records` 分组。
-2. 对每条 instruction，在同 `body` 的记录里挑**行号最近**的那条（`Math.abs(record.lineNumber - instruction.lineNumber)` 最小；平手时取行号小的那条）。
+2. **一条记录最多服务一条指令**（一对一）。候选配对按 `(距离, 记录行号, 指令行号)` 升序结算：
+   距离 = `Math.abs(record.lineNumber - instruction.lineNumber)`，平手取记录行号小的，再平手取指令行号小的；
+   每条记录被认领后不再参与后续配对。这个顺序与传入顺序无关。
+   > 2026-11-15 修订：原写法是「每条 instruction 各自取最近的同 body 记录」，与本任务的第 4 个用例
+   > （一条 line 10 的已完成记录 + line 10/90 两条同文指令，要求 `['completed','pending']`）矛盾——
+   > 按原写法 line 90 那条会也认领 line 10 的记录。**以用例为准**：一条记录代表一次具体的指令实例。
 3. 挑到记录后：没有 `sentAt` → `pending`；有 `sentAt` 没有 `completedAt` → `dispatched`；有 `completedAt` → `completed`。
-4. 没挑到记录 → `pending`，`recordId` 为 `undefined`。
-5. 返回的每项保留 `AiInstruction` 的全部字段，并带上 `status` 与 `recordId`。
+4. 没挑到记录 → `pending`，`recordId` 为 `undefined`；挑到记录时 `recordId` 一律带上那条记录的 `id`
+   （即便状态是 `pending`——记录存在但尚未派发是合法的）。
+5. 返回的每项保留 `AiInstruction` 的全部字段，并带上 `status` 与 `recordId`；字段集恰好是
+   `AiInstruction` 的字段加 `status` 与 `recordId`，不多不少。
 
 - [ ] **Step 4: 跑测试确认通过**
 

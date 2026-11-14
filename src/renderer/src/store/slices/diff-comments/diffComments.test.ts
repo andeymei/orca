@@ -198,6 +198,40 @@ describe('bulk clear diff comments', () => {
     expect(store.getState().getDiffComments(WT)).toBe(laterComments)
     errSpy.mockRestore()
   })
+
+  it('keeps the AI instruction records, which are not notes', async () => {
+    const store = createTestStore()
+    seed(store, [makeComment({ id: 'c1' }), makeComment({ id: 'ai-1', source: 'ai-instruction' })])
+
+    const ok = await store.getState().clearDiffComments(capturedOwner(store, WT))
+
+    expect(ok).toBe(true)
+    expect(store.getState().getDiffComments(WT)).toEqual([])
+    expect(
+      store
+        .getState()
+        .getAiInstructionComments(WT)
+        .map((c) => c.id)
+    ).toEqual(['ai-1'])
+  })
+
+  it('keeps the AI instruction records of a cleared file', async () => {
+    const store = createTestStore()
+    seed(store, [makeComment({ id: 'c1' }), makeComment({ id: 'ai-1', source: 'ai-instruction' })])
+
+    const ok = await store
+      .getState()
+      .clearDiffCommentsForFile(capturedOwner(store, WT), 'src/foo.ts')
+
+    expect(ok).toBe(true)
+    expect(store.getState().getDiffComments(WT)).toEqual([])
+    expect(
+      store
+        .getState()
+        .getAiInstructionComments(WT)
+        .map((c) => c.id)
+    ).toEqual(['ai-1'])
+  })
 })
 
 describe('worktree diff comment rollback convergence', () => {

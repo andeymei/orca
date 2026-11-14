@@ -7,6 +7,7 @@ import {
   isMarkdownReviewNotesEnabled,
   withoutMarkdownReviewNotes
 } from '@/lib/editor/markdown/review-notes/markdown-review-notes-setting'
+import { withoutAiInstructionComments } from '@/lib/source-control/review/comments/diff-comment-compat'
 import type { DiffComment } from '../../../../shared/diff-comment-types'
 
 const NO_COMMENTS: DiffComment[] = []
@@ -27,9 +28,10 @@ export function useVisibleWorktreeDiffComments(
   const markdownReviewNotesEnabled = useAppStateValue((s) =>
     isMarkdownReviewNotesEnabled(s.settings)
   )
-  const comments = useMemo(
-    () => (markdownReviewNotesEnabled ? allComments : withoutMarkdownReviewNotes(allComments)),
-    [allComments, markdownReviewNotesEnabled]
-  )
+  const comments = useMemo(() => {
+    // Why: the notes shelf lists review notes only; instruction records are not notes.
+    const reviewNotes = withoutAiInstructionComments(allComments)
+    return markdownReviewNotesEnabled ? reviewNotes : withoutMarkdownReviewNotes(reviewNotes)
+  }, [allComments, markdownReviewNotesEnabled])
   return { owner, comments, known: listed !== undefined, markdownReviewNotesEnabled }
 }

@@ -4,7 +4,12 @@ import type { StateCreator } from 'zustand'
 import type { AppState } from '../../types'
 import type { DiffComment } from '../../../../../shared/diff-comment-types'
 import { createNonSecureContextUuid } from '../../../../../shared/non-secure-context-uuid'
-import { isMarkdownComment } from '@/lib/source-control/review/comments/diff-comment-compat'
+import {
+  isAiInstructionComment,
+  isMarkdownComment,
+  onlyAiInstructionComments,
+  withoutAiInstructionComments
+} from '@/lib/source-control/review/comments/diff-comment-compat'
 import {
   enqueueDiffCommentPersist,
   mutateDiffComments,
@@ -15,6 +20,7 @@ import { readOwnedDiffComments, type DiffCommentOwner } from './diff-comment-own
 
 export type DiffCommentsSlice = {
   getDiffComments: (worktreeId: string | null | undefined) => DiffComment[]
+  getAiInstructionComments: (worktreeId: string | null | undefined) => DiffComment[]
   addDiffComment: (
     owner: DiffCommentOwner,
     input: Omit<DiffComment, 'id' | 'createdAt'>
@@ -92,8 +98,13 @@ export const createDiffCommentsSlice: StateCreator<AppState, [], [], DiffComment
   set,
   get
 ) => ({
-  // Why the shared selector: rendered surfaces and actions must read the same twin's notes.
-  getDiffComments: (worktreeId) => selectWorktreeDiffCommentsOrEmpty(get(), worktreeId),
+  // Why the shared selector: rendered surfaces and actions must read the same twin's notes, minus the instruction records that are not notes.
+  getDiffComments: (worktreeId) =>
+    withoutAiInstructionComments(selectWorktreeDiffCommentsOrEmpty(get(), worktreeId)),
+
+  /** The instruction records of a workspace; the only read that shows them. */
+  getAiInstructionComments: (worktreeId) =>
+    onlyAiInstructionComments(selectWorktreeDiffCommentsOrEmpty(get(), worktreeId)),
 
   addDiffComment: async (owner, input) => {
     if (!readOwnedDiffComments(get(), owner) || owner.worktreeId !== input.worktreeId) {
@@ -258,7 +269,12 @@ export const createDiffCommentsSlice: StateCreator<AppState, [], [], DiffComment
     }
     const worktreeId = owner.worktreeId
     const result = mutateDiffComments(set, owner, (existing) => {
-      const next = options?.keepMarkdownNotes ? existing.filter(isMarkdownComment) : []
+      // Why: instruction records are not review notes; clearing notes must not reset their state.
+      const next = existing.filter(
+        (comment) =>
+          isAiInstructionComment(comment) ||
+          (options?.keepMarkdownNotes === true && isMarkdownComment(comment))
+      )
       return next.length === existing.length ? null : next
     })
     if (!result) {
@@ -279,9 +295,12 @@ export const createDiffCommentsSlice: StateCreator<AppState, [], [], DiffComment
     }
     const worktreeId = owner.worktreeId
     const result = mutateDiffComments(set, owner, (existing) => {
+      // Why: instruction records are not review notes; clearing notes must not reset their state.
       const next = existing.filter(
         (c) =>
-          c.filePath !== filePath || (options?.keepMarkdownNotes === true && isMarkdownComment(c))
+          c.filePath !== filePath ||
+          isAiInstructionComment(c) ||
+          (options?.keepMarkdownNotes === true && isMarkdownComment(c))
       )
       return next.length === existing.length ? null : next
     })

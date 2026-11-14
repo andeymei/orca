@@ -11,7 +11,10 @@ import { parseWorkspaceKey } from '../../../../../shared/workspace-scope'
 
 export function normalizeDiffComment(comment: DiffComment): DiffComment {
   const rawSource = (comment as { source?: unknown }).source
-  const source = rawSource === 'markdown' || rawSource === 'diff' ? rawSource : undefined
+  const source =
+    rawSource === 'markdown' || rawSource === 'diff' || rawSource === 'ai-instruction'
+      ? rawSource
+      : undefined
   const rawStartLine = (comment as { startLine?: unknown }).startLine
   const startLine =
     Number.isInteger(rawStartLine) &&
@@ -30,6 +33,16 @@ export function normalizeDiffComment(comment: DiffComment): DiffComment {
     typeof rawSentAt === 'number' && Number.isFinite(rawSentAt) && rawSentAt > 0
       ? rawSentAt
       : undefined
+  const rawCompletedAt = (comment as { completedAt?: unknown }).completedAt
+  const completedAt =
+    typeof rawCompletedAt === 'number' && Number.isFinite(rawCompletedAt) && rawCompletedAt > 0
+      ? rawCompletedAt
+      : undefined
+  const rawDispatchedPaneKey = (comment as { dispatchedPaneKey?: unknown }).dispatchedPaneKey
+  const dispatchedPaneKey =
+    typeof rawDispatchedPaneKey === 'string' && rawDispatchedPaneKey.trim().length > 0
+      ? rawDispatchedPaneKey.trim()
+      : undefined
 
   return {
     ...comment,
@@ -40,7 +53,11 @@ export function normalizeDiffComment(comment: DiffComment): DiffComment {
     ...(startLine !== undefined ? { startLine } : {}),
     ...(startLine === undefined ? { startLine: undefined } : {}),
     ...(sentAt !== undefined ? { sentAt } : {}),
-    ...(sentAt === undefined ? { sentAt: undefined } : {})
+    ...(sentAt === undefined ? { sentAt: undefined } : {}),
+    ...(completedAt !== undefined ? { completedAt } : {}),
+    ...(completedAt === undefined ? { completedAt: undefined } : {}),
+    ...(dispatchedPaneKey !== undefined ? { dispatchedPaneKey } : {}),
+    ...(dispatchedPaneKey === undefined ? { dispatchedPaneKey: undefined } : {})
   }
 }
 

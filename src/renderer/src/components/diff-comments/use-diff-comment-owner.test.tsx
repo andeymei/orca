@@ -11,7 +11,11 @@ import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { DiffComment } from '../../../../shared/diff-comment-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 
-import { useOwnedDiffCommentTarget } from './use-diff-comment-owner'
+import {
+  useAiInstructionComments,
+  useDiffCommentView,
+  useOwnedDiffCommentTarget
+} from './use-diff-comment-owner'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }))
 vi.mock('@/runtime/rpc/calls/runtime-rpc-call', async (importOriginal) => ({
@@ -107,5 +111,32 @@ describe('retained sources', () => {
     expect(result.current[2].current).toMatchObject({
       authority: { endpoint: { kind: 'environment', environmentId: 'b' } }
     })
+  })
+})
+
+describe('review note surfaces', () => {
+  it('keeps AI instruction records out of the review notes a surface renders', () => {
+    // The plain note carries the instruction's body, so a reader that grouped records by body alone would claim it.
+    seedTwins('local', [
+      note('r1'),
+      { ...note('a1'), body: 'shared body', source: 'ai-instruction' },
+      { ...note('d1'), body: 'shared body' }
+    ])
+    const { result } = renderHook(() => useDiffCommentView(WT, 'selection'))
+    expect(result.current.comments?.map((c) => c.id)).toEqual(['r1', 'd1'])
+    expect(
+      useAppStore
+        .getState()
+        .getDiffComments(WT)
+        .map((c) => c.id)
+    ).toEqual(['r1', 'd1'])
+    expect(
+      useAppStore
+        .getState()
+        .getAiInstructionComments(WT)
+        .map((c) => c.id)
+    ).toEqual(['a1'])
+    const { result: instructions } = renderHook(() => useAiInstructionComments(WT, 'selection'))
+    expect(instructions.current.comments?.map((c) => c.id)).toEqual(['a1'])
   })
 })

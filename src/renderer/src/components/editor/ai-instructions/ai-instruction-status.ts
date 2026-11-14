@@ -20,12 +20,7 @@ function statusOfRecord(record: DiffComment): AiInstructionStatus {
   return record.sentAt !== undefined ? 'dispatched' : 'pending'
 }
 
-/**
- * Aligns the instructions found in a file with the AI instruction records persisted for it, so
- * every instruction carries the state of the record that belongs to it. A record belongs to the
- * instruction with the same text nearest to the line it was recorded on, and no record serves two
- * instructions, so a repeated instruction elsewhere stays pending.
- */
+/** A record serves only the nearest instruction with the same text, so a repeated one stays pending. */
 export function resolveAiInstructionStatuses(
   instructions: readonly AiInstruction[],
   records: readonly DiffComment[]

@@ -60,4 +60,10 @@ describe('resolveAiInstructionStatuses', () => {
     )
     expect(resolved[0].status).toBe('pending')
   })
+
+  it('carries the matched record id even while the instruction is still pending', () => {
+    const resolved = resolveAiInstructionStatuses([instruction(10, '甲')], [record('甲', 10)])
+    expect(resolved[0].status).toBe('pending')
+    expect(resolved[0].recordId).toBe('id-甲-10')
+  })
 })

@@ -250,6 +250,13 @@ export function useMonacoAiInstructions(params: {
     [clickState, fileKey]
   )
 
+  // Why: a click belongs to the file it happened in, so the record is dropped on a file switch
+  // and coming back to the file does not resurrect the click. The updater keeps a click that
+  // already belongs to the new file, so a click right after the switch is not lost.
+  useEffect(() => {
+    setClickState((previous) => (previous && previous.fileKey !== fileKey ? null : previous))
+  }, [fileKey])
+
   useEffect(() => {
     if (!mountedEditor || !enabled) {
       return

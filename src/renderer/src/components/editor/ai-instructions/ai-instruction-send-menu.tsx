@@ -27,7 +27,7 @@ import { useTranslate } from '@/i18n/use-translate'
 import type { ResolvedAiInstruction } from './ai-instruction-status'
 
 // The send menu owns the dispatch; these callers have nothing left to do once it lands.
-const IGNORE_DELIVERY = (): void => {}
+export const IGNORE_DELIVERY = (): void => {}
 
 export type AiInstructionSendMenuProps = {
   worktreeId: string
@@ -41,7 +41,10 @@ export type AiInstructionSendMenuProps = {
   /** Every instruction of the file, so the dispatch can prune the file's orphan records. */
   currentInstructions: readonly ResolvedAiInstruction[]
   scope: 'single' | 'batch'
-  /** The prompt reached an agent; the context names the panel that took it, when there is one. */
+  /**
+   * The prompt reached an agent; the context names the panel that took it, when there is one.
+   * It only notifies: the records are written by the send menu itself.
+   */
   onDelivered: (
     entries: readonly ResolvedAiInstruction[],
     context?: AiInstructionDeliveryContext
@@ -50,6 +53,11 @@ export type AiInstructionSendMenuProps = {
   onPromptHandedOff?: (delivered: Promise<unknown>) => void
   /** The button that opens the menu; it must be a single element that takes a ref. */
   trigger?: React.ReactNode
+}
+
+/** One instruction's identity: two instructions can share a line, so the text counts too. */
+function aiInstructionEntryKey(entry: ResolvedAiInstruction): string {
+  return `${entry.lineNumber}\u0000${entry.instruction}`
 }
 
 /** The prompt that carries the instructions of one file to an agent. */
@@ -109,6 +117,7 @@ async function writeAiInstructionDispatch(args: {
 
 /** The agent target list that carries the instructions to an agent. */
 export function AiInstructionSendMenuBody(props: AiInstructionSendMenuProps): React.JSX.Element {
+  const t = useTranslate()
   const { owner, filePath, entries, currentInstructions, onDelivered, onPromptHandedOff } = props
   const prompt = useMemo(
     () => buildAiInstructionPrompt({ filePath, entries, scope: props.scope }),
@@ -122,6 +131,8 @@ export function AiInstructionSendMenuBody(props: AiInstructionSendMenuProps): Re
         entries,
         currentInstructions,
         context
+      }).catch((err) => {
+        console.error('Failed to write AI instruction records:', err)
       })
       onDelivered(entries, context)
     },
@@ -142,6 +153,9 @@ export function AiInstructionSendMenuBody(props: AiInstructionSendMenuProps): Re
       launchSource="ai_instruction_send"
       onPromptDelivered={handleDelivered}
       onPromptHandedOff={handlePromptHandedOff}
+      sendMenuLabel={t('components.aiInstruction.sendMenuLabel', 'Send instructions to')}
+      sendingToastLabel={t('components.aiInstruction.sendingToast', 'Sending instructions...')}
+      sentToastLabel={t('components.aiInstruction.sentToast', 'Instructions sent.')}
     />
   )
 }
@@ -158,10 +172,11 @@ export function AiInstructionSendMenu(props: AiInstructionSendMenuProps): React.
     if (props.scope !== 'batch' || !includeDispatched) {
       return props.entries
     }
-    const sentLines = new Set(props.entries.map((entry) => entry.lineNumber))
+    // Why the text too: two instructions can share a line, so the line alone is not an identity.
+    const sentKeys = new Set(props.entries.map((entry) => aiInstructionEntryKey(entry)))
     return [
       ...props.entries,
-      ...dispatchedEntries.filter((entry) => !sentLines.has(entry.lineNumber))
+      ...dispatchedEntries.filter((entry) => !sentKeys.has(aiInstructionEntryKey(entry)))
     ]
   }, [dispatchedEntries, includeDispatched, props.entries, props.scope])
 
@@ -171,7 +186,7 @@ export function AiInstructionSendMenu(props: AiInstructionSendMenuProps): React.
       <DropdownMenuContent align="end" className="min-w-[220px]">
         {props.scope === 'batch' && dispatchedEntries.length > 0 ? (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="[&>svg:last-child]:ml-0">
+            <DropdownMenuSubTrigger>
               {includeDispatched ? <CheckIcon className="size-3.5" /> : null}
               <span className="truncate">
                 {t('components.aiInstruction.includeDispatched', 'Include dispatched instructions')}

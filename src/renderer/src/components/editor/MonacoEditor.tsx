@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react'
 import Editor from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import type { editor, IRange } from 'monaco-editor'
@@ -28,7 +28,10 @@ import { useMonacoContentSyncBridge } from './use-monaco-content-sync-bridge'
 import { useMonacoMarkdownAnnotations } from './markdown-source-tools/monaco/use-monaco-markdown-annotations'
 import { useMonacoEditorDecorations } from './use-monaco-editor-decorations'
 import { useMonacoEditorMount } from './use-monaco-editor-mount'
-import { useMonacoAiInstructions } from './ai-instructions/use-monaco-ai-instructions'
+import {
+  useMonacoAiInstructions,
+  type AiInstructionGlyphClick
+} from './ai-instructions/use-monaco-ai-instructions'
 import { AiInstructionGutterPopover } from './ai-instructions/ai-instruction-gutter-popover'
 import { snapshotMonacoViewState } from './monaco-view-state-persistence'
 import { MonacoMarkdownAnnotationOverlay } from './markdown-source-tools/monaco/MonacoMarkdownAnnotationOverlay'
@@ -219,13 +222,20 @@ export default function MonacoEditor({
     noteSource,
     enabled: Boolean(worktreeId) && !readOnly && !passiveMirror
   })
-  const [aiInstructionPopoverOpen, setAiInstructionPopoverOpen] = useState(false)
-  // Why: the click is the only record of which glyph was hit, so the popover opens on it.
-  useEffect(() => {
-    if (glyphClick) {
-      setAiInstructionPopoverOpen(true)
-    }
-  }, [glyphClick])
+  const [dismissedGlyphClick, setDismissedGlyphClick] = useState<AiInstructionGlyphClick | null>(
+    null
+  )
+  // Why: the click is the only record of which glyph was hit, so the popover opens on that click
+  // and stays closed once the user dismisses it.
+  const aiInstructionPopoverOpen = glyphClick !== null && glyphClick !== dismissedGlyphClick
+  const handleAiInstructionPopoverOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        setDismissedGlyphClick(glyphClick)
+      }
+    },
+    [glyphClick]
+  )
 
   // Why: the glyph margin is off by default, so the `@ai` glyphs would draw nothing without it.
   useEffect(() => {
@@ -381,8 +391,8 @@ export default function MonacoEditor({
         worktreeId={worktreeId}
       />
       <AiInstructionGutterPopover
-        open={aiInstructionPopoverOpen && glyphClick !== null}
-        onOpenChange={setAiInstructionPopoverOpen}
+        open={aiInstructionPopoverOpen}
+        onOpenChange={handleAiInstructionPopoverOpenChange}
         point={glyphClick?.point ?? { x: 0, y: 0 }}
         worktreeId={worktreeId}
         noteSource={noteSource}

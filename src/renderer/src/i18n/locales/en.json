@@ -22371,7 +22371,10 @@
       "sendToAgent": "Send to agent",
       "markDone": "Mark as done",
       "includeDispatched": "Include dispatched instructions",
-      "includeDispatchedCount": "Also send {{count}} dispatched instructions"
+      "includeDispatchedCount": "Also send {{count}} dispatched instructions",
+      "sendMenuLabel": "Send instructions to",
+      "sendingToast": "Sending instructions...",
+      "sentToast": "Instructions sent."
     },
     "dictation": {
       "stoppedAfterSilenceSeconds": "Stopped after {{seconds}} seconds of silence"

@@ -68,7 +68,10 @@ export function ReviewNotesSendMenuContent({
   launchSource = 'notes_send',
   onPromptDelivered,
   onPromptHandedOff,
-  mode = 'send'
+  mode = 'send',
+  sendMenuLabel,
+  sendingToastLabel,
+  sentToastLabel
 }: {
   worktreeId: string
   groupId: string
@@ -80,6 +83,10 @@ export function ReviewNotesSendMenuContent({
   onPromptDelivered?: (context?: AiInstructionDeliveryContext) => void
   /** Given each send's own result the moment its prompt is handed to an agent. */
   onPromptHandedOff?: (delivered: Promise<unknown>) => void
+  /** Already translated wording overrides, for callers that do not send notes. */
+  sendMenuLabel?: string
+  sendingToastLabel?: string
+  sentToastLabel?: string
 }): React.JSX.Element {
   const t = useTranslate()
   const hasPrompt = prompt.trim().length > 0
@@ -143,10 +150,11 @@ export function ReviewNotesSendMenuContent({
     ) => {
       // Settle the loading toast in place: immediate sends can resolve before Sonner mounts, racing a separate dismissal.
       const pending = toast.loading(
-        translate(
-          'auto.components.editor.ReviewNotesSendMenuContent.50f7e753ea',
-          'Sending notes...'
-        )
+        sendingToastLabel ??
+          translate(
+            'auto.components.editor.ReviewNotesSendMenuContent.50f7e753ea',
+            'Sending notes...'
+          )
       )
 
       const sending = send()
@@ -154,10 +162,11 @@ export function ReviewNotesSendMenuContent({
           if (result.status === 'sent') {
             onSent()
             toast.success(
-              translate(
-                'auto.components.editor.ReviewNotesSendMenuContent.bb9c69a0c9',
-                'Notes sent.'
-              ),
+              sentToastLabel ??
+                translate(
+                  'auto.components.editor.ReviewNotesSendMenuContent.bb9c69a0c9',
+                  'Notes sent.'
+                ),
               { id: pending }
             )
             return
@@ -189,7 +198,7 @@ export function ReviewNotesSendMenuContent({
         })
       onPromptHandedOff?.(sending)
     },
-    [onPromptHandedOff]
+    [onPromptHandedOff, sendingToastLabel, sentToastLabel]
   )
 
   const sendToAgentTarget = useCallback(
@@ -239,7 +248,8 @@ export function ReviewNotesSendMenuContent({
       <DropdownMenuLabel>
         {mode === 'add-to-chat'
           ? t('components.native-chat.addSelectionToChat', 'Add to chat')
-          : t('auto.components.editor.ReviewNotesSendMenuContent.03378aea75', 'Send notes to')}
+          : (sendMenuLabel ??
+            t('auto.components.editor.ReviewNotesSendMenuContent.03378aea75', 'Send notes to'))}
       </DropdownMenuLabel>
       {orderedSendTargets.map(({ target, agent }) => {
         const itemProps = {

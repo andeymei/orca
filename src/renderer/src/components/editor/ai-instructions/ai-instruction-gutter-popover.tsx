@@ -16,11 +16,9 @@ import {
 import { useTranslate } from '@/i18n/use-translate'
 import type { WorkspaceResource } from '@/lib/workspace/ownership/workspace-copy-owner'
 import type { ResolvedAiInstruction } from './ai-instruction-status'
-import { AiInstructionSendMenuBody } from './ai-instruction-send-menu'
+import { AiInstructionSendMenuBody, IGNORE_DELIVERY } from './ai-instruction-send-menu'
 
 const NO_ENTRIES: readonly ResolvedAiInstruction[] = []
-
-const IGNORE_DELIVERY = (): void => {}
 
 /** The popover that opens on an `@ai` instruction's gutter glyph. */
 export function AiInstructionGutterPopover(props: {
@@ -72,7 +70,7 @@ export function AiInstructionGutterPopover(props: {
           {clicked?.instruction}
         </DropdownMenuLabel>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="[&>svg:last-child]:ml-0">
+          <DropdownMenuSubTrigger>
             <Sparkles className="size-3.5" />
             {t('components.aiInstruction.sendToAgent', 'Send to agent')}
           </DropdownMenuSubTrigger>

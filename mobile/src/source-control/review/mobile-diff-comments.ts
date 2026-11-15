@@ -34,6 +34,11 @@ export function normalizeMobileDiffComments(value: unknown, worktreeId: string):
     if (!isRecord(candidate)) {
       return []
     }
+    // Why: the phone has no AI instruction surface, and an editable record would let it clear the
+    // dispatch stamp of work an agent already did. The record stays in the desktop's list.
+    if (candidate.source === 'ai-instruction') {
+      return []
+    }
     const id = typeof candidate.id === 'string' ? candidate.id : ''
     const filePath = typeof candidate.filePath === 'string' ? candidate.filePath : ''
     const lineNumber = typeof candidate.lineNumber === 'number' ? candidate.lineNumber : Number.NaN

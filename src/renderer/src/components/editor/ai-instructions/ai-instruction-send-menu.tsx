@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import { CheckIcon, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import type { DiffCommentOwner } from '@/store/slices/diff-comments/diff-comment-owner'
 import { aiInstructionFileKey } from '@/store/slices/ai-instructions/ai-instruction-entries'
@@ -26,9 +27,6 @@ import { cn } from '@/lib/class-names'
 import { useTranslate } from '@/i18n/use-translate'
 import type { ResolvedAiInstruction } from './ai-instruction-status'
 
-// The send menu owns the dispatch; these callers have nothing left to do once it lands.
-export const IGNORE_DELIVERY = (): void => {}
-
 export type AiInstructionSendMenuProps = {
   worktreeId: string
   groupId: string
@@ -41,14 +39,6 @@ export type AiInstructionSendMenuProps = {
   /** Every instruction of the file, so the dispatch can prune the file's orphan records. */
   currentInstructions: readonly ResolvedAiInstruction[]
   scope: 'single' | 'batch'
-  /**
-   * The prompt reached an agent; the context names the panel that took it, when there is one.
-   * It only notifies: the records are written by the send menu itself.
-   */
-  onDelivered: (
-    entries: readonly ResolvedAiInstruction[],
-    context?: AiInstructionDeliveryContext
-  ) => void
   /** Given the delivery result while the prompt is still on its way. */
   onPromptHandedOff?: (delivered: Promise<unknown>) => void
   /** The button that opens the menu; it must be a single element that takes a ref. */
@@ -96,13 +86,13 @@ async function writeAiInstructionDispatch(args: {
   entries: readonly ResolvedAiInstruction[]
   currentInstructions: readonly ResolvedAiInstruction[]
   context?: AiInstructionDeliveryContext
-}): Promise<void> {
+}): Promise<boolean> {
   const { owner, filePath, entries, currentInstructions, context } = args
   if (!owner) {
     console.error('AI instruction dispatch has no comment owner, so no record was written')
-    return
+    return false
   }
-  await useAppStore.getState().markAiInstructionsDispatched(
+  return useAppStore.getState().markAiInstructionsDispatched(
     owner,
     entries.map((entry) => ({
       filePath,
@@ -118,7 +108,7 @@ async function writeAiInstructionDispatch(args: {
 /** The agent target list that carries the instructions to an agent. */
 export function AiInstructionSendMenuBody(props: AiInstructionSendMenuProps): React.JSX.Element {
   const t = useTranslate()
-  const { owner, filePath, entries, currentInstructions, onDelivered, onPromptHandedOff } = props
+  const { owner, filePath, entries, currentInstructions, onPromptHandedOff } = props
   const prompt = useMemo(
     () => buildAiInstructionPrompt({ filePath, entries, scope: props.scope }),
     [filePath, entries, props.scope]
@@ -131,12 +121,23 @@ export function AiInstructionSendMenuBody(props: AiInstructionSendMenuProps): Re
         entries,
         currentInstructions,
         context
-      }).catch((err) => {
-        console.error('Failed to write AI instruction records:', err)
       })
-      onDelivered(entries, context)
+        .then((recorded) => {
+          // Why: without the record the instruction stays pending, so the header offers it again.
+          if (!recorded) {
+            toast.error(
+              t(
+                'components.aiInstruction.dispatchRecordFailed',
+                'Orca could not save the dispatch, so the instructions may be sent again.'
+              )
+            )
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to write AI instruction records:', err)
+        })
     },
-    [currentInstructions, entries, filePath, onDelivered, owner]
+    [currentInstructions, entries, filePath, owner, t]
   )
   const handlePromptHandedOff = useCallback(
     (delivered: Promise<unknown>) => {
@@ -226,7 +227,7 @@ function SendToAgentTrigger({ ref }: { ref?: React.Ref<HTMLButtonElement> }): Re
       type="button"
       className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-border/70 bg-muted/40 px-2 text-[11px] font-medium leading-none text-foreground/80 hover:bg-accent hover:text-foreground"
     >
-      <Sparkles className="size-3 text-violet-500 dark:text-violet-400" />
+      <Sparkles className="size-3 text-callout-important" />
       {t('components.aiInstruction.sendToAgent', 'Send to agent')}
     </button>
   )
@@ -260,7 +261,6 @@ export function AiInstructionBatchSendMenu(props: {
       entries={pending}
       currentInstructions={entries}
       scope="batch"
-      onDelivered={IGNORE_DELIVERY}
       trigger={<AiInstructionSendMenuButton count={pending.length} />}
     />
   )
@@ -290,7 +290,7 @@ function AiInstructionSendMenuButton({
       })}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      <Sparkles className="size-3 text-violet-500 dark:text-violet-400" />
+      <Sparkles className="size-3 text-callout-important" />
       <span className="whitespace-nowrap">
         {t('components.aiInstruction.headerLabel', 'AI instructions')}
       </span>

@@ -22374,7 +22374,8 @@
       "includeDispatchedCount": "Also send {{count}} dispatched instructions",
       "sendMenuLabel": "Send instructions to",
       "sendingToast": "Sending instructions...",
-      "sentToast": "Instructions sent."
+      "sentToast": "Instructions sent.",
+      "dispatchRecordFailed": "Orca could not save the dispatch, so the instructions may be sent again."
     },
     "dictation": {
       "stoppedAfterSilenceSeconds": "Stopped after {{seconds}} seconds of silence"

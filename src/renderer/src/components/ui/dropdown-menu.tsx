@@ -181,21 +181,35 @@ function DropdownMenuRadioItem({
   )
 }
 
+const dropdownMenuLabelVariants = cva(
+  'px-2.5 pt-[5px] pb-[3px] text-2xs font-semibold text-muted-foreground data-[inset]:pl-8',
+  {
+    variants: {
+      variant: {
+        default: '',
+        /** A whole sentence as the menu's header row: wrapped, quiet, and not a heading. */
+        instruction: 'py-1.5 text-[12px] font-normal leading-5'
+      }
+    },
+    defaultVariants: { variant: 'default' }
+  }
+)
+
 function DropdownMenuLabel({
   className,
   inset,
+  variant = 'default',
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Label> & {
   inset?: boolean
+  variant?: 'default' | 'instruction'
 }) {
   return (
     <DropdownMenuPrimitive.Label
       data-slot="dropdown-menu-label"
       data-inset={inset}
-      className={cn(
-        'px-2.5 pt-[5px] pb-[3px] text-2xs font-semibold text-muted-foreground data-[inset]:pl-8',
-        className
-      )}
+      data-variant={variant}
+      className={cn(dropdownMenuLabelVariants({ variant }), className)}
       {...props}
     />
   )

@@ -34,6 +34,9 @@ const GLYPH_CLASS_NAMES = {
 // whole file to nothing. The grammar lands within a second, so the rescan ladder ends there.
 const RESCAN_DELAYS_MS = [0, 50, 150, 400, 1000] as const
 
+// Why: a scan tokenizes the whole file, so a burst of typing must cost one scan, not one per key.
+const CONTENT_RESCAN_DELAY_MS = 200
+
 const NO_INSTRUCTIONS: readonly AiInstruction[] = []
 
 /** True when two scans found the same instructions, so an unchanged file keeps its array identity. */
@@ -90,6 +93,7 @@ export function useMonacoAiInstructions(params: {
     }
     let disposed = false
     let rescanTimer: ReturnType<typeof setTimeout> | null = null
+    let contentTimer: ReturnType<typeof setTimeout> | null = null
     let rescanIndex = 0
 
     const scanNow = (): void => {
@@ -124,7 +128,18 @@ export function useMonacoAiInstructions(params: {
       scanNow()
     }
 
-    const contentSubscription = model.onDidChangeContent(rescan)
+    // Why: typing a burst costs one scan instead of one per keystroke.
+    const scheduleRescan = (): void => {
+      if (contentTimer !== null) {
+        clearTimeout(contentTimer)
+      }
+      contentTimer = setTimeout(() => {
+        contentTimer = null
+        rescan()
+      }, CONTENT_RESCAN_DELAY_MS)
+    }
+
+    const contentSubscription = model.onDidChangeContent(scheduleRescan)
     const languageSubscription = model.onDidChangeLanguage(rescan)
     rescanTimer = setTimeout(() => {
       scanNow()
@@ -134,6 +149,9 @@ export function useMonacoAiInstructions(params: {
       disposed = true
       if (rescanTimer !== null) {
         clearTimeout(rescanTimer)
+      }
+      if (contentTimer !== null) {
+        clearTimeout(contentTimer)
       }
       contentSubscription.dispose()
       languageSubscription.dispose()

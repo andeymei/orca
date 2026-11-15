@@ -3,7 +3,8 @@ import type { AppState } from '../../types'
 import type { ResolvedAiInstruction } from '@/components/editor/ai-instructions/ai-instruction-status'
 
 // Why a constant: readers select this list, so a fresh array per call would re-render on every commit.
-const EMPTY_AI_INSTRUCTION_ENTRIES = Object.freeze([]) as unknown as ResolvedAiInstruction[]
+const EMPTY_AI_INSTRUCTION_ENTRIES: ResolvedAiInstruction[] = []
+Object.freeze(EMPTY_AI_INSTRUCTION_ENTRIES)
 
 export type AiInstructionsSlice = {
   aiInstructionEntriesByFile: Record<string, ResolvedAiInstruction[]>

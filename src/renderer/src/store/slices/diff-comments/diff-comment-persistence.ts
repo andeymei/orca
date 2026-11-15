@@ -33,11 +33,13 @@ export function normalizeDiffComment(comment: DiffComment): DiffComment {
     typeof rawSentAt === 'number' && Number.isFinite(rawSentAt) && rawSentAt > 0
       ? rawSentAt
       : undefined
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a persisted comment is untrusted, so its field is read as unknown and narrowed below.
   const rawCompletedAt = (comment as { completedAt?: unknown }).completedAt
   const completedAt =
     typeof rawCompletedAt === 'number' && Number.isFinite(rawCompletedAt) && rawCompletedAt > 0
       ? rawCompletedAt
       : undefined
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a persisted comment is untrusted, so its field is read as unknown and narrowed below.
   const rawDispatchedPaneKey = (comment as { dispatchedPaneKey?: unknown }).dispatchedPaneKey
   const dispatchedPaneKey =
     typeof rawDispatchedPaneKey === 'string' && rawDispatchedPaneKey.trim().length > 0

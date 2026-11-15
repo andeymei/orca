@@ -16,7 +16,7 @@ import {
 import { useTranslate } from '@/i18n/use-translate'
 import type { WorkspaceResource } from '@/lib/workspace/ownership/workspace-copy-owner'
 import type { ResolvedAiInstruction } from './ai-instruction-status'
-import { AiInstructionSendMenuBody, IGNORE_DELIVERY } from './ai-instruction-send-menu'
+import { AiInstructionSendMenuBody } from './ai-instruction-send-menu'
 
 const NO_ENTRIES: readonly ResolvedAiInstruction[] = []
 
@@ -66,7 +66,7 @@ export function AiInstructionGutterPopover(props: {
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent sideOffset={0} align="start" className="min-w-[220px]">
-        <DropdownMenuLabel className="max-w-[280px] whitespace-normal py-1.5 text-[12px] font-normal leading-5 text-muted-foreground">
+        <DropdownMenuLabel variant="instruction" className="max-w-[280px] whitespace-normal">
           {clicked?.instruction}
         </DropdownMenuLabel>
         <DropdownMenuSub>
@@ -83,7 +83,6 @@ export function AiInstructionGutterPopover(props: {
               entries={clicked ? [clicked] : NO_ENTRIES}
               currentInstructions={entries}
               scope="single"
-              onDelivered={IGNORE_DELIVERY}
             />
           </DropdownMenuSubContent>
         </DropdownMenuSub>

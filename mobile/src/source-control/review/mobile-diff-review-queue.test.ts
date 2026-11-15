@@ -100,4 +100,22 @@ describe('mobile diff review queue', () => {
       }
     ])
   })
+
+  it('never counts an AI instruction record as a review note', () => {
+    const queue = buildMobileDiffReviewQueue({
+      worktreeId: 'wt-1',
+      statusEntries: [statusEntry({ area: 'unstaged' })],
+      branchEntries: [],
+      comments: [comment({ id: 'ai', source: 'ai-instruction' }), comment({ id: 'note' })],
+      reviewState: emptyReviewState
+    })
+
+    expect(
+      queue.map(({ noteCount, unsentNoteCount, staleNoteCount }) => ({
+        noteCount,
+        unsentNoteCount,
+        staleNoteCount
+      }))
+    ).toEqual([{ noteCount: 1, unsentNoteCount: 1, staleNoteCount: 0 }])
+  })
 })

@@ -1104,6 +1104,9 @@ git commit -m "feat(ai-instruction): add the AI instruction store slice"
 
 1. **扫描**：一个 effect 依赖 `model` 与 `model.getValue()`（用 `model.onDidChangeContent` 订阅），每次变化调
    `scanAiInstructions(model)` 得到 `AiInstruction[]`。
+   （实现时改成**去抖 200ms**：Monaco 的独立 `tokenize` 没有跨调用缓存，一次扫描是 O(文件大小)，
+   而快路径只救了**不含** `@ai` 的文件 —— 用户正在敲 `@ai` 的那个文件走的是最贵的路径。
+   首次扫描与语言切换仍立即。见附录裁决 11。）
 2. **对齐状态**：用 `useAiInstructionComments(worktreeId, noteSource)` 拿到该副本的 AI 记录，过滤出
    `filePath === relativePath` 的，用 `resolveAiInstructionStatuses(instructions, records)` 得到带状态的清单。
 3. **发布到 store**：`publishAiInstructionEntries(aiInstructionFileKey(worktreeId, relativePath), resolved)`；
@@ -1493,3 +1496,20 @@ Expected: 通过。不得 `--no-verify`。
    跑那个生成脚本反而会把手写的目录条目变成孤儿、平白多出一大段 diff。
    **决定**：新增文案一律用命名 key（`components.aiInstruction.*`），手工写进 `en.json`，
    **不跑** `localize-renderer-strings.mjs`。9 个 key 与代码里的默认值逐条比对过，全部一致。
+
+10. **手机端不得看到 AI 指令记录**。AI 指令记录是 Orca 侧的状态，不是 review note。
+    `mobile/src/source-control/review/mobile-diff-comments.ts` 的 `normalizeMobileDiffComments`
+    **丢弃** `source: 'ai-instruction'` 的记录 —— 手机上没有 AI 指令的界面，
+    更不能让人编辑它（手机改一条 note 会清掉 `sentAt`，**已派发未完成的指令因此静默退回「待派发」**，
+    桌面又会把同一条指令再发一遍）。
+    **为什么「丢弃」而不是「保留 source、在渲染层过滤」**：手机回写桌面走的是三方合并
+    （`src/shared/diff-comment-mutation.ts`），**手机基线里没有的记录会被原样保留**。
+    手机基线只来自这个归一化函数，所以丢弃之后，桌面那条记录既删不掉、也降级不了。
+    匹配器 `mobileDiffReviewCommentMatchesItem` 也一并排除 `'ai-instruction'`，
+    免得将来多出一条绕过归一化的摄取路径。
+
+11. **扫描要去抖**。`monaco.editor.tokenize` 没有跨调用缓存，`model.getValue()` 还要复制整份 buffer，
+    所以一次扫描是 O(文件大小)。`scanAiInstructions` 的快路径只救了**不含** `@ai` 的文件 ——
+    而这正是用户真正在敲 `@ai` 的那个文件，走的是最贵的路径。
+    所以内容变化触发的重扫**去抖 200ms**（`CONTENT_RESCAN_DELAY_MS`）；
+    首次扫描与语言切换仍立即。扫描是幂等的，去抖只会让结果**晚一点**到，不可能让结果**不同**。

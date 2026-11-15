@@ -188,7 +188,7 @@ const dropdownMenuLabelVariants = cva(
       variant: {
         default: '',
         /** A whole sentence as the menu's header row: wrapped, quiet, and not a heading. */
-        instruction: 'py-1.5 text-[12px] font-normal leading-5'
+        instruction: 'py-1.5 text-xs font-normal leading-5'
       }
     },
     defaultVariants: { variant: 'default' }

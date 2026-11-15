@@ -42,6 +42,17 @@ describe('worktree metadata write normalization', () => {
     expect(updated).not.toHaveProperty('diffCommentsBase')
   })
 
+  it('keeps an AI instruction record the phone never saw', () => {
+    const ai = { ...note('ai'), source: 'ai-instruction' as const, sentAt: 5 }
+    const existing = { ...existingMeta, diffComments: [ai, note('desktop')] }
+    const updated = mergeWorktreeMetaForWrite(existing, {
+      diffCommentsBase: [note('desktop')],
+      diffComments: [note('desktop')]
+    })
+
+    expect(updated.diffComments).toEqual([ai, note('desktop')])
+  })
+
   it('retains all five PRs while each successive branch clears its active review', () => {
     let meta = existingMeta
     const numbers = [32201, 32206, 32211, 32216, 32218]

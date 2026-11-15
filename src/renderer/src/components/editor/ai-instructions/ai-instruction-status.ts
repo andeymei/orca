@@ -21,13 +21,15 @@ function statusOfRecord(record: DiffComment): AiInstructionStatus {
 }
 
 /**
- * Whether an agent's status completes a dispatched instruction. Only a `done` status that arrived
- * after the dispatch counts; a status from before it belongs to an earlier turn.
+ * Whether an agent's status completes a dispatched instruction. The delivery clock (`updatedAt`)
+ * is the positive gate because it is this machine's clock; the evidence clock
+ * (`evidenceObservedAt`) only vetoes, because a replay restamps the delivery clock but keeps the
+ * evidence clock at the moment the work was actually observed.
  */
 export function isAiInstructionCompletedByStatus(args: {
   sentAt: number | undefined
   completedAt: number | undefined
-  status: { state: string; updatedAt: number } | undefined
+  status: { state: string; updatedAt: number; evidenceObservedAt?: number } | undefined
 }): boolean {
   const { sentAt, completedAt, status } = args
   if (completedAt !== undefined || sentAt === undefined || status === undefined) {
@@ -36,7 +38,10 @@ export function isAiInstructionCompletedByStatus(args: {
   if (status.state !== 'done') {
     return false
   }
-  return status.updatedAt >= sentAt
+  if (status.updatedAt < sentAt) {
+    return false
+  }
+  return status.evidenceObservedAt === undefined || status.evidenceObservedAt >= sentAt
 }
 
 /** A record serves only the nearest instruction with the same text, so a repeated one stays pending. */

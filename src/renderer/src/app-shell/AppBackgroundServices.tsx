@@ -20,7 +20,7 @@ const AgentListVerdictPublisher = lazy(
   () => import('../components/activity/agent-list-verdict-publisher')
 )
 
-/** Stamps the AI instructions whose agent finished; the watcher outlives the editor surface. */
+/** The editor unmounts on an agent tab, so the AI instruction watcher lives here, not on it. */
 function AiInstructionCompletionWatcher(): null {
   useAiInstructionCompletion()
   return null
@@ -63,7 +63,6 @@ export function AppBackgroundServices(): React.JSX.Element {
       <StructuredAgentSessionStatusBridge />
       {/* Background chats have no mounted pane but still need completion attention. */}
       <StructuredAgentSessionAttentionBridge />
-      {/* The editor unmounts on an agent tab, so the AI instruction watcher lives here. */}
       <AiInstructionCompletionWatcher />
     </>
   )

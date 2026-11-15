@@ -101,4 +101,44 @@ describe('isAiInstructionCompletedByStatus', () => {
       })
     ).toBe(false)
   })
+
+  it('does not complete on a done status whose evidence predates the dispatch', () => {
+    expect(
+      isAiInstructionCompletedByStatus({
+        sentAt: 100,
+        completedAt: undefined,
+        status: { state: 'done', updatedAt: 150, evidenceObservedAt: 50 }
+      })
+    ).toBe(false)
+  })
+
+  it('does not complete a record that is already completed', () => {
+    expect(
+      isAiInstructionCompletedByStatus({
+        sentAt: 100,
+        completedAt: 120,
+        status: { state: 'done', updatedAt: 150 }
+      })
+    ).toBe(false)
+  })
+
+  it('does not complete a record that was never dispatched', () => {
+    expect(
+      isAiInstructionCompletedByStatus({
+        sentAt: undefined,
+        completedAt: undefined,
+        status: { state: 'done', updatedAt: 150 }
+      })
+    ).toBe(false)
+  })
+
+  it('does not complete without an agent status', () => {
+    expect(
+      isAiInstructionCompletedByStatus({
+        sentAt: 100,
+        completedAt: undefined,
+        status: undefined
+      })
+    ).toBe(false)
+  })
 })

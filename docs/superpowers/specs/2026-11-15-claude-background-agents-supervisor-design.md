@@ -1,0 +1,294 @@
+# Claude 后台 agent 监管器 — 设计
+
+> 日期：2026-11-15 · 状态：待评审 · 范围：Orca 右侧边栏 `background-agents` tab 重做
+
+## 1. 为什么要重做
+
+2026-11-13 的实现把「后台 agent」当成了「前台 agent」：面板列的是 Orca 自己的三类对象（结构化会话 / 终端 tab / AI Vault 磁盘 transcript），行里从来没有 Claude Code 后台 agent 的短 id，于是「进入」只能退化成「另起终端跑 `claude attach` / `claude --resume`」，也就**没有「返回列表」这个状态**。
+
+用户在终端里的真实体验是 `claude agents` 打开一个 TUI：方向键选、回车进入、左方向键退回列表。上次实现没有复刻这个模型。
+
+### 1.1 实测事实（claude 2.1.319，本机）
+
+| 事实                                                          | 证据                                                                                                                                                                                           |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 后台 agent 是**活着的独立进程**，不是会话记录                 | `claude agents --json` → `{id, sessionId, name, cwd, kind:"background", startedAt, state, status}`；`state ∈ {working, done, stopped}`，`status ∈ {busy, idle}`（只有活进程有 `pid`/`status`） |
+| 每个 agent 有自己的 job 目录                                  | `~/.claude/jobs/<agentId>/state.json` → `detail`、`tempo`、`inFlight{tasks,queued,kinds}`、`fan`（子 agent/shell）、`tokens`、`needs`、`block.questions`；`timeline.jsonl` 是状态流水          |
+| job 目录名 == agent 短 id                                     | `~/.claude/jobs/4f5d4302/`、`~/.claude/jobs/43f0ca87/`                                                                                                                                         |
+| `state.json` 的 `detail` **就是** TUI 行里那行灰字            | `43f0ca87` 的 detail = `Task 10 send menu and batch controls underway` = TUI 抓屏那一行，逐字一致                                                                                              |
+| agent 的 `name` 会自己变                                      | 实测：`Wait 20 seconds, then reply exactly: PROBE2_OK` → `bash sleep command`                                                                                                                  |
+| TUI 列表分两段                                                | `Working` / `Completed`；header 写 `0 awaiting input · 2 working · 16 completed`                                                                                                               |
+| TUI 行结构                                                    | 指针 ❯ + 状态图标 + 状态词（`Working` / `Needs input` / `Ready for review` / `Completed`）+ name + 细节列 + 右侧 elapsed                                                                       |
+| TUI 底部有派发输入框                                          | `❯ describe a task for a new session`                                                                                                                                                          |
+| TUI 底部有快捷键条                                            | `enter to return · space to reply · ctrl+x to delete · ? for shortcuts`                                                                                                                        |
+| 「进入」= `claude attach <id>`，渲染**完整 Claude Code TUI**  | 抓屏：对话 + 输入框 + `⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents`                                                                                                           |
+| ← 切回列表是**真的**                                          | tmux 抓屏：按 ← 后整屏变成上面那张列表                                                                                                                                                         |
+| ← 需要**按两次**                                              | 源码：第一次只 arm，toast `Press ← again to go back to agents`，3s 超时；输入框刚被编辑过（2s 内）首次也只 arm                                                                                 |
+| `claude attach` 断开后会**把自己 re-exec 成 `claude agents`** | 源码：detach 成功且走 APC 时 `A8({args:["agents"], env:{CLAUDE_AGENTS_SELECT:a}})`                                                                                                             |
+| 杀掉 attach 客户端**不会**停掉后台 agent                      | 实测：杀 `claude attach <id>` 客户端后 `claude agents --json` 仍显示该 agent `pid` 存活、`state: working`                                                                                      |
+| 底层是 daemon 的 `{"op":"attach"}`                            | daemon NDJSON over `/tmp/cc-daemon-<uid>/<hash>/control.sock`；PTY 字节走 `…/pty/<short>.sock`；协议未公开                                                                                     |
+
+### 1.2 其它可用的公开 CLI
+
+```
+claude agents [--json] [--all] [--cwd <path>]   列后台会话
+claude attach <id|name>                         在当前终端打开后台会话
+claude logs <id|name>                           打印后台会话最近的终端输出
+claude stop <id>                                停止（会话保留）
+claude rm <id>                                  删除会话及其 worktree
+claude respawn [id|--all]                       重启后台会话
+claude --bg "<prompt>"                          派发后台会话并打印短 id
+```
+
+`claude --bg` 是**程序化派发**通道，Orca 用它；`claude attach` 是**程序化进入**通道，Orca 用它。二者都不需要逆向 daemon 协议。
+
+## 2. 目标与非目标
+
+### 目标
+
+1. 面板列的是 **Claude Code 的后台 agent**，不是 Orca 的前台会话。
+2. **两屏导航**：列表屏 ⇄ 详情屏，`Enter` 进入、`←`（或按钮）返回。
+3. 详情屏内嵌**可交互**的 `claude attach` 终端 —— 能打字、能批准权限。
+4. 列表反映**活着的** agent：分段（Working / Needs input / Completed）、计数、每行的 detail 与 elapsed 实时更新。
+5. 能**派发**新 agent、能**停止/删除** agent。
+6. 返回列表**不影响**后台 agent（它继续跑）。
+
+### 非目标
+
+- 不逆向 Claude Code 的 daemon 协议（`control.sock` 的 `attach`/`reply`/`dispatch` op）。公开 CLI 已经封装掉了。
+- 不做 Claude FleetView 的分组视图 / pin / 重命名 / `space to reply` / 目录视图。
+- 不做原生只读 transcript 视图（用户已选「内嵌 attach 终端」）。
+- **v1 只支持本机宿主**。远程配对宿主留到 v2（数据层已按宿主切分，见 §5.4）。
+- 不把面板做成第二个 AI Vault。AI Vault 继续管磁盘 transcript；本面板只管**活着的后台 agent**。
+
+## 3. 用户可见行为
+
+### 3.1 屏 1：列表
+
+```
+ ▐▛███▛█   Claude Code
+▝▜██████▀  0 awaiting input · 2 working · 16 completed
+Working
+ ❯ ● claude agents cli        已确认旧面板对象不符，正实测…      4m
+   ● ai-source-annotations    Task 10 send menu and batch…      17h
+Needs input
+   ◐ waiting-for-decision      answer: 选 A 还是 B？                2m
+Completed
+   ✔ probe_ok response validation   replied exactly PROBE_OK      10s
+   ✔ orca v1.4.258 integration      本地 Orca 应用已从…            1h
+────────────────────────────────────────────────────────────
+❯ describe a task for a new session
+────────────────────────────────────────────────────────────
+  ↑↓ select · enter enter · ctrl+x stop · / search
+```
+
+- **分段**：`Working` / `Needs input` / `Completed`。判定规则（写死，不留歧义）：
+  - `Needs input`：`state.json` 的 `needs` 非空**或** `block.questions` 非空。（对应 FleetView 的 `blocked`：`tempo === "blocked" || status === "waiting"`）
+  - `Working`：其余 `state === "working"` 的条目。
+  - `Completed`：`state ∈ {done, stopped, failed}`。
+  - `state.json` 读不到时，回落到 `claude agents --json` 的 `state`：`working` → Working，其余 → Completed。
+- **行**：`❯` 指针（仅选中行）+ 状态点 + name + detail + 右侧 elapsed。
+  - detail 取自 `state.json` 的 `detail`；缺失时该格留空。
+  - elapsed 从 `startedAt`（`--json`）起算，`--json` 不可用时用 `state.json` 的 `createdAt`。
+- **header 计数**：`N awaiting input · N working · N completed`。
+- **底部 composer**：输入一句话 → `Enter` 派发一个新后台 agent（见 §6.1）。
+- **键盘**：
+  | 键                           | 行为                                                                                                |
+  | ---------------------------- | --------------------------------------------------------------------------------------------------- |
+  | `↑` / `↓`                    | 移动选择                                                                                            |
+  | `Enter`                      | 进入选中的 agent（屏 2）                                                                            |
+  | `Ctrl+X`                     | 停止（Working/Needs input）或删除（Completed）；**两步确认**，第一次行内显示 `ctrl+x again to stop` |
+  | `/`                          | 搜索（按 name / detail / cwd 过滤）                                                                 |
+  | `Esc`                        | 清空搜索；无搜索时退出面板焦点                                                                      |
+  | `Enter`（composer 有内容时） | 派发                                                                                                |
+
+### 3.2 屏 2：详情（内嵌 attach 终端）
+
+```
+┌ ← 返回 │ claude agents cli │ working │ ~/ctjt/test/aieditor │ 4m ┐
+│ ┌────────────────────────────────────────────────────────────┐ │
+│ │  ▐▛███▛█ Claude Code v2.1.319                               │ │
+│ │  ❯ 跟这个 agent 说点什么…                                  │ │
+│ │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents │ │
+│ └────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+- 上方是 Orca 自己的 header：← 返回按钮 + name + state + cwd + elapsed。
+- 下方是**内嵌 xterm**，跑 `claude attach <id>`，是**完整的 Claude Code TUI**，可打字、可批准权限。
+- **← 由 Orca 拦截**：不转发给 Claude Code，而是销毁 attach 客户端 → 回屏 1。实测该 agent 继续跑。
+  - 代价：输入框里不能用 ← 左移光标。用 `Home` / `⌘←` 代替；header 上有可见的「← 返回」按钮作为等价入口。
+- `Esc` 同样返回屏 1（当焦点不在终端输入框时）。
+
+### 3.3 旧内容的去向
+
+面板里 Orca 的三类前台对象（结构化会话 / 终端 tab / AI Vault transcript）**全部移除**。理由：
+
+- 终端 tab 就在眼前；AI Vault 已经在管磁盘 transcript（activity bar 里的 `Agents` tab）。
+- 保留它们就等于继续把后台 agent 当前台 agent 对待 —— 这次重做的核心正是拆掉这个混淆。
+
+## 4. 架构
+
+### 4.1 模块
+
+```
+┌─ main 进程 ──────────────────────────────────────────────────────┐
+│ claude/background-agents/                                        │
+│   claude-background-agent-list.ts     （已有）claude agents --json │
+│   claude-background-agent-job-state.ts（新）读 ~/.claude/jobs/    │
+│   claude-background-agent-commands.ts （新）--bg / stop / rm      │
+│ ipc/claude-agents/                                               │
+│   claude-agents-listing.ts            （新）IPC: 列出 + 详情      │
+│   claude-agents-command.ts            （新）IPC: 派发/停止/删除    │
+└───────────────────────────────────────────────────────────────────┘
+┌─ renderer ────────────────────────────────────────────────────────┐
+│ components/background-agents/                                     │
+│   BackgroundAgentsPanel.tsx        屏 1 ⇄ 屏 2 的路由            │
+│   BackgroundAgentListScreen.tsx    （新）屏 1                     │
+│   BackgroundAgentRow.tsx           （改）行                       │
+│   BackgroundAgentAgentScreen.tsx   （新）屏 2                     │
+│   embedded-agent-terminal.tsx       （新）内嵌 xterm + 传输        │
+│   background-agent-list-rows.ts    （新）合并/分段的纯函数         │
+│ store/slices/background-agents/    （新）屏状态 + 列表数据        │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 为什么新写内嵌终端而不复用 TerminalPane
+
+`TerminalPane` 绑死在 tab/pane 拓扑上（`tabId` / `worktreeId` / `isActive` 必填，25 个 controller 文件）。
+
+但 Orca **已经有一个与拓扑解耦的活终端**：`src/renderer/src/components/standalone-terminal/open-standalone-terminal.ts:47`。它持有 xterm 实例、装 IME/键盘/粘贴/链接/kitty 策略，**调用方自带传输层**。既有两个生产用法：
+
+- `src/renderer/src/components/plain-ssh-terminal/PlainSshTerminalView.tsx:81` —— 主窗口里的浮动活终端
+- `src/renderer/src/components/dashboard-popout/AgentTerminalPreview.tsx:203` —— 抽屉里的活预览终端（**不是**只读快照，它有活流也能输入）
+
+所以屏 2 复用 `openStandaloneTerminal` + `preview-terminal-*` 那 15 个策略插件，**新写量约 200–300 行**，零协议改动。
+
+### 4.3 传输层：起一个游离 PTY
+
+屏 2 用 `window.api.pty.spawn({ command: 'claude attach <id>', cwd, cols, rows, worktreeId: FLOATING_TERMINAL_WORKTREE_ID })` 起一个**不属于任何 tab** 的 PTY，再用 `pty.onData` / `pty.write` / `pty.resize` / `pty.kill` 驱动。
+
+两个必须处理的坑：
+
+1. **游离 PTY 会被 main 自动塞进一个新 tab。**
+   `src/main/runtime/terminal/adoption/unshown-live-terminal-placement.ts:78` 的 `isUnshown()` 要求 `pty.worktreeId !== FLOATING_TERMINAL_WORKTREE_ID`；用 `FLOATING_TERMINAL_WORKTREE_ID`（`global-floating-terminal`）即可豁免 —— 这正是 Orca 已有的「游离终端」一等类别（`ResourcePtyPanel` 的「N without a tab」）。
+2. **renderer 的 `ptyDataHandlers` 每个 ptyId 只有一个 handler**（`src/renderer/src/components/terminal-pane/pty-transport/ipc/ipc-pty-session-handlers.ts:105`）。我们的 PTY 没有 pane 主人，槽位空闲，可直接用；**绝不能**用 `terminalPreview:*` 去观察一个 pane 也拥有的 pty（那条路是多观察者语义，用错会顶掉 pane 的 handler）。
+
+另外，PTY 必须标记为「可见且有兴趣」，否则 main 的隐藏投递门会丢字节：`pty.setRendererPtyVisible(id, true)` + `pty.setPtyDeliveryInterest(id, true)`。
+
+### 4.4 生命周期
+
+| 事件                       | 动作                                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| 进入屏 2                   | `pty.spawn('claude attach <id>')` → 拿到 ptyId → 挂 xterm                                    |
+| 离开屏 2（← / Esc / 按钮） | `pty.kill(id)` → 回屏 1。**后台 agent 不受影响**（实测）                                     |
+| 重新进入                   | 重新 spawn + attach（daemon attach 实测 ~22ms）                                              |
+| 侧栏 tab 切走              | 面板卸载 → **保留** attach（屏状态在 store slice 里），切回来时重新挂 xterm 订阅同一个 ptyId |
+| 应用退出                   | PTY 随 main 进程结束；后台 agent 是 Claude Code 的进程，不受影响                             |
+
+## 5. 数据层
+
+### 5.1 列表 = 两个来源合并
+
+| 来源                                  | 给出                                                                                           | 成本                  |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------- |
+| `claude agents --json`                | `id` / `sessionId` / `name` / `cwd` / `kind` / `startedAt` / `state` / `status` / `pid`        | **~1.2s**（进程启动） |
+| `~/.claude/jobs/<agentId>/state.json` | `detail` / `tempo` / `inFlight` / `fan` / `tokens` / `needs` / `block.questions` / `updatedAt` | **~10ms**（fs 读）    |
+
+`state.json` 的 `detail` 已实测与 FleetView 的灰字逐字一致，所以它就是那一列的来源。
+
+### 5.2 刷新策略（由实测成本决定）
+
+`claude agents --json` 要 1.2s，**不能** 2s 轮询。所以分两层：
+
+- **快层（每 2s）**：读已知的 agent 的 `state.json` → 更新 detail / tokens / inFlight / state。纯 fs，成本可忽略。
+- **慢层（每 15s，面板可见时）+ 手动刷新 + 面板打开时**：跑 `claude agents --json` → 对齐名单、存活（`pid`/`status`）、新出现的 agent。
+
+`state.json` 读不到或字段缺失时**降级**：行仍在，只是没有 detail 那一格。任何来源出错都不得让面板变空白。
+
+### 5.3 过滤
+
+- **只列 `kind === "background"` 且有 `id` 的条目。** `kind: "interactive"`（用户自己在 iTerm 里跑的 `claude`）没有短 id，`claude attach` 吃不了它，FleetView 也不列。它们仍归 AI Vault 管。
+- **不做 workspace 目录过滤。** FleetView 是 host 级的；`claude agents --cwd <path>` 这个参数存在但那是启动期参数，TUI 里没有对应 UI。v1 跟随 FleetView：host 级。
+
+### 5.4 远程宿主（v2 预留）
+
+`listRunningAgentsForHost`（`src/main/ipc/ai-vault/ai-vault-running-agents.ts:20`）已经示范了「按 executionHost 选本机 / 配对 runtime」的路由。v2 沿用它：远程的 `state.json` 由宿主侧读、两个来源在宿主侧合并后回传。**v1 只答本机**，远程 workspace 打开本面板时给一条明确说明，不假装列表是空的。
+
+## 6. 派发 / 停止 / 删除
+
+### 6.1 派发（composer）
+
+`claude --bg "<prompt>"` 打印短 id 并后台起会话 —— 这是程序化派发通道。走 `@orca/process-host`（`runProcess`），继承现有 Claude 账号/代理环境。
+
+- 派发参数：`claude --bg [--model <m>] [--permission-mode <p>] [--cwd <dir>] "<prompt>"`。`cwd` 默认当前 workspace 目录。
+- 派发中先在列表顶部插一行 `opening… · esc to cancel` 的占位行（对齐 FleetView）。
+- 失败：占位行变成失败态 + toast，不静默。
+
+### 6.2 停止 / 删除
+
+| 目标状态              | 动作                | 命令               |
+| --------------------- | ------------------- | ------------------ |
+| Working / Needs input | 停止（会话保留）    | `claude stop <id>` |
+| Completed             | 删除（连 worktree） | `claude rm <id>`   |
+
+两步确认：第一次按 `Ctrl+X` 只 arm，行内显示 `ctrl+x again to stop`；3s 内再按才执行。删除是**不可逆**的（连 worktree 一起删），确认文案必须写明。
+
+## 7. 键盘与焦点
+
+- **屏 1** 自己处理 `keydown`；面板根节点 `tabIndex={0}`，进入面板时聚焦。
+- **屏 2** 的 xterm 用 `terminal.attachCustomKeyEventHandler` 拦 `←`（范式见 `src/renderer/src/components/dashboard-popout/preview-terminal-key-handler.ts:80`）。
+  - **风险**：pane 的全局 `window` capture keydown 监听（`src/renderer/src/components/terminal-pane/input/keyboard/terminal-keyboard-hook.ts:131`）在找不到归属时会 fallback 到 `manager.getActivePane()`（`terminal-keyboard-pane-resolution.ts:17`），可能把侧栏终端的按键吞给某个 pane。**必须实测**，必要时给 xterm 元素加哨兵属性（参照 `src/renderer/src/components/global-keybindings/agent-terminal-preview-target.ts` 的 `[data-agent-terminal-preview]` 做法）并在窗口级 handler 里排除。
+- 终端输入框内 `Esc` 归终端（Claude Code 自己在用 Esc）；焦点不在终端时 `Esc` 回屏 1。
+
+## 8. 失败与降级
+
+| 情况                                        | 表现                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 本机没有 `claude`                           | 面板显示「未找到 Claude Code CLI」，而不是空列表                                          |
+| `claude agents --json` 超时（5s）/ 非零退出 | 保留上一次的名名单，列表不闪空                                                            |
+| `state.json` 读不到                         | 该行没有 detail，其余正常                                                                 |
+| `claude attach` 立刻退出（agent 已死）      | 屏 2 显示「该 agent 已停止」+ 返回按钮                                                    |
+| attach 的 agent 在别的主机                  | v1：不列出（列表是本机的）                                                                |
+| 侧栏太窄（默认 280px ≈ 35 列）              | Claude Code TUI 会挤 → 屏 2 header 提供「在主区域打开」，用同一命令在主区域起一个终端 tab |
+
+## 9. 测试策略
+
+按 `docs/agents-md-refs/test-antipatterns.md`：测试必须在「回退改动就会失败」的那一层，且只测业务逻辑。
+
+| 层     | 测什么                                                                               | 位置                                         |
+| ------ | ------------------------------------------------------------------------------------ | -------------------------------------------- |
+| 纯函数 | 两个来源合并成行；Working/Needs input/Completed 分段与计数；搜索过滤；elapsed 格式化 | `background-agent-list-rows.test.ts`         |
+| 纯函数 | `state.json` → 行的映射，缺字段时的降级                                              | `claude-background-agent-job-state.test.ts`  |
+| 组件   | 屏 1 ⇄ 屏 2 的状态机；`Enter` 进入、`←` 返回、`Ctrl+X` 两步确认                      | `BackgroundAgentsPanel.test.tsx`             |
+| E2E    | 真实 `claude --bg` 派发 → 出现在列表 → 进入 → 返回后 agent 仍活着                    | `tests/e2e/claude-background-agents.spec.ts` |
+
+**不做**的测试：不断言 xterm 的像素、不为「列表看起来对」写快照测试。
+
+## 10. 风险与取舍
+
+| 风险                                         | 取舍                                                                                        |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `state.json` 是 Claude Code 的内部格式，会变 | 只当**可选增强**；读不到就少一列，绝不让面板挂掉。名单的权威来源仍是 `claude agents --json` |
+| 侧栏默认 280px，Claude Code TUI 挤           | 屏 2 提供「在主区域打开」的逃生舱                                                           |
+| ← 被 Orca 拦截，牺牲输入框光标左移           | 用户明确要 ← 返回列表；用 `Home`/`⌘←` 补位，并提供可见按钮                                  |
+| 每次进入都重新 spawn `claude attach`         | 实测 daemon attach ~22ms，可接受；换来「返回列表不残留进程」的干净语义                      |
+| v1 不支持远程                                | 用户已确认取舍；数据层按宿主切分，v2 补                                                     |
+
+## 11. 与既有工作的关系
+
+- `src/renderer/src/components/background-agents/` 整个目录重写。旧的
+  `use-background-agent-sessions.ts` / `background-agent-session-list.ts` /
+  `background-agent-terminal-rows.ts` / `background-agent-vault-rows.ts` /
+  `background-agent-vault-resume.ts` / `background-agent-workspace-scope.ts`
+  随三类旧行一起删除。
+- `src/main/claude/background-agents/claude-background-agent-list.ts` 扩展字段（补 `state`/`status`/`startedAt`/`kind`），不推翻。
+- AI Vault 的 resume 机器**不删**：AI Vault 面板自己还在用它。本面板只是不再复用它。
+- `aiVault.listRunningAgents` 保留给 AI Vault 用；本面板走新的 IPC。
+
+## 12. 明确的取舍记录
+
+- 用户选择：**详情屏 = 内嵌 attach 终端**（而非原生只读视图 / 原生输入 / 全宽终端页）。
+- 用户选择：**位置 = 右侧边栏 tab**（沿用上次的位置）。
+- 用户选择：**v1 = 列表 + 内嵌终端 + ← 返回 + 派发 + 停止/删除**，不含远程宿主。
+- 用户选择：**旧的 Orca 三类行全部移除**。

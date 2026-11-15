@@ -57,6 +57,9 @@ import { addQuoteToAgent } from '@/components/native-chat/selection-quotes/nativ
 import React, { useCallback, useMemo } from 'react'
 import { orderSendTargetsByWorktreeAgentRows } from './review-notes-send-target-order'
 
+/** Where a prompt landed: the agent panel that took it. */
+export type AiInstructionDeliveryContext = { paneKey?: string; tabId?: string }
+
 export function ReviewNotesSendMenuContent({
   worktreeId,
   groupId,
@@ -74,7 +77,7 @@ export function ReviewNotesSendMenuContent({
   mode?: 'send' | 'add-to-chat'
   promptDelivery?: 'auto-submit' | 'draft' | 'submit-after-ready'
   launchSource?: LaunchSource
-  onPromptDelivered?: () => void
+  onPromptDelivered?: (context?: AiInstructionDeliveryContext) => void
   /** Given each send's own result the moment its prompt is handed to an agent. */
   onPromptHandedOff?: (delivered: Promise<unknown>) => void
 }): React.JSX.Element {
@@ -217,7 +220,7 @@ export function ReviewNotesSendMenuContent({
       runNotesSend(
         () => sendMessageToAgent({ worktreeId, prompt, target: target.messageTarget }),
         () => {
-          onPromptDelivered?.()
+          onPromptDelivered?.({ paneKey: target.paneKey, tabId: target.tabId })
           // Match sidebar telemetry for follow-up notes sent through the dropdown.
           track('agent_prompt_sent', {
             agent_kind: agentKindForAgentType(target.agentType),

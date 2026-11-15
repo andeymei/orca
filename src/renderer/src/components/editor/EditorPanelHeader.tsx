@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { ArrowDown, ArrowUp, Columns2, Eye, FileText, ListTree, Rows2 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { useVisibleWorktreeDiffComments } from '../diff-comments/use-visible-worktree-diff-comments'
+import { AiInstructionBatchSendMenu } from './ai-instructions/ai-instruction-send-menu'
 import type { OpenFile } from '@/store/slices/editor/types/open-file'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import EditorViewToggle, {
@@ -209,6 +210,14 @@ export function EditorPanelHeader({
           triggerCount={fileDiffComments.length}
           triggerClassName="h-6 shrink-0 gap-1 rounded-full border border-border/70 bg-muted/40 px-2 text-[11px] font-medium leading-none text-foreground/80 hover:bg-accent hover:text-foreground"
           iconClassName="size-3"
+        />
+      )}
+      {!isDiffSurface && (
+        <AiInstructionBatchSendMenu
+          worktreeId={activeFile.worktreeId}
+          groupId={activeGroupId ?? activeFile.worktreeId}
+          source={activeFile}
+          filePath={activeFile.relativePath}
         />
       )}
       {isDiffSurface && (

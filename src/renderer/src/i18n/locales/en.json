@@ -22365,6 +22365,14 @@
       "activeSubmitFailed": "The notes may already be pasted in the active terminal, but Orca could not submit them.",
       "notWritableSelection": "The {{target}} agent did not accept the selection."
     },
+    "aiInstruction": {
+      "headerLabel": "AI instructions",
+      "headerTitle": "AI instructions ({{count}})",
+      "sendToAgent": "Send to agent",
+      "markDone": "Mark as done",
+      "includeDispatched": "Include dispatched instructions",
+      "includeDispatchedCount": "Also send {{count}} dispatched instructions"
+    },
     "dictation": {
       "stoppedAfterSilenceSeconds": "Stopped after {{seconds}} seconds of silence"
     }

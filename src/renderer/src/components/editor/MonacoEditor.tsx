@@ -29,6 +29,7 @@ import { useMonacoMarkdownAnnotations } from './markdown-source-tools/monaco/use
 import { useMonacoEditorDecorations } from './use-monaco-editor-decorations'
 import { useMonacoEditorMount } from './use-monaco-editor-mount'
 import { useMonacoAiInstructions } from './ai-instructions/use-monaco-ai-instructions'
+import { AiInstructionGutterPopover } from './ai-instructions/ai-instruction-gutter-popover'
 import { snapshotMonacoViewState } from './monaco-view-state-persistence'
 import { MonacoMarkdownAnnotationOverlay } from './markdown-source-tools/monaco/MonacoMarkdownAnnotationOverlay'
 import { usePluginSyntaxLanguage } from './use-plugin-syntax-language'
@@ -210,7 +211,7 @@ export default function MonacoEditor({
     conflictDecorationsEnabled
   })
 
-  const { glyphs } = useMonacoAiInstructions({
+  const { glyphs, glyphClick } = useMonacoAiInstructions({
     mountedEditor,
     model: mountedEditor?.getModel() ?? null,
     relativePath,
@@ -218,6 +219,13 @@ export default function MonacoEditor({
     noteSource,
     enabled: Boolean(worktreeId) && !readOnly && !passiveMirror
   })
+  const [aiInstructionPopoverOpen, setAiInstructionPopoverOpen] = useState(false)
+  // Why: the click is the only record of which glyph was hit, so the popover opens on it.
+  useEffect(() => {
+    if (glyphClick) {
+      setAiInstructionPopoverOpen(true)
+    }
+  }, [glyphClick])
 
   // Why: the glyph margin is off by default, so the `@ai` glyphs would draw nothing without it.
   useEffect(() => {
@@ -371,6 +379,15 @@ export default function MonacoEditor({
         filePath={filePath}
         relativePath={relativePath}
         worktreeId={worktreeId}
+      />
+      <AiInstructionGutterPopover
+        open={aiInstructionPopoverOpen && glyphClick !== null}
+        onOpenChange={setAiInstructionPopoverOpen}
+        point={glyphClick?.point ?? { x: 0, y: 0 }}
+        worktreeId={worktreeId}
+        noteSource={noteSource}
+        relativePath={relativePath}
+        clickedLineNumber={glyphClick?.lineNumber ?? null}
       />
     </div>
   )

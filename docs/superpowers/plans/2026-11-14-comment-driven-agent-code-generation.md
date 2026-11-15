@@ -1443,3 +1443,44 @@ Expected: 通过。不得 `--no-verify`。
   `ai-instruction-status.ts` 在渲染进程的 `components/editor/ai-instructions/`）。
 - 设计稿 §4.4 的孤儿清理落在 `markAiInstructionsDispatched` 的 `options.currentInstructions` 上：
   派发写入顺带剔除同文件里正文已不在当前指令清单中的旧记录，与设计稿「下一次针对该文件的派发写入时剔除」一致。
+
+## 附：实现期间做出的裁决（2026-11-15）
+
+下面几条是执行计划时才发现的**计划与代码现实不符**的地方。每一条都写回了设计稿（spec 是绑定权威），
+这里只列计划文本本身的偏差，便于对着计划读代码的人知道差异在哪。
+
+1. **Task 7 的落位**：两个动作不能都放进 `create-diff-comments-slice.ts`。
+   `.oxlintrc.json` 的 `max-lines` 对 `.ts` 是 300，而那个文件只剩十几行余量；
+   `config/max-lines-baseline.txt` 只能缩不能长。所以拆到同目录的
+   `ai-instruction-record-actions.ts`，由 slice 组合进来（仓库本来就有 `createXxxActions(...)` 这个模式）。
+
+2. **Task 7 的派发要清 `completedAt`**：状态判定里 `completedAt` 优先于 `sentAt`，
+   一条已完成的指令再次派发时如果不清完成戳，它会永远停在「已完成」，
+   自动完成判定也等不到第二次。**已在设计稿 §4.2 写回。**
+
+3. **Task 8 的 slice 要注册三处**：`store/types.ts`、测试 fixture、**生产 store `store/index.ts`**。
+   计划只列了前两处；第三处漏了 `pnpm tc:web` 直接报 TS2345。
+
+4. **Task 9 必须处理两件 Monaco 的事**：
+   - **语法是懒加载的**。`monaco-editor@0.55.1` 的 basic-languages 用
+     `registerTokensProviderFactory` + 动态 `import()` 注册语法，
+     而 `monaco.editor.tokenize` 是同步的 —— 语法模块没落地时整篇文件返回**空 token 行**。
+     所以刚打开的文件第一次扫描会一条都找不到，必须做**有界重试**，并且语言变化时重新扫描。
+   - **`glyphMargin` 默认 `false`**，这个仓库的文件编辑器也没打开它 ——
+     不打开的话 `glyphMarginClassName` 一条都不会显示。**按需开关**：
+     扫到指令就打开，没有就关掉，卸载时恢复 —— 不全局打开（那会给每个文件编辑器加一条空的槽列）。
+
+5. **Task 10 的行号槽浮层照抄现成写法**：`MonacoEditor.tsx` 里已经有 `MonacoGutterContextMenu`
+   （不可见的 fixed 定位 trigger + `DropdownMenuContent`），那才是行号槽浮层的正确骨架；
+   设计稿 §5.1 提的 `diff-comment-popover-position.ts` 是 **view zone 卡片**的定位。
+
+6. **Task 11 的完成监听器挂到 app 级后台服务**（`AppBackgroundServices`），不挂编辑器 hook。
+   编辑器面板在切到智能体 tab 时就卸载了（`EditorPanel` 用 `openFiles.find(...) ?? null` 找文件），
+   而「派发完切过去看它干活」正是主流程 —— 挂在编辑器上的监听器会在智能体开工前就死掉。
+   **已在设计稿 §4.3 写回。**
+
+7. **数组身份要稳定**：`useAppStateValue` 就是 zustand 的 `useStore`（裸 `useSyncExternalStore`）。
+   selector 每次返回新数组 → React 每次 commit 都判定快照变了 → **无限渲染循环**。
+   所以 `getAiInstructionEntries` 的空态是模块级常量，Task 9 发布出去的数组用 `useMemo` 固定身份。
+
+8. **孤儿清理的作用范围**是「这次派发的记录所属的文件」（`currentInstructions` 本身不带文件路径）。

@@ -20,6 +20,25 @@ function statusOfRecord(record: DiffComment): AiInstructionStatus {
   return record.sentAt !== undefined ? 'dispatched' : 'pending'
 }
 
+/**
+ * Whether an agent's status completes a dispatched instruction. Only a `done` status that arrived
+ * after the dispatch counts; a status from before it belongs to an earlier turn.
+ */
+export function isAiInstructionCompletedByStatus(args: {
+  sentAt: number | undefined
+  completedAt: number | undefined
+  status: { state: string; updatedAt: number } | undefined
+}): boolean {
+  const { sentAt, completedAt, status } = args
+  if (completedAt !== undefined || sentAt === undefined || status === undefined) {
+    return false
+  }
+  if (status.state !== 'done') {
+    return false
+  }
+  return status.updatedAt >= sentAt
+}
+
 /** A record serves only the nearest instruction with the same text, so a repeated one stays pending. */
 export function resolveAiInstructionStatuses(
   instructions: readonly AiInstruction[],

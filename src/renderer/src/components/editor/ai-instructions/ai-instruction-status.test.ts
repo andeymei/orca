@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { AI_INSTRUCTION_MARKER } from '../../../../../shared/ai-instruction-types'
-import { resolveAiInstructionStatuses } from './ai-instruction-status'
+import {
+  isAiInstructionCompletedByStatus,
+  resolveAiInstructionStatuses
+} from './ai-instruction-status'
 
 const instruction = (lineNumber: number, text: string) => ({
   lineNumber,
@@ -65,5 +68,37 @@ describe('resolveAiInstructionStatuses', () => {
     const resolved = resolveAiInstructionStatuses([instruction(10, '甲')], [record('甲', 10)])
     expect(resolved[0].status).toBe('pending')
     expect(resolved[0].recordId).toBe('id-甲-10')
+  })
+})
+
+describe('isAiInstructionCompletedByStatus', () => {
+  it('completes only on a done status that arrived after the dispatch', () => {
+    expect(
+      isAiInstructionCompletedByStatus({
+        sentAt: 100,
+        completedAt: undefined,
+        status: { state: 'done', updatedAt: 150 }
+      })
+    ).toBe(true)
+  })
+
+  it('does not complete on a done status from before the dispatch', () => {
+    expect(
+      isAiInstructionCompletedByStatus({
+        sentAt: 100,
+        completedAt: undefined,
+        status: { state: 'done', updatedAt: 50 }
+      })
+    ).toBe(false)
+  })
+
+  it('does not complete while the agent is waiting', () => {
+    expect(
+      isAiInstructionCompletedByStatus({
+        sentAt: 100,
+        completedAt: undefined,
+        status: { state: 'waiting', updatedAt: 150 }
+      })
+    ).toBe(false)
   })
 })

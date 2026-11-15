@@ -13,11 +13,18 @@ import { StructuredAgentSessionAttentionBridge } from '../components/native-chat
 import { StructuredAgentSessionStatusBridge } from '../components/native-chat/session/status/StructuredAgentSessionStatusBridge'
 import { NativeChatVisualGuestThemePublisher } from '../components/native-chat/media/visuals/NativeChatVisualGuestThemePublisher'
 import { usePairedMobileDevices } from '../components/mobile/paired-mobile-devices'
+import { useAiInstructionCompletion } from '../components/editor/ai-instructions/use-ai-instruction-completion'
 
 const DashboardPopoutBridge = lazy(() => import('../components/dashboard/DashboardPopoutBridge'))
 const AgentListVerdictPublisher = lazy(
   () => import('../components/activity/agent-list-verdict-publisher')
 )
+
+/** Stamps the AI instructions whose agent finished; the watcher outlives the editor surface. */
+function AiInstructionCompletionWatcher(): null {
+  useAiInstructionCompletion()
+  return null
+}
 
 /** Isolate high-churn subscriptions from App rendering; services outlive their consuming surfaces. */
 export function AppBackgroundServices(): React.JSX.Element {
@@ -56,6 +63,8 @@ export function AppBackgroundServices(): React.JSX.Element {
       <StructuredAgentSessionStatusBridge />
       {/* Background chats have no mounted pane but still need completion attention. */}
       <StructuredAgentSessionAttentionBridge />
+      {/* The editor unmounts on an agent tab, so the AI instruction watcher lives here. */}
+      <AiInstructionCompletionWatcher />
     </>
   )
 }

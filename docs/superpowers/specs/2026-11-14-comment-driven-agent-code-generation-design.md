@@ -185,9 +185,15 @@ AI 指令记录各字段的填法：
 ### 5.1 行号槽（gutter）
 
 - 用 Monaco `glyphMargin` 装饰 + `glyphMarginClassName` 渲染三态图标（仓库目前没有 glyph margin 先例，需新写
-  CSS 类与装饰逻辑，挂在既有的 `use-monaco-editor-decorations.ts` 体系里）。
+  CSS 类与装饰逻辑）。装饰由本功能自己的 hook（`use-monaco-ai-instructions.ts`）管理，
+  不并进既有的 `use-monaco-editor-decorations.ts` —— 那个 hook 管的是冲突标记，职责不同。
+- **`glyphMargin` 默认是 `false`，本仓库也没打开过**：不打开的话 `glyphMarginClassName` 一条都不会显示。
+  按需开关 —— 文件里有指令就打开，没有就关掉，卸载时还原编辑器原来的值；
+  **不全局打开**（那会给每个文件编辑器加一条空的行号槽列）。
 - `glyphMarginHoverMessage` 显示指令正文。
-- 点击图标 → 在该图标的屏幕坐标处弹出菜单（定位思路复用 `diff-comment-popover-position.ts`）。
+- 点击图标 → 在该图标的屏幕坐标处弹出菜单。**照抄仓库既有的 `MonacoGutterContextMenu` 写法**
+  （不可见的 fixed 定位 trigger + `DropdownMenuContent`）——
+  `diff-comment-popover-position.ts` 那套是 view zone 卡片用的定位，不适用。
 
 菜单内容：
 

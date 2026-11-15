@@ -116,6 +116,10 @@ export function useMonacoAiInstructions(params: {
 
     // Why: a change restarts the ladder, so a late grammar still gets its own bounded rescan.
     const rescan = (): void => {
+      if (rescanTimer !== null) {
+        clearTimeout(rescanTimer)
+        rescanTimer = null
+      }
       rescanIndex = 0
       scanNow()
     }

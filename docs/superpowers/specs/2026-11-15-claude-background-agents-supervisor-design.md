@@ -166,7 +166,19 @@ Completed
 
 ### 4.3 传输层：起一个游离 PTY
 
-屏 2 用 `window.api.pty.spawn({ command: 'claude attach <id>', cwd, cols, rows, worktreeId: FLOATING_TERMINAL_WORKTREE_ID })` 起一个**不属于任何 tab** 的 PTY，再用 `pty.onData` / `pty.write` / `pty.resize` / `pty.kill` 驱动。
+屏 2 用 `window.api.pty.spawn({...})` 起一个**不属于任何 tab** 的 PTY，再用 `pty.onData` / `pty.write` / `pty.resize` / `pty.kill` 驱动。
+
+spawn 参数：
+
+| 参数              | 值                                                  | 理由                                                                                                          |
+| ----------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `command`         | `buildClaudeAttachStartup({ agentId, cwd })` 的产物 | 已存在（`src/shared/ai-vault/resume/ai-vault-attach-startup.ts:20`），它把 agent id 正确加引号                |
+| `commandDelivery` | `'provider'`                                        | 由 provider 投递命令，渲染器不往 shell 里打字。`src/main/runtime/terminal/launch/terminal-create.ts:147` 同款 |
+| `worktreeId`      | `FLOATING_TERMINAL_WORKTREE_ID`                     | 见下面的坑 1                                                                                                  |
+| `cwd`             | agent 的 `cwd`                                      | attach 不要求 cwd 一致，但用 agent 自己的更自然                                                               |
+| `cols` / `rows`   | 侧栏容器实测尺寸                                    | 由 `FitAddon` + `ResizeObserver` 得出                                                                         |
+
+**注意**：daemon 侧 `opts.command` 走的是 shell（`daemon-pty-session-spawn.ts:241` 解析 `effectiveShellPath`），所以 `claude attach` 退出后 shell 仍在。attach 进程死掉不靠 shell 退出判定 —— 屏 2 header 显示的 state 来自列表轮询，足以让用户看到「已停止」。
 
 两个必须处理的坑：
 

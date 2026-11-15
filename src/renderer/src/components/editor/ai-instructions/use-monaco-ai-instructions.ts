@@ -258,6 +258,10 @@ export function useMonacoAiInstructions(params: {
       if (event.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
         return
       }
+      // Why: a right click asks for a context menu, so only the left button opens the popover.
+      if (!event.event.leftButton) {
+        return
+      }
       const lineNumber = event.target.position?.lineNumber
       if (!lineNumber) {
         return

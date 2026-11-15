@@ -1484,3 +1484,12 @@ Expected: 通过。不得 `--no-verify`。
    所以 `getAiInstructionEntries` 的空态是模块级常量，Task 9 发布出去的数组用 `useMemo` 固定身份。
 
 8. **孤儿清理的作用范围**是「这次派发的记录所属的文件」（`currentInstructions` 本身不带文件路径）。
+
+9. **i18n 用命名 key，不是 `auto.` 生成的 key**。Global Constraints 里那条
+   「一律用 `t('auto.components.editor.<File>.<key>', 'default')`，跑 `localize-renderer-strings.mjs` 生成」
+   与仓库现实不符：这个仓库里**命名 key 才是主流**（约 2031 处命名 `t()` 调用，409 处 `auto.`），
+   而校验器 `verify-localization-catalog` / `audit-localization-coverage --check`
+   要求 key **字面量**出现在 `src/renderer/src/i18n/locales/en.json` 里、默认值对得上。
+   跑那个生成脚本反而会把手写的目录条目变成孤儿、平白多出一大段 diff。
+   **决定**：新增文案一律用命名 key（`components.aiInstruction.*`），手工写进 `en.json`，
+   **不跑** `localize-renderer-strings.mjs`。9 个 key 与代码里的默认值逐条比对过，全部一致。

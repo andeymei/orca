@@ -34,6 +34,26 @@ A minimap is available in the file editor under [Settings → Appearance](/docs/
 
 By default the editor and diff views use the same font as the terminal. Leave **Editor Font Family** empty under [Settings → Appearance](/docs/settings) to keep that link; set a font to override editors only (UI font stays separate).
 
+## AI instructions
+
+Write a marker comment in your source and Orca can hand it to an agent:
+
+```ts
+// @ai retry with exponential backoff, at most 5 times
+```
+
+The marker has to be the first word in the comment, so `// @aider` is not an instruction. Text that merely contains `@ai`, such as an `email@ai.com` string, is never picked up either. Any comment syntax works — `//`, `#`, `/* */`, `--`, `%` — as long as the language has one. Plain text files have no comments, so `@ai` in a `.txt` file is never picked up.
+
+A file with instructions shows a glyph in the line-number margin:
+
+- a dot — waiting to be sent
+- a spinner — sent, the agent is working
+- a check — the agent reported done
+
+Click the glyph to see the instruction and **Send to agent**, which offers your running agents and a way to launch a new one. The editor header also grows an **AI instructions (N)** button that sends the whole file's pending instructions as one prompt; its submenu can add the instructions that are already in flight. Instructions that are done are never sent again on their own.
+
+The comment stays in your file — it is the spec, and the agent is told to keep it there. Orca remembers what it dispatched, so a restart does not resend finished work. When the agent reports completion the instruction turns into a check by itself; if the agent's status is not visible to Orca, use **Mark as done** in the popover.
+
 ## Language support
 
 Syntax highlighting ships for the languages Monaco supports out of the box. Orca is intentionally editor-first, not IDE-first — run type-checkers and linters in a terminal pane.

@@ -279,19 +279,19 @@ Keep every `// @ai` comment in place.
 
 ### 7.2 renderer
 
-| 文件                                                                               | 改动                                                         |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `components/editor/ai-instructions/ai-instruction-marker.ts`（新）                 | 从注释文本解析标记与指令正文                                 |
-| `components/editor/ai-instructions/ai-instruction-scan.ts`（新）                   | Monaco token 扫描出指令清单                                  |
-| `components/editor/ai-instructions/ai-instruction-context.ts`（新）                | 上下文窗口（上下各 10 行）                                   |
-| `components/editor/ai-instructions/ai-instruction-status.ts`（新）                 | 指令 ⇄ 记录对齐，算出三态                                    |
-| `components/editor/ai-instructions/use-monaco-ai-instruction-decorations.ts`（新） | 行号槽装饰与点击                                             |
-| `components/editor/ai-instructions/ai-instruction-send-menu.tsx`（新）             | 行号槽弹层与头部批量共用                                     |
-| `components/editor/MonacoEditor.tsx`                                               | 挂扫描与装饰（该组件已有 `filePath` / `relativePath` props） |
-| `components/editor/EditorPanelHeader.tsx`                                          | 批量按钮                                                     |
-| `lib/source-control/review/comments/diff-comment-compat.ts`                        | source 归一 + `isAiInstructionComment`                       |
-| `store/slices/diff-comments/create-diff-comments-slice.ts`                         | 两个新动作                                                   |
-| `store/slices/diff-comments/diff-comment-persistence.ts`                           | `normalizeDiffComment` 扩展                                  |
+| 文件                                                                    | 改动                                                         |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `components/editor/ai-instructions/ai-instruction-marker.ts`（新）      | 从注释文本解析标记与指令正文                                 |
+| `components/editor/ai-instructions/ai-instruction-scan.ts`（新）        | Monaco token 扫描出指令清单                                  |
+| `components/editor/ai-instructions/ai-instruction-context.ts`（新）     | 上下文窗口（上下各 10 行）                                   |
+| `components/editor/ai-instructions/ai-instruction-status.ts`（新）      | 指令 ⇄ 记录对齐，算出三态                                    |
+| `components/editor/ai-instructions/use-monaco-ai-instructions.ts`（新） | 行号槽装饰、点击、扫描与发布                                 |
+| `components/editor/ai-instructions/ai-instruction-send-menu.tsx`（新）  | 行号槽弹层与头部批量共用                                     |
+| `components/editor/MonacoEditor.tsx`                                    | 挂扫描与装饰（该组件已有 `filePath` / `relativePath` props） |
+| `components/editor/EditorPanelHeader.tsx`                               | 批量按钮                                                     |
+| `lib/source-control/review/comments/diff-comment-compat.ts`             | source 归一 + `isAiInstructionComment`                       |
+| `store/slices/diff-comments/create-diff-comments-slice.ts`              | 两个新动作                                                   |
+| `store/slices/diff-comments/diff-comment-persistence.ts`                | `normalizeDiffComment` 扩展                                  |
 
 ### 7.3 过滤点（§4.5）
 

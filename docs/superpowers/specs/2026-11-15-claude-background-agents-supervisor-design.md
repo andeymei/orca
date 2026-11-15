@@ -166,7 +166,7 @@ Completed
 
 ### 4.3 传输层：起一个游离 PTY
 
-屏 2 用 `window.api.pty.spawn({...})` 起一个**不属于任何 tab** 的 PTY，再用 `pty.onData` / `pty.write` / `pty.resize` / `pty.kill` 驱动。
+屏 2 用 `window.api.pty.spawn({...})` 起一个**不属于任何 tab** 的 PTY，再用 `subscribeToPtyData` / `pty.write` / `pty.resize` / `pty.kill` 驱动。
 
 spawn 参数：
 
@@ -174,21 +174,45 @@ spawn 参数：
 | ----------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `command`         | `buildClaudeAttachStartup({ agentId, cwd })` 的产物 | 已存在（`src/shared/ai-vault/resume/ai-vault-attach-startup.ts:20`），它把 agent id 正确加引号                |
 | `commandDelivery` | `'provider'`                                        | 由 provider 投递命令，渲染器不往 shell 里打字。`src/main/runtime/terminal/launch/terminal-create.ts:147` 同款 |
-| `worktreeId`      | `FLOATING_TERMINAL_WORKTREE_ID`                     | 见下面的坑 1                                                                                                  |
+| `worktreeId`      | `FLOATING_TERMINAL_WORKTREE_ID`                     | 见 §4.3.3                                                                                                     |
 | `cwd`             | agent 的 `cwd`                                      | attach 不要求 cwd 一致，但用 agent 自己的更自然                                                               |
 | `cols` / `rows`   | 侧栏容器实测尺寸                                    | 由 `FitAddon` + `ResizeObserver` 得出                                                                         |
 
 **注意**：daemon 侧 `opts.command` 走的是 shell（`daemon-pty-session-spawn.ts:241` 解析 `effectiveShellPath`），所以 `claude attach` 退出后 shell 仍在。attach 进程死掉不靠 shell 退出判定 —— 屏 2 header 显示的 state 来自列表轮询，足以让用户看到「已停止」。
 
-两个必须处理的坑：
+### 4.3.1 收数据：必须用 `subscribeToPtyData`，不能用裸 `pty.onData`
 
-1. **游离 PTY 会被 main 自动塞进一个新 tab。**
-   `src/main/runtime/terminal/adoption/unshown-live-terminal-placement.ts:78` 的 `isUnshown()` 要求 `pty.worktreeId !== FLOATING_TERMINAL_WORKTREE_ID`；用 `FLOATING_TERMINAL_WORKTREE_ID`（`global-floating-terminal`）即可豁免 —— 这正是 Orca 已有的「游离终端」一等类别（`ResourcePtyPanel` 的「N without a tab」）。
-2. **renderer 的 `ptyDataHandlers` 每个 ptyId 只有一个 handler**（`src/renderer/src/components/terminal-pane/pty-transport/ipc/ipc-pty-session-handlers.ts:105`）。我们的 PTY 没有 pane 主人，槽位空闲，可直接用；**绝不能**用 `terminalPreview:*` 去观察一个 pane 也拥有的 pty（那条路是多观察者语义，用错会顶掉 pane 的 handler）。
+`window.api.pty.onData` 只注册一个字节回调，**不装 dispatcher**。dispatcher 才负责握手（`pty:rendererDispatcherReady`）和 **ACK**（`src/renderer/src/components/terminal-pane/pty-transport/delivery/pty-data-sidecar-subscriptions.ts:7`）。没有 ACK，main 侧 `rendererDeliveryAccountingByPty` 的 `sentChars - ackedChars` 会越过 `PTY_RENDERER_IN_FLIGHT_HIGH_WATER_CHARS`，`canSendPtyDataToRenderer` 转为 false —— **终端在几万字节后静默卡死**。
 
-另外，PTY 必须标记为「可见且有兴趣」，否则 main 的隐藏投递门会丢字节：`pty.setRendererPtyVisible(id, true)` + `pty.setPtyDeliveryInterest(id, true)`。
+正确 API 是 `subscribeToPtyData(ptyId, cb)`：它装 dispatcher、发握手、自动 `acquirePtyDeliveryInterest(ptyId)`（关掉隐藏投递门），并且挂在 `ptyDataSidecars`（多观察者 Map），**不碰** `ptyDataHandlers` 的主槽位。
+
+顺带澄清两条通道的语义（**与直觉相反**）：
+
+| 通道                           | 观察者数                                                                      | 何时用                   |
+| ------------------------------ | ----------------------------------------------------------------------------- | ------------------------ |
+| `pty:data` + `ptyDataHandlers` | **每 ptyId 只有一个**（`ipc-pty-session-handlers.ts:129` 是覆盖式 `Map.set`） | 观察一个 pane 拥有的 pty |
+| `terminalPreview:*`            | **多观察者**（main 侧独立订阅表 + 独立 IPC 通道）                             | 第二个观察者             |
+
+我们的 PTY 没有 pane 主人，两条路都不会撞；但**必须走 `pty:data` 系** —— `terminalPreview:connect` 要求该 pty 已有快照，而我们要 attach 的 pty 是我们刚 spawn 的。
+
+### 4.3.2 三个必须显式设置的东西
+
+| 调用                                                    | 时机             | 理由                                                                                                                                |
+| ------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `pty.setRendererPtyVisible(id, true)`                   | spawn 成功后立刻 | ① 让 main 交出 startup 查询权威，DA/DSR 由我们的 xterm 作答；② daemon 不 throttle 它。**绝不要**调 `setHiddenRendererPty(id, true)` |
+| `answersQueries: true`（`openStandaloneTerminal` 参数） | 建 xterm 时      | 我们的 pty 没有第二个 emulator；`false` 会丢弃 xterm 对查询的自动回复，Claude Code TUI 的终端探测就答不上来                         |
+| `pty.getMainBufferSnapshot(id, { scrollbackRows })`     | 挂 xterm 后立即  | `pty:data` 是裸流，没有 `terminalPreview:connect` 的原子快照；首帧可能缺失或截在半个转义序列里，用快照补一次                        |
+
+`setPtyDeliveryInterest` 由 `subscribeToPtyData` 自动完成，不要重复调。
+
+### 4.3.3 两个副作用（接受，但要知情）
+
+1. **状态栏会多一条「N without a tab」。** `FLOATING_TERMINAL_WORKTREE_ID` 是 Orca 自己的浮动工作区 id，我们的 pty 会被记到它名下（`pty-terminal-summary.ts:67, 86, 93-95` 标成 `orphaned: true`）。这是**唯一**能拿到 `isUnshown()` 豁免的 id，换成自己的哨兵就会被自动 place，所以接受。
+2. **Orca 会把 `claude attach` 认成「Claude agent 启动」。** `isClaudeLaunchCommand`（`src/main/ipc/pty/host-env/fresh-spawn-routing.ts:6`）匹配到 `claude` → Claude 账号 env 会被注入（**这是好事**），但这个 pty 也会出现在 Orca 的 agent 状态面里。
 
 ### 4.4 生命周期
+
+> **对既有护栏的影响：无。** `tests/e2e/terminal-layout-parity.spec.ts` 的 `waitForHostTerminals` 用 `terminal.list { worktree: 'id:<id>' }` 查询，而 `runtime-terminal-list.ts:152-154` 会按 `pty.worktreeId !== targetId` 过滤 —— 我们的 pty 记在 `global-floating-terminal` 名下，不计入任何具体 workspace 的终端数。parity 断言不受影响。
 
 | 事件                       | 动作                                                                                         |
 | -------------------------- | -------------------------------------------------------------------------------------------- |
@@ -197,6 +221,8 @@ spawn 参数：
 | 重新进入                   | 重新 spawn + attach（daemon attach 实测 ~22ms）                                              |
 | 侧栏 tab 切走              | 面板卸载 → **保留** attach（屏状态在 store slice 里），切回来时重新挂 xterm 订阅同一个 ptyId |
 | 应用退出                   | PTY 随 main 进程结束；后台 agent 是 Claude Code 的进程，不受影响                             |
+
+**Orca 的浮动终端生命周期只做存活探测、不负责 kill**（`src/main/runtime/terminal/lifecycle/floating-session-liveness.ts`）。我们的 PTY 没有 pane 主人，所以**只有我们自己的 `pty.kill` 或 main 进程退出**能结束它 —— 卸载时必须 kill，否则会留下孤儿进程。
 
 ## 5. 数据层
 
@@ -248,9 +274,12 @@ spawn 参数：
 
 ## 7. 键盘与焦点
 
-- **屏 1** 自己处理 `keydown`；面板根节点 `tabIndex={0}`，进入面板时聚焦。
-- **屏 2** 的 xterm 用 `terminal.attachCustomKeyEventHandler` 拦 `←`（范式见 `src/renderer/src/components/dashboard-popout/preview-terminal-key-handler.ts:80`）。
-  - **风险**：pane 的全局 `window` capture keydown 监听（`src/renderer/src/components/terminal-pane/input/keyboard/terminal-keyboard-hook.ts:131`）在找不到归属时会 fallback 到 `manager.getActivePane()`（`terminal-keyboard-pane-resolution.ts:17`），可能把侧栏终端的按键吞给某个 pane。**必须实测**，必要时给 xterm 元素加哨兵属性（参照 `src/renderer/src/components/global-keybindings/agent-terminal-preview-target.ts` 的 `[data-agent-terminal-preview]` 做法）并在窗口级 handler 里排除。
+- **屏 1** 自己处理 `keydown`；面板根节点 `tabIndex={-1}` + `onKeyDown`，只在自己是 `event.target` 时才处理。**直接复用 AI Vault 面板已有的模式**（`src/renderer/src/components/right-sidebar/ai-vault/session-list/use-ai-vault-session-keyboard-navigation.ts:117` 的 `aiVaultPanelKeyboardRootProps`）。
+- **屏 2** 拦 `←`：**不能**再调一次 `terminal.attachCustomKeyEventHandler` —— xterm 只有**一个** custom key handler 槽位（`this._customKeyEventHandler = e`，覆盖式），而 `openStandaloneTerminal` 内部已经用 `installPreviewTerminalKeyHandler` 占用了（`open-standalone-terminal.ts:93-108`）。再调一次会把复制/粘贴/快捷键/IME 全顶掉。
+  - **做法**：给 `openStandaloneTerminal`（或 `installPreviewTerminalKeyHandler`）加一个可选钩子 `claimKeyEvent?: (event: KeyboardEvent) => boolean`，形态照抄已有的 `claimImeKeyEvent`。返回 true 即吞掉该事件。
+- **pane 的键盘监听不会抢我们的键**（已确证）：`onKeyDown` 第一件事就是 scope guard（`terminal-keyboard-event-handlers.ts:116-119`）—— `keyboardEventBelongsToScope` 检查事件是否落在 TerminalPane 自己的容器里。侧栏的 xterm 不在 pane 容器内 → 直接 return，**根本走不到** `resolveTerminalKeyboardPane` 的 `getActivePane()` fallback。`PlainSshTerminalView` 就是靠这一条躲开的，不需要任何哨兵。
+- **但 app 级全局快捷键会抢**：`isEditableTarget` **明确排除** `.xterm-helper-textarea`（`src/renderer/src/lib/text-input/focus/editable-target.ts:13-16` —— 注释说 xterm 的隐藏 textarea 表示终端焦点，全局快捷键仍要生效），所以在侧栏终端里按 `Cmd+W` 可能关掉一个 tab。
+  - **做法**：给侧栏终端容器加 `data-agent-terminal-preview` 哨兵（`isAgentTerminalPreviewTarget` 认它，`use-global-keybindings.ts:171` 用它让关闭类快捷键让路）。
 - 终端输入框内 `Esc` 归终端（Claude Code 自己在用 Esc）；焦点不在终端时 `Esc` 回屏 1。
 
 ## 8. 失败与降级
@@ -286,6 +315,17 @@ spawn 参数：
 | ← 被 Orca 拦截，牺牲输入框光标左移           | 用户明确要 ← 返回列表；用 `Home`/`⌘←` 补位，并提供可见按钮                                  |
 | 每次进入都重新 spawn `claude attach`         | 实测 daemon attach ~22ms，可接受；换来「返回列表不残留进程」的干净语义                      |
 | v1 不支持远程                                | 用户已确认取舍；数据层按宿主切分，v2 补                                                     |
+
+### 10.1 实现期必须验的三件事（代码勘察已定位风险，但没跑过）
+
+1. **终端在几万字节后静默卡死** —— 用裸 `pty.onData` 就没有 ACK，main 会停投递。必须走 `subscribeToPtyData`（§4.3.1）。E2E 里要真的把一段长输出灌进去验证不卡。
+2. **Claude Code TUI 的 DA/DSR 终端探测答不上来** —— 取决于 `setRendererPtyVisible(id, true)` 是否真的把 startup 查询权威交给了 xterm（§4.3.2）。
+3. **`claude attach` 的 cwd 被 Orca 的 agent 启动守卫拒绝** —— `assertSafeAgentStartupCwd(cwd, command)`（`src/main/providers/local-pty/local-pty-launch-plan.ts:195`）对 `claude attach` 的判定未验。
+
+### 10.2 已知副作用（接受）
+
+- 状态栏的「N without a tab」会多一条（§4.3.3）。
+- 这个 pty 会出现在 Orca 的 agent 状态面里（§4.3.3）—— 因为 `claude attach` 被认成 Claude agent 启动。
 
 ## 11. 与既有工作的关系
 

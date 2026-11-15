@@ -74,3 +74,11 @@ export function scanAiInstructions(model: monaco.editor.ITextModel): AiInstructi
     }
   })
 }
+
+/** True when the buffer holds a marker the scan found no instruction for — the language grammar may not have loaded yet. */
+export function mayHaveUnscannedAiInstruction(
+  text: string,
+  instructions: readonly AiInstruction[]
+): boolean {
+  return instructions.length === 0 && text.includes(AI_INSTRUCTION_MARKER)
+}

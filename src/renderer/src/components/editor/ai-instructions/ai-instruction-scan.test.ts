@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { collectAiInstructions, toAiInstructionTokens } from './ai-instruction-scan'
+import {
+  collectAiInstructions,
+  mayHaveUnscannedAiInstruction,
+  toAiInstructionTokens
+} from './ai-instruction-scan'
 
 describe('collectAiInstructions', () => {
   it('finds an instruction in a line comment', () => {
@@ -50,5 +54,30 @@ describe('collectAiInstructions', () => {
       ],
       [{ text: 'const b = 2', type: 'identifier' }]
     ])
+  })
+})
+
+describe('mayHaveUnscannedAiInstruction', () => {
+  it('asks for a retry when the buffer has a marker but no instruction was found', () => {
+    expect(mayHaveUnscannedAiInstruction('// @ai 甲', [])).toBe(true)
+  })
+
+  it('does not ask for a retry when the buffer has no marker', () => {
+    expect(mayHaveUnscannedAiInstruction('const a = 1', [])).toBe(false)
+  })
+
+  it('does not ask for a retry when an instruction was found', () => {
+    expect(
+      mayHaveUnscannedAiInstruction('// @ai 甲', [
+        {
+          lineNumber: 1,
+          instruction: '甲',
+          commentText: '// @ai 甲',
+          contextExcerpt: '// @ai 甲',
+          contextStartLine: 1,
+          contextEndLine: 1
+        }
+      ])
+    ).toBe(false)
   })
 })

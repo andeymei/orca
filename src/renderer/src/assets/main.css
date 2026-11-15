@@ -2770,6 +2770,45 @@ html.native-shell .app-layout {
   opacity: 0.92;
 }
 
+/* Why shapes: the glyph margin is a few pixels wide and `--primary` flips from near-black to
+   near-white between themes, so the three states are told apart by outline, not by colour. */
+.monaco-editor .ai-instruction-glyph--pending::before,
+.monaco-editor .ai-instruction-glyph--dispatched::before,
+.monaco-editor .ai-instruction-glyph--completed::before {
+  content: '';
+  display: block;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.monaco-editor .ai-instruction-glyph--pending::before {
+  width: 7px;
+  height: 7px;
+  background-color: var(--muted-foreground);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Ccircle cx='8' cy='8' r='5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Ccircle cx='8' cy='8' r='5'/%3E%3C/svg%3E");
+}
+
+.monaco-editor .ai-instruction-glyph--dispatched::before {
+  width: 11px;
+  height: 11px;
+  background-color: var(--primary);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Cpath d='M8,3a5,5,0,1,1-4.6,3.1' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Cpath d='M8,3a5,5,0,1,1-4.6,3.1' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.monaco-editor .ai-instruction-glyph--completed::before {
+  width: 13px;
+  height: 13px;
+  background-color: var(--primary);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Cpath d='M3,8.4l3.3,3.3L13,5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Cpath d='M3,8.4l3.3,3.3L13,5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
 /* Compact Monaco tooltip wrappers overlap find buttons, causing mouseleave/dispose/mouseover flicker.
    Disable hit-testing only on context-view chains containing compact hovers; preserve menus and interactive markdown. */
 .context-view:has(> .workbench-hover-container > .workbench-hover.compact),

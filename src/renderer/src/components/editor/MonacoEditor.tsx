@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import Editor from '@monaco-editor/react'
+import * as monaco from 'monaco-editor'
 import type { editor, IRange } from 'monaco-editor'
 import type { MarkdownDocument } from '../../../../shared/file-listing/file-document'
 import { useAppStore } from '@/store'
@@ -27,6 +28,7 @@ import { useMonacoContentSyncBridge } from './use-monaco-content-sync-bridge'
 import { useMonacoMarkdownAnnotations } from './markdown-source-tools/monaco/use-monaco-markdown-annotations'
 import { useMonacoEditorDecorations } from './use-monaco-editor-decorations'
 import { useMonacoEditorMount } from './use-monaco-editor-mount'
+import { useMonacoAiInstructions } from './ai-instructions/use-monaco-ai-instructions'
 import { snapshotMonacoViewState } from './monaco-view-state-persistence'
 import { MonacoMarkdownAnnotationOverlay } from './markdown-source-tools/monaco/MonacoMarkdownAnnotationOverlay'
 import { usePluginSyntaxLanguage } from './use-plugin-syntax-language'
@@ -207,6 +209,30 @@ export default function MonacoEditor({
     markdownDocuments,
     conflictDecorationsEnabled
   })
+
+  const { glyphs } = useMonacoAiInstructions({
+    mountedEditor,
+    model: mountedEditor?.getModel() ?? null,
+    relativePath,
+    worktreeId,
+    noteSource,
+    enabled: Boolean(worktreeId) && !readOnly && !passiveMirror
+  })
+
+  // Why: the glyph margin is off by default, so the `@ai` glyphs would draw nothing without it.
+  useEffect(() => {
+    if (!mountedEditor) {
+      return
+    }
+    const previousGlyphMargin = mountedEditor.getOption(monaco.editor.EditorOption.glyphMargin)
+    return () => {
+      mountedEditor.updateOptions({ glyphMargin: previousGlyphMargin })
+    }
+  }, [mountedEditor])
+
+  useEffect(() => {
+    mountedEditor?.updateOptions({ glyphMargin: glyphs.length > 0 })
+  }, [glyphs.length, mountedEditor])
 
   const handleMount = useMonacoEditorMount({
     fileId,

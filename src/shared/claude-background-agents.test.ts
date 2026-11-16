@@ -12,6 +12,7 @@ describe('parseClaudeBackgroundAgents', () => {
           kind: 'background',
           sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0',
           name: 'init orca (2)',
+          startedAt: 14345,
           status: 'idle',
           state: 'blocked'
         }
@@ -22,9 +23,44 @@ describe('parseClaudeBackgroundAgents', () => {
         id: '8857ad86',
         sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0',
         name: 'init orca (2)',
-        cwd: '/repos/app'
+        cwd: '/repos/app',
+        kind: 'background',
+        startedAt: 14345,
+        state: 'blocked',
+        status: 'idle'
       }
     ])
+  })
+
+  it('keeps the fields the supervisor needs', () => {
+    const agents = parseClaudeBackgroundAgents(
+      JSON.stringify([
+        {
+          pid: 14459,
+          id: '8857ad86',
+          cwd: '/repos/app',
+          kind: 'background',
+          sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0',
+          name: 'init orca (2)',
+          startedAt: 14345,
+          status: 'idle',
+          state: 'blocked'
+        }
+      ])
+    )
+    expect(agents[0]).toMatchObject({
+      kind: 'background',
+      startedAt: 14345,
+      state: 'blocked',
+      status: 'idle'
+    })
+  })
+
+  it('drops a state word it does not know', () => {
+    const agents = parseClaudeBackgroundAgents(
+      JSON.stringify([{ id: 'a', sessionId: 's', state: 'nonsense' }])
+    )
+    expect(agents[0].state).toBeUndefined()
   })
 
   it('leaves out an entry without an id', () => {

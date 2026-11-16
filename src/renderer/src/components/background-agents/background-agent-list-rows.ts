@@ -30,10 +30,10 @@ export type BackgroundAgentListGroups = {
   completed: BackgroundAgentListRow[]
 }
 
-/** The row array starts with the agents that wait for a decision; the panel draws the sections itself. */
+/** The CLI groups its agents working | blocked | done; the list mirrors that order. */
 const SECTION_ORDER: Record<BackgroundAgentListRow['section'], number> = {
-  'needs-input': 0,
-  working: 1,
+  working: 0,
+  'needs-input': 1,
   completed: 2
 }
 
@@ -54,7 +54,8 @@ function sectionForState(
  * The rows of the list: what the CLI says lives, plus what each agent is doing.
  *
  * The CLI's listing owns the name and the state word, because it is the one that knows which
- * agents exist; the job state file only adds the line of activity under the name.
+ * agents exist; the job state file only adds the line of activity under the name. The rows follow
+ * the CLI's own grouping order, with the newest agent of a section first.
  */
 export function buildBackgroundAgentListRows(
   agents: readonly ClaudeBackgroundAgent[],

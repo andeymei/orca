@@ -8,17 +8,10 @@ import {
 } from './background-agent-list-rows'
 
 describe('buildBackgroundAgentListRows', () => {
-  it('puts a blocked agent in the section that needs a decision', () => {
+  it('sorts the sections the way the CLI lists them, the working agents first', () => {
     const rows = buildBackgroundAgentListRows(
       [
-        {
-          id: 'aaaa1111',
-          sessionId: 's',
-          name: 'waiting',
-          cwd: '/w',
-          state: 'blocked',
-          status: 'waiting'
-        },
+        { id: 'cccc3333', sessionId: 's', name: 'done', cwd: '/w', state: 'done' },
         {
           id: 'bbbb2222',
           sessionId: 's',
@@ -27,13 +20,21 @@ describe('buildBackgroundAgentListRows', () => {
           state: 'working',
           status: 'busy'
         },
-        { id: 'cccc3333', sessionId: 's', name: 'done', cwd: '/w', state: 'done' }
+        {
+          id: 'aaaa1111',
+          sessionId: 's',
+          name: 'waiting',
+          cwd: '/w',
+          state: 'blocked',
+          status: 'waiting'
+        }
       ],
       {
         aaaa1111: { detail: 'answer: 选 A 还是 B？', needs: 'answer: 选 A 还是 B？', updatedAt: 5 }
       }
     )
-    expect(rows.map((row) => row.section)).toEqual(['needs-input', 'working', 'completed'])
+    expect(rows.map((row) => row.section)).toEqual(['working', 'needs-input', 'completed'])
+    expect(rows.map((row) => row.id)).toEqual(['bbbb2222', 'aaaa1111', 'cccc3333'])
   })
 
   it('leaves out a session that is not a background agent', () => {

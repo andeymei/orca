@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { useTranslate } from '@/i18n/use-translate'
 import { useAppStore } from '@/store/index'
 import { selectKnownWorktreeById } from '@/store/workspaces/selection/known-worktree-selection'
+import { installWindowVisibilityInterval } from '@/lib/window-activity/window-visibility-interval'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import {
   buildBackgroundAgentListRows,
@@ -73,8 +74,11 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   useBackgroundAgentRosterRefresh()
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), ELAPSED_TICK_INTERVAL_MS)
-    return () => clearInterval(timer)
+    // Why: the elapsed column has no reader while the window is hidden.
+    return installWindowVisibilityInterval({
+      run: () => setNow(Date.now()),
+      intervalMs: ELAPSED_TICK_INTERVAL_MS
+    })
   }, [])
 
   // The fast layer: only the known agents are asked for, because a state file nobody knows about
@@ -83,7 +87,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
     const ids = agents.map((agent) => agent.id)
     let cancelled = false
     const readDetails = async (): Promise<void> => {
-      if (ids.length === 0) {
+      if (cancelled || ids.length === 0) {
         return
       }
       try {
@@ -95,13 +99,16 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
         // A state file that cannot be read leaves the row without an activity line.
       }
     }
-    void readDetails()
-    const timer = setInterval(() => {
-      void readDetails()
-    }, DETAIL_REFRESH_INTERVAL_MS)
+    // Why: the poll pauses while the window is hidden and reads again when it comes back.
+    const stop = installWindowVisibilityInterval({
+      run: () => {
+        void readDetails()
+      },
+      intervalMs: DETAIL_REFRESH_INTERVAL_MS
+    })
     return () => {
       cancelled = true
-      clearInterval(timer)
+      stop()
     }
   }, [agents])
 

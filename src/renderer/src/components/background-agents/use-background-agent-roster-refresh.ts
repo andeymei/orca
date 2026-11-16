@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useAppStore } from '@/store/index'
+import { installWindowVisibilityInterval } from '@/lib/window-activity/window-visibility-interval'
 
 /** How often the roster is read again; the CLI's own listing is slow to answer. */
 const ROSTER_REFRESH_INTERVAL_MS = 15_000
@@ -27,10 +28,12 @@ export async function refreshBackgroundAgentRoster(): Promise<void> {
  */
 export function useBackgroundAgentRosterRefresh(): void {
   useEffect(() => {
-    void refreshBackgroundAgentRoster()
-    const timer = setInterval(() => {
-      void refreshBackgroundAgentRoster()
-    }, ROSTER_REFRESH_INTERVAL_MS)
-    return () => clearInterval(timer)
+    // Why: the poll pauses while the window is hidden and reads again when it comes back.
+    return installWindowVisibilityInterval({
+      run: () => {
+        void refreshBackgroundAgentRoster()
+      },
+      intervalMs: ROSTER_REFRESH_INTERVAL_MS
+    })
   }, [])
 }

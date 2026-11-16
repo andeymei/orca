@@ -20,6 +20,61 @@ export type BackgroundAgentDispatchControls = {
 }
 
 /**
+ * Starts the agent and settles the placeholder row from the CLI's answer.
+ *
+ * It lives outside the hook because the React Compiler cannot compile a `try`/`finally`.
+ */
+async function dispatchBackgroundAgent(args: {
+  prompt: string
+  /** Whether the user asked for this dispatch to be aborted. */
+  cancelled: () => boolean
+  publish: (dispatch: BackgroundAgentsDispatch | null) => void
+  /** Called once the dispatch has settled, whether it came up or not. */
+  settled: () => void
+}): Promise<boolean> {
+  try {
+    const state = useAppStore.getState()
+    const cwd = state.activeWorktreeId
+      ? findFirstIndexedWorktree(selectWorktreesByRepo(state), state.activeWorktreeId)?.path
+      : undefined
+    const result = await window.api.claudeAgents.dispatch(
+      cwd ? { prompt: args.prompt, cwd } : { prompt: args.prompt }
+    )
+    if (result.ok) {
+      if (args.cancelled()) {
+        // The CLI won the race against the cancel, so the agent exists; saying otherwise would lie.
+        args.publish({ state: 'started', agentId: result.id, message: null })
+        setTimeout(() => {
+          args.publish(null)
+        }, STARTED_ROW_LIFETIME_MS)
+      } else {
+        args.publish(null)
+      }
+      // Why: the agent the user just asked for must not wait for the next poll to show up.
+      await refreshBackgroundAgentRoster()
+      return true
+    }
+    if (args.cancelled() && result.message === CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE) {
+      // Nothing came up: the row goes away. The roster may still find an agent the CLI printed
+      // an id for before the abort landed, which is the price of cancelling a dispatch.
+      args.publish(null)
+      await refreshBackgroundAgentRoster()
+      return false
+    }
+    args.publish({ state: 'failed', agentId: null, message: result.message })
+    toast.error(result.message)
+    return false
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    args.publish({ state: 'failed', agentId: null, message })
+    toast.error(message)
+    return false
+  } finally {
+    args.settled()
+  }
+}
+
+/**
  * The dispatch that is on its way.
  *
  * Its state lives in the store, because the sidebar unmounts the panel when the user switches
@@ -39,45 +94,17 @@ export function useBackgroundAgentDispatch(): BackgroundAgentDispatchControls {
       // Why: the main side remembers one dispatch at a time; a second one would displace the first.
       return false
     }
-    const state = useAppStore.getState()
-    const cwd = state.activeWorktreeId
-      ? findFirstIndexedWorktree(selectWorktreesByRepo(state), state.activeWorktreeId)?.path
-      : undefined
     inFlightRef.current = true
     cancelRequestedRef.current = false
     publishBackgroundAgentsDispatch({ state: 'opening', agentId: null, message: null })
-    try {
-      const result = await window.api.claudeAgents.dispatch(cwd ? { prompt, cwd } : { prompt })
-      if (result.ok) {
-        if (cancelRequestedRef.current) {
-          // The CLI won the race against the cancel, so the agent exists; saying otherwise would lie.
-          publishBackgroundAgentsDispatch({ state: 'started', agentId: result.id, message: null })
-          setTimeout(() => {
-            publishBackgroundAgentsDispatch(null)
-          }, STARTED_ROW_LIFETIME_MS)
-        } else {
-          publishBackgroundAgentsDispatch(null)
-        }
-        // Why: the agent the user just asked for must not wait for the next poll to show up.
-        await refreshBackgroundAgentRoster()
-        return true
+    return dispatchBackgroundAgent({
+      prompt,
+      cancelled: () => cancelRequestedRef.current,
+      publish: publishBackgroundAgentsDispatch,
+      settled: () => {
+        inFlightRef.current = false
       }
-      if (
-        cancelRequestedRef.current &&
-        result.message === CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE
-      ) {
-        // Nothing came up: the row goes away. The roster may still find an agent the CLI printed
-        // an id for before the abort landed, which is the price of cancelling a dispatch.
-        publishBackgroundAgentsDispatch(null)
-        await refreshBackgroundAgentRoster()
-        return false
-      }
-      publishBackgroundAgentsDispatch({ state: 'failed', agentId: null, message: result.message })
-      toast.error(result.message)
-      return false
-    } finally {
-      inFlightRef.current = false
-    }
+    })
   }
 
   const cancelOpeningDispatch = (): void => {

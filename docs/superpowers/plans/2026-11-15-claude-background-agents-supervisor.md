@@ -1366,10 +1366,11 @@ Expected: FAIL —— 组件不存在。
   - **派发成功后立刻再刷一次慢层** —— 用户刚派发的 agent 不该等最多 15s 才出现在名单里。快层只读**已知** agent 的 state 文件，新 agent 不在名单里就永远读不到。
 - **键盘**：照 `src/renderer/src/components/right-sidebar/ai-vault/session-list/use-ai-vault-session-keyboard-navigation.ts:117` 的 `aiVaultPanelKeyboardRootProps` 模式 —— 根节点 `tabIndex={-1}`，`onKeyDown` 只在 `event.target === event.currentTarget` 时处理。
   - **焦点在哪儿，决定谁能按什么键。** root 的 `onKeyDown` 带 `event.target === event.currentTarget` 守卫（照 AI Vault 的 `aiVaultPanelKeyboardRootProps`），所以**只有 root 自己有焦点时它才处理**；composer 有自己的 `onKeyDown`。两个处理器**共用同一套动作** —— 焦点在谁身上，行为都一样。
+  - **行不能获得焦点**（照 AI Vault 的「Clicked rows cannot focus」）：行是 `<button>`，默认在 Tab 顺序里 —— **Tab 落到行上之后，root 的守卫会拒绝事件（target 不是 root）、composer 的 handler 又看不到，↑↓ / Ctrl+X / Esc / `/` 就全都死了**。所以行要 `tabIndex={-1}`，并且**行自己的 `onKeyDown` 也要跑那套共享动作**（万一它还是拿到了焦点）。
   - **挂载时聚焦 composer**（CLI 的 TUI 打开就能直接写任务）。**不聚焦的话整个面板的键盘是死的**：root 没焦点 → 守卫挡住；composer 没焦点 → 收不到事件。
   - `ArrowDown` / `ArrowUp`：移动选择，`event.preventDefault()`。**composer 也要转发这两个键** —— 单行输入框里 ↑↓ 本来就没有光标含义。
   - `Enter`：有选中行且 composer 为空 → `openBackgroundAgent(row.id)`。composer 有内容 → 派发。
-  - `Control+x`：停止/删除的两步确认。**composer 也要转发** —— macOS 上 `⌘X` 仍然是剪切，不受影响。
+  - `Control+x`：停止/删除的两步确认。**composer 也要转发** —— 但**输入框里有选区时不要 `preventDefault`**，让系统剪切（Windows/Linux 上 `Ctrl+X` 本来就是剪切；macOS 的 `⌘X` 一直是剪切，不受影响）。没有选区时才是停止/删除。
   - `/`：聚焦 composer。**只有 root 有焦点时 `/` 才是这个键** —— 在 composer 里 `/` 就是一个普通字符。
   - `Escape`：composer 有内容就清空，否则把焦点还给面板根。
 
@@ -1479,7 +1480,7 @@ it('lets the caller claim a key before xterm encodes it', () => {
 
 **如果 xterm 的 custom handler 不好直接驱动**（真实 xterm 不暴露它注册进去的 handler）：更稳的测法是**在 `installPreviewTerminalKeyHandler` 这一层测** —— 把 `terminal` 换成一个只记录 `attachCustomKeyEventHandler` 参数的假对象，断言传进来的 handler 对被 claim 的键返回 `false`。
 
-**假对象不许用 `as` 断言造出来**：仓库的 changed-code 门禁用 `typescript/consistent-type-assertions` 的 `assertionStyle: "never"`（`config/oxlint-code-quality-casting.json`），**任何 `as` 都不行**。正确做法是**把 installer 的 `terminal` 参数类型收窄成它真正用的那几个方法**（它只用了这 5 个）：
+**假对象不许用 `as` 断言造出来**：仓库的 changed-code 门禁用 `typescript/consistent-type-assertions` 的 `assertionStyle: "never"`（`config/oxlint-code-quality-casting.json`），**任何 `as` 都不行**。正确做法是**把 installer 的 `terminal` 参数类型收窄成它真正用的那几个方法**（它直接用了 5 个，另外 `readTerminalClipboardSelection(terminal)` 还要一个 `getSelection`，一共 6 个）：
 
 ```ts
 terminal: Pick<
@@ -1532,7 +1533,7 @@ if (args.claimKeyEvent?.(event)) {
 }
 ```
 
-**同时把 installer 的 `terminal` 参数类型收窄成 `Pick<Terminal, 'attachCustomKeyEventHandler' | 'hasSelection' | 'scrollToTop' | 'scrollToBottom' | 'selectAll'>`**（Step 1 里假对象要靠它才不用 `as`）。只收窄类型，不改运行时行为。
+**同时把 installer 的 `terminal` 参数类型收窄成 `Pick<Terminal, 'attachCustomKeyEventHandler' | 'hasSelection' | 'scrollToTop' | 'scrollToBottom' | 'selectAll' | 'getSelection'>`**（Step 1 里假对象要靠它才不用 `as`）。只收窄类型，不改运行时行为。
 
 `open-standalone-terminal.ts` 的 `StandaloneTerminalArgs` 加 `claimKeyEvent?: (event: KeyboardEvent) => boolean`，并在 `installPreviewTerminalKeyHandler({...})` 的调用里传 `claimKeyEvent: args.claimKeyEvent`。
 
@@ -1839,7 +1840,7 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
 }
 ```
 
-**`dispatching` / `dispatchStarted` 是 Task 7 实现时加的两个 key**（计划原来的 key 表里没有给派发占位行留位置）：`dispatching` = `opening… · esc to cancel`，`dispatchStarted` = `started · {id}`（带 `{id}` 插值）。
+**`dispatching` / `dispatchStarted` 是 Task 7 实现时加的两个 key**（计划原来的 key 表里没有给派发占位行留位置）：`dispatching` = `opening… · esc to cancel`，`dispatchStarted` = `started · {{id}}`（**双花括号** —— 仓库的 i18next 用 `{{name}}` 插值，单花括号是字面文本）。
 **没有 `searchLabel`** —— v1 不做文本过滤（见下面的裁决）。
 
 **其它 10 个语言文件不用改** —— 它们没有这个 key，走 fallback。`auto.components.backgroundAgents.stateRunning` / `stateInterrupted` / `stateSlept` / `stateIdle` / `untitled` / `searchPlaceholder` / `searchLabel` / `loading` / `empty` / `refresh` 一起删掉（旧面板不再用）。

@@ -79,7 +79,7 @@ Completed
 ────────────────────────────────────────────────────────────
 ❯ describe a task for a new session
 ────────────────────────────────────────────────────────────
-  ↑↓ select · enter enter · ctrl+x stop · / search
+  ↑↓ select · enter enter · ctrl+x stop · / task
 ```
 
 - **分段**：`Working` / `Needs input` / `Completed`。判定规则（写死，不留歧义）：

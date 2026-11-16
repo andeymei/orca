@@ -444,6 +444,7 @@ test('entering a running agent and coming back leaves the agent running', async 
     await orcaPage.keyboard.type(filler, { delay: KEYSTROKE_DELAY_MS })
     // The marker is typed on its own: a paste collapse in the filler must not be able to swallow
     // the marker too, or the failure would be a timeout instead of a clear error.
+    // ast-grep-ignore: test-no-real-time-wait -- the elapsed time is the condition here: the CLI treats the marker as its own input burst only after the filler's burst has passed.
     await orcaPage.waitForTimeout(MARKER_PAUSE_MS)
     await orcaPage.keyboard.type(marker, { delay: KEYSTROKE_DELAY_MS })
     // The TUI wraps the prompt box, so the marker can straddle a row boundary.

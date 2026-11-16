@@ -93,6 +93,16 @@ describe('listClaudeBackgroundAgentsOrNull', () => {
     ).rejects.toThrow('not installed')
   })
 
+  it('says the CLI failed when the CLI said nothing', async () => {
+    await expect(
+      listClaudeBackgroundAgentsOrNull({
+        runCommand: async () => result({ code: 1, stderr: '   ' }),
+        resolveCommand: async () => '/usr/local/bin/claude',
+        resolveEnvironment: async () => ({})
+      })
+    ).rejects.toThrow('the Claude Code CLI failed')
+  })
+
   it('fails loudly when the CLI answers with something that is not a list', async () => {
     await expect(
       listClaudeBackgroundAgentsOrNull({

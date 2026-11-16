@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProcessSpec } from '@orca/process-host/process-spec'
+import { CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES } from '../../../shared/claude-background-agents'
 import {
   dispatchClaudeBackgroundAgent,
   removeClaudeBackgroundAgent,
@@ -59,22 +60,9 @@ describe('dispatchClaudeBackgroundAgent', () => {
     expect(result).toEqual({ ok: false, message: `${'x'.repeat(500)}…` })
   })
 
-  it('reports why the CLI was killed', async () => {
-    const result = await dispatchClaudeBackgroundAgent(
-      { prompt: 'x' },
-      {
-        runCommand: async () => ({
-          code: null,
-          signal: 'SIGTERM',
-          stdout: '',
-          stderr: 'the CLI was killed',
-          timedOut: false
-        }),
-        resolveCommand: async () => '/usr/local/bin/claude',
-        resolveEnvironment: async () => ({})
-      }
-    )
-    expect(result).toEqual({ ok: false, message: 'the CLI was killed' })
+  it('says the CLI reported nothing when it reported nothing', async () => {
+    const result = await dispatchClaudeBackgroundAgent({ prompt: 'x' }, deps('', 1, ''))
+    expect(result).toEqual({ ok: false, message: 'the CLI did not report why' })
   })
 
   it('runs in the given directory, because the CLI takes no --cwd', async () => {
@@ -96,6 +84,27 @@ describe('dispatchClaudeBackgroundAgent', () => {
       }
     )
     expect(seen.cwd).toBe(join('/repos', 'app'))
+  })
+
+  it('caps the output it reads, so a runaway CLI cannot fill the panel', async () => {
+    const seen: { maxOutputBytes?: number } = {}
+    await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      {
+        ...deps('backgrounded · 4db4f587\n'),
+        runCommand: async (spec: ProcessSpec) => {
+          seen.maxOutputBytes = spec.maxOutputBytes
+          return {
+            code: 0,
+            signal: null,
+            stdout: 'backgrounded · 4db4f587\n',
+            stderr: '',
+            timedOut: false
+          }
+        }
+      }
+    )
+    expect(seen.maxOutputBytes).toBe(CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES)
   })
 
   it('fails when the CLI does not print an id', async () => {

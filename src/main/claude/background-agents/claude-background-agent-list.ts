@@ -7,6 +7,7 @@ import {
 } from '../../../shared/claude-background-agents'
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
+import { UNKNOWN_OPTION_DIAGNOSTIC } from '../claude-cli-flag-support'
 
 /**
  * The listing the panel asks the CLI for.
@@ -17,14 +18,45 @@ import { hostShellEnvironment } from '../../runtime/agent-session/environment/st
  */
 export const CLAUDE_BACKGROUND_AGENTS_ARGS: readonly string[] = ['agents', '--json', '--all']
 
+/** The listing a CLI that does not know `--all` can still answer. */
+const CLAUDE_BACKGROUND_AGENTS_ARGS_WITHOUT_ALL: readonly string[] = ['agents', '--json']
+
+/** The option that asks the CLI for the completed sessions too. */
+const ALL_OPTION = '--all'
+
 /** The listing is a local daemon query; a wedged CLI must not hold the picker open. */
 export const CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS = 5_000
+
+/**
+ * Remembers that a CLI refused `--all`.
+ *
+ * The listing is polled every 15 seconds, so asking a CLI that does not know the option again
+ * would buy a failed spawn every time. The memory is per binary: a CLI installed elsewhere is a
+ * different CLI, and one replaced in place is asked again after Orca restarts.
+ */
+export type ClaudeBackgroundAgentAllFlagMemory = {
+  /** Whether this CLI already refused the option. */
+  refused: (program: string) => boolean
+  /** Remember that this CLI refused the option. */
+  remember: (program: string) => void
+}
+
+const programsThatRefusedAll = new Set<string>()
+
+const defaultAllFlagMemory: ClaudeBackgroundAgentAllFlagMemory = {
+  refused: (program) => programsThatRefusedAll.has(program),
+  remember: (program) => {
+    programsThatRefusedAll.add(program)
+  }
+}
 
 export type ClaudeBackgroundAgentDependencies = {
   /** Injected so tests exercise the parsing without a Claude Code install. */
   runCommand?: typeof runProcess
   resolveCommand?: typeof resolveCommandOnLocalPath
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
+  /** Injected so a test can drive the downgrade without a real CLI. */
+  allFlagMemory?: ClaudeBackgroundAgentAllFlagMemory
 }
 
 /** What this machine's Claude Code CLI can tell about its agents. */
@@ -76,13 +108,31 @@ async function readLocalClaudeBackgroundAgentListing(
   if (!program) {
     return { status: 'unsupported' }
   }
-  const result = await (dependencies.runCommand ?? runProcess)({
+  const run = dependencies.runCommand ?? runProcess
+  const memory = dependencies.allFlagMemory ?? defaultAllFlagMemory
+  const spec = {
     program,
-    args: CLAUDE_BACKGROUND_AGENTS_ARGS,
     env,
     timeoutMs: CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS,
     maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
-  })
+  }
+  // Why: a CLI that already refused the option is not asked for it again.
+  const args = memory.refused(program)
+    ? CLAUDE_BACKGROUND_AGENTS_ARGS_WITHOUT_ALL
+    : CLAUDE_BACKGROUND_AGENTS_ARGS
+  let result = await run({ ...spec, args })
+  if (
+    !result.timedOut &&
+    result.code !== 0 &&
+    !memory.refused(program) &&
+    refusedAllOption(result.stderr)
+  ) {
+    // Why: a CLI that does not know `--all` still knows `--json`, so the panel keeps working with
+    // an empty Completed section instead of no roster at all. The downgrade is remembered, so the
+    // next poll does not pay the failed spawn again.
+    memory.remember(program)
+    result = await run({ ...spec, args: CLAUDE_BACKGROUND_AGENTS_ARGS_WITHOUT_ALL })
+  }
   if (result.timedOut) {
     return { status: 'error', message: 'the Claude Code CLI timed out' }
   }
@@ -99,4 +149,15 @@ async function readLocalClaudeBackgroundAgentListing(
     return { status: 'error', message: listing.message }
   }
   return { status: 'ready', agents: listing.agents }
+}
+
+/**
+ * Whether the CLI said it does not know the option.
+ *
+ * Only the CLI's own unknown-option diagnostic proves a refusal: a timeout, a crash or any other
+ * failure is a real failure, and falling back on it would hide a broken CLI behind a list that
+ * looks fine.
+ */
+function refusedAllOption(stderr: string): boolean {
+  return UNKNOWN_OPTION_DIAGNOSTIC.exec(stderr)?.[1] === ALL_OPTION
 }

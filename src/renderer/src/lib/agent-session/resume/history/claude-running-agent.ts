@@ -1,7 +1,8 @@
 import type { AiVaultSession } from '../../../../../../shared/ai-vault/contracts/ai-vault-types'
-import type {
-  ClaudeBackgroundAgent,
-  ClaudeRunningAgentLookup
+import {
+  CLAUDE_BACKGROUND_AGENT_FINISHED_STATES,
+  type ClaudeBackgroundAgent,
+  type ClaudeRunningAgentLookup
 } from '../../../../../../shared/claude-background-agents'
 
 /**
@@ -10,6 +11,9 @@ import type {
  * A conversation that has a live writer must be opened, not resumed: the CLI copies a resumed
  * conversation that already runs, and that copy is the second, same-named agent the user finds
  * afterwards.
+ *
+ * The rule that decides "running" lives here, where the question is asked, so that a listing
+ * which also carries finished agents cannot answer it wrongly.
  */
 export function runningAgentForSession(
   agents: readonly ClaudeBackgroundAgent[],
@@ -18,7 +22,24 @@ export function runningAgentForSession(
   if (session.agent !== 'claude') {
     return null
   }
-  return agents.find((agent) => agent.sessionId === session.sessionId) ?? null
+  return (
+    agents.find((agent) => agent.sessionId === session.sessionId && isRunningAgent(agent)) ?? null
+  )
+}
+
+/**
+ * Whether the agent still writes to its conversation.
+ *
+ * A finished agent does not, and attaching to one would wake it up again: the conversation would
+ * end up with a daemon-backed writer the user never asked for.
+ */
+function isRunningAgent(agent: ClaudeBackgroundAgent): boolean {
+  const state = agent.state
+  if (state === undefined) {
+    // Why: an unknown state is not a finished state — the agent may still be writing.
+    return true
+  }
+  return !CLAUDE_BACKGROUND_AGENT_FINISHED_STATES.includes(state)
 }
 
 /**

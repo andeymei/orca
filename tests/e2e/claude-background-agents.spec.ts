@@ -18,6 +18,8 @@
  * 2. macOS login shells run path_helper, which puts the real `claude` ahead of the launcher's
  *    directory, so the app's shell is a wrapper that drops the login flag.
  * 3. A hidden window never polls, so the spec reports the document as visible.
+ * 4. The CLI is started without the session the spec happens to run in, so the probe is a session
+ *    of its own instead of a copy of the developer's.
  *
  * A machine without a Claude Code CLI has nothing to supervise, and CI has none, so the spec skips
  * there instead of pretending.
@@ -117,6 +119,35 @@ function quoteShellValue(value: string): string {
 }
 
 /**
+ * The environment variables that tie a Claude Code process to the session it was started from.
+ *
+ * A CLI that still carries them continues that session: a probe started this way inherits the
+ * developer's own conversation, and the attach client is wired to the developer's session instead
+ * of the probe's. Both write into the terminal the spec is typing in, and a write makes the
+ * attach client redraw and drop the draft it was holding. The spec's probe and the app's CLI are
+ * their own sessions, so the variables go.
+ */
+const AMBIENT_SESSION_ENV_VARS = [
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_JOB_DIR',
+  'CLAUDE_PID',
+  'CLAUDECODE'
+] as const
+
+/** The machine's environment, without the session that happens to be running the spec. */
+function environmentWithoutAmbientSession(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env }
+  for (const name of AMBIENT_SESSION_ENV_VARS) {
+    delete env[name]
+  }
+  return env
+}
+
+/**
  * A `claude` launcher that runs the real CLI with the real config directory.
  *
  * The E2E app's HOME is a throwaway profile, so the CLI would report an empty roster there and
@@ -132,6 +163,8 @@ function writeClaudeLauncher(dir: string, realClaude: string, configDir: string)
       '# The E2E profile has its own HOME, where the CLI finds no agents.',
       `CLAUDE_CONFIG_DIR=${quoteShellValue(configDir)}`,
       'export CLAUDE_CONFIG_DIR',
+      '# The app is not part of the session that happens to be running the spec.',
+      `unset ${AMBIENT_SESSION_ENV_VARS.join(' ')}`,
       `exec ${quoteShellValue(realClaude)} "$@"`,
       ''
     ].join('\n')
@@ -221,6 +254,7 @@ async function askClaudeAgents(extraArgs: readonly string[]): Promise<AgentsAnsw
   const result = await runProcess({
     program: realClaude,
     args: ['agents', '--json', ...extraArgs],
+    env: environmentWithoutAmbientSession(),
     timeoutMs: LISTING_TIMEOUT_MS,
     maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
   })
@@ -251,6 +285,10 @@ async function askClaudeAgents(extraArgs: readonly string[]): Promise<AgentsAnsw
  * the workspace's trust record and refuses to start a session ("Workspace not trusted"). The
  * directory the CLI then uses is the same one the launcher points at — `~/.claude` — so the app
  * and the spec see the same roster.
+ *
+ * The probe also runs without the session the spec was started from: a probe that continued that
+ * session would inherit the developer's own conversation, and its recap of it would land in the
+ * terminal the spec is typing in.
  */
 async function dispatchProbeAgent(): Promise<string> {
   const realClaude = resolveRealClaude()
@@ -260,6 +298,7 @@ async function dispatchProbeAgent(): Promise<string> {
   const result = await runProcess({
     program: realClaude,
     args: ['--bg', '--', PROBE_PROMPT],
+    env: environmentWithoutAmbientSession(),
     timeoutMs: DISPATCH_TIMEOUT_MS,
     maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
   })
@@ -295,6 +334,7 @@ async function removeProbeAgent(id: string): Promise<string | null> {
   const result = await runProcess({
     program: realClaude,
     args: ['rm', id],
+    env: environmentWithoutAmbientSession(),
     timeoutMs: REMOVE_TIMEOUT_MS,
     maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
   })

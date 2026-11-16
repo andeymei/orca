@@ -153,7 +153,8 @@ export function bufferPreHandlerPtyData(ptyId: string, data: string, meta?: PtyD
     warnedNoPrimaryHandlerPtyIds.add(ptyId)
     console.warn(
       `[pty] ${ptyId}: ${state.bytes} bytes buffered with no primary data handler registered ` +
-        'for this PTY; a PTY with no pane owner keeps a copy of its output until it exits'
+        'for this PTY; without a primary handler the copy is kept until the PTY exits or a ' +
+        'handler takes over'
     )
   }
 }

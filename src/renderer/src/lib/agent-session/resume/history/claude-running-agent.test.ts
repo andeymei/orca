@@ -44,6 +44,50 @@ describe('runningAgentForSession', () => {
     expect(running?.id).toBe('8857ad86')
   })
 
+  it('calls an agent it cannot place a running one, because it is not known to be finished', () => {
+    // Why: the listing of an older CLI carries no state word, and an unknown state is not a
+    // finished state — the agent may still be writing.
+    const withoutState: ClaudeBackgroundAgent = { ...agent }
+    expect(
+      runningAgentForSession(
+        [withoutState],
+        session({ sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0' })
+      )?.id
+    ).toBe('8857ad86')
+  })
+
+  it('does not call a finished agent a running one', () => {
+    // Why: the listing also carries the completed agents, and attaching to one wakes it up again.
+    const finished: ClaudeBackgroundAgent[] = [
+      { ...agent, state: 'done' },
+      { ...agent, state: 'failed' },
+      { ...agent, state: 'stopped' }
+    ]
+    expect(
+      runningAgentForSession(
+        finished,
+        session({ sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0' })
+      )
+    ).toBeNull()
+  })
+
+  it('calls a live agent a running one', () => {
+    const working: ClaudeBackgroundAgent = { ...agent, state: 'working' }
+    expect(
+      runningAgentForSession(
+        [working],
+        session({ sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0' })
+      )?.id
+    ).toBe('8857ad86')
+    const blocked: ClaudeBackgroundAgent = { ...agent, state: 'blocked' }
+    expect(
+      runningAgentForSession(
+        [blocked],
+        session({ sessionId: '8857ad86-88ad-4680-81f9-861c71626bb0' })
+      )?.id
+    ).toBe('8857ad86')
+  })
+
   it('leaves a conversation nobody runs alone', () => {
     expect(runningAgentForSession([agent], session({ sessionId: 'other-session' }))).toBeNull()
   })

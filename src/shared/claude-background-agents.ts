@@ -30,6 +30,19 @@ export type ClaudeBackgroundAgentKind = (typeof CLAUDE_BACKGROUND_AGENT_KINDS)[n
 /** The agent's own state word; an older host omits it. */
 export type ClaudeBackgroundAgentState = (typeof CLAUDE_BACKGROUND_AGENT_STATES)[number]
 
+/**
+ * The states that mean the agent is finished.
+ *
+ * These are the states only the `--all` listing adds, so a listing that carries them says more
+ * than the active-only one did. An agent with no state at all is not on this list: a missing state
+ * is not a finished state.
+ */
+export const CLAUDE_BACKGROUND_AGENT_FINISHED_STATES: readonly ClaudeBackgroundAgentState[] = [
+  'done',
+  'failed',
+  'stopped'
+]
+
 /** 'busy' while the agent is turning; 'waiting' when it needs a decision. */
 export type ClaudeBackgroundAgentStatus = (typeof CLAUDE_BACKGROUND_AGENT_STATUSES)[number]
 

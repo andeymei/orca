@@ -33,7 +33,7 @@ export const CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS = 10_000
 export const CLAUDE_CACHED_FLAG_CHECK_BUDGET_MS = 250
 
 // Only an explicit unknown-option diagnostic proves flag rejection.
-const UNKNOWN_OPTION_DIAGNOSTIC = /unknown option '(--[a-z][a-z0-9-]*)'/
+export const UNKNOWN_OPTION_DIAGNOSTIC = /unknown option '(--[a-z][a-z0-9-]*)'/
 
 const MAX_REMEMBERED = 32
 

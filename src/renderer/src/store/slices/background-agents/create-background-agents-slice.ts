@@ -9,6 +9,15 @@ import type {
 /** Which screen the supervisor shows: the roster, or one agent's detail. */
 export type BackgroundAgentsScreen = { kind: 'list' } | { kind: 'agent'; agentId: string }
 
+/** The dispatch that is on its way; the panel draws it as a placeholder row. */
+export type BackgroundAgentsDispatch = {
+  state: 'opening' | 'failed' | 'started'
+  /** The short id the CLI gave, when the dispatch won the race against the cancel. */
+  agentId: string | null
+  /** Why the dispatch failed. */
+  message: string | null
+}
+
 /** Keep the supervisor's screen and roster in session memory across panel unmounts; never persist to disk. */
 export type BackgroundAgentsSlice = {
   backgroundAgentsScreen: BackgroundAgentsScreen
@@ -17,10 +26,12 @@ export type BackgroundAgentsSlice = {
   backgroundAgentsAgents: ClaudeBackgroundAgent[]
   backgroundAgentsDetails: Record<string, ClaudeBackgroundAgentDetail>
   backgroundAgentsAttachedPtyId: string | null
+  backgroundAgentsDispatch: BackgroundAgentsDispatch | null
   openBackgroundAgent: (agentId: string) => void
   closeBackgroundAgent: () => void
   publishBackgroundAgentsListing: (result: ClaudeBackgroundAgentListResult) => void
   publishBackgroundAgentDetails: (details: Record<string, ClaudeBackgroundAgentDetail>) => void
+  publishBackgroundAgentsDispatch: (dispatch: BackgroundAgentsDispatch | null) => void
   setBackgroundAgentsAttachedPty: (ptyId: string | null) => void
 }
 
@@ -33,6 +44,7 @@ export const createBackgroundAgentsSlice: StateCreator<AppState, [], [], Backgro
   backgroundAgentsAgents: [],
   backgroundAgentsDetails: {},
   backgroundAgentsAttachedPtyId: null,
+  backgroundAgentsDispatch: null,
   openBackgroundAgent: (agentId) => set({ backgroundAgentsScreen: { kind: 'agent', agentId } }),
   closeBackgroundAgent: () => set({ backgroundAgentsScreen: { kind: 'list' } }),
   publishBackgroundAgentsListing: (result) =>
@@ -52,5 +64,6 @@ export const createBackgroundAgentsSlice: StateCreator<AppState, [], [], Backgro
     }),
   publishBackgroundAgentDetails: (details) =>
     set((state) => ({ backgroundAgentsDetails: { ...state.backgroundAgentsDetails, ...details } })),
+  publishBackgroundAgentsDispatch: (dispatch) => set({ backgroundAgentsDispatch: dispatch }),
   setBackgroundAgentsAttachedPty: (ptyId) => set({ backgroundAgentsAttachedPtyId: ptyId })
 })

@@ -77,6 +77,9 @@ export const CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES = 256 * 1024
 /** The CLI's stderr can be a quarter of a megabyte; the panel only needs the reason. */
 const MAX_FAILURE_MESSAGE_LENGTH = 500
 
+/** What the command layer reports when the panel aborted the dispatch itself. */
+export const CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE = 'the dispatch was cancelled'
+
 /**
  * What the CLI said about its refusal, trimmed to what a panel can show.
  *

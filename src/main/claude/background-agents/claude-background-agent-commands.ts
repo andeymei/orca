@@ -1,6 +1,7 @@
 import { runProcess } from '@orca/process-host'
 import type { ProcessResult } from '@orca/process-host/process-spec'
 import {
+  CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE,
   CLAUDE_BACKGROUND_AGENT_ID_PATTERN,
   CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
   readClaudeBackgroundAgentFailureMessage,
@@ -200,7 +201,7 @@ function readDispatchedAgentId(stdout: string): string | null {
  */
 function failureMessage(result: ProcessResult, signal?: AbortSignal): string {
   if (result.signal !== null || signal?.aborted) {
-    return 'the dispatch was cancelled'
+    return CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE
   }
   return readClaudeBackgroundAgentFailureMessage(result.stderr, 'the CLI did not report why')
 }

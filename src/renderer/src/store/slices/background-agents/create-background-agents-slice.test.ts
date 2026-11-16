@@ -97,3 +97,22 @@ it('opens and closes an agent', () => {
   store.getState().closeBackgroundAgent()
   expect(store.getState().backgroundAgentsScreen).toEqual({ kind: 'list' })
 })
+
+it('keeps the dispatch placeholder row until the panel clears it', () => {
+  const store = createTestStore()
+  // The panel unmounts when the user switches sidebar tabs, so the placeholder lives in the store.
+  store
+    .getState()
+    .publishBackgroundAgentsDispatch({ state: 'opening', agentId: null, message: null })
+  expect(store.getState().backgroundAgentsDispatch).toEqual({
+    state: 'opening',
+    agentId: null,
+    message: null
+  })
+  store
+    .getState()
+    .publishBackgroundAgentsDispatch({ state: 'started', agentId: 'bbbb2222', message: null })
+  expect(store.getState().backgroundAgentsDispatch?.agentId).toBe('bbbb2222')
+  store.getState().publishBackgroundAgentsDispatch(null)
+  expect(store.getState().backgroundAgentsDispatch).toBeNull()
+})

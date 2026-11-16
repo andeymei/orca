@@ -43,6 +43,8 @@ export function BackgroundAgentRowView({
     now !== undefined && row.startedAt > 0
       ? formatBackgroundAgentElapsed(now - row.startedAt)
       : null
+  // Why: a blocked agent's line says what it is asking; the other lines say what it is doing.
+  const activity = row.section === 'needs-input' && row.needs ? row.needs : row.detail
   return (
     <button
       type="button"
@@ -62,8 +64,8 @@ export function BackgroundAgentRowView({
       </span>
       <AgentStateDot state={dotStateFor(row.state)} />
       <span className="min-w-0 flex-1 truncate text-xs text-foreground">{row.name}</span>
-      {row.detail ? (
-        <span className="min-w-0 shrink truncate text-2xs text-muted-foreground">{row.detail}</span>
+      {activity ? (
+        <span className="min-w-0 shrink truncate text-2xs text-muted-foreground">{activity}</span>
       ) : null}
       {hint ? <span className="shrink-0 text-2xs text-muted-foreground">{hint}</span> : null}
       {elapsed ? (

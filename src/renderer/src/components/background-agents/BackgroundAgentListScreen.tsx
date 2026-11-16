@@ -4,7 +4,6 @@ import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { useTranslate } from '@/i18n/use-translate'
 import { useAppStore } from '@/store/index'
-import { selectKnownWorktreeById } from '@/store/workspaces/selection/known-worktree-selection'
 import { installWindowVisibilityInterval } from '@/lib/window-activity/window-visibility-interval'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import {
@@ -53,10 +52,10 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   const openBackgroundAgent = useAppStore((state) => state.openBackgroundAgent)
   const { dispatch, dispatchPrompt, cancelOpeningDispatch } = useBackgroundAgentDispatch()
   // Why: the panel lists this machine's agents, so a workspace on another host needs saying out loud.
-  const listsThisMachineOnly = useAppStore((state) => {
-    const worktree = selectKnownWorktreeById(state, state.activeWorktreeId)
-    return (worktree?.hostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
-  })
+  const listsThisMachineOnly = useAppStore(
+    (state) =>
+      (state.activeWorkspaceExecutionHostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
+  )
 
   const rows = useMemo(() => buildBackgroundAgentListRows(agents, details), [agents, details])
   const groups = useMemo(() => groupBackgroundAgentListRows(rows), [rows])
@@ -72,6 +71,11 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   const selectedRow = selectableRows[selectedIndex] ?? null
 
   useBackgroundAgentRosterRefresh()
+
+  useEffect(() => {
+    // Why: the CLI's prompt box is ready to type into the moment the screen opens.
+    composerRef.current?.focus()
+  }, [])
 
   useEffect(() => {
     // Why: the elapsed column has no reader while the window is hidden.
@@ -181,29 +185,27 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       : t('auto.components.backgroundAgents.stopConfirm', 'ctrl+x again to stop')
   }
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
-    if (event.target !== event.currentTarget) {
-      return
-    }
+  /**
+   * The actions the panel's keys trigger.
+   *
+   * The root and the composer run the same actions, so the behaviour does not depend on where
+   * the focus happens to be.
+   */
+  const runPanelKey = (event: React.KeyboardEvent<HTMLElement>): boolean => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       moveSelection(event.key === 'ArrowDown' ? 1 : -1)
-      return
+      return true
     }
     if (event.key === 'Enter') {
       event.preventDefault()
       void activateOrDispatch()
-      return
+      return true
     }
     if (event.ctrlKey && (event.key === 'x' || event.key === 'X')) {
       event.preventDefault()
       void runSelectedCommand()
-      return
-    }
-    if (event.key === '/') {
-      event.preventDefault()
-      composerRef.current?.focus()
-      return
+      return true
     }
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -211,35 +213,34 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       // taken back; a typed prompt can.
       if (dispatch?.state === 'opening') {
         cancelOpeningDispatch()
-        return
+        return true
       }
       if (composer !== '') {
         setComposer('')
-        return
+        return true
       }
       rootRef.current?.focus()
+      return true
     }
+    return false
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+    if (event.key === '/') {
+      // Why: `/` sends the caret to the composer; in the composer it is an ordinary character.
+      event.preventDefault()
+      composerRef.current?.focus()
+      return
+    }
+    runPanelKey(event)
   }
 
   const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === 'Enter') {
-      event.preventDefault()
+    if (runPanelKey(event)) {
       event.stopPropagation()
-      void activateOrDispatch()
-      return
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      event.stopPropagation()
-      if (dispatch?.state === 'opening') {
-        cancelOpeningDispatch()
-        return
-      }
-      if (composer !== '') {
-        setComposer('')
-        return
-      }
-      rootRef.current?.focus()
     }
   }
 
@@ -254,12 +255,14 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   const dispatchLabel =
     dispatch?.state === 'failed'
       ? (dispatch.message ??
-        t('auto.components.backgroundAgents.error', 'Could not read the background agents'))
+        t('auto.components.backgroundAgents.dispatchFailed', 'The agent could not be started'))
       : dispatch?.state === 'started'
-        ? t('auto.components.backgroundAgents.dispatchStarted', 'started · {id}', {
+        ? t('auto.components.backgroundAgents.dispatchStarted', 'started · {{id}}', {
             id: dispatch.agentId ?? ''
           })
-        : t('auto.components.backgroundAgents.dispatching', 'opening… · esc to cancel')
+        : dispatch?.state === 'cancelling'
+          ? t('auto.components.backgroundAgents.dispatchingCancelling', 'cancelling…')
+          : t('auto.components.backgroundAgents.dispatching', 'opening… · esc to cancel')
 
   const renderSection = (
     label: string,
@@ -299,7 +302,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
         <span>
           {t(
             'auto.components.backgroundAgents.counts',
-            '{awaiting} awaiting input · {working} working · {completed} completed',
+            '{{awaiting}} awaiting input · {{working}} working · {{completed}} completed',
             {
               awaiting: counts.awaitingInput,
               working: counts.working,
@@ -401,7 +404,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       <div className="px-2 pb-2 text-2xs text-muted-foreground">
         {t(
           'auto.components.backgroundAgents.shortcuts',
-          '↑↓ select · enter enter · ctrl+x stop · / search'
+          '↑↓ select · enter enter · ctrl+x stop · / task'
         )}
       </div>
     </div>

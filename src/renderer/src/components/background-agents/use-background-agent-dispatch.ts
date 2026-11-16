@@ -19,6 +19,11 @@ export type BackgroundAgentDispatchControls = {
   cancelOpeningDispatch: () => void
 }
 
+/** Whether a dispatch is still on its way and holds the main side's one dispatch slot. */
+function isDispatchOnItsWay(dispatch: BackgroundAgentsDispatch | null): boolean {
+  return dispatch?.state === 'opening' || dispatch?.state === 'cancelling'
+}
+
 /**
  * Starts the agent and settles the placeholder row from the CLI's answer.
  *
@@ -45,7 +50,11 @@ async function dispatchBackgroundAgent(args: {
         // The CLI won the race against the cancel, so the agent exists; saying otherwise would lie.
         args.publish({ state: 'started', agentId: result.id, message: null })
         setTimeout(() => {
-          args.publish(null)
+          // Why: a newer dispatch owns the row now; clearing it would hide that dispatch.
+          const current = useAppStore.getState().backgroundAgentsDispatch
+          if (current?.state === 'started' && current.agentId === result.id) {
+            args.publish(null)
+          }
         }, STARTED_ROW_LIFETIME_MS)
       } else {
         args.publish(null)
@@ -86,20 +95,22 @@ export function useBackgroundAgentDispatch(): BackgroundAgentDispatchControls {
     (state) => state.publishBackgroundAgentsDispatch
   )
   const inFlightRef = useRef(false)
-  const cancelRequestedRef = useRef(false)
 
   /** Starts a background agent; it answers whether the agent came up. */
   const dispatchPrompt = async (prompt: string): Promise<boolean> => {
-    if (inFlightRef.current || dispatch?.state === 'opening') {
+    if (
+      inFlightRef.current ||
+      isDispatchOnItsWay(useAppStore.getState().backgroundAgentsDispatch)
+    ) {
       // Why: the main side remembers one dispatch at a time; a second one would displace the first.
       return false
     }
     inFlightRef.current = true
-    cancelRequestedRef.current = false
     publishBackgroundAgentsDispatch({ state: 'opening', agentId: null, message: null })
     return dispatchBackgroundAgent({
       prompt,
-      cancelled: () => cancelRequestedRef.current,
+      // Why: the cancel flag lives in the store, so a remount still knows the outcome.
+      cancelled: () => useAppStore.getState().backgroundAgentsDispatch?.state === 'cancelling',
       publish: publishBackgroundAgentsDispatch,
       settled: () => {
         inFlightRef.current = false
@@ -108,10 +119,11 @@ export function useBackgroundAgentDispatch(): BackgroundAgentDispatchControls {
   }
 
   const cancelOpeningDispatch = (): void => {
-    if (cancelRequestedRef.current) {
+    if (useAppStore.getState().backgroundAgentsDispatch?.state !== 'opening') {
+      // Why: only a dispatch that is still opening can be aborted, and the row says so.
       return
     }
-    cancelRequestedRef.current = true
+    publishBackgroundAgentsDispatch({ state: 'cancelling', agentId: null, message: null })
     // Why: the abort only delivers the signal; the row waits for the dispatch to settle.
     void window.api.claudeAgents.cancelDispatch()
   }

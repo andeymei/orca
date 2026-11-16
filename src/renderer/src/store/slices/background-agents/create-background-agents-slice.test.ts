@@ -111,6 +111,10 @@ it('keeps the dispatch placeholder row until the panel clears it', () => {
   })
   store
     .getState()
+    .publishBackgroundAgentsDispatch({ state: 'cancelling', agentId: null, message: null })
+  expect(store.getState().backgroundAgentsDispatch?.state).toBe('cancelling')
+  store
+    .getState()
     .publishBackgroundAgentsDispatch({ state: 'started', agentId: 'bbbb2222', message: null })
   expect(store.getState().backgroundAgentsDispatch?.agentId).toBe('bbbb2222')
   store.getState().publishBackgroundAgentsDispatch(null)

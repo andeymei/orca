@@ -11,7 +11,8 @@ export type BackgroundAgentsScreen = { kind: 'list' } | { kind: 'agent'; agentId
 
 /** The dispatch that is on its way; the panel draws it as a placeholder row. */
 export type BackgroundAgentsDispatch = {
-  state: 'opening' | 'failed' | 'started'
+  /** `cancelling` means the abort was asked for, but the dispatch has not settled yet. */
+  state: 'opening' | 'cancelling' | 'failed' | 'started'
   /** The short id the CLI gave, when the dispatch won the race against the cancel. */
   agentId: string | null
   /** Why the dispatch failed. */

@@ -719,7 +719,7 @@ Expected: 两个都通过（preload 的类型是 CI 强制的）。
 - [ ] **Step 7: 提交**
 
 ```bash
-git add src/main/ipc/claude-agents src/preload/api/claude-agents-api.ts src/preload/api/claude-agents-bridge.ts src/preload/api-types.ts src/preload/index.ts src/renderer/src/web/preload-api/web-claude-agents-api.ts src/renderer/src/web/web-preload-api.ts src/main/ipc/register-core-handlers/register-core-handlers.ts src/shared/claude-background-agents.ts
+git add src/main/ipc/claude-agents src/preload/api/claude-agents-api.ts src/preload/api/claude-agents-bridge.ts src/preload/api-types.ts src/preload/index.ts src/renderer/src/web/preload-api/web-claude-agents-api.ts src/renderer/src/web/web-preload-api.ts src/main/ipc/register-core-handlers/register-core-handlers.ts
 git commit -m "feat(claude-agents): expose the background agent listing over IPC
 
 The listing and the per-agent activity live behind separate calls: the
@@ -1107,12 +1107,13 @@ export const createBackgroundAgentsSlice: StateCreator<AppState, [], [], Backgro
       backgroundAgentsStatus: result.status,
       backgroundAgentsMessage: result.message,
       // Why a copy: the caller may reuse the array.
-      ...(result.status === 'ready'
-        ? {
-            backgroundAgentsAgents: [...result.agents],
-            backgroundAgentsDetails: { ...result.details }
-          }
-        : { backgroundAgentsDetails: { ...result.details } })
+      backgroundAgentsDetails: { ...result.details },
+      // A failed refresh keeps the rows it already had; only a host with no CLI at all empties them.
+      ...(result.status === 'unsupported'
+        ? { backgroundAgentsAgents: [] }
+        : result.status === 'ready'
+          ? { backgroundAgentsAgents: [...result.agents] }
+          : {})
     })),
   publishBackgroundAgentDetails: (details) =>
     set((state) => ({ backgroundAgentsDetails: { ...state.backgroundAgentsDetails, ...details } })),

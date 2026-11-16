@@ -60,6 +60,15 @@ describe('listClaudeBackgroundAgents', () => {
     })
     expect(agents).toEqual([])
   })
+
+  it('reads nothing when the CLI prints something that is not a list', async () => {
+    const agents = await listClaudeBackgroundAgents({
+      runCommand: async () => result({ stdout: 'not json' }),
+      resolveCommand: async () => '/usr/local/bin/claude',
+      resolveEnvironment: async () => ({})
+    })
+    expect(agents).toEqual([])
+  })
 })
 
 describe('listClaudeBackgroundAgentsOrNull', () => {
@@ -82,5 +91,28 @@ describe('listClaudeBackgroundAgentsOrNull', () => {
         resolveEnvironment: async () => ({})
       })
     ).rejects.toThrow('not installed')
+  })
+
+  it('fails loudly when the CLI answers with something that is not a list', async () => {
+    await expect(
+      listClaudeBackgroundAgentsOrNull({
+        runCommand: async () => result({ stdout: 'not json' }),
+        resolveCommand: async () => '/usr/local/bin/claude',
+        resolveEnvironment: async () => ({})
+      })
+    ).rejects.toThrow('did not print JSON')
+  })
+
+  it('truncates a failure reason the panel cannot show', async () => {
+    const message = await listClaudeBackgroundAgentsOrNull({
+      runCommand: async () => result({ code: 1, stderr: 'x'.repeat(1000) }),
+      resolveCommand: async () => '/usr/local/bin/claude',
+      resolveEnvironment: async () => ({})
+    }).then(
+      () => null,
+      (error: Error) => error.message
+    )
+    expect(message).toHaveLength(501)
+    expect(message?.endsWith('…')).toBe(true)
   })
 })

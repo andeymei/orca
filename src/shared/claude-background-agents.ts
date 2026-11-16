@@ -87,19 +87,38 @@ function readKnownWord<T extends string>(value: unknown, words: readonly T[]): T
 }
 
 /**
+ * The agents the CLI printed, or why its answer cannot be used.
+ *
+ * An older or broken `claude` build prints a table instead of a JSON array. That is not an empty
+ * list, it is an answer nobody can read, and the caller has to hear which one it is.
+ */
+export type ClaudeBackgroundAgentsListing =
+  | { ok: true; agents: ClaudeBackgroundAgent[] }
+  | { ok: false; message: string }
+
+/** The agents the CLI printed, or why its answer cannot be used. */
+export function readClaudeBackgroundAgentsListing(stdout: string): ClaudeBackgroundAgentsListing {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stdout)
+  } catch {
+    return { ok: false, message: 'the Claude Code CLI did not print JSON' }
+  }
+  if (!Array.isArray(parsed)) {
+    return { ok: false, message: 'the Claude Code CLI did not print an agent list' }
+  }
+  return { ok: true, agents: parseClaudeBackgroundAgentsValue(parsed) }
+}
+
+/**
  * The agents from `claude agents --json`.
  *
  * The CLI prints an array, but a broken or older build prints something else; an unreadable
  * listing must not take the picker down with it.
  */
 export function parseClaudeBackgroundAgents(stdout: string): ClaudeBackgroundAgent[] {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(stdout)
-  } catch {
-    return []
-  }
-  return parseClaudeBackgroundAgentsValue(parsed)
+  const listing = readClaudeBackgroundAgentsListing(stdout)
+  return listing.ok ? listing.agents : []
 }
 
 /** The same listing, already parsed: a host answers with the value instead of the printed text. */

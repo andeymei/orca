@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { parseClaudeBackgroundAgents } from './claude-background-agents'
+import {
+  parseClaudeBackgroundAgents,
+  readClaudeBackgroundAgentsListing
+} from './claude-background-agents'
 
 describe('parseClaudeBackgroundAgents', () => {
   it('reads the agents the CLI lists', () => {
@@ -76,5 +79,22 @@ describe('parseClaudeBackgroundAgents', () => {
   it('reads nothing from output that is not the listing', () => {
     expect(parseClaudeBackgroundAgents('not json')).toEqual([])
     expect(parseClaudeBackgroundAgents('{"agents":[]}')).toEqual([])
+  })
+})
+
+describe('readClaudeBackgroundAgentsListing', () => {
+  it('reads an empty list as an empty list', () => {
+    expect(readClaudeBackgroundAgentsListing('[]')).toEqual({ ok: true, agents: [] })
+  })
+
+  it('says the answer cannot be used when the CLI printed something else', () => {
+    expect(readClaudeBackgroundAgentsListing('not json')).toEqual({
+      ok: false,
+      message: 'the Claude Code CLI did not print JSON'
+    })
+    expect(readClaudeBackgroundAgentsListing('{"agents":[]}')).toEqual({
+      ok: false,
+      message: 'the Claude Code CLI did not print an agent list'
+    })
   })
 })

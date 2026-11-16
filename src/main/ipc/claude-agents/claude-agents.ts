@@ -3,8 +3,6 @@ import type {
   ClaudeBackgroundAgent,
   ClaudeBackgroundAgentCommandResult,
   ClaudeBackgroundAgentDetail,
-  ClaudeBackgroundAgentDispatchArgs,
-  ClaudeBackgroundAgentIdArgs,
   ClaudeBackgroundAgentListResult
 } from '../../../shared/claude-background-agents'
 import {
@@ -45,12 +43,18 @@ async function readClaudeBackgroundAgentDetails(
   ids: readonly string[],
   readDetail: (id: string) => Promise<ClaudeBackgroundAgentDetail | null>
 ): Promise<Record<string, ClaudeBackgroundAgentDetail>> {
+  // Why: the fast poll waits on every file, so they are read together instead of one after another.
+  const reads = await Promise.all(
+    ids.map(async (id) => ({
+      id,
+      // Why: a state file the CLI is rewriting must not take the other agents' rows down.
+      detail: await readDetail(id).catch(() => null)
+    }))
+  )
   const details: Record<string, ClaudeBackgroundAgentDetail> = {}
-  for (const id of ids) {
-    // Why: a state file the CLI is rewriting must not take the other agents' rows down.
-    const detail = await readDetail(id).catch(() => null)
-    if (detail) {
-      details[id] = detail
+  for (const read of reads) {
+    if (read.detail) {
+      details[read.id] = read.detail
     }
   }
   return details
@@ -68,28 +72,61 @@ export function registerClaudeAgentsHandlers(): void {
   // before the id becomes a path segment, so this layer does not validate them a second time.
   ipcMain.handle(
     'claudeAgents:readDetails',
-    (_event, ids: string[]): Promise<Record<string, ClaudeBackgroundAgentDetail>> =>
-      readClaudeBackgroundAgentDetails(Array.isArray(ids) ? ids : [], (id) =>
-        readClaudeBackgroundAgentJobState(id)
+    (_event, ids: unknown): Promise<Record<string, ClaudeBackgroundAgentDetail>> =>
+      readClaudeBackgroundAgentDetails(
+        Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [],
+        (id) => readClaudeBackgroundAgentJobState(id)
       )
   )
   ipcMain.handle(
     'claudeAgents:dispatch',
-    (
-      _event,
-      args: ClaudeBackgroundAgentDispatchArgs
-    ): Promise<ClaudeBackgroundAgentCommandResult> => dispatchClaudeBackgroundAgent(args)
+    async (_event, args: unknown): Promise<ClaudeBackgroundAgentCommandResult> => {
+      const prompt = readStringField(args, 'prompt')
+      if (prompt === null || prompt.trim() === '') {
+        return { ok: false, message: 'the dispatch needs a prompt' }
+      }
+      return dispatchClaudeBackgroundAgent({
+        prompt,
+        cwd: readStringField(args, 'cwd'),
+        model: readStringField(args, 'model'),
+        permissionMode: readStringField(args, 'permissionMode')
+      })
+    }
   )
   ipcMain.handle(
     'claudeAgents:stop',
-    (_event, args: ClaudeBackgroundAgentIdArgs): Promise<ClaudeBackgroundAgentCommandResult> =>
-      stopClaudeBackgroundAgent(args)
+    async (_event, args: unknown): Promise<ClaudeBackgroundAgentCommandResult> => {
+      const id = readStringField(args, 'id')
+      if (id === null) {
+        return { ok: false, message: 'the command needs an agent id' }
+      }
+      return stopClaudeBackgroundAgent({ id })
+    }
   )
   ipcMain.handle(
     'claudeAgents:remove',
-    (_event, args: ClaudeBackgroundAgentIdArgs): Promise<ClaudeBackgroundAgentCommandResult> =>
-      removeClaudeBackgroundAgent(args)
+    async (_event, args: unknown): Promise<ClaudeBackgroundAgentCommandResult> => {
+      const id = readStringField(args, 'id')
+      if (id === null) {
+        return { ok: false, message: 'the command needs an agent id' }
+      }
+      return removeClaudeBackgroundAgent({ id })
+    }
   )
+}
+
+/**
+ * One field of the arguments the renderer sent.
+ *
+ * The arguments cross the IPC boundary, so a malformed call has to read as a refusal rather than
+ * as a raw TypeError.
+ */
+function readStringField(args: unknown, field: string): string | null {
+  if (typeof args !== 'object' || args === null) {
+    return null
+  }
+  const value = (args as Record<string, unknown>)[field]
+  return typeof value === 'string' ? value : null
 }
 
 function readErrorMessage(error: unknown): string {

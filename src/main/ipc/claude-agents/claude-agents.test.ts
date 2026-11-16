@@ -1,7 +1,36 @@
-import { describe, expect, it, vi } from 'vitest'
-import { buildClaudeBackgroundAgentListResult } from './claude-agents'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { buildClaudeBackgroundAgentListResult, registerClaudeAgentsHandlers } from './claude-agents'
 
-vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
+const ipcHandlers = vi.hoisted(
+  () => new Map<string, (event: unknown, ...args: unknown[]) => unknown>()
+)
+vi.mock('electron', () => ({
+  ipcMain: {
+    handle: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => {
+      ipcHandlers.set(channel, listener)
+    }
+  }
+}))
+
+const cli = vi.hoisted(() => ({
+  listAgents: vi.fn(async () => [{ id: 'aaaa1111', sessionId: 's', name: 'n', cwd: '/w' }]),
+  readJobState: vi.fn(async () => null),
+  dispatch: vi.fn(async () => ({ ok: true, id: 'aaaa1111' })),
+  stop: vi.fn(async () => ({ ok: true, id: 'aaaa1111' })),
+  remove: vi.fn(async () => ({ ok: true, id: 'aaaa1111' }))
+}))
+
+vi.mock('../../claude/background-agents/claude-background-agent-list', () => ({
+  listClaudeBackgroundAgentsOrNull: cli.listAgents
+}))
+vi.mock('../../claude/background-agents/claude-background-agent-job-state', () => ({
+  readClaudeBackgroundAgentJobState: cli.readJobState
+}))
+vi.mock('../../claude/background-agents/claude-background-agent-commands', () => ({
+  dispatchClaudeBackgroundAgent: cli.dispatch,
+  stopClaudeBackgroundAgent: cli.stop,
+  removeClaudeBackgroundAgent: cli.remove
+}))
 
 describe('buildClaudeBackgroundAgentListResult', () => {
   it('pairs each agent with its own detail', async () => {
@@ -44,3 +73,66 @@ describe('buildClaudeBackgroundAgentListResult', () => {
     expect(result.agents).toEqual([])
   })
 })
+
+describe('registerClaudeAgentsHandlers', () => {
+  beforeAll(() => {
+    registerClaudeAgentsHandlers()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('lists the agents of this machine', async () => {
+    await expect(handlerFor('claudeAgents:list')({})).resolves.toEqual({
+      status: 'ready',
+      agents: [{ id: 'aaaa1111', sessionId: 's', name: 'n', cwd: '/w' }],
+      details: {},
+      message: null
+    })
+  })
+
+  it('answers a readDetails call that carries no list with an empty map', async () => {
+    await expect(handlerFor('claudeAgents:readDetails')({}, 'not a list')).resolves.toEqual({})
+    expect(cli.readJobState).not.toHaveBeenCalled()
+  })
+
+  it('refuses a dispatch without a prompt', async () => {
+    await expect(handlerFor('claudeAgents:dispatch')({}, {})).resolves.toEqual({
+      ok: false,
+      message: 'the dispatch needs a prompt'
+    })
+    expect(cli.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('dispatches the prompt the renderer sent', async () => {
+    await expect(
+      handlerFor('claudeAgents:dispatch')({}, { prompt: 'do the thing' })
+    ).resolves.toEqual({ ok: true, id: 'aaaa1111' })
+    expect(cli.dispatch).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'do the thing' }))
+  })
+
+  it('refuses a stop without an agent id', async () => {
+    await expect(handlerFor('claudeAgents:stop')({}, {})).resolves.toEqual({
+      ok: false,
+      message: 'the command needs an agent id'
+    })
+    expect(cli.stop).not.toHaveBeenCalled()
+  })
+
+  it('refuses a remove without an agent id', async () => {
+    await expect(handlerFor('claudeAgents:remove')({}, 'not an object')).resolves.toEqual({
+      ok: false,
+      message: 'the command needs an agent id'
+    })
+    expect(cli.remove).not.toHaveBeenCalled()
+  })
+})
+
+function handlerFor(channel: string): (event: unknown, ...args: unknown[]) => unknown {
+  const handler = ipcHandlers.get(channel)
+  if (!handler) {
+    throw new Error(`no handler is registered for ${channel}`)
+  }
+  return handler
+}

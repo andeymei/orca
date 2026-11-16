@@ -29,6 +29,14 @@ const ELAPSED_TICK_INTERVAL_MS = 1000
 /** A command that waits for its second Ctrl+X. */
 type PendingCommand = { id: string; kind: 'stop' | 'delete'; at: number }
 
+/** Whether the field that has the focus holds a text selection of its own. */
+function hasTextSelection(target: EventTarget & HTMLElement): boolean {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    return target.selectionStart !== target.selectionEnd
+  }
+  return false
+}
+
 /**
  * The list of Claude Code's background agents.
  *
@@ -188,8 +196,8 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   /**
    * The actions the panel's keys trigger.
    *
-   * The root and the composer run the same actions, so the behaviour does not depend on where
-   * the focus happens to be.
+   * The root, the rows and the composer run the same actions, so the behaviour does not depend on
+   * where the focus happens to be.
    */
   const runPanelKey = (event: React.KeyboardEvent<HTMLElement>): boolean => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -203,6 +211,10 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       return true
     }
     if (event.ctrlKey && (event.key === 'x' || event.key === 'X')) {
+      // Why: a selection in the composer is the user's own text, and the native cut has to win.
+      if (hasTextSelection(event.currentTarget)) {
+        return false
+      }
       event.preventDefault()
       void runSelectedCommand()
       return true
@@ -225,17 +237,30 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
     return false
   }
 
+  /** `/` sends the caret to the composer; in the composer it is an ordinary character. */
+  const focusComposer = (event: React.KeyboardEvent<HTMLElement>): boolean => {
+    if (event.key !== '/') {
+      return false
+    }
+    event.preventDefault()
+    composerRef.current?.focus()
+    return true
+  }
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) {
       return
     }
-    if (event.key === '/') {
-      // Why: `/` sends the caret to the composer; in the composer it is an ordinary character.
-      event.preventDefault()
-      composerRef.current?.focus()
+    if (focusComposer(event)) {
       return
     }
     runPanelKey(event)
+  }
+
+  const handleRowKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>): void => {
+    if (focusComposer(event) || runPanelKey(event)) {
+      event.stopPropagation()
+    }
   }
 
   const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -284,6 +309,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
             onSelect={(picked) => openBackgroundAgent(picked.id)}
             now={now}
             hint={commandHint(row)}
+            onKeyDown={handleRowKeyDown}
           />
         ))}
       </div>

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import type * as I18n from '@/i18n/i18n'
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import type { ClaudeAgentsApi } from '../../../../preload/api/claude-agents-api'
@@ -391,4 +391,50 @@ it('focuses the composer with the slash key', async () => {
   expect(document.activeElement).toBe(root)
   await press(root, '/')
   expect(document.activeElement).toBe(view.getByLabelText('New background agent'))
+})
+
+it('keeps the rows out of the tab order', async () => {
+  const view = await renderScreen()
+  for (const row of view.getAllByTestId('background-agent-row')) {
+    expect(row.getAttribute('tabindex')).toBe('-1')
+  }
+})
+
+it('keeps the panel keys working when a row holds the focus', async () => {
+  const stop = vi.fn(async (): Promise<ClaudeBackgroundAgentCommandResult> => ({
+    ok: true,
+    id: 'bbbb2222'
+  }))
+  installApi({ stop })
+  const view = await renderScreen()
+  const row = view.getAllByTestId('background-agent-row')[1]
+  row.focus()
+  expect(document.activeElement).toBe(row)
+  await press(row, 'ArrowDown')
+  const rows = view.getAllByTestId('background-agent-row')
+  expect(rows[1].getAttribute('data-selected')).toBe('true')
+  await press(row, 'x', { ctrlKey: true })
+  expect(view.getByText('ctrl+x again to stop')).toBeTruthy()
+  expect(stop).not.toHaveBeenCalled()
+  await press(row, 'Enter')
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({
+    kind: 'agent',
+    agentId: 'bbbb2222'
+  })
+})
+
+it('lets the native cut win when the composer has a selection', async () => {
+  const stop = vi.fn(async (): Promise<ClaudeBackgroundAgentCommandResult> => ({
+    ok: true,
+    id: 'bbbb2222'
+  }))
+  installApi({ stop })
+  const view = await renderScreen()
+  const composer = view.getByLabelText('New background agent') as HTMLInputElement
+  await type(view, 'do the thing')
+  composer.setSelectionRange(0, 3)
+  const cut = createEvent.keyDown(composer, { key: 'x', ctrlKey: true })
+  fireEvent(composer, cut)
+  expect(cut.defaultPrevented).toBe(false)
+  expect(stop).not.toHaveBeenCalled()
 })

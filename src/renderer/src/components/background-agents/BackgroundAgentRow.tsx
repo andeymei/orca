@@ -29,7 +29,8 @@ export function BackgroundAgentRowView({
   selected,
   onSelect,
   now,
-  hint = null
+  hint = null,
+  onKeyDown
 }: {
   row: BackgroundAgentListRow
   selected: boolean
@@ -38,6 +39,8 @@ export function BackgroundAgentRowView({
   now?: number
   /** The inline hint the two-step confirmation shows. */
   hint?: React.ReactNode
+  /** The panel's keys, so a row that holds the focus still answers them. */
+  onKeyDown?: (event: React.KeyboardEvent<HTMLButtonElement>) => void
 }): React.JSX.Element {
   const elapsed =
     now !== undefined && row.startedAt > 0
@@ -52,7 +55,11 @@ export function BackgroundAgentRowView({
       aria-selected={selected}
       data-selected={selected ? 'true' : undefined}
       data-testid="background-agent-row"
+      // Why: a row in the tab order takes the focus the panel's keys need, and the root's
+      // keyboard guard would then turn every key into a no-op.
+      tabIndex={-1}
       onClick={() => onSelect(row)}
+      onKeyDown={onKeyDown}
       className={cn(
         // Why `jump-palette-item`: flat accent is invisible as a keyboard cursor on light surfaces.
         'jump-palette-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',

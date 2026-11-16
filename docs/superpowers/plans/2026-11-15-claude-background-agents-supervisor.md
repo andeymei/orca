@@ -1854,12 +1854,15 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
 **`dispatching` / `dispatchStarted` 是 Task 7 实现时加的两个 key**（计划原来的 key 表里没有给派发占位行留位置）：`dispatching` = `opening… · esc to cancel`，`dispatchStarted` = `started · {{id}}`（**双花括号** —— 仓库的 i18next 用 `{{name}}` 插值，单花括号是字面文本）。
 **没有 `searchLabel`** —— v1 不做文本过滤（见下面的裁决）。
 
-**其它 10 个语言文件不用改** —— 它们没有这个 key，走 fallback。`auto.components.backgroundAgents.stateRunning` / `stateInterrupted` / `stateSlept` / `stateIdle` / `untitled` / `searchPlaceholder` / `searchLabel` / `loading` / `empty` / `refresh` 一起删掉（旧面板不再用）。
+**其它 10 个语言文件：只删旧的 `auto.components.backgroundAgents` 块，不加新的。**
+
+- **新的 key 只进 en.json。** 目标语言缺翻译走 i18next fallback —— 校验脚本的原话是「Feature PRs own English declarations; missing target translations use i18next fallback until localization supplies them」（`verify-localization-catalog.mjs:436`）。所以「其它 10 个文件不用加新 key」是对的。
+- **但旧的 key 必须从全部 11 个文件里删掉。** 校验脚本把「locale 里有、en.json 里没有」的 key 报成 `extra` 并**直接失败**（`verify-localization-catalog.mjs:293` 的 `extraInLocale`，失败条件在 `:439`）。所以那 10 个文件里的 `auto.components.backgroundAgents.stateRunning` / `stateInterrupted` / `stateSlept` / `stateIdle` / `untitled` / `searchPlaceholder` / `searchLabel` / `loading` / `empty` / `refresh` **都要删掉**（旧面板不再用），否则门禁报 extra。
+- **别删** `auto.components.right.sidebar.index.backgroundAgents`（那是右侧栏 tab 的标题，在另一个块里，与本块无关）。
 
 **注意**：
 
-- `searchLabel` 和 `loading` / `empty` 在新块里保留了同名 key，值改成新的。
-- **别删** `auto.components.right.sidebar.index.backgroundAgents`（那是右侧栏 tab 的标题，与本块无关）。
+- `loading` / `empty` 在新块里保留了同名 key，值改成新的。（`searchLabel` 没有了 —— v1 不做文本过滤。）
 - i18n 的 key **不能带点**（必须是嵌套对象），也不能让两个语义不同的 key 共用同一个 fallback 字符串。
 
 **跑一遍目录校验**（`verify:localization-catalog` 强制每个 `t('key', ...)` 的 key 存在于 en.json）：

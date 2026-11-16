@@ -79,7 +79,7 @@ describe('dispatchClaudeBackgroundAgent', () => {
   it('runs in the given directory, because the CLI takes no --cwd', async () => {
     const seen: { cwd?: string } = {}
     await dispatchClaudeBackgroundAgent(
-      { prompt: 'x', cwd: '/repos/app' },
+      { prompt: 'x', cwd: join('/repos', 'app') },
       {
         ...deps('backgrounded · 4db4f587\n'),
         runCommand: async (spec: ProcessSpec) => {

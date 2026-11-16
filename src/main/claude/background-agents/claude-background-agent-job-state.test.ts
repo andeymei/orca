@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { readClaudeBackgroundAgentJobState } from './claude-background-agent-job-state'
 
@@ -6,7 +7,7 @@ describe('readClaudeBackgroundAgentJobState', () => {
     const detail = await readClaudeBackgroundAgentJobState('4f5d4302', {
       configDir: '/cfg',
       readFile: async (path) => {
-        expect(path).toBe('/cfg/jobs/4f5d4302/state.json')
+        expect(path).toBe(join('/cfg', 'jobs', '4f5d4302', 'state.json'))
         return JSON.stringify({
           state: 'working',
           detail: '正在核对后台 agent 实现',

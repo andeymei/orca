@@ -1294,6 +1294,7 @@ it('dispatches the composed prompt', () => { ... })
 it('shows an opening row while the dispatch is on its way', () => { ... })
 it('cancels the opening dispatch when Escape is pressed', () => { ... })
 it('says so when the dispatch fails', () => { ... })
+it('says the panel lists this machine when the workspace runs elsewhere', () => { ... })
 ```
 
 每个用例用 `createTestStore()` 预置 `backgroundAgentsAgents`，用 `@testing-library/react` 渲染 `BackgroundAgentListScreen`，用 `fireEvent.keyDown(root, { key: 'ArrowDown' })` 驱动。
@@ -1307,6 +1308,7 @@ it('says so when the dispatch fails', () => { ... })
 - 派发在飞时，列表**顶部**有一行写着 `opening… · esc to cancel`。
 - 在那行上按 `Escape` 之后，`window.api.claudeAgents.cancelDispatch` 被调用了一次，那一行消失。
 - 派发失败之后，那一行变成失败态（写着失败原因），并且 `toast.error` 被调用过一次。
+- 活动 worktree 的 `executionHostId` 是 `ssh:...` 时，列表上方出现「这台机器」的说明，**而且名单照常显示**（不换成空列表）。
 
 - [ ] **Step 2: 跑测试确认它失败**
 
@@ -1331,11 +1333,16 @@ Expected: FAIL —— 组件不存在。
 ```
 
 - **数据**：从 store 取 `backgroundAgentsAgents` + `backgroundAgentsDetails`，用 `buildBackgroundAgentListRows` 合并，再用 `groupBackgroundAgentListRows` 分组，用 `countBackgroundAgentListRows` 计数。
+- **远程 workspace 的说明**（Global Constraints 里的「v1 只支持本机」**目前没有任何任务实现它**，这一条补上）：活动 worktree 不在本机时，面板**照常列本机的 agent**，但在列表上方加一条说明 —— 这个面板列的是**这台机器**上的后台 agent，不是远程 workspace 的。
+  - 判法：`selectKnownWorktreeById(state, state.activeWorktreeId)?.executionHostId` 不等于 `LOCAL_EXECUTION_HOST_ID`（`src/shared/execution-host.ts:7`）就是远程。`executionHostId` 是可选字段，**没有这个字段 = 本机**。
+  - **不要**因此把名单藏起来或换成空列表 —— 用户要看见的是「这台机器上真的有这些 agent」，附带一句它属于哪台机器。
+  - 文案走 i18n key `auto.components.backgroundAgents.localOnlyNotice`（Task 10 建）。
 - **elapsed 刷新**：一个 `useEffect` + `setInterval(1000)` 存 `now`，只为了重算 elapsed。行本身不重建。
 - **轮询**：另一个 `useEffect`：
   - 慢层：`setInterval(15_000)` 调 `window.api.claudeAgents.list()` → `publishBackgroundAgentsListing`；挂载时也立刻调一次。
   - 快层：`setInterval(2_000)` 调 `window.api.claudeAgents.readDetails(ids)` → `publishBackgroundAgentDetails`。`ids` 来自当前的 `backgroundAgentsAgents`。
   - **两个 interval 都在面板卸载时清掉。**
+  - **派发成功后立刻再刷一次慢层** —— 用户刚派发的 agent 不该等最多 15s 才出现在名单里。快层只读**已知** agent 的 state 文件，新 agent 不在名单里就永远读不到。
 - **键盘**：照 `src/renderer/src/components/right-sidebar/ai-vault/session-list/use-ai-vault-session-keyboard-navigation.ts:117` 的 `aiVaultPanelKeyboardRootProps` 模式 —— 根节点 `tabIndex={-1}`，`onKeyDown` 只在 `event.target === event.currentTarget` 时处理。
   - `ArrowDown` / `ArrowUp`：移动选择，`event.preventDefault()`。
   - `Enter`：有选中行且 composer 为空 → `openBackgroundAgent(row.id)`。composer 有内容 → 派发。
@@ -1782,6 +1789,7 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
   "empty": "No background agents",
   "unsupported": "Claude Code CLI not found",
   "error": "Could not read the background agents",
+  "localOnlyNotice": "This panel lists background agents running on this machine",
   "stopConfirm": "ctrl+x again to stop",
   "deleteConfirm": "ctrl+x again to delete",
   "deleteWarning": "Deleting an agent also deletes its worktree",

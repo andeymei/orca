@@ -6,9 +6,10 @@ import type {
   ClaudeBackgroundAgentListResult
 } from '../../../../../shared/claude-background-agents'
 
-/** Keep the supervisor's screen and roster in session memory across panel unmounts; never persist to disk. */
+/** Which screen the supervisor shows: the roster, or one agent's detail. */
 export type BackgroundAgentsScreen = { kind: 'list' } | { kind: 'agent'; agentId: string }
 
+/** Keep the supervisor's screen and roster in session memory across panel unmounts; never persist to disk. */
 export type BackgroundAgentsSlice = {
   backgroundAgentsScreen: BackgroundAgentsScreen
   backgroundAgentsStatus: 'loading' | 'ready' | 'unsupported' | 'error'
@@ -38,13 +39,15 @@ export const createBackgroundAgentsSlice: StateCreator<AppState, [], [], Backgro
     set({
       backgroundAgentsStatus: result.status,
       backgroundAgentsMessage: result.message,
-      // Why copies: the caller may reuse the array and the object it handed over.
-      backgroundAgentsDetails: { ...result.details },
-      // A failed refresh keeps the rows it already had; only a host with no CLI at all empties them.
+      // A failed refresh keeps the rows and their activity lines; only a host with no CLI at all empties them.
       ...(result.status === 'unsupported'
-        ? { backgroundAgentsAgents: [] }
+        ? { backgroundAgentsAgents: [], backgroundAgentsDetails: {} }
         : result.status === 'ready'
-          ? { backgroundAgentsAgents: [...result.agents] }
+          ? {
+              // Why copies: the caller may reuse the array and the object it handed over.
+              backgroundAgentsAgents: [...result.agents],
+              backgroundAgentsDetails: { ...result.details }
+            }
           : {})
     }),
   publishBackgroundAgentDetails: (details) =>

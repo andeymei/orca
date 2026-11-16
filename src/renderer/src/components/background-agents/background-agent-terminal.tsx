@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { toast } from 'sonner'
 import { FitAddon } from '@xterm/addon-fit'
 import type { ITheme } from '@xterm/xterm'
 import { useAppStore } from '@/store/index'
+import { useTranslate } from '@/i18n/use-translate'
 import { useSystemPrefersDark } from '@/hooks/theme/use-system-prefers-dark'
 import { useEffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/use-effective-mac-option-as-alt'
 import { usePluginFontReady } from '@/store/plugins/appearance/plugin-fonts'
@@ -42,6 +44,14 @@ function stillShowingThisAgent(agentId: string): boolean {
 }
 
 /**
+ * The newest incarnation of the attach.
+ *
+ * A spawn can resolve after its screen was replaced; the older incarnation must not take the PTY
+ * it spawned, or the newer screen's attach is orphaned.
+ */
+let currentAttachOwner: symbol | null = null
+
+/**
  * The agent's own terminal, attached in place.
  *
  * The screen runs `claude attach`, so the user can talk to the agent and answer its permission
@@ -61,6 +71,7 @@ export function BackgroundAgentTerminal({
   const standaloneRef = useRef<StandaloneTerminal | null>(null)
   const onBackRef = useRef(onBack)
   const cwdRef = useRef(cwd)
+  const t = useTranslate()
   const settings = useAppStore((state) => state.settings)
   const systemPrefersDark = useSystemPrefersDark()
   const macOptionAsAlt = useEffectiveMacOptionAsAlt(settings?.terminalMacOptionAsAlt)
@@ -68,6 +79,11 @@ export function BackgroundAgentTerminal({
   // Why refs: the keys and the appearance read live values; a remount would hang up the attach.
   const settingsRef = useRef(settings)
   const macOptionAsAltRef = useRef(macOptionAsAlt)
+  const attachFailedMessage = t(
+    'auto.components.backgroundAgents.attachFailed',
+    "The agent's terminal could not be opened"
+  )
+  const attachFailedRef = useRef(attachFailedMessage)
   const { theme, mode } = useMemo(() => {
     if (!settings) {
       return { theme: null, mode: 'dark' as const }
@@ -84,8 +100,9 @@ export function BackgroundAgentTerminal({
     cwdRef.current = cwd
     settingsRef.current = settings
     macOptionAsAltRef.current = macOptionAsAlt
+    attachFailedRef.current = attachFailedMessage
     themeRef.current = { theme, mode }
-  }, [onBack, cwd, settings, macOptionAsAlt, theme, mode])
+  }, [onBack, cwd, settings, macOptionAsAlt, attachFailedMessage, theme, mode])
 
   useEffect(() => {
     const container = containerRef.current
@@ -97,6 +114,9 @@ export function BackgroundAgentTerminal({
     let unsubscribe: (() => void) | null = null
     let observer: ResizeObserver | null = null
     let resizeListener: { dispose: () => void } | null = null
+    // Why: a spawn that resolves after this screen was replaced must not take the store.
+    const owner = Symbol('background-agent-attach')
+    currentAttachOwner = owner
 
     const attach = async (): Promise<void> => {
       // Why: the panel was unloaded and loaded again, so the attach client is still running.
@@ -121,8 +141,12 @@ export function BackgroundAgentTerminal({
           worktreeId: FLOATING_TERMINAL_WORKTREE_ID
         })
         if (disposed) {
-          if (stillShowingThisAgent(agentId)) {
-            useAppStore.getState().setBackgroundAgentsAttachedPty(spawned.id)
+          const state = useAppStore.getState()
+          // Why: a newer incarnation owns the attach now, so publishing this id would orphan it.
+          const superseded =
+            currentAttachOwner !== owner || state.backgroundAgentsAttachedPtyId !== null
+          if (!superseded && stillShowingThisAgent(agentId)) {
+            state.setBackgroundAgentsAttachedPty(spawned.id)
           } else {
             void window.api.pty.kill(spawned.id)
           }
@@ -158,6 +182,7 @@ export function BackgroundAgentTerminal({
         getMacOptionAsAlt: () => macOptionAsAltRef.current,
         getTerminalInput: () => null,
         claimKeyEvent: (event) => {
+          // Why: Esc belongs to the Claude Code TUI; the screen's root claims it instead.
           if (event.key !== 'ArrowLeft') {
             return false
           }
@@ -176,10 +201,14 @@ export function BackgroundAgentTerminal({
       })
       if (!standalone) {
         // Why: the screen has nothing to show without a terminal, so the list is the honest place to be.
+        toast.error(attachFailedRef.current)
         onBackRef.current()
         return
       }
       standaloneRef.current = standalone
+
+      // Why: main hands the startup queries to this xterm and stops throttling the PTY.
+      window.api.pty.setRendererPtyVisible(sessionPtyId, true)
 
       const snapshot = await window.api.pty.getMainBufferSnapshot(sessionPtyId, {
         scrollbackRows: ATTACH_SNAPSHOT_SCROLLBACK_ROWS
@@ -196,8 +225,6 @@ export function BackgroundAgentTerminal({
           standalone.write(data, { live: true })
         }
       })
-      // Why: main hands the startup queries to this xterm and stops throttling the PTY.
-      window.api.pty.setRendererPtyVisible(sessionPtyId, true)
 
       const fit = new FitAddon()
       standalone.terminal.loadAddon(fit)
@@ -216,6 +243,7 @@ export function BackgroundAgentTerminal({
     void attach().catch(() => {
       // Why: a PTY that could not start leaves nothing to show, so the list is the honest place to be.
       if (!disposed) {
+        toast.error(attachFailedRef.current)
         onBackRef.current()
       }
     })
@@ -258,6 +286,8 @@ export function BackgroundAgentTerminal({
     <div
       ref={containerRef}
       data-testid="background-agent-terminal"
+      // Why: the app's close shortcuts must step aside for this terminal, or ⌘W closes the user's tab.
+      data-agent-terminal-preview
       className="min-h-0 flex-1 overflow-hidden px-2 py-1"
     />
   )

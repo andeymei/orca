@@ -21,7 +21,7 @@ vi.mock('./background-agent-terminal', () => ({
   // Why: the terminal has its own tests; here it only stands in for the attach.
   BackgroundAgentTerminal: (props: TerminalProps) => {
     terminalProps.current = props
-    return null
+    return <div data-agent-terminal-preview data-testid="background-agent-terminal-region" />
   }
 }))
 
@@ -91,6 +91,21 @@ it('follows the roster while the user sits in the terminal', async () => {
 
 it('goes back to the list when the back button is pressed', () => {
   const view = render(<BackgroundAgentAgentScreen agentId="aaaa1111" />)
-  fireEvent.click(view.getByLabelText('Back to the agent list'))
+  fireEvent.click(view.getByRole('button', { name: 'Back to the agent list' }))
   expect(useAppStore.getState().backgroundAgentsScreen).toEqual({ kind: 'list' })
+})
+
+it('goes back to the list when Escape is pressed outside the terminal', () => {
+  const view = render(<BackgroundAgentAgentScreen agentId="aaaa1111" />)
+  fireEvent.keyDown(view.getByTestId('background-agents-agent'), { key: 'Escape' })
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({ kind: 'list' })
+})
+
+it('leaves Escape to the agent while the terminal has the focus', () => {
+  const view = render(<BackgroundAgentAgentScreen agentId="aaaa1111" />)
+  fireEvent.keyDown(view.getByTestId('background-agent-terminal-region'), { key: 'Escape' })
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({
+    kind: 'agent',
+    agentId: 'aaaa1111'
+  })
 })

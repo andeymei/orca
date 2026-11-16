@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useTranslate } from '@/i18n/use-translate'
 import { useAppStore } from '@/store/index'
 import { installWindowVisibilityInterval } from '@/lib/window-activity/window-visibility-interval'
+import { isAgentTerminalPreviewTarget } from '@/components/dashboard-popout/agent-terminal-preview-target'
 import { formatBackgroundAgentElapsed } from './background-agent-list-rows'
 import { BackgroundAgentTerminal } from './background-agent-terminal'
 import { useBackgroundAgentRosterRefresh } from './use-background-agent-roster-refresh'
@@ -22,7 +23,7 @@ export function BackgroundAgentAgentScreen({ agentId }: { agentId: string }): Re
   const closeBackgroundAgent = useAppStore((state) => state.closeBackgroundAgent)
   const [now, setNow] = useState(() => Date.now())
   // Why: a finished agent leaves the roster, and the header still has to say which one it was.
-  const identity = useRef({ name: '', cwd: '' })
+  const [identity, setIdentity] = useState({ name: '', cwd: '' })
 
   // Why: the agent's own state lives in the roster, so the header needs the slow poll too.
   useBackgroundAgentRosterRefresh()
@@ -35,20 +36,33 @@ export function BackgroundAgentAgentScreen({ agentId }: { agentId: string }): Re
     })
   }, [])
 
+  const agentName = agent?.name
+  const agentCwd = agent?.cwd
   useEffect(() => {
-    if (agent) {
-      identity.current = { name: agent.name, cwd: agent.cwd }
+    if (agentName !== undefined && agentCwd !== undefined) {
+      setIdentity({ name: agentName, cwd: agentCwd })
     }
-  }, [agent])
+  }, [agentName, agentCwd])
 
-  const name = agent?.name || identity.current.name
-  const cwd = agent?.cwd || identity.current.cwd
+  const name = agentName || identity.name
+  const cwd = agentCwd || identity.cwd
   const elapsed = agent?.startedAt ? formatBackgroundAgentElapsed(now - agent.startedAt) : null
+
+  /** Esc goes back to the list, unless the terminal has the focus — then the agent keeps it. */
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'Escape' || isAgentTerminalPreviewTarget(event.target)) {
+      return
+    }
+    event.preventDefault()
+    closeBackgroundAgent()
+  }
 
   return (
     <div
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
       data-testid="background-agents-agent"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
     >
       <header className="flex items-center gap-2 px-2 py-1">
         <button

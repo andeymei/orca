@@ -20040,6 +20040,7 @@
         "deleteConfirm": "ctrl+x again to delete",
         "deleteWarning": "Deleting an agent also deletes its worktree",
         "back": "Back to the agent list",
+        "attachFailed": "The agent's terminal could not be opened",
         "dispatching": "opening… · esc to cancel",
         "dispatchingCancelling": "cancelling…",
         "dispatchStarted": "started · {{id}}",

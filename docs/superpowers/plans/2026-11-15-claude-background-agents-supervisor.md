@@ -1908,7 +1908,7 @@ still there after the left arrow."
 
 ## 自审
 
-**Spec 覆盖**：§1/§2 背景与目标 → Task 1-11 的整体；§3.1 列表屏 → Task 5/7；§3.2 详情屏 → Task 8/9；§3.3 删旧 → Task 10；§4.1 模块 → File Structure；§4.2 不复用 TerminalPane → Task 9；§4.3 传输层 → Task 9 + Task 8（键钩子）；§4.4 生命周期 → Task 9（卸载 kill）；§5.1/5.2 数据与刷新 → Task 2/4/7；§5.3 过滤 → Task 5；§5.4 远程 → 明确 out of scope（Global Constraints）；§6.1 派发 → Task 3；§6.2 停止/删除 → Task 3/7；§7 键盘 → Task 7/8/9；§8 降级 → Task 4（unsupported/error）+ Task 5（detail 缺失）+ Task 7；§9 测试 → Task 5/7/9/11；§10.1 三件必验 → Task 9（长输出不卡、DA/DSR、cwd 守卫）。
+**Spec 覆盖**：§1/§2 背景与目标 → Task 1-11 的整体；§3.1 列表屏 → Task 5/7；§3.2 详情屏 → Task 8/9；§3.3 删旧 → Task 10；§4.1 模块 → File Structure；§4.2 不复用 TerminalPane → Task 9；§4.3 传输层 → Task 9 + Task 8（键钩子）；§4.4 生命周期 → Task 9（**离开屏 2 杀 pty，侧栏切 tab 保留** —— 两种卸载在 React 里长得一样，靠 store 的屏状态区分）；§5.1/5.2 数据与刷新 → Task 2/4/7；§5.3 过滤 → Task 5；§5.4 远程 → 明确 out of scope（Global Constraints）；§6.1 派发 → Task 3（命令）+ Task 06.5（取消通道）+ Task 7（占位行/失败态/toast）；§6.2 停止/删除 → Task 3/7；§7 键盘 → Task 7/8/9；§8 降级 → Task 4（unsupported/error）+ Task 5（detail 缺失）+ Task 7；§9 测试 → Task 5/7/9/11；§10.1 三件必验 → Task 9（长输出不卡、DA/DSR、cwd 守卫）。
 
 **类型一致性**：`ClaudeBackgroundAgent` / `ClaudeBackgroundAgentDetail` / `ClaudeBackgroundAgentListResult` 在 Task 1 定义、Task 4/5/6 消费；`BackgroundAgentListRow` 在 Task 5 定义、Task 7/9 消费；`BackgroundAgentsScreen` 在 Task 6 定义、Task 7/9 消费。
 

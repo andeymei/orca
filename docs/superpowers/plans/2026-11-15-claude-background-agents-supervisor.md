@@ -1443,7 +1443,13 @@ selection the way the CLI's list does."
 - Produces:
   ```ts
   // open-standalone-terminal.ts, added to StandaloneTerminalArgs
-  /** Claims a key before xterm encodes it; returning true stops xterm from handling it. */
+  /**
+   * Claims a key before xterm encodes it; returning true stops xterm from handling it.
+   *
+   * The hook sees every event type the custom handler sees — keydown, keyup and keypress. A caller
+   * must claim a whole chord consistently: claiming the press but not the release lets the release
+   * reach xterm's Kitty encoder, and the release bytes go out to the terminal.
+   */
   claimKeyEvent?: (event: KeyboardEvent) => boolean
   ```
 
@@ -1670,11 +1676,16 @@ useEffect(() => {
       getMacOptionAsAlt: () => macOptionAsAltRef.current,
       getTerminalInput: () => null,
       claimKeyEvent: (event) => {
-        if (event.type !== 'keydown' || event.key !== 'ArrowLeft') return false
+        // Why: 钩子对 keydown / keyup / keypress 都会来。**只 claim 按下**会让抬起的那一下落到
+        // xterm 的 Kitty 编码器上，release 字节就进了 `claude attach` 的 PTY。所以**按键 claim、
+        // 只在按下时动作**。
+        if (event.key !== 'ArrowLeft') return false
         if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false
-        event.preventDefault()
-        event.stopPropagation()
-        onBackRef.current()
+        if (event.type === 'keydown' && !event.repeat) {
+          event.preventDefault()
+          event.stopPropagation()
+          onBackRef.current()
+        }
         return true
       }
     })

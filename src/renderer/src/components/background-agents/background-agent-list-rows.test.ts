@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   buildBackgroundAgentListRows,
   countBackgroundAgentListRows,
-  filterBackgroundAgentListRows,
   formatBackgroundAgentElapsed,
   groupBackgroundAgentListRows
 } from './background-agent-list-rows'
@@ -182,44 +181,6 @@ describe('countBackgroundAgentListRows', () => {
       working: 2,
       completed: 1
     })
-  })
-})
-
-describe('filterBackgroundAgentListRows', () => {
-  const rows = [
-    {
-      id: 'a',
-      name: 'fix the parser',
-      cwd: '/repos/app',
-      section: 'working' as const,
-      state: 'working' as const,
-      detail: 'reading the file',
-      needs: null,
-      startedAt: 0,
-      updatedAt: null
-    },
-    {
-      id: 'b',
-      name: 'other work',
-      cwd: '/repos/other',
-      section: 'working' as const,
-      state: 'working' as const,
-      detail: null,
-      needs: null,
-      startedAt: 0,
-      updatedAt: null
-    }
-  ]
-  it('matches the name, the activity line and the directory', () => {
-    expect(filterBackgroundAgentListRows(rows, 'parser').map((r) => r.id)).toEqual(['a'])
-    expect(filterBackgroundAgentListRows(rows, 'reading').map((r) => r.id)).toEqual(['a'])
-    expect(filterBackgroundAgentListRows(rows, 'other').map((r) => r.id)).toEqual(['b'])
-  })
-  it('keeps everything for an empty query', () => {
-    expect(filterBackgroundAgentListRows(rows, '  ')).toHaveLength(2)
-  })
-  it('matches the name whatever its case', () => {
-    expect(filterBackgroundAgentListRows(rows, 'PARSER').map((r) => r.id)).toEqual(['a'])
   })
 })
 

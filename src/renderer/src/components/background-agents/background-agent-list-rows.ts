@@ -116,23 +116,6 @@ export function countBackgroundAgentListRows(rows: readonly BackgroundAgentListR
   }
 }
 
-/** The rows whose name, activity line or directory carries the query. */
-export function filterBackgroundAgentListRows(
-  rows: readonly BackgroundAgentListRow[],
-  query: string
-): BackgroundAgentListRow[] {
-  const needle = query.trim().toLowerCase()
-  if (!needle) {
-    return [...rows]
-  }
-  return rows.filter(
-    (row) =>
-      row.name.toLowerCase().includes(needle) ||
-      (row.detail ?? '').toLowerCase().includes(needle) ||
-      row.cwd.toLowerCase().includes(needle)
-  )
-}
-
 /** How long an agent has been running, the way the CLI's list writes it. */
 export function formatBackgroundAgentElapsed(elapsedMs: number): string {
   const ms = Math.max(0, elapsedMs)

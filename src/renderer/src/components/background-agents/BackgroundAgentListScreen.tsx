@@ -226,14 +226,14 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
     }
     if (event.key === 'Escape') {
       event.preventDefault()
-      // Why: the opening row says "esc to cancel", and a dispatch that starts anyway cannot be
-      // taken back; a typed prompt can.
-      if (dispatch?.state === 'opening') {
-        cancelOpeningDispatch()
-        return true
-      }
+      // Why: the composer holds the user's own text, and clearing it is what they meant; the
+      // placeholder row above carries the "esc to cancel" and cancels from its own handler.
       if (composer !== '') {
         setComposer('')
+        return true
+      }
+      if (dispatch?.state === 'opening') {
+        cancelOpeningDispatch()
         return true
       }
       rootRef.current?.focus()

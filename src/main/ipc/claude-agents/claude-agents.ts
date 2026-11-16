@@ -1,9 +1,10 @@
 import { ipcMain } from 'electron'
-import type {
-  ClaudeBackgroundAgent,
-  ClaudeBackgroundAgentCommandResult,
-  ClaudeBackgroundAgentDetail,
-  ClaudeBackgroundAgentListResult
+import {
+  isRecord,
+  type ClaudeBackgroundAgent,
+  type ClaudeBackgroundAgentCommandResult,
+  type ClaudeBackgroundAgentDetail,
+  type ClaudeBackgroundAgentListResult
 } from '../../../shared/claude-background-agents'
 import {
   dispatchClaudeBackgroundAgent,
@@ -166,10 +167,6 @@ function readStringField(args: unknown, field: string): string | null {
   }
   const value = args[field]
   return typeof value === 'string' ? value : null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }
 
 function readErrorMessage(error: unknown): string {

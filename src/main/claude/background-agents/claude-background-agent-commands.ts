@@ -4,6 +4,7 @@ import {
   CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE,
   CLAUDE_BACKGROUND_AGENT_ID_PATTERN,
   CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
+  readClaudeBackgroundAgentDispatchedId,
   readClaudeBackgroundAgentFailureMessage,
   type ClaudeBackgroundAgentCommandResult,
   type ClaudeBackgroundAgentDispatchArgs,
@@ -11,7 +12,6 @@ import {
 } from '../../../shared/claude-background-agents'
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
-import { stripAnsiEscapeSequences } from '../../../shared/ansi-escape-sequences'
 import { CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS } from './claude-background-agent-list'
 
 /** Dispatching waits for the agent to come up, which takes longer than a listing does. */
@@ -28,9 +28,6 @@ export type ClaudeBackgroundAgentCommandDependencies = {
   /** Aborts the command while it runs; the panel cancels a dispatch that is still opening. */
   signal?: AbortSignal
 }
-
-/** The CLI prints the new agent's id after `backgrounded`; what counts as an id is the shared rule. */
-const DISPATCHED_AGENT_LINE_PATTERN = /^backgrounded\s*·\s*(\S+)/m
 
 /**
  * The permission modes the CLI itself accepts.
@@ -76,6 +73,8 @@ export async function dispatchClaudeBackgroundAgent(
     [
       '--bg',
       ...(args.model ? ['--model', args.model] : []),
+      // Why no mode by default: the CLI's own agent view inherits the CLI's default too, so the
+      // panel mirrors it instead of quietly overriding a user's configured default.
       ...(args.permissionMode ? ['--permission-mode', args.permissionMode] : []),
       // Everything after `--` is text, so a prompt that starts with a dash is not read as an option.
       '--',
@@ -90,7 +89,7 @@ export async function dispatchClaudeBackgroundAgent(
   if (!run.ok) {
     return run
   }
-  const id = readDispatchedAgentId(run.result.stdout)
+  const id = readClaudeBackgroundAgentDispatchedId(run.result.stdout)
   if (!id) {
     return {
       ok: false,
@@ -186,15 +185,6 @@ async function runClaudeCommand(
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) }
   }
-}
-
-/** The id the CLI printed for the agent it started; without it there is no agent to name. */
-function readDispatchedAgentId(stdout: string): string | null {
-  // Why: the CLI colors its answer when the environment asks for color, so the id — and the words
-  // around it — arrive wrapped in escape sequences. The id reader is what has to understand that
-  // answer, so the answer is cleaned here rather than on every command's stdout.
-  const candidate = DISPATCHED_AGENT_LINE_PATTERN.exec(stripAnsiEscapeSequences(stdout))?.[1]
-  return candidate && CLAUDE_BACKGROUND_AGENT_ID_PATTERN.test(candidate) ? candidate : null
 }
 
 /**

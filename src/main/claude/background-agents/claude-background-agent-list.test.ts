@@ -37,8 +37,26 @@ describe('listClaudeBackgroundAgents', () => {
       }
     ])
     expect(runCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ program: '/usr/local/bin/claude', args: ['agents', '--json'] })
+      expect.objectContaining({
+        program: '/usr/local/bin/claude',
+        args: ['agents', '--json', '--all']
+      })
     )
+  })
+
+  it('asks for the completed agents too, because the Completed section and the delete path need them', async () => {
+    // Why: `--json` prints the active sessions only, so without `--all` the Completed section is
+    // permanently empty and `claude rm` is unreachable.
+    const seen: { args?: readonly string[] } = {}
+    await listClaudeBackgroundAgents({
+      runCommand: async (spec: ProcessSpec) => {
+        seen.args = spec.args
+        return result({ stdout: '[]' })
+      },
+      resolveCommand: async () => '/usr/local/bin/claude',
+      resolveEnvironment: async () => ({})
+    })
+    expect(seen.args).toContain('--all')
   })
 
   it('reads nothing when the CLI is not installed', async () => {

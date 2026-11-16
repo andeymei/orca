@@ -37,9 +37,10 @@ const PRE_HANDLER_PTY_DATA_MAX_PTYS = 64
 const PRE_HANDLER_PTY_EXIT_MAX_PTYS = 64
 // Only outgoing/incoming lifetimes normally overlap before attach, keeping the exit bound small.
 const PRE_HANDLER_PTY_EXIT_MAX_INCARNATIONS_PER_PTY = 4
-// Pre-attach buffering should drain in milliseconds; sustained growth signals a lost handler and needs a trace breadcrumb.
+// Pre-attach buffering should drain in milliseconds; a PTY that keeps growing has no primary
+// handler at all (a preview terminal, for instance), so the warning says so.
 const PRE_HANDLER_PTY_DATA_WARN_BYTES = 64 * 1024
-const warnedLostHandlerPtyIds = new Set<string>()
+const warnedNoPrimaryHandlerPtyIds = new Set<string>()
 
 // Sequence records around spawn requests because relay IDs are reused; pre-request state belongs to an earlier lifetime.
 let preHandlerPtySequence = 0
@@ -115,7 +116,7 @@ export function bufferPreHandlerPtyData(ptyId: string, data: string, meta?: PtyD
   )
   if (evictedPtyId !== null) {
     // The warn breadcrumb describes buffered bytes that no longer exist.
-    warnedLostHandlerPtyIds.delete(evictedPtyId)
+    warnedNoPrimaryHandlerPtyIds.delete(evictedPtyId)
   }
   const bufferedMeta =
     chunk.data.length !== data.length ? keptSuffixMeta(meta, data.length, chunk.data.length) : meta
@@ -148,11 +149,11 @@ export function bufferPreHandlerPtyData(ptyId: string, data: string, meta?: PtyD
     state.chunks.splice(0, state.head)
     state.head = 0
   }
-  if (state.bytes > PRE_HANDLER_PTY_DATA_WARN_BYTES && !warnedLostHandlerPtyIds.has(ptyId)) {
-    warnedLostHandlerPtyIds.add(ptyId)
+  if (state.bytes > PRE_HANDLER_PTY_DATA_WARN_BYTES && !warnedNoPrimaryHandlerPtyIds.has(ptyId)) {
+    warnedNoPrimaryHandlerPtyIds.add(ptyId)
     console.warn(
-      `[pty] ${ptyId}: ${state.bytes} bytes buffered with no registered data handler; ` +
-        'the owning pane may have lost its handler to a detach/attach race'
+      `[pty] ${ptyId}: ${state.bytes} bytes buffered with no primary data handler registered ` +
+        'for this PTY; a PTY with no pane owner keeps a copy of its output until it exits'
     )
   }
 }
@@ -162,7 +163,7 @@ export function drainPreHandlerPtyData(
   handler: (data: string, meta?: PtyDataMeta) => void
 ): void {
   const state = preHandlerPtyData.get(ptyId)
-  warnedLostHandlerPtyIds.delete(ptyId)
+  warnedNoPrimaryHandlerPtyIds.delete(ptyId)
   if (!state) {
     return
   }
@@ -225,7 +226,7 @@ export function discardPreHandlerPtyStateFromPriorIncarnation(
   const data = preHandlerPtyData.get(ptyId)
   if (data && data.sequence <= fenceSequence) {
     preHandlerPtyData.delete(ptyId)
-    warnedLostHandlerPtyIds.delete(ptyId)
+    warnedNoPrimaryHandlerPtyIds.delete(ptyId)
   }
   // New lifetime admission clears old consumed-exit marks so they cannot suppress this shell’s own death.
   clearConsumedPreHandlerPtyExit(ptyId)
@@ -323,5 +324,5 @@ export function clearPreHandlerPtyState(ptyId: string): void {
     clearTimeout(discardTimer)
   }
   discardedPreHandlerPtyStates.delete(ptyId)
-  warnedLostHandlerPtyIds.delete(ptyId)
+  warnedNoPrimaryHandlerPtyIds.delete(ptyId)
 }

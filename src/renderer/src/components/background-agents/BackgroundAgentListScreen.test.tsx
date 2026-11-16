@@ -177,6 +177,59 @@ it('asks for the stop to be confirmed twice', async () => {
   expect(stop).toHaveBeenCalledWith({ id: 'bbbb2222' })
 })
 
+it('asks for the delete to be confirmed twice, because deleting an agent takes its worktree', async () => {
+  const remove = vi.fn(async (): Promise<ClaudeBackgroundAgentCommandResult> => ({
+    ok: true,
+    id: 'dddd4444'
+  }))
+  const stop = vi.fn(async (): Promise<ClaudeBackgroundAgentCommandResult> => ({
+    ok: true,
+    id: 'dddd4444'
+  }))
+  const finished: ClaudeBackgroundAgent[] = [
+    { id: 'dddd4444', sessionId: 's4', name: 'delta', cwd: '/w', state: 'done' }
+  ]
+  installApi({
+    remove,
+    stop,
+    list: vi.fn(async (): Promise<ClaudeBackgroundAgentListResult> => ({
+      status: 'ready',
+      agents: finished,
+      details: {},
+      message: null
+    })),
+    readDetails: vi.fn(async (): Promise<Record<string, ClaudeBackgroundAgentDetail>> => ({}))
+  })
+  useAppStore.setState({ backgroundAgentsAgents: finished })
+  const view = await renderScreen()
+  const root = view.getByTestId('background-agents-list')
+  await press(root, 'x', { ctrlKey: true })
+  expect(view.getByText(/ctrl\+x again to delete/)).toBeTruthy()
+  expect(view.getByText(/Deleting an agent also deletes its worktree/)).toBeTruthy()
+  expect(remove).not.toHaveBeenCalled()
+  await press(root, 'x', { ctrlKey: true })
+  expect(remove).toHaveBeenCalledTimes(1)
+  expect(remove).toHaveBeenCalledWith({ id: 'dddd4444' })
+  // A finished agent is deleted, not stopped.
+  expect(stop).not.toHaveBeenCalled()
+})
+
+it('clears the composer instead of cancelling the dispatch when Escape is pressed', async () => {
+  const pending = Promise.withResolvers<ClaudeBackgroundAgentCommandResult>()
+  const cancelDispatch = vi.fn(async (): Promise<void> => {})
+  installApi({ dispatch: vi.fn(() => pending.promise), cancelDispatch })
+  const view = await renderScreen()
+  await type(view, 'do the thing')
+  await press(view.getByTestId('background-agents-list'), 'Enter')
+  const composer = view.getByLabelText('New background agent')
+  if (!(composer instanceof HTMLInputElement)) {
+    throw new Error('the composer is not a text input')
+  }
+  await press(composer, 'Escape')
+  expect(composer.value).toBe('')
+  expect(cancelDispatch).not.toHaveBeenCalled()
+})
+
 it('dispatches the composed prompt', async () => {
   const dispatch = vi.fn(async (): Promise<ClaudeBackgroundAgentCommandResult> => ({
     ok: true,

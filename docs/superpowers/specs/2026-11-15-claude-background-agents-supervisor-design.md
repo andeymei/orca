@@ -10,23 +10,23 @@
 
 ### 1.1 实测事实（claude 2.1.319，本机）
 
-| 事实                                                          | 证据                                                                                                                                                                                           |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 后台 agent 是**活着的独立进程**，不是会话记录                 | `claude agents --json` → `{id, sessionId, name, cwd, kind:"background", startedAt, state, status}`；`state ∈ {working, done, stopped}`，`status ∈ {busy, idle}`（只有活进程有 `pid`/`status`） |
-| 每个 agent 有自己的 job 目录                                  | `~/.claude/jobs/<agentId>/state.json` → `detail`、`tempo`、`inFlight{tasks,queued,kinds}`、`fan`（子 agent/shell）、`tokens`、`needs`、`block.questions`；`timeline.jsonl` 是状态流水          |
-| job 目录名 == agent 短 id                                     | `~/.claude/jobs/4f5d4302/`、`~/.claude/jobs/43f0ca87/`                                                                                                                                         |
-| `state.json` 的 `detail` **就是** TUI 行里那行灰字            | `43f0ca87` 的 detail = `Task 10 send menu and batch controls underway` = TUI 抓屏那一行，逐字一致                                                                                              |
-| agent 的 `name` 会自己变                                      | 实测：`Wait 20 seconds, then reply exactly: PROBE2_OK` → `bash sleep command`                                                                                                                  |
-| TUI 列表分两段                                                | `Working` / `Completed`；header 写 `0 awaiting input · 2 working · 16 completed`                                                                                                               |
-| TUI 行结构                                                    | 指针 ❯ + 状态图标 + 状态词（`Working` / `Needs input` / `Ready for review` / `Completed`）+ name + 细节列 + 右侧 elapsed                                                                       |
-| TUI 底部有派发输入框                                          | `❯ describe a task for a new session`                                                                                                                                                          |
-| TUI 底部有快捷键条                                            | `enter to return · space to reply · ctrl+x to delete · ? for shortcuts`                                                                                                                        |
-| 「进入」= `claude attach <id>`，渲染**完整 Claude Code TUI**  | 抓屏：对话 + 输入框 + `⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents`                                                                                                           |
-| ← 切回列表是**真的**                                          | tmux 抓屏：按 ← 后整屏变成上面那张列表                                                                                                                                                         |
-| ← 需要**按两次**                                              | 源码：第一次只 arm，toast `Press ← again to go back to agents`，3s 超时；输入框刚被编辑过（2s 内）首次也只 arm                                                                                 |
-| `claude attach` 断开后会**把自己 re-exec 成 `claude agents`** | 源码：detach 成功且走 APC 时 `A8({args:["agents"], env:{CLAUDE_AGENTS_SELECT:a}})`                                                                                                             |
-| 杀掉 attach 客户端**不会**停掉后台 agent                      | 实测：杀 `claude attach <id>` 客户端后 `claude agents --json` 仍显示该 agent `pid` 存活、`state: working`                                                                                      |
-| 底层是 daemon 的 `{"op":"attach"}`                            | daemon NDJSON over `/tmp/cc-daemon-<uid>/<hash>/control.sock`；PTY 字节走 `…/pty/<short>.sock`；协议未公开                                                                                     |
+| 事实                                                          | 证据                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 后台 agent 是**活着的独立进程**，不是会话记录                 | `claude agents --json --all` → `{id, sessionId, name, cwd, kind:"background", startedAt, state, status}`；`state ∈ {working, done, stopped}`，`status ∈ {busy, idle}`（只有活进程有 `pid`/`status`）。**`--json` 只列活着的会话**，已完成的要加 `--all` 才出现 |
+| 每个 agent 有自己的 job 目录                                  | `~/.claude/jobs/<agentId>/state.json` → `detail`、`tempo`、`inFlight{tasks,queued,kinds}`、`fan`（子 agent/shell）、`tokens`、`needs`、`block.questions`；`timeline.jsonl` 是状态流水                                                                          |
+| job 目录名 == agent 短 id                                     | `~/.claude/jobs/4f5d4302/`、`~/.claude/jobs/43f0ca87/`                                                                                                                                                                                                         |
+| `state.json` 的 `detail` **就是** TUI 行里那行灰字            | `43f0ca87` 的 detail = `Task 10 send menu and batch controls underway` = TUI 抓屏那一行，逐字一致                                                                                                                                                              |
+| agent 的 `name` 会自己变                                      | 实测：`Wait 20 seconds, then reply exactly: PROBE2_OK` → `bash sleep command`                                                                                                                                                                                  |
+| TUI 列表分两段                                                | `Working` / `Completed`；header 写 `0 awaiting input · 2 working · 16 completed`                                                                                                                                                                               |
+| TUI 行结构                                                    | 指针 ❯ + 状态图标 + 状态词（`Working` / `Needs input` / `Ready for review` / `Completed`）+ name + 细节列 + 右侧 elapsed                                                                                                                                       |
+| TUI 底部有派发输入框                                          | `❯ describe a task for a new session`                                                                                                                                                                                                                          |
+| TUI 底部有快捷键条                                            | `enter to return · space to reply · ctrl+x to delete · ? for shortcuts`                                                                                                                                                                                        |
+| 「进入」= `claude attach <id>`，渲染**完整 Claude Code TUI**  | 抓屏：对话 + 输入框 + `⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents`                                                                                                                                                                           |
+| ← 切回列表是**真的**                                          | tmux 抓屏：按 ← 后整屏变成上面那张列表                                                                                                                                                                                                                         |
+| ← 需要**按两次**                                              | 源码：第一次只 arm，toast `Press ← again to go back to agents`，3s 超时；输入框刚被编辑过（2s 内）首次也只 arm                                                                                                                                                 |
+| `claude attach` 断开后会**把自己 re-exec 成 `claude agents`** | 源码：detach 成功且走 APC 时 `A8({args:["agents"], env:{CLAUDE_AGENTS_SELECT:a}})`                                                                                                                                                                             |
+| 杀掉 attach 客户端**不会**停掉后台 agent                      | 实测：杀 `claude attach <id>` 客户端后 `claude agents --json` 仍显示该 agent `pid` 存活、`state: working`                                                                                                                                                      |
+| 底层是 daemon 的 `{"op":"attach"}`                            | daemon NDJSON over `/tmp/cc-daemon-<uid>/<hash>/control.sock`；PTY 字节走 `…/pty/<short>.sock`；协议未公开                                                                                                                                                     |
 
 ### 1.2 其它可用的公开 CLI
 
@@ -234,7 +234,7 @@ spawn 参数：
 
 | 来源                                  | 给出                                                                                           | 成本                  |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------- |
-| `claude agents --json`                | `id` / `sessionId` / `name` / `cwd` / `kind` / `startedAt` / `state` / `status` / `pid`        | **~1.2s**（进程启动） |
+| `claude agents --json --all`          | `id` / `sessionId` / `name` / `cwd` / `kind` / `startedAt` / `state` / `status` / `pid`        | **~1.2s**（进程启动） |
 | `~/.claude/jobs/<agentId>/state.json` | `detail` / `tempo` / `inFlight` / `fan` / `tokens` / `needs` / `block.questions` / `updatedAt` | **~10ms**（fs 读）    |
 
 `state.json` 的 `detail` 已实测与 FleetView 的灰字逐字一致，所以它就是那一列的来源。
@@ -244,7 +244,7 @@ spawn 参数：
 `claude agents --json` 要 1.2s，**不能** 2s 轮询。所以分两层：
 
 - **快层（每 2s）**：读已知的 agent 的 `state.json` → 更新 detail / tokens / inFlight / state。纯 fs，成本可忽略。
-- **慢层（每 15s，面板可见时）+ 手动刷新 + 面板打开时**：跑 `claude agents --json` → 对齐名单、存活（`pid`/`status`）、新出现的 agent。
+- **慢层（每 15s，面板可见时）+ 面板打开时 + 派发成功后立刻**：跑 `claude agents --json --all` → 对齐名单、存活（`pid`/`status`）、新出现的 agent。面板里没有刷新按钮，所以「派发成功后立刻刷一次」代替了手动刷新。
 
 `state.json` 读不到或字段缺失时**降级**：行仍在，只是没有 detail 那一格。任何来源出错都不得让面板变空白。
 
@@ -293,7 +293,7 @@ spawn 参数：
 | 本机没有 `claude`                           | 面板显示「未找到 Claude Code CLI」，而不是空列表                                                                                                                                              |
 | `claude agents --json` 超时（5s）/ 非零退出 | 保留上一次的名名单，列表不闪空                                                                                                                                                                |
 | `state.json` 读不到                         | 该行没有 detail，其余正常                                                                                                                                                                     |
-| `claude attach` 立刻退出（agent 已死）      | 屏 2 显示「该 agent 已停止」+ 返回按钮                                                                                                                                                        |
+| `claude attach` 立刻退出（agent 已死）      | 终端里是 CLI 自己的报错，header 显示 agent 的状态词（`done` / `stopped`）+ 返回按钮；面板不订阅 attach PTY 的退出事件，状态靠名单轮询得到                                                     |
 | attach 的 agent 在别的主机                  | v1：不列出（列表是本机的）                                                                                                                                                                    |
 | 侧栏太窄（默认 280px ≈ 35 列）              | **右侧边栏可以拖宽**（`right-sidebar/index.tsx:234` 有 resize 手柄）→ 用户拖宽即可。v1 **不做**「在主区域打开」那个按钮：它要接 Orca 的终端 pane 启动路径，而计划里没有任何任务映射过那条路径 |
 
@@ -320,11 +320,14 @@ spawn 参数：
 | 每次进入都重新 spawn `claude attach`         | 实测 daemon attach ~22ms，可接受；换来「返回列表不残留进程」的干净语义                      |
 | v1 不支持远程                                | 用户已确认取舍；数据层按宿主切分，v2 补                                                     |
 
-### 10.1 实现期必须验的三件事（代码勘察已定位风险，但没跑过）
+### 10.1 实现期必须验的三件事（代码勘察已定位风险；现已验过，结论写在每条后面）
 
 1. **终端在几十万字节后静默卡死** —— ACK 属于 dispatcher：`pty-dispatcher.ts` 每派发一块就 `deliverPtyDataWithDeferredAck`，main 按「已发 − 已 ACK」记账，没 ACK 就不再投递（per-PTY 上限 `PTY_RENDERER_IN_FLIGHT_HIGH_WATER_CHARS = 512 * 1024`，`src/main/ipc/pty/delivery/constants.ts`）。`subscribeToPtyData`（§4.3.1）是**装上** dispatcher 的那一步（它调 `ensurePtyDispatcher()`）；若改用裸 `pty.onData` 且没有别的面板装过 dispatcher，就没有人 ACK，main 会在 512 KB 处停投递。所以必须走 `subscribeToPtyData`。E2E 里要真的把一段长输出灌进去验证不卡。
+   **已验**：本面板自己的那一份由 `background-agent-terminal-ack.test.tsx` 钉住——640 KB（高于 512 KB 的悬崖）走真实的 `subscribeToPtyData` 与真实 dispatcher，断言累计 ACK 覆盖每一个字符（把 `subscribeToPtyData` 换成裸 `pty.onData` 该断言立刻变红）。main 侧那道闸由既有的 `tests/e2e/artificial-opencode-terminal-load.spec.ts` 钉住（按住 ACK 压到 2 MB）。真实 `claude attach` TUI 上的端到端观察在 E2E 里（约 37 KB 的流整段到达）。
 2. **Claude Code TUI 的 DA/DSR 终端探测答不上来** —— 取决于 `setRendererPtyVisible(id, true)` 是否真的把 startup 查询权威交给了 xterm（§4.3.2）。
+   **已验（机制钉住、结果观察）**：`answersQueries: true` 与「先 `setRendererPtyVisible` 再取快照」的顺序在 `background-agent-terminal.test.tsx` 里钉住（这一层就是拥有它的层）；E2E 里观察到真实 CLI 的 TUI 画出提示符。不宣称「已销号」：要证伪需要让真实 CLI 行为异常，那不是本分支能控制的。
 3. **`claude attach` 的 cwd 被 Orca 的 agent 启动守卫拒绝** —— `assertSafeAgentStartupCwd(cwd, command)`（`src/main/providers/local-pty/local-pty-launch-plan.ts:195`）对 `claude attach` 的判定未验。
+   **已验**：拒绝时用户看到的是守卫自己的原因（`extractIpcErrorMessage` 把 IPC 外壳剥掉），而不是一句笼统的失败；这条路径由 `background-agent-terminal.test.tsx` 覆盖。
 
 ### 10.2 已知副作用（接受）
 

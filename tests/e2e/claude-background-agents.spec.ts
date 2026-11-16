@@ -28,9 +28,9 @@ import path from 'node:path'
 import { runProcess } from '@orca/process-host'
 import { expect, test as base } from './helpers/orca-app'
 import { resolveClaudeCommand } from '../../src/shared/node-cli-command-resolution'
-import { stripAnsiEscapeSequences } from '../../src/shared/ansi-escape-sequences'
 import {
   CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
+  readClaudeBackgroundAgentDispatchedId,
   readClaudeBackgroundAgentsListing,
   type ClaudeBackgroundAgent
 } from '../../src/shared/claude-background-agents'
@@ -240,9 +240,6 @@ async function askClaudeAgents(extraArgs: readonly string[]): Promise<AgentsAnsw
   return { ok: true, agents: listing.agents }
 }
 
-/** The CLI prints the new agent's id after `backgrounded`; the panel reads the same line. */
-const DISPATCHED_AGENT_LINE_PATTERN = /^backgrounded\s*·\s*(\S+)/m
-
 /**
  * Start the spec's own throw-away agent and report the id the CLI gave it.
  *
@@ -276,9 +273,8 @@ async function dispatchProbeAgent(): Promise<string> {
       }`
     )
   }
-  // The CLI colorizes its answer when the environment asks for color, and the id arrives wrapped
-  // in escape sequences.
-  const id = DISPATCHED_AGENT_LINE_PATTERN.exec(stripAnsiEscapeSequences(result.stdout))?.[1]
+  // The shared reader is the one the panel uses, so a change to the CLI's line reaches both sides.
+  const id = readClaudeBackgroundAgentDispatchedId(result.stdout)
   if (!id) {
     throw new Error(`the Claude Code CLI did not print an agent id: ${result.stdout.trim()}`)
   }

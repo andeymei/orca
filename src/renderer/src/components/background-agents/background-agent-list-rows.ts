@@ -37,7 +37,12 @@ const SECTION_ORDER: Record<BackgroundAgentListRow['section'], number> = {
   completed: 2
 }
 
-/** The section an agent's own state word puts it in. */
+/**
+ * The section an agent's own state word puts it in.
+ *
+ * The CLI decides when an agent is blocked, so the panel reads its word rather than guessing; a
+ * live agent has not been seen in the `blocked` state on this machine yet.
+ */
 function sectionForState(
   state: ClaudeBackgroundAgentState | undefined
 ): BackgroundAgentListRow['section'] {

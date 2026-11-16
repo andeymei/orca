@@ -1,9 +1,28 @@
+import { stripAnsiEscapeSequences } from './ansi-escape-sequences'
+
 const CLAUDE_BACKGROUND_AGENT_KINDS = ['background', 'interactive'] as const
 const CLAUDE_BACKGROUND_AGENT_STATES = ['working', 'blocked', 'done', 'failed', 'stopped'] as const
 const CLAUDE_BACKGROUND_AGENT_STATUSES = ['busy', 'idle', 'waiting'] as const
 
 /** The short id the CLI hands out; it may be used as a path segment, so nothing else may. */
 export const CLAUDE_BACKGROUND_AGENT_ID_PATTERN = /^[0-9a-f]{8}$/
+
+/** The CLI prints the new agent's id after `backgrounded`; this is the line it prints it on. */
+export const CLAUDE_BACKGROUND_AGENT_DISPATCH_LINE_PATTERN = /^backgrounded\s*·\s*(\S+)/m
+
+/**
+ * The id the CLI printed for the agent it started; without it there is no agent to name.
+ *
+ * The CLI colorizes its answer when the environment asks for color, so the id — and the words
+ * around it — arrive wrapped in escape sequences. The id reader is what has to understand that
+ * answer, so the answer is cleaned here rather than on every command's stdout.
+ */
+export function readClaudeBackgroundAgentDispatchedId(stdout: string): string | null {
+  const candidate = CLAUDE_BACKGROUND_AGENT_DISPATCH_LINE_PATTERN.exec(
+    stripAnsiEscapeSequences(stdout)
+  )?.[1]
+  return candidate && CLAUDE_BACKGROUND_AGENT_ID_PATTERN.test(candidate) ? candidate : null
+}
 
 /** 'background' for a daemon-backed agent; 'interactive' for a foreground terminal session. */
 export type ClaudeBackgroundAgentKind = (typeof CLAUDE_BACKGROUND_AGENT_KINDS)[number]
@@ -95,7 +114,8 @@ export function readClaudeBackgroundAgentFailureMessage(stderr: string, fallback
     : trimmed
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+/** Whether a value is an object the parser can read fields from. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 

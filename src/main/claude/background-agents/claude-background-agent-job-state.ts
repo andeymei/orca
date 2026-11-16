@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   CLAUDE_BACKGROUND_AGENT_ID_PATTERN,
+  isRecord,
   type ClaudeBackgroundAgentDetail
 } from '../../../shared/claude-background-agents'
 import { defaultClaudeConfigDir } from '../claude-config-dir-pin'
@@ -52,10 +53,6 @@ export async function readClaudeBackgroundAgentJobState(
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 /** The CLI writes an ISO timestamp; an older job carries epoch ms. Both become epoch ms. */
 function readUpdatedAt(value: unknown): number | null {
   if (typeof value === 'number') {
@@ -68,7 +65,12 @@ function readUpdatedAt(value: unknown): number | null {
   return null
 }
 
-/** A file that is gone, or that the CLI is writing right now, is not an error. */
+/**
+ * A file that is gone, or that the CLI is writing right now, is not an error.
+ *
+ * A permission error is treated the same way on purpose: the row's contract is "no activity line",
+ * and a misconfigured `CLAUDE_CONFIG_DIR` is not something the row can act on.
+ */
 async function readTextFile(path: string): Promise<string | null> {
   try {
     return await readFile(path, 'utf8')

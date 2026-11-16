@@ -8,7 +8,14 @@ import {
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
 
-export const CLAUDE_BACKGROUND_AGENTS_ARGS: readonly string[] = ['agents', '--json']
+/**
+ * The listing the panel asks the CLI for.
+ *
+ * `--json` alone prints the **active** sessions only, so the Completed section would always be
+ * empty and `claude rm` would be unreachable. `--all` adds the completed background sessions,
+ * which is what the Completed section and the delete path need.
+ */
+export const CLAUDE_BACKGROUND_AGENTS_ARGS: readonly string[] = ['agents', '--json', '--all']
 
 /** The listing is a local daemon query; a wedged CLI must not hold the picker open. */
 export const CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS = 5_000

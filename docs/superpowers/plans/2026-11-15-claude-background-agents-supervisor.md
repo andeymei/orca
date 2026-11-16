@@ -1153,6 +1153,111 @@ the panel unmounting when the user switches sidebar tabs."
 
 ---
 
+### Task 06.5: 派发取消通道
+
+**为什么插这一节：** spec §6.1 要求派发时在列表顶部插一行 `opening… · esc to cancel` 的占位行，`Esc` 要**真的能取消**。原来的 Task 7 只有「派发」没有「取消」—— 计划漏了 spec 的一处。取消要在 main 侧中止 `claude --bg` 那个子进程，所以这条通道得先建好，Task 7 的占位行才有东西可调。
+
+**编号写成 `06.5`（带前导零）是刻意的**：brief 抽取脚本按 `Task <数字>` 切分，`Task 6.5` 会被它当成 `Task 6` 的一部分；`06.5` 不会。执行顺序是 6 → 06.5 → 7。
+
+**Files:**
+
+- Modify: `src/main/claude/background-agents/claude-background-agent-commands.ts`
+- Modify: `src/main/claude/background-agents/claude-background-agent-commands.test.ts`
+- Modify: `src/main/ipc/claude-agents/claude-agents.ts`
+- Modify: `src/main/ipc/claude-agents/claude-agents.test.ts`
+- Modify: `src/preload/api/claude-agents-api.ts`
+- Modify: `src/preload/api/claude-agents-bridge.ts`
+- Modify: `src/renderer/src/web/preload-api/web-claude-agents-api.ts`
+
+**Interfaces:**
+
+- Consumes: Task 3 的 `dispatchClaudeBackgroundAgent(args, dependencies)`；Task 4 的 `claudeAgents:dispatch` 通道
+- Produces:
+
+  ```ts
+  // src/preload/api/claude-agents-api.ts
+  cancelDispatch: () => Promise<void>
+
+  // src/main/ipc/claude-agents/claude-agents.ts
+  export type ClaudeAgentsHandlerDependencies = {
+    dispatch?: typeof dispatchClaudeBackgroundAgent
+    stop?: typeof stopClaudeBackgroundAgent
+    remove?: typeof removeClaudeBackgroundAgent
+  }
+  export function registerClaudeAgentsHandlers(dependencies?: ClaudeAgentsHandlerDependencies): void
+  ```
+
+- [ ] **Step 1: 写失败的测试**
+
+`src/main/claude/background-agents/claude-background-agent-commands.test.ts` 加两个用例：
+
+```ts
+it('hands the abort signal to the CLI', ...)
+it('says the dispatch was cancelled when the process was killed', ...)
+```
+
+- 第一个：注入的 `runCommand` 把 `spec` 存下来，断言 `spec.signal` **就是**传进来的那个 `AbortSignal`（不是另一个）。
+- 第二个：注入的 `runCommand` 回 `{ code: null, signal: 'SIGTERM', stdout: '', stderr: '', timedOut: false }`，断言结果是 `{ ok: false, message: 'the dispatch was cancelled' }`。**不是** stderr 的原文 —— 被取消不是 CLI 的错，不该把 CLI 的话当成失败原因。
+
+`src/main/ipc/claude-agents/claude-agents.test.ts` 加两个用例：
+
+```ts
+it('aborts the dispatch that is still opening', ...)
+it('does nothing when no dispatch is opening', ...)
+```
+
+- 第一个：用可注入的 `dispatch`（一个把 `dependencies.signal` 存下来的假实现）跑 `claudeAgents:dispatch`，然后调 `claudeAgents:cancelDispatch`，断言那个 signal 已经 `aborted`。
+- 第二个：直接调 `claudeAgents:cancelDispatch`，断言它 resolve（不抛）。
+
+- [ ] **Step 2: 跑测试确认它失败**
+
+Run: `pnpm test src/main/ipc/claude-agents src/main/claude/background-agents --maxWorkers=2`
+Expected: FAIL —— `cancelDispatch` 通道不存在，`signal` 没往下传。
+
+- [ ] **Step 3: 实现**
+
+**命令层** (`claude-background-agent-commands.ts`)：
+
+- `ClaudeBackgroundAgentCommandDependencies` 加 `signal?: AbortSignal`。
+- `runClaudeCommand` 的 `options` 加 `signal?: AbortSignal`，传给 `runProcess` 的 spec —— `ProcessSpec.signal` 已经有了（`src/packages/process-host/src/process-spec.ts:30`），语义是「中止后仍然 resolve 出进程结果」。
+- `failureMessage`：`result.signal` 非 null（进程是被信号杀死的）→ 返回 `'the dispatch was cancelled'`。
+
+**IPC 层** (`claude-agents.ts`)：
+
+- `registerClaudeAgentsHandlers` 接受一个可选的 `ClaudeAgentsHandlerDependencies`，三个命令从它取（默认就是现在直接调的那三个函数）。**这是为了让 IPC 层可测** —— 现在它直接 import 命令函数，测试换不掉它们。
+- 用 `registerClaudeAgentsHandlers` 内部的一个闭包变量 `let inFlightDispatch: AbortController | null = null` 持有在飞的派发。**不要用模块级变量** —— 模块级状态跨注册实例共享，测试之间会互相污染。
+- `claudeAgents:dispatch` handler：建一个 `AbortController`，挂到 `inFlightDispatch`，用它调 `dispatch`（`{ signal: controller.signal }`），`finally` 里清掉。
+- 新 handler `claudeAgents:cancelDispatch`：`inFlightDispatch?.abort()` 然后 resolve。**没有 in-flight 时是 no-op，不抛。**
+- **同一时刻只有一个派发在飞**：面板的 composer 在派发期间不接受新的派发（Task 7 负责拦），所以 main 侧只需要记住一个 controller。**不要**做成 Map —— 没有第二个派发要记。
+
+**preload**：
+
+- `claude-agents-api.ts` 加 `cancelDispatch: () => Promise<void>`。
+- `claude-agents-bridge.ts` 实现它（`ipcRenderer.invoke('claudeAgents:cancelDispatch')`）。
+
+**web stub**：
+
+- `cancelDispatch: () => Promise.resolve()` —— 浏览器里没有派发在飞，没有可取消的。**它不返回任何文案，所以不涉及本地化。**
+
+- [ ] **Step 4: 跑测试确认它通过**
+
+Run: `pnpm test src/main/ipc/claude-agents src/main/claude/background-agents --maxWorkers=2`
+Expected: PASS。
+
+- [ ] **Step 5: 类型检查 + lint**
+
+Run: `pnpm tc:node && pnpm tc:web && pnpm exec oxlint src/main/ipc/claude-agents src/main/claude/background-agents src/preload`
+Expected: 都通过。
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add src/main/ipc/claude-agents src/main/claude/background-agents src/preload src/renderer/src/web/preload-api/web-claude-agents-api.ts
+git commit -m "feat(claude-agents): let the panel cancel a dispatch that is still opening"
+```
+
+---
+
 ### Task 7: 屏 1（列表）
 
 **Files:**
@@ -1160,10 +1265,12 @@ the panel unmounting when the user switches sidebar tabs."
 - Create: `src/renderer/src/components/background-agents/BackgroundAgentListScreen.tsx`
 - Modify: `src/renderer/src/components/background-agents/BackgroundAgentRow.tsx`（重写）
 - Create: `src/renderer/src/components/background-agents/BackgroundAgentListScreen.test.tsx`
+- Modify: `src/renderer/src/store/slices/background-agents/create-background-agents-slice.ts`（加派发占位行的字段）
+- Modify: `src/renderer/src/store/slices/background-agents/create-background-agents-slice.test.ts`（占位行状态的测试）
 
 **Interfaces:**
 
-- Consumes: Task 5 的纯函数、Task 6 的 slice、Task 4 的 `window.api.claudeAgents`
+- Consumes: Task 5 的纯函数、Task 6 的 slice、Task 4 的 `window.api.claudeAgents`、Task 06.5 的 `window.api.claudeAgents.cancelDispatch`
 - Produces:
 
   ```ts
@@ -1184,6 +1291,9 @@ it('moves the selection with the arrow keys', () => { ... })
 it('enters the selected agent on Enter', () => { ... })
 it('asks for the stop to be confirmed twice', () => { ... })
 it('dispatches the composed prompt', () => { ... })
+it('shows an opening row while the dispatch is on its way', () => { ... })
+it('cancels the opening dispatch when Escape is pressed', () => { ... })
+it('says so when the dispatch fails', () => { ... })
 ```
 
 每个用例用 `createTestStore()` 预置 `backgroundAgentsAgents`，用 `@testing-library/react` 渲染 `BackgroundAgentListScreen`，用 `fireEvent.keyDown(root, { key: 'ArrowDown' })` 驱动。
@@ -1194,6 +1304,9 @@ it('dispatches the composed prompt', () => { ... })
 - Enter 之后 `store.getState().backgroundAgentsScreen` 是 `{ kind: 'agent', agentId: 'bbbb2222' }`。
 - Ctrl+X 第一次之后，行内出现 `ctrl+x again to stop` 的文字，且 `window.api.claudeAgents.stop` **没有被调用**；第二次之后它被调用了一次，且参数是 `{ id: 'bbbb2222' }`。
 - composer 里输入 `do the thing` 并 Enter 之后，`window.api.claudeAgents.dispatch` 被调用，参数含 `prompt: 'do the thing'`。
+- 派发在飞时，列表**顶部**有一行写着 `opening… · esc to cancel`。
+- 在那行上按 `Escape` 之后，`window.api.claudeAgents.cancelDispatch` 被调用了一次，那一行消失。
+- 派发失败之后，那一行变成失败态（写着失败原因），并且 `toast.error` 被调用过一次。
 
 - [ ] **Step 2: 跑测试确认它失败**
 
@@ -1230,6 +1343,27 @@ Expected: FAIL —— 组件不存在。
   - `/`：聚焦 composer。
   - `Escape`：composer 有内容就清空，否则把焦点还给面板根。
 - **composer**：一个受控 input。Enter 提交 `prompt` + 当前工作区路径；`cwd` 取自 `findFirstIndexedWorktree(selectWorktreesByRepo(state), state.activeWorktreeId)?.path`（照 `src/renderer/src/components/right-sidebar/ai-vault/session-actions/ai-vault-session-launch-target.ts:32`），拿不到就不传。
+- **派发占位行**（spec §6.1）：派发在飞时，列表**顶部**（Working 段之前）插一行 `opening… · esc to cancel`。
+  - **这行的状态住在 store 里，不在组件的 local state 里** —— 右侧边栏切 tab 时面板是**卸载**的（`right-sidebar-panel-content.tsx:61` 是 `{effectiveTab === 'background-agents' && <BackgroundAgentsPanel />}`），local state 会跟着一起没。Task 6 的 slice 因此要加一个字段：
+    ```ts
+    // src/renderer/src/store/slices/background-agents/create-background-agents-slice.ts
+    export type BackgroundAgentsDispatch = {
+      state: 'opening' | 'failed' | 'started'
+      /** The short id the CLI gave, when the dispatch won the race against the cancel. */
+      agentId: string | null
+      /** Why the dispatch failed. */
+      message: string | null
+    }
+    // slice 的字段
+    backgroundAgentsDispatch: BackgroundAgentsDispatch | null
+    publishBackgroundAgentsDispatch: (dispatch: BackgroundAgentsDispatch | null) => void
+    ```
+  - 派发期间按 `Esc` → 调 `window.api.claudeAgents.cancelDispatch()`，然后这行消失。
+  - 派发**仍然成功**（CLI 抢先把 agent 起好了，中止没赶上）→ 这行变成 `started · <短 id>`，2 秒后自己消失。**不许假装取消成功** —— 用户按了取消却看到 agent 冒出来，比不说清楚更糟。
+  - 派发失败 → 这行变成失败态（写着失败原因），并且调 `toast.error(reason)`（`sonner`）。
+  - 派发正常成功 → 这行直接消失（agent 会在下一次轮询里出现在名单上）。
+  - 这行**不是 agent**：不参与 `countBackgroundAgentListRows` 的计数，也不参与 `↑↓` 的选择移动。
+  - **派发在飞时，composer 的 Enter 不接受新的派发**（同一时刻只允许一个派发在飞，Task 06.5 的 main 侧只记一个 controller）。
 - **两步确认**：第一次 Ctrl+X 记下 `{ id, kind: 'stop' | 'delete', at: Date.now() }`；3s 内第二次 Ctrl+X 且 id 相同才真的执行。行内显示 `ctrl+x again to stop` 或 `ctrl+x again to delete`。
 - **删除的提示语**：删除会连 worktree 一起删，确认文案必须写明这一点。
 
@@ -1305,19 +1439,31 @@ it('lets the caller claim a key before xterm encodes it', () => {
 })
 ```
 
-**如果 xterm 的 custom handler 不好直接驱动**：退一步，测 `openStandaloneTerminal` 是否把钩子透传下去 —— 建一个真实 xterm，调用 `terminal.attachCustomKeyEventHandler` 拿不到（槽位已被占）。所以更稳的测法是**在 `installPreviewTerminalKeyHandler` 这一层测**：把 `terminal` 换成一个只记录 `attachCustomKeyEventHandler` 参数的假对象，断言传进来的 handler 对被 claim 的键返回 `false`。
+**如果 xterm 的 custom handler 不好直接驱动**（真实 xterm 不暴露它注册进去的 handler）：更稳的测法是**在 `installPreviewTerminalKeyHandler` 这一层测** —— 把 `terminal` 换成一个只记录 `attachCustomKeyEventHandler` 参数的假对象，断言传进来的 handler 对被 claim 的键返回 `false`。
+
+**假对象不许用 `as` 断言造出来**：仓库的 changed-code 门禁用 `typescript/consistent-type-assertions` 的 `assertionStyle: "never"`（`config/oxlint-code-quality-casting.json`），**任何 `as` 都不行**。正确做法是**把 installer 的 `terminal` 参数类型收窄成它真正用的那几个方法**（它只用了这 5 个）：
+
+```ts
+terminal: Pick<
+  Terminal,
+  'attachCustomKeyEventHandler' | 'hasSelection' | 'scrollToTop' | 'scrollToBottom' | 'selectAll'
+>
+```
+
+`Pick` 是类型标注，不是断言 —— 假对象直接传进去就行，**一行 `as` 都不需要**。真实的 `Terminal` 满足这个 `Pick`，所以现有调用方（dashboard 的 preview 终端、`openStandaloneTerminal`）**行为不变**。
 
 ```ts
 it('does not let a claimed key reach xterm', () => {
   let handler: ((event: KeyboardEvent) => boolean) | null = null
   const terminal = {
-    attachCustomKeyEventHandler: (h: (event: KeyboardEvent) => boolean) => { handler = h },
-    onData: () => ({ dispose: () => {} }),
+    attachCustomKeyEventHandler: (h: (event: KeyboardEvent) => boolean) => {
+      handler = h
+    },
     hasSelection: () => false,
     scrollToTop: () => {},
     scrollToBottom: () => {},
     selectAll: () => {}
-  } as unknown as Terminal
+  }
   installPreviewTerminalKeyHandler({
     terminal,
     claimImeKeyEvent: () => false,
@@ -1347,6 +1493,8 @@ if (args.claimKeyEvent?.(event)) {
   return false
 }
 ```
+
+**同时把 installer 的 `terminal` 参数类型收窄成 `Pick<Terminal, 'attachCustomKeyEventHandler' | 'hasSelection' | 'scrollToTop' | 'scrollToBottom' | 'selectAll'>`**（Step 1 里假对象要靠它才不用 `as`）。只收窄类型，不改运行时行为。
 
 `open-standalone-terminal.ts` 的 `StandaloneTerminalArgs` 加 `claimKeyEvent?: (event: KeyboardEvent) => boolean`，并在 `installPreviewTerminalKeyHandler({...})` 的调用里传 `claimKeyEvent: args.claimKeyEvent`。
 
@@ -1380,6 +1528,17 @@ owns it, so a second attach would break copy, paste and IME."
 **Interfaces:**
 
 - Consumes: Task 8 的 `claimKeyEvent`、Task 4 的 `window.api.claudeAgents`、已有的 `window.api.pty.*`、`openStandaloneTerminal`、`subscribeToPtyData`
+
+**现成的 API，别重写（都已核实存在）：**
+
+| 要用的东西                      | 在哪                                                                                                              |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `subscribeToPtyData`            | `src/renderer/src/components/terminal-pane/pty-transport/delivery/pty-data-sidecar-subscriptions.ts`              |
+| `FLOATING_TERMINAL_WORKTREE_ID` | `src/shared/constants.ts`                                                                                         |
+| `buildClaudeAttachStartup`      | `src/shared/ai-vault/resume/ai-vault-attach-startup.ts`（返回 `{ command, cwd? }`，它已经把 agent id 正确加引号） |
+| `openStandaloneTerminal`        | `src/renderer/src/components/standalone-terminal/open-standalone-terminal.ts`                                     |
+| `window.api.pty.spawn`          | 参数形状：`{ cols, rows, cwd?, command?, commandDelivery?: 'renderer' \| 'provider', worktreeId? }`               |
+
 - Produces:
 
   ```ts
@@ -1396,7 +1555,7 @@ owns it, so a second attach would break copy, paste and IME."
 新建 `src/renderer/src/components/background-agents/background-agent-terminal.test.tsx`。测**编排**，不测像素：
 
 ```tsx
-it('spawns one detached PTY for the agent and kills it on the way out', async () => {
+it('spawns one detached PTY for the agent and kills it when the user leaves the screen', async () => {
   const spawn = vi.fn(async () => ({ id: 'pty-1' }))
   const kill = vi.fn(async () => {})
   vi.stubGlobal('window', { api: { pty: { spawn, kill, write: vi.fn(), resize: vi.fn(), setRendererPtyVisible: vi.fn() } } })
@@ -1407,8 +1566,15 @@ it('spawns one detached PTY for the agent and kills it on the way out', async ()
     worktreeId: FLOATING_TERMINAL_WORKTREE_ID
   })
   expect(spawn.mock.calls[0][0].command).toContain('attach')
+  // 用户离开了屏 2（store 的屏状态不再是这个 agent）→ 卸载时杀掉这个 pty
+  useAppStore.getState().closeBackgroundAgent()
   unmount()
   await waitFor(() => expect(kill).toHaveBeenCalledWith('pty-1'))
+})
+
+it('keeps the attach alive when the sidebar tab is switched', async () => {
+  // 屏状态还是这个 agent，只是侧栏切了 tab → 卸载**不能**杀 pty（spec §4.4）
+  // 切回来时要复用同一个 ptyId，不重新 spawn
 })
 
 it('returns to the list when the left arrow is pressed', async () => {
@@ -1497,9 +1663,24 @@ useEffect(() => {
     resizeListener?.dispose()
     unsubscribe?.()
     standalone?.dispose()
-    if (ptyId) { void window.api.pty.kill(ptyId); setBackgroundAgentsAttachedPty(null) }
+    // Why: 离开屏 2 要杀掉这个 pty，但**侧栏切 tab 导致的卸载不能杀** ——
+    // spec §4.4 说切走再切回来要重新挂同一个 ptyId。两种卸载在 React 里长得一样，
+    // 只能问 store：屏状态还是这个 agent，说明是侧栏切 tab，不是用户离开了屏 2。
+    if (ptyId && !stillShowingThisAgent(agentId)) {
+      void window.api.pty.kill(ptyId)
+      setBackgroundAgentsAttachedPty(null)
+    }
   }
 }, [agentId])
+```
+
+**复用已有的 pty（切走再切回来）**：挂载时先问 store 有没有现成的 ptyId —— 有就**不要重新 spawn**，直接拿它重新订阅 + 重新取快照：
+
+```ts
+const existing = selectBackgroundAgentsAttachedPtyId(state)
+const spawned = existing
+  ? { id: existing }
+  : await window.api.pty.spawn({ ... })
 ```
 
 **必须遵守的四条**（都在 spec §4.3 里踩过坑）：
@@ -1596,7 +1777,7 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
   "completedSection": "Completed",
   "counts": "{awaiting} awaiting input · {working} working · {completed} completed",
   "composerPlaceholder": "Describe a task for a new session",
-  "composerLabel": "Describe a task for a new session",
+  "composerLabel": "New background agent",
   "loading": "Loading background agents",
   "empty": "No background agents",
   "unsupported": "Claude Code CLI not found",

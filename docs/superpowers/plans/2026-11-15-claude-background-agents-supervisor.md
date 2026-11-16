@@ -1857,7 +1857,8 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
 **其它 10 个语言文件：只删旧的 `auto.components.backgroundAgents` 块，不加新的。**
 
 - **新的 key 只进 en.json。** 目标语言缺翻译走 i18next fallback —— 校验脚本的原话是「Feature PRs own English declarations; missing target translations use i18next fallback until localization supplies them」（`verify-localization-catalog.mjs:436`）。所以「其它 10 个文件不用加新 key」是对的。
-- **但旧的 key 必须从全部 11 个文件里删掉。** 校验脚本把「locale 里有、en.json 里没有」的 key 报成 `extra` 并**直接失败**（`verify-localization-catalog.mjs:293` 的 `extraInLocale`，失败条件在 `:439`）。所以那 10 个文件里的 `auto.components.backgroundAgents.stateRunning` / `stateInterrupted` / `stateSlept` / `stateIdle` / `untitled` / `searchPlaceholder` / `searchLabel` / `loading` / `empty` / `refresh` **都要删掉**（旧面板不再用），否则门禁报 extra。
+- **但旧的 key 如果出现在别的语言文件里，也要删掉。** 校验脚本把「locale 里有、en.json 里没有」的 key 报成 `extra` 并**直接失败**（`verify-localization-catalog.mjs:293` 的 `extraInLocale`，失败条件在 `:439`）。
+  **实测：旧的 `auto.components.backgroundAgents` 块只存在于 `en.json`**（其余 10 个语言文件里从来没有这个块）—— 所以这一条是**预防**，不是待办。收工前确认一遍「没有哪个 locale 带着 en.json 已经删掉的 key」就行。
 - **别删** `auto.components.right.sidebar.index.backgroundAgents`（那是右侧栏 tab 的标题，在另一个块里，与本块无关）。
 
 **注意**：

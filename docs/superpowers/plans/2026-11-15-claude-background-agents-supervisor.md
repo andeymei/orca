@@ -1740,6 +1740,12 @@ const spawned = existing
 3. `pty.setRendererPtyVisible(id, true)`。
 4. `worktreeId: FLOATING_TERMINAL_WORKTREE_ID` + `commandDelivery: 'provider'`。
 
+**另外三件 spec 里有、但计划没写的事（补上）**：
+
+- **终端容器要带 `data-agent-terminal-preview` 哨兵**（spec §7）。**没有它，终端在侧栏里获得焦点时按 `⌘W` 会关掉用户正在用的那个 Orca tab** —— 全局快捷键的 window **capture** 监听器会先收到它（`terminal-workspace-keydown.ts:196-208`），而 xterm 的隐藏 textarea **不在** `isEditableTarget` 的排除名单里（`lib/text-input/focus/editable-target.ts:13-16`）。哨兵让 `isAgentTerminalPreviewTarget` 认得它，关闭类快捷键就让路了。
+- **失败路径要出声，不能静默回列表。** 「终端打不开」（xterm 建不起来、或者 attach 整个抛了）→ 回列表是对的，但**必须同时 `toast.error`** 告诉用户为什么回去了（spec §8「屏 2 显示『该 agent 已停止』」、brief 草图「报『终端打不开』」都要求看得见）。用新 key `attachFailed`。
+- **`Esc` 在**屏 2 的根上处理，不在终端钩子里。** 终端里的 `Esc` 归 Claude Code 自己（它在用 Esc 中断 agent），但**焦点不在终端时**（比如用户点了 header）`Esc` 要能回屏 1 —— spec §7 明写了这个状态，而它是**够得到的**。所以：屏 2 的根节点 `onKeyDown` 处理 `Esc`，**终端的 `claimKeyEvent` 不碰 `Esc`**。
+
 **← 键的修饰键规则**：只拦**不带** ctrl/meta/alt/shift 的 `ArrowLeft`。带修饰键的（`⌘←` = 行首）放给 xterm，这样光标左移的能力没有全丢。
 
 - [ ] **Step 4: 实现 `BackgroundAgentAgentScreen.tsx`**
@@ -1847,6 +1853,7 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
   "dispatchingCancelling": "cancelling…",
   "dispatchStarted": "started · {{id}}",
   "dispatchFailed": "The agent could not be started",
+  "attachFailed": "The agent's terminal could not be opened",
   "shortcuts": "↑↓ select · enter enter · ctrl+x stop · / task"
 }
 ```

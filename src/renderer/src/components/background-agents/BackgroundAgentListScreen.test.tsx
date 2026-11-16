@@ -423,6 +423,37 @@ it('keeps the panel keys working when a row holds the focus', async () => {
   })
 })
 
+it('opens the selected row on Enter, not the focused one', async () => {
+  const view = await renderScreen()
+  const rows = view.getAllByTestId('background-agent-row')
+  rows[1].focus()
+  expect(document.activeElement).toBe(rows[1])
+  expect(rows[0].getAttribute('data-selected')).toBe('true')
+  await press(rows[1], 'Enter')
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({
+    kind: 'agent',
+    agentId: 'aaaa1111'
+  })
+})
+
+it('opens the selected row on Space, not the focused one', async () => {
+  const view = await renderScreen()
+  const rows = view.getAllByTestId('background-agent-row')
+  rows[1].focus()
+  expect(document.activeElement).toBe(rows[1])
+  expect(rows[0].getAttribute('data-selected')).toBe('true')
+  const space = createEvent.keyDown(rows[1], { key: ' ' })
+  await act(async () => {
+    fireEvent(rows[1], space)
+  })
+  // The button's own activation would open the focused row, so it has to be stopped.
+  expect(space.defaultPrevented).toBe(true)
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({
+    kind: 'agent',
+    agentId: 'aaaa1111'
+  })
+})
+
 it('lets the native cut win when the composer has a selection', async () => {
   const stop = vi.fn(async (): Promise<ClaudeBackgroundAgentCommandResult> => ({
     ok: true,

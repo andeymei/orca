@@ -193,6 +193,12 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       : t('auto.components.backgroundAgents.stopConfirm', 'ctrl+x again to stop')
   }
 
+  /** Opens the selected row, or dispatches the composed prompt. */
+  const activate = (event: React.KeyboardEvent<HTMLElement>): void => {
+    event.preventDefault()
+    void activateOrDispatch()
+  }
+
   /**
    * The actions the panel's keys trigger.
    *
@@ -206,8 +212,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       return true
     }
     if (event.key === 'Enter') {
-      event.preventDefault()
-      void activateOrDispatch()
+      activate(event)
       return true
     }
     if (event.ctrlKey && (event.key === 'x' || event.key === 'X')) {
@@ -258,6 +263,13 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   }
 
   const handleRowKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key === ' ') {
+      // Why: the button's own activation would open the focused row, while the panel's keys act
+      // on the selected one.
+      activate(event)
+      event.stopPropagation()
+      return
+    }
     if (focusComposer(event) || runPanelKey(event)) {
       event.stopPropagation()
     }

@@ -2,6 +2,9 @@ const CLAUDE_BACKGROUND_AGENT_KINDS = ['background', 'interactive'] as const
 const CLAUDE_BACKGROUND_AGENT_STATES = ['working', 'blocked', 'done', 'failed', 'stopped'] as const
 const CLAUDE_BACKGROUND_AGENT_STATUSES = ['busy', 'idle', 'waiting'] as const
 
+/** The short id the CLI hands out; it may be used as a path segment, so nothing else may. */
+export const CLAUDE_BACKGROUND_AGENT_ID_PATTERN = /^[0-9a-f]{8}$/
+
 /** 'background' for a daemon-backed agent; 'interactive' for a foreground terminal session. */
 export type ClaudeBackgroundAgentKind = (typeof CLAUDE_BACKGROUND_AGENT_KINDS)[number]
 

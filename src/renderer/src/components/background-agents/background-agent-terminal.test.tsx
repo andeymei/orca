@@ -279,6 +279,29 @@ it('says why the screen went back to the list when the attach cannot start', asy
   const onBack = vi.fn()
   render(<BackgroundAgentTerminal agentId="aaaa1111" cwd="/w" onBack={onBack} />)
   await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1))
+  expect(toast.error).toHaveBeenCalledWith('the daemon refused the spawn')
+})
+
+it('says why the agent terminal could not be started, without the IPC wrapper', async () => {
+  // Why: the startup guard refuses a root-like working directory, and the user has to see why.
+  spawn.mockRejectedValueOnce(
+    new Error(
+      'Error invoking remote method \'pty:spawn\': Error: Automatic agent startup command "claude attach aaaa1111" requires a non-root workspace working directory.'
+    )
+  )
+  const onBack = vi.fn()
+  render(<BackgroundAgentTerminal agentId="aaaa1111" cwd="/w" onBack={onBack} />)
+  await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1))
+  expect(toast.error).toHaveBeenCalledWith(
+    'Automatic agent startup command "claude attach aaaa1111" requires a non-root workspace working directory.'
+  )
+})
+
+it('falls back to the generic message when the failure carries no reason', async () => {
+  spawn.mockRejectedValueOnce('not an error')
+  const onBack = vi.fn()
+  render(<BackgroundAgentTerminal agentId="aaaa1111" cwd="/w" onBack={onBack} />)
+  await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1))
   expect(toast.error).toHaveBeenCalledWith("The agent's terminal could not be opened")
 })
 

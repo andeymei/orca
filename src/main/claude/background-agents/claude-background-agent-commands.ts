@@ -11,6 +11,7 @@ import {
 } from '../../../shared/claude-background-agents'
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
+import { stripAnsiEscapeSequences } from '../../../shared/ansi-escape-sequences'
 import { CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS } from './claude-background-agent-list'
 
 /** Dispatching waits for the agent to come up, which takes longer than a listing does. */
@@ -189,7 +190,10 @@ async function runClaudeCommand(
 
 /** The id the CLI printed for the agent it started; without it there is no agent to name. */
 function readDispatchedAgentId(stdout: string): string | null {
-  const candidate = DISPATCHED_AGENT_LINE_PATTERN.exec(stdout)?.[1]
+  // Why: the CLI colors its answer when the environment asks for color, so the id — and the words
+  // around it — arrive wrapped in escape sequences. The id reader is what has to understand that
+  // answer, so the answer is cleaned here rather than on every command's stdout.
+  const candidate = DISPATCHED_AGENT_LINE_PATTERN.exec(stripAnsiEscapeSequences(stdout))?.[1]
   return candidate && CLAUDE_BACKGROUND_AGENT_ID_PATTERN.test(candidate) ? candidate : null
 }
 

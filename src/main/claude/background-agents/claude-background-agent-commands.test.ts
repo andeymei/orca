@@ -34,6 +34,34 @@ describe('dispatchClaudeBackgroundAgent', () => {
     expect(result).toEqual({ ok: true, id: '4db4f587' })
   })
 
+  it('reads the new agent id out of a colored answer', async () => {
+    // Why: the CLI colors its answer when the environment asks for color (FORCE_COLOR=1), and the
+    // panel then has to dispatch an agent instead of telling the user that no id was printed.
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      deps(
+        'backgrounded · \u001b[36m4db4f587\u001b[39m\n\u001b[2m  claude agents             list sessions\n\u001b[2m  claude attach 4db4f587    open in this terminal\n'
+      )
+    )
+    expect(result).toEqual({ ok: true, id: '4db4f587' })
+  })
+
+  it('reads the new agent id out of an answer whose words are colored too', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      deps('\u001b[1mbackgrounded\u001b[22m · \u001b[36m4db4f587\u001b[39m\n')
+    )
+    expect(result).toEqual({ ok: true, id: '4db4f587' })
+  })
+
+  it('reads the new agent id out of an answer whose separator is colored', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      deps('backgrounded\u001b[2m · \u001b[22m4db4f587\n')
+    )
+    expect(result).toEqual({ ok: true, id: '4db4f587' })
+  })
+
   it('passes the model and the permission mode, and ends the options before the prompt', async () => {
     const seen: { args?: readonly string[] } = {}
     await dispatchClaudeBackgroundAgent(

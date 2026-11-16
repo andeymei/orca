@@ -18,6 +18,7 @@ import { syncPreviewTerminalLigatures } from '@/components/dashboard-popout/prev
 import { openStandaloneTerminal } from '@/components/standalone-terminal/open-standalone-terminal'
 import type { StandaloneTerminal } from '@/components/standalone-terminal/open-standalone-terminal'
 import { subscribeToPtyData } from '@/components/terminal-pane/pty-transport/delivery/pty-data-sidecar-subscriptions'
+import { extractIpcErrorMessage } from '@/runtime/errors/ipc-error'
 import { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal/protocol/input-modes/terminal-kitty-keyboard-mode-tracker'
 import { buildClaudeAttachStartup } from '../../../../shared/ai-vault/resume/ai-vault-attach-startup'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
@@ -240,10 +241,12 @@ export function BackgroundAgentTerminal({
       standalone.terminal.focus()
     }
 
-    void attach().catch(() => {
+    void attach().catch((error: unknown) => {
       // Why: a PTY that could not start leaves nothing to show, so the list is the honest place to be.
       if (!disposed) {
-        toast.error(attachFailedRef.current)
+        // Why the reason: the guard that refuses a root-like working directory says so, and the
+        // user cannot act on a message that does not.
+        toast.error(extractIpcErrorMessage(error, attachFailedRef.current))
         onBackRef.current()
       }
     })

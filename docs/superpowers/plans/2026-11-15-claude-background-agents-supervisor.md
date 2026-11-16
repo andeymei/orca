@@ -1353,7 +1353,7 @@ Expected: FAIL —— 组件不存在。
 
 - **数据**：从 store 取 `backgroundAgentsAgents` + `backgroundAgentsDetails`，用 `buildBackgroundAgentListRows` 合并，再用 `groupBackgroundAgentListRows` 分组，用 `countBackgroundAgentListRows` 计数。
 - **远程 workspace 的说明**（Global Constraints 里的「v1 只支持本机」**目前没有任何任务实现它**，这一条补上）：活动 worktree 不在本机时，面板**照常列本机的 agent**，但在列表上方加一条说明 —— 这个面板列的是**这台机器**上的后台 agent，不是远程 workspace 的。
-  - 判法：`selectKnownWorktreeById(state, state.activeWorktreeId)?.executionHostId` 不等于 `LOCAL_EXECUTION_HOST_ID`（`src/shared/execution-host.ts:7`）就是远程。`executionHostId` 是可选字段，**没有这个字段 = 本机**。
+  - 判法：`state.activeWorkspaceExecutionHostId` 不等于 `LOCAL_EXECUTION_HOST_ID`（`src/shared/execution-host.ts:7`）就是远程。**不要**用 `selectKnownWorktreeById(state, state.activeWorktreeId)` —— 它在活动 workspace 所在的那台主机上找，找不到就返回 `null`，而 `null` 会被当成「本机」，远程 workspace 的说明就被吞掉了。
   - **不要**因此把名单藏起来或换成空列表 —— 用户要看见的是「这台机器上真的有这些 agent」，附带一句它属于哪台机器。
   - 文案走 i18n key `auto.components.backgroundAgents.localOnlyNotice`（Task 10 建）。
 - **elapsed 刷新**：一个 `useEffect` + `setInterval(1000)` 存 `now`，只为了重算 elapsed。行本身不重建。
@@ -1365,10 +1365,12 @@ Expected: FAIL —— 组件不存在。
   - **两个 interval 都在面板卸载时清掉。**
   - **派发成功后立刻再刷一次慢层** —— 用户刚派发的 agent 不该等最多 15s 才出现在名单里。快层只读**已知** agent 的 state 文件，新 agent 不在名单里就永远读不到。
 - **键盘**：照 `src/renderer/src/components/right-sidebar/ai-vault/session-list/use-ai-vault-session-keyboard-navigation.ts:117` 的 `aiVaultPanelKeyboardRootProps` 模式 —— 根节点 `tabIndex={-1}`，`onKeyDown` 只在 `event.target === event.currentTarget` 时处理。
-  - `ArrowDown` / `ArrowUp`：移动选择，`event.preventDefault()`。
+  - **焦点在哪儿，决定谁能按什么键。** root 的 `onKeyDown` 带 `event.target === event.currentTarget` 守卫（照 AI Vault 的 `aiVaultPanelKeyboardRootProps`），所以**只有 root 自己有焦点时它才处理**；composer 有自己的 `onKeyDown`。两个处理器**共用同一套动作** —— 焦点在谁身上，行为都一样。
+  - **挂载时聚焦 composer**（CLI 的 TUI 打开就能直接写任务）。**不聚焦的话整个面板的键盘是死的**：root 没焦点 → 守卫挡住；composer 没焦点 → 收不到事件。
+  - `ArrowDown` / `ArrowUp`：移动选择，`event.preventDefault()`。**composer 也要转发这两个键** —— 单行输入框里 ↑↓ 本来就没有光标含义。
   - `Enter`：有选中行且 composer 为空 → `openBackgroundAgent(row.id)`。composer 有内容 → 派发。
-  - `Control+x`：停止/删除的两步确认。
-  - `/`：聚焦 composer。
+  - `Control+x`：停止/删除的两步确认。**composer 也要转发** —— macOS 上 `⌘X` 仍然是剪切，不受影响。
+  - `/`：聚焦 composer。**只有 root 有焦点时 `/` 才是这个键** —— 在 composer 里 `/` 就是一个普通字符。
   - `Escape`：composer 有内容就清空，否则把焦点还给面板根。
 
   **v1 不做文本过滤**：`/` 只把焦点送到 composer，**不**切换到过滤模式。（spec §3.1 的键盘表原来写「/ 搜索」，那是旧面板留下的，**Claude Code 的 TUI 本身没有 `/` 搜索** —— 实测它的快捷键条是 `enter to return · space to reply · ctrl+x to delete · ? for shortcuts`。这个面板的全部意义就是镜像 CLI 的那个 TUI，所以照它来。）Task 5 的 `filterBackgroundAgentListRows` 因此成了死代码，Task 10 把它连同测试一起删掉。
@@ -1379,7 +1381,7 @@ Expected: FAIL —— 组件不存在。
     ```ts
     // src/renderer/src/store/slices/background-agents/create-background-agents-slice.ts
     export type BackgroundAgentsDispatch = {
-      state: 'opening' | 'failed' | 'started'
+      state: 'opening' | 'cancelling' | 'failed' | 'started'
       /** The short id the CLI gave, when the dispatch won the race against the cancel. */
       agentId: string | null
       /** Why the dispatch failed. */
@@ -1402,6 +1404,8 @@ Expected: FAIL —— 组件不存在。
 - **删除的提示语**：删除会连 worktree 一起删，确认文案必须写明这一点。
 
 `BackgroundAgentRow.tsx` 重写成：状态点 + name + detail + elapsed，`selected` 时显示 `❯` 指针。点击调用 `onSelect`。
+
+**「Needs input」那一段的活动行要显示 agent 在问什么。** `BackgroundAgentListRow.needs`（来自 `state.json`）就是「它在问你什么」—— spec §3.1 明说这个字段**只**用在一件事上：在行里显示它。所以：**在 needs-input 段，行里的灰字显示 `needs`（有的话），否则显示 `detail`**；别的段照旧显示 `detail`。一个卡住等决定的 agent 如果只显示名字和一句活动说明，用户根本不知道它在等他回答什么。
 
 - [ ] **Step 4: 跑测试确认它通过**
 
@@ -1815,7 +1819,7 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
   "workingSection": "Working",
   "needsInputSection": "Needs input",
   "completedSection": "Completed",
-  "counts": "{awaiting} awaiting input · {working} working · {completed} completed",
+  "counts": "{{awaiting}} awaiting input · {{working}} working · {{completed}} completed",
   "composerPlaceholder": "Describe a task for a new session",
   "composerLabel": "New background agent",
   "loading": "Loading background agents",
@@ -1828,7 +1832,9 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
   "deleteWarning": "Deleting an agent also deletes its worktree",
   "back": "Back to the agent list",
   "dispatching": "opening… · esc to cancel",
-  "dispatchStarted": "started · {id}",
+  "dispatchingCancelling": "cancelling…",
+  "dispatchStarted": "started · {{id}}",
+  "dispatchFailed": "The agent could not be started",
   "shortcuts": "↑↓ select · enter enter · ctrl+x stop · / task"
 }
 ```

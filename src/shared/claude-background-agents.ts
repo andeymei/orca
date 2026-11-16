@@ -74,6 +74,24 @@ export type ClaudeBackgroundAgentIdArgs = {
 /** How many bytes of `claude agents --json` output are read; the envelope is a small array. */
 export const CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES = 256 * 1024
 
+/** The CLI's stderr can be a quarter of a megabyte; the panel only needs the reason. */
+const MAX_FAILURE_MESSAGE_LENGTH = 500
+
+/**
+ * What the CLI said about its refusal, trimmed to what a panel can show.
+ *
+ * An empty stderr means the CLI said nothing at all, and each caller words that differently.
+ */
+export function readClaudeBackgroundAgentFailureMessage(stderr: string, fallback: string): string {
+  const trimmed = stderr.trim()
+  if (!trimmed) {
+    return fallback
+  }
+  return trimmed.length > MAX_FAILURE_MESSAGE_LENGTH
+    ? `${trimmed.slice(0, MAX_FAILURE_MESSAGE_LENGTH)}…`
+    : trimmed
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }

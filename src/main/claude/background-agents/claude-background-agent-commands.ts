@@ -2,6 +2,8 @@ import { runProcess } from '@orca/process-host'
 import type { ProcessResult } from '@orca/process-host/process-spec'
 import {
   CLAUDE_BACKGROUND_AGENT_ID_PATTERN,
+  CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
+  readClaudeBackgroundAgentFailureMessage,
   type ClaudeBackgroundAgentCommandResult,
   type ClaudeBackgroundAgentDispatchArgs,
   type ClaudeBackgroundAgentIdArgs
@@ -83,7 +85,13 @@ export async function dispatchClaudeBackgroundAgent(
   }
   const id = readDispatchedAgentId(run.result.stdout)
   if (!id) {
-    return { ok: false, message: run.result.stderr.trim() || 'the CLI did not print an agent id' }
+    return {
+      ok: false,
+      message: readClaudeBackgroundAgentFailureMessage(
+        run.result.stderr,
+        'the CLI did not print an agent id'
+      )
+    }
   }
   return { ok: true, id }
 }
@@ -160,7 +168,8 @@ async function runClaudeCommand(
       args,
       cwd: options.cwd ?? undefined,
       env,
-      timeoutMs: options.timeoutMs
+      timeoutMs: options.timeoutMs,
+      maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
     })
     if (result.code !== 0 || result.timedOut) {
       return { ok: false, message: failureMessage(result) }
@@ -179,5 +188,5 @@ function readDispatchedAgentId(stdout: string): string | null {
 
 /** What the CLI said about its refusal; an empty stderr means it said nothing at all. */
 function failureMessage(result: ProcessResult): string {
-  return result.stderr.trim() || 'the CLI did not report why'
+  return readClaudeBackgroundAgentFailureMessage(result.stderr, 'the CLI did not report why')
 }

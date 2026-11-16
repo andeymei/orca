@@ -51,6 +51,32 @@ describe('dispatchClaudeBackgroundAgent', () => {
     expect(result).toEqual({ ok: false, message: 'not logged in' })
   })
 
+  it('truncates a failure reason the panel cannot show', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      deps('', 1, 'x'.repeat(1000))
+    )
+    expect(result).toEqual({ ok: false, message: `${'x'.repeat(500)}…` })
+  })
+
+  it('reports why the CLI was killed', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      {
+        runCommand: async () => ({
+          code: null,
+          signal: 'SIGTERM',
+          stdout: '',
+          stderr: 'the CLI was killed',
+          timedOut: false
+        }),
+        resolveCommand: async () => '/usr/local/bin/claude',
+        resolveEnvironment: async () => ({})
+      }
+    )
+    expect(result).toEqual({ ok: false, message: 'the CLI was killed' })
+  })
+
   it('runs in the given directory, because the CLI takes no --cwd', async () => {
     const seen: { cwd?: string } = {}
     await dispatchClaudeBackgroundAgent(

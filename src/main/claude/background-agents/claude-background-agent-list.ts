@@ -1,6 +1,7 @@
 import { runProcess } from '@orca/process-host'
 import {
   CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
+  readClaudeBackgroundAgentFailureMessage,
   readClaudeBackgroundAgentsListing,
   type ClaudeBackgroundAgent
 } from '../../../shared/claude-background-agents'
@@ -12,9 +13,6 @@ export const CLAUDE_BACKGROUND_AGENTS_ARGS: readonly string[] = ['agents', '--js
 /** The listing is a local daemon query; a wedged CLI must not hold the picker open. */
 export const CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS = 5_000
 
-/** The CLI's stderr can be a quarter of a megabyte; the panel only needs the reason. */
-const MAX_FAILURE_MESSAGE_LENGTH = 500
-
 export type ClaudeBackgroundAgentDependencies = {
   /** Injected so tests exercise the parsing without a Claude Code install. */
   runCommand?: typeof runProcess
@@ -23,7 +21,7 @@ export type ClaudeBackgroundAgentDependencies = {
 }
 
 /** What this machine's Claude Code CLI can tell about its agents. */
-type ClaudeBackgroundAgentListing =
+type LocalClaudeBackgroundAgentListing =
   | { status: 'ready'; agents: ClaudeBackgroundAgent[] }
   | { status: 'unsupported' }
   | { status: 'error'; message: string }
@@ -62,7 +60,7 @@ export async function listClaudeBackgroundAgentsOrNull(
 
 async function readLocalClaudeBackgroundAgentListing(
   dependencies: ClaudeBackgroundAgentDependencies
-): Promise<ClaudeBackgroundAgentListing> {
+): Promise<LocalClaudeBackgroundAgentListing> {
   const env = await (dependencies.resolveEnvironment ?? hostShellEnvironment)()
   const program = await (dependencies.resolveCommand ?? resolveCommandOnLocalPath)('claude', {
     platform: process.platform,
@@ -82,7 +80,10 @@ async function readLocalClaudeBackgroundAgentListing(
     return { status: 'error', message: 'the Claude Code CLI timed out' }
   }
   if (result.code !== 0) {
-    return { status: 'error', message: readFailureMessage(result.stderr) }
+    return {
+      status: 'error',
+      message: readClaudeBackgroundAgentFailureMessage(result.stderr, 'the Claude Code CLI failed')
+    }
   }
   // Why: a CLI that answered with something else did not report "no agents", it reported nothing
   // anybody can read, and the panel must not show that as an empty list.
@@ -91,15 +92,4 @@ async function readLocalClaudeBackgroundAgentListing(
     return { status: 'error', message: listing.message }
   }
   return { status: 'ready', agents: listing.agents }
-}
-
-/** What the CLI said about its refusal, trimmed to what a panel can show. */
-function readFailureMessage(stderr: string): string {
-  const trimmed = stderr.trim()
-  if (!trimmed) {
-    return 'the Claude Code CLI failed'
-  }
-  return trimmed.length > MAX_FAILURE_MESSAGE_LENGTH
-    ? `${trimmed.slice(0, MAX_FAILURE_MESSAGE_LENGTH)}…`
-    : trimmed
 }

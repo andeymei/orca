@@ -1,3 +1,4 @@
+import { translate } from '@/i18n/i18n'
 import type { PreloadApi } from '../../../../preload/api-types'
 import type {
   ClaudeBackgroundAgentCommandResult,
@@ -14,12 +15,21 @@ export function createWebClaudeAgentsApi(): NonNullable<Partial<PreloadApi>['cla
     readDetails: (): Promise<Record<string, ClaudeBackgroundAgentDetail>> => Promise.resolve({}),
     // Why: the CLI that starts an agent runs on the desktop, not in the browser.
     dispatch: (): Promise<ClaudeBackgroundAgentCommandResult> =>
-      Promise.resolve({ ok: false, message: 'not available on the web' }),
+      Promise.resolve({
+        ok: false,
+        message: translate('auto.web.web.preload.api.31bfe8ae1a', 'Unavailable in the web client.')
+      }),
     // Why: the CLI that stops an agent runs on the desktop, not in the browser.
     stop: (): Promise<ClaudeBackgroundAgentCommandResult> =>
-      Promise.resolve({ ok: false, message: 'not available on the web' }),
+      Promise.resolve({
+        ok: false,
+        message: translate('auto.web.web.preload.api.31bfe8ae1a', 'Unavailable in the web client.')
+      }),
     // Why: the CLI that deletes an agent runs on the desktop, not in the browser.
     remove: (): Promise<ClaudeBackgroundAgentCommandResult> =>
-      Promise.resolve({ ok: false, message: 'not available on the web' })
+      Promise.resolve({
+        ok: false,
+        message: translate('auto.web.web.preload.api.31bfe8ae1a', 'Unavailable in the web client.')
+      })
   }
 }

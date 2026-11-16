@@ -78,6 +78,9 @@ export function registerClaudeAgentsHandlers(): void {
         (id) => readClaudeBackgroundAgentJobState(id)
       )
   )
+  // The permission modes the CLI accepts and the `--` that keeps a prompt starting with a dash out
+  // of the options both live in the command layer, so this layer only checks the shape of the
+  // arguments the renderer sent.
   ipcMain.handle(
     'claudeAgents:dispatch',
     async (_event, args: unknown): Promise<ClaudeBackgroundAgentCommandResult> => {
@@ -122,11 +125,15 @@ export function registerClaudeAgentsHandlers(): void {
  * as a raw TypeError.
  */
 function readStringField(args: unknown, field: string): string | null {
-  if (typeof args !== 'object' || args === null) {
+  if (!isRecord(args)) {
     return null
   }
-  const value = (args as Record<string, unknown>)[field]
+  const value = args[field]
   return typeof value === 'string' ? value : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 function readErrorMessage(error: unknown): string {

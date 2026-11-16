@@ -1220,7 +1220,13 @@ Expected: FAIL —— `cancelDispatch` 通道不存在，`signal` 没往下传�
 
 - `ClaudeBackgroundAgentCommandDependencies` 加 `signal?: AbortSignal`。
 - `runClaudeCommand` 的 `options` 加 `signal?: AbortSignal`，传给 `runProcess` 的 spec —— `ProcessSpec.signal` 已经有了（`src/packages/process-host/src/process-spec.ts:30`），语义是「中止后仍然 resolve 出进程结果」。
-- `failureMessage`：`result.signal` 非 null（进程是被信号杀死的）→ 返回 `'the dispatch was cancelled'`。
+- `failureMessage` 的分支**顺序**（先看是不是我们自己中止的）：
+  - `signal?.aborted` → `'the dispatch was cancelled'`（是我们按 Esc 中止的）。
+  - `result.timedOut` → `'the CLI timed out'`（**超时不是取消**）。
+  - `result.signal !== null`（被别的信号杀掉）→ `'the CLI was stopped before it finished'`。
+  - 其余 → 走共享截断 helper。
+
+  **为什么不能只看 `result.signal !== null`**：超时的时候进程也是被信号杀死的 —— `runProcess` 的超时路径会 kill 子进程，退出事件带 `signal: 'SIGTERM'`（`src/packages/process-host/src/run-process.ts:236-239`）。所以 `claude rm` 超时 30s 会被说成「派发被取消」：**既说错了原因，又用错了词** —— stop/rm 不是派发。
 
 **IPC 层** (`claude-agents.ts`)：
 

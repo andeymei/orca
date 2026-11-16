@@ -18,8 +18,18 @@ import { isAppOwnedCopyChord } from '@/components/terminal-pane/input/keyboard/x
 
 /** Compose IME, clipboard and pane policy in xterm’s single custom handler; defer macOS Cmd+V to its menu accelerator to avoid double paste. Dispose Option-location listeners on teardown. */
 export function installPreviewTerminalKeyHandler(args: {
-  terminal: Terminal
+  terminal: Pick<
+    Terminal,
+    | 'attachCustomKeyEventHandler'
+    | 'getSelection'
+    | 'hasSelection'
+    | 'scrollToTop'
+    | 'scrollToBottom'
+    | 'selectAll'
+  >
   claimImeKeyEvent: (event: KeyboardEvent) => boolean
+  /** Claims a key before xterm encodes it; returning true stops xterm from handling it. */
+  claimKeyEvent?: (event: KeyboardEvent) => boolean
   pasteClipboardText: (activeElement: Element | null, source: 'keyboard') => void
   sendInput: (data: string) => void
   requestClose?: () => void
@@ -81,6 +91,10 @@ export function installPreviewTerminalKeyHandler(args: {
   window.addEventListener('blur', onWindowBlur)
 
   terminal.attachCustomKeyEventHandler((event) => {
+    if (args.claimKeyEvent?.(event)) {
+      // Why: the caller owns this key (a panel's back arrow), so xterm must not encode it.
+      return false
+    }
     if (args.claimImeKeyEvent(event)) {
       // Why: bypass xterm's kitty encoder for native-text keydowns so the committed glyph survives via the input event.
       return false

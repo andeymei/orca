@@ -34,6 +34,8 @@ export type StandaloneTerminalArgs = {
   getTerminalInput: () => DashboardCardTerminalInput | null
   linkHandlers?: PreviewTerminalLinkHandlers
   requestClose?: () => void
+  /** Claims a key before xterm encodes it; returning true stops xterm from handling it. */
+  claimKeyEvent?: (event: KeyboardEvent) => boolean
 }
 
 export type StandaloneTerminal = {
@@ -93,6 +95,7 @@ export function openStandaloneTerminal(args: StandaloneTerminalArgs): Standalone
   const disposeKeyHandler = installPreviewTerminalKeyHandler({
     terminal,
     claimImeKeyEvent: (event) => imeBridge?.claimKeyEvent(event) ?? false,
+    claimKeyEvent: args.claimKeyEvent,
     pasteClipboardText: (activeElement, source) => void pasteClipboardText(activeElement, source),
     // Why: route through terminal.input so the chord's bytes carry core's user-input signal, like typed keys.
     sendInput: (data) => terminal.input(data),

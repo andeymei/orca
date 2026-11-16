@@ -14,6 +14,17 @@ const deps = (stdout: string, code = 0, stderr = '') => ({
   resolveEnvironment: async () => ({})
 })
 
+/** A CLI that ended the way the test says it ended. */
+const died = (result: {
+  code: number | null
+  signal: NodeJS.Signals | null
+  timedOut: boolean
+}) => ({
+  runCommand: async () => ({ ...result, stdout: '', stderr: '' }),
+  resolveCommand: async () => '/usr/local/bin/claude',
+  resolveEnvironment: async () => ({})
+})
+
 describe('dispatchClaudeBackgroundAgent', () => {
   it('reads the new agent id out of the CLI output', async () => {
     const result = await dispatchClaudeBackgroundAgent(
@@ -144,24 +155,6 @@ describe('dispatchClaudeBackgroundAgent', () => {
     expect(seen.signal).toBe(controller.signal)
   })
 
-  it('says the dispatch was cancelled when the process was killed', async () => {
-    const result = await dispatchClaudeBackgroundAgent(
-      { prompt: 'x' },
-      {
-        runCommand: async () => ({
-          code: null,
-          signal: 'SIGTERM',
-          stdout: '',
-          stderr: '',
-          timedOut: false
-        }),
-        resolveCommand: async () => '/usr/local/bin/claude',
-        resolveEnvironment: async () => ({})
-      }
-    )
-    expect(result).toEqual({ ok: false, message: 'the dispatch was cancelled' })
-  })
-
   it('fails when the CLI is not installed', async () => {
     const result = await dispatchClaudeBackgroundAgent(
       { prompt: 'x' },
@@ -174,6 +167,34 @@ describe('dispatchClaudeBackgroundAgent', () => {
       }
     )
     expect(result).toEqual({ ok: false, message: 'Claude Code CLI not found' })
+  })
+})
+
+describe('why a command failed', () => {
+  it('says the dispatch was cancelled when the caller aborted it', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      { ...died({ code: null, signal: 'SIGTERM', timedOut: false }), signal: controller.signal }
+    )
+    expect(result).toEqual({ ok: false, message: 'the dispatch was cancelled' })
+  })
+
+  it('says the CLI timed out when the CLI ran out of time', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      died({ code: null, signal: 'SIGTERM', timedOut: true })
+    )
+    expect(result).toEqual({ ok: false, message: 'the CLI timed out' })
+  })
+
+  it('says the CLI was stopped when something else killed it', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      died({ code: null, signal: 'SIGTERM', timedOut: false })
+    )
+    expect(result).toEqual({ ok: false, message: 'the CLI was stopped before it finished' })
   })
 })
 
@@ -288,5 +309,28 @@ describe('the commands the CLI takes', () => {
       }
     )
     expect(seen.timeoutMs).toBe(30_000)
+  })
+
+  it('hands the abort signal to a stop, so a hanging command can be given up', async () => {
+    const seen: { signal?: AbortSignal } = {}
+    const controller = new AbortController()
+    await stopClaudeBackgroundAgent(
+      { id: '4db4f587' },
+      {
+        ...deps('stopped 4db4f587\n'),
+        signal: controller.signal,
+        runCommand: async (spec: ProcessSpec) => {
+          seen.signal = spec.signal
+          return {
+            code: 0,
+            signal: null,
+            stdout: 'stopped 4db4f587\n',
+            stderr: '',
+            timedOut: false
+          }
+        }
+      }
+    )
+    expect(seen.signal).toBe(controller.signal)
   })
 })

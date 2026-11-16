@@ -82,8 +82,7 @@ export async function dispatchClaudeBackgroundAgent(
     ],
     {
       timeoutMs: CLAUDE_BACKGROUND_AGENT_DISPATCH_TIMEOUT_MS,
-      cwd: args.cwd,
-      signal: dependencies.signal
+      cwd: args.cwd
     },
     dependencies
   )
@@ -158,7 +157,7 @@ async function runAgentIdCommand(
 /** Run one `claude` command and report what it said. */
 async function runClaudeCommand(
   args: readonly string[],
-  options: { timeoutMs: number; cwd?: string | null; signal?: AbortSignal },
+  options: { timeoutMs: number; cwd?: string | null },
   dependencies: ClaudeBackgroundAgentCommandDependencies
 ): Promise<ClaudeCommandRun> {
   try {
@@ -177,10 +176,10 @@ async function runClaudeCommand(
       env,
       timeoutMs: options.timeoutMs,
       maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
-      signal: options.signal
+      signal: dependencies.signal
     })
     if (result.code !== 0 || result.timedOut) {
-      return { ok: false, message: failureMessage(result, options.signal) }
+      return { ok: false, message: failureMessage(result, dependencies.signal) }
     }
     return { ok: true, result }
   } catch (error) {
@@ -197,11 +196,18 @@ function readDispatchedAgentId(stdout: string): string | null {
 /**
  * Why the command failed.
  *
- * A process killed by a signal did not refuse the command, so the CLI's words are not the reason.
+ * The abort comes first: the panel asked for it, and it is the only reason the caller knows of.
+ * A timeout kills the child too, so it has to be read before the signal that the kill left behind.
  */
 function failureMessage(result: ProcessResult, signal?: AbortSignal): string {
-  if (result.signal !== null || signal?.aborted) {
+  if (signal?.aborted) {
     return CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE
+  }
+  if (result.timedOut) {
+    return 'the CLI timed out'
+  }
+  if (result.signal !== null) {
+    return 'the CLI was stopped before it finished'
   }
   return readClaudeBackgroundAgentFailureMessage(result.stderr, 'the CLI did not report why')
 }

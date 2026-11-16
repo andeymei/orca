@@ -23,6 +23,8 @@ export type ClaudeBackgroundAgentCommandDependencies = {
   runCommand?: typeof runProcess
   resolveCommand?: typeof resolveCommandOnLocalPath
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
+  /** Aborts the command while it runs; the panel cancels a dispatch that is still opening. */
+  signal?: AbortSignal
 }
 
 /** The CLI prints the new agent's id after `backgrounded`; what counts as an id is the shared rule. */
@@ -77,7 +79,11 @@ export async function dispatchClaudeBackgroundAgent(
       '--',
       args.prompt
     ],
-    { timeoutMs: CLAUDE_BACKGROUND_AGENT_DISPATCH_TIMEOUT_MS, cwd: args.cwd },
+    {
+      timeoutMs: CLAUDE_BACKGROUND_AGENT_DISPATCH_TIMEOUT_MS,
+      cwd: args.cwd,
+      signal: dependencies.signal
+    },
     dependencies
   )
   if (!run.ok) {
@@ -151,7 +157,7 @@ async function runAgentIdCommand(
 /** Run one `claude` command and report what it said. */
 async function runClaudeCommand(
   args: readonly string[],
-  options: { timeoutMs: number; cwd?: string | null },
+  options: { timeoutMs: number; cwd?: string | null; signal?: AbortSignal },
   dependencies: ClaudeBackgroundAgentCommandDependencies
 ): Promise<ClaudeCommandRun> {
   try {
@@ -169,10 +175,11 @@ async function runClaudeCommand(
       cwd: options.cwd ?? undefined,
       env,
       timeoutMs: options.timeoutMs,
-      maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
+      maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
+      signal: options.signal
     })
     if (result.code !== 0 || result.timedOut) {
-      return { ok: false, message: failureMessage(result) }
+      return { ok: false, message: failureMessage(result, options.signal) }
     }
     return { ok: true, result }
   } catch (error) {
@@ -186,7 +193,14 @@ function readDispatchedAgentId(stdout: string): string | null {
   return candidate && CLAUDE_BACKGROUND_AGENT_ID_PATTERN.test(candidate) ? candidate : null
 }
 
-/** What the CLI said about its refusal; an empty stderr means it said nothing at all. */
-function failureMessage(result: ProcessResult): string {
+/**
+ * Why the command failed.
+ *
+ * A process killed by a signal did not refuse the command, so the CLI's words are not the reason.
+ */
+function failureMessage(result: ProcessResult, signal?: AbortSignal): string {
+  if (result.signal !== null || signal?.aborted) {
+    return 'the dispatch was cancelled'
+  }
   return readClaudeBackgroundAgentFailureMessage(result.stderr, 'the CLI did not report why')
 }

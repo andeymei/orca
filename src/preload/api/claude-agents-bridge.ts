@@ -16,6 +16,7 @@ export const claudeAgentsApi = {
     args: ClaudeBackgroundAgentDispatchArgs
   ): Promise<ClaudeBackgroundAgentCommandResult> =>
     ipcRenderer.invoke('claudeAgents:dispatch', args),
+  cancelDispatch: (): Promise<void> => ipcRenderer.invoke('claudeAgents:cancelDispatch'),
   stop: (args: ClaudeBackgroundAgentIdArgs): Promise<ClaudeBackgroundAgentCommandResult> =>
     ipcRenderer.invoke('claudeAgents:stop', args),
   remove: (args: ClaudeBackgroundAgentIdArgs): Promise<ClaudeBackgroundAgentCommandResult> =>

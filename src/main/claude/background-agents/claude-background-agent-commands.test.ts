@@ -121,6 +121,47 @@ describe('dispatchClaudeBackgroundAgent', () => {
     expect(result).toEqual({ ok: false, message: 'the CLI did not print an agent id' })
   })
 
+  it('hands the abort signal to the CLI', async () => {
+    const seen: { signal?: AbortSignal } = {}
+    const controller = new AbortController()
+    await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      {
+        ...deps('backgrounded · 4db4f587\n'),
+        signal: controller.signal,
+        runCommand: async (spec: ProcessSpec) => {
+          seen.signal = spec.signal
+          return {
+            code: 0,
+            signal: null,
+            stdout: 'backgrounded · 4db4f587\n',
+            stderr: '',
+            timedOut: false
+          }
+        }
+      }
+    )
+    expect(seen.signal).toBe(controller.signal)
+  })
+
+  it('says the dispatch was cancelled when the process was killed', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      {
+        runCommand: async () => ({
+          code: null,
+          signal: 'SIGTERM',
+          stdout: '',
+          stderr: '',
+          timedOut: false
+        }),
+        resolveCommand: async () => '/usr/local/bin/claude',
+        resolveEnvironment: async () => ({})
+      }
+    )
+    expect(result).toEqual({ ok: false, message: 'the dispatch was cancelled' })
+  })
+
   it('fails when the CLI is not installed', async () => {
     const result = await dispatchClaudeBackgroundAgent(
       { prompt: 'x' },

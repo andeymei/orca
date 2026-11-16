@@ -1,4 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import type {
+  ClaudeBackgroundAgentCommandResult,
+  ClaudeBackgroundAgentDispatchArgs
+} from '../../../shared/claude-background-agents'
 import { buildClaudeBackgroundAgentListResult, registerClaudeAgentsHandlers } from './claude-agents'
 
 const ipcHandlers = vi.hoisted(
@@ -109,7 +113,10 @@ describe('registerClaudeAgentsHandlers', () => {
     await expect(
       handlerFor('claudeAgents:dispatch')({}, { prompt: 'do the thing' })
     ).resolves.toEqual({ ok: true, id: 'aaaa1111' })
-    expect(cli.dispatch).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'do the thing' }))
+    expect(cli.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: 'do the thing' }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    )
   })
 
   it('refuses a stop without an agent id', async () => {
@@ -126,6 +133,36 @@ describe('registerClaudeAgentsHandlers', () => {
       message: 'the command needs an agent id'
     })
     expect(cli.remove).not.toHaveBeenCalled()
+  })
+})
+
+describe('the dispatch that is still opening', () => {
+  beforeEach(() => {
+    registerClaudeAgentsHandlers()
+  })
+
+  it('aborts the dispatch that is still opening', async () => {
+    const seen: { signal?: AbortSignal } = {}
+    registerClaudeAgentsHandlers({
+      dispatch: (
+        _args: ClaudeBackgroundAgentDispatchArgs,
+        dependencies?: { signal?: AbortSignal }
+      ) =>
+        new Promise<ClaudeBackgroundAgentCommandResult>((resolve) => {
+          seen.signal = dependencies?.signal
+          dependencies?.signal?.addEventListener('abort', () => {
+            resolve({ ok: false, message: 'the dispatch was cancelled' })
+          })
+        })
+    })
+    const dispatch = handlerFor('claudeAgents:dispatch')({}, { prompt: 'do the thing' })
+    await handlerFor('claudeAgents:cancelDispatch')({})
+    expect(seen.signal?.aborted).toBe(true)
+    await dispatch
+  })
+
+  it('does nothing when no dispatch is opening', async () => {
+    await expect(handlerFor('claudeAgents:cancelDispatch')({})).resolves.toBeUndefined()
   })
 })
 

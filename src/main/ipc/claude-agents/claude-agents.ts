@@ -60,7 +60,27 @@ async function readClaudeBackgroundAgentDetails(
   return details
 }
 
-export function registerClaudeAgentsHandlers(): void {
+/**
+ * The commands this layer runs; injected so the tests can replace them.
+ *
+ * The dispatch has to be interruptible: the panel may cancel it while the agent is still opening.
+ */
+export type ClaudeAgentsHandlerDependencies = {
+  dispatch?: typeof dispatchClaudeBackgroundAgent
+  stop?: typeof stopClaudeBackgroundAgent
+  remove?: typeof removeClaudeBackgroundAgent
+}
+
+export function registerClaudeAgentsHandlers(
+  dependencies: ClaudeAgentsHandlerDependencies = {}
+): void {
+  const dispatch = dependencies.dispatch ?? dispatchClaudeBackgroundAgent
+  const stop = dependencies.stop ?? stopClaudeBackgroundAgent
+  const remove = dependencies.remove ?? removeClaudeBackgroundAgent
+  // Why: the panel keeps one dispatch on its way at a time, so one controller is enough; a module
+  // level one would be shared by every registration and leak between tests.
+  let inFlightDispatch: AbortController | null = null
+
   ipcMain.handle('claudeAgents:list', (): Promise<ClaudeBackgroundAgentListResult> =>
     buildClaudeBackgroundAgentListResult(
       () => listClaudeBackgroundAgentsOrNull(),
@@ -88,14 +108,30 @@ export function registerClaudeAgentsHandlers(): void {
       if (prompt === null || prompt.trim() === '') {
         return { ok: false, message: 'the dispatch needs a prompt' }
       }
-      return dispatchClaudeBackgroundAgent({
-        prompt,
-        cwd: readStringField(args, 'cwd'),
-        model: readStringField(args, 'model'),
-        permissionMode: readStringField(args, 'permissionMode')
-      })
+      const controller = new AbortController()
+      inFlightDispatch = controller
+      try {
+        return await dispatch(
+          {
+            prompt,
+            cwd: readStringField(args, 'cwd'),
+            model: readStringField(args, 'model'),
+            permissionMode: readStringField(args, 'permissionMode')
+          },
+          { signal: controller.signal }
+        )
+      } finally {
+        // Why: a second dispatch may have taken the slot; only its owner may give it back.
+        if (inFlightDispatch === controller) {
+          inFlightDispatch = null
+        }
+      }
     }
   )
+  ipcMain.handle('claudeAgents:cancelDispatch', async (): Promise<void> => {
+    // Why: `claude --bg` detaches the agent, so the only way to cancel it is to stop that process.
+    inFlightDispatch?.abort()
+  })
   ipcMain.handle(
     'claudeAgents:stop',
     async (_event, args: unknown): Promise<ClaudeBackgroundAgentCommandResult> => {
@@ -103,7 +139,7 @@ export function registerClaudeAgentsHandlers(): void {
       if (id === null) {
         return { ok: false, message: 'the command needs an agent id' }
       }
-      return stopClaudeBackgroundAgent({ id })
+      return stop({ id })
     }
   )
   ipcMain.handle(
@@ -113,7 +149,7 @@ export function registerClaudeAgentsHandlers(): void {
       if (id === null) {
         return { ok: false, message: 'the command needs an agent id' }
       }
-      return removeClaudeBackgroundAgent({ id })
+      return remove({ id })
     }
   )
 }

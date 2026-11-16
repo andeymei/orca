@@ -1302,7 +1302,15 @@ it('says so when the dispatch fails', () => { ... })
 it('says the panel lists this machine when the workspace runs elsewhere', () => { ... })
 ```
 
-每个用例用 `createTestStore()` 预置 `backgroundAgentsAgents`，用 `@testing-library/react` 渲染 `BackgroundAgentListScreen`，用 `fireEvent.keyDown(root, { key: 'ArrowDown' })` 驱动。
+每个用例用 `@testing-library/react` 渲染 `BackgroundAgentListScreen`，用 `fireEvent.keyDown(root, { key: 'ArrowDown' })` 驱动。
+
+**脚手架照 `src/renderer/src/components/right-sidebar/ai-vault/accounts/ai-vault-session-account-render.test.tsx`**（组件测试的既有做法，不要另创一套）：
+
+- 文件头 `// @vitest-environment happy-dom`。
+- `vi.mock('@/i18n/i18n', async (importOriginal) => ({ ...(await importOriginal<typeof I18n>()), translate: (_key: string, fallback: string) => fallback }))` —— 文案走 fallback，断言里就能直接写英文。
+- **喂名单**：`createTestStore()` **不接受初始状态**（它只接一个 `isClaudeAgent` 参数），组件测试的既有做法是直接喂全局 store：`useAppStore.setState({ backgroundAgentsAgents: [...], backgroundAgentsDetails: {...} })`，或者走 store 自己的动作 `useAppStore.getState().publishBackgroundAgentsListing({ status: 'ready', agents: [...], details: {...}, message: null })`。从 `src/renderer/src/components/background-agents/` 出发，store 的相对路径是 `../../store/index`。
+- **stub API**：`window.api.claudeAgents = { ...window.api.claudeAgents, dispatch: vi.fn(async () => ({ ok: true, id: 'aaaa1111' })) }`。
+- **每个用例之间把 store 复位** —— `useAppStore.setState` 改的是全局 store，不复位会串味。
 
 断言要具体：
 

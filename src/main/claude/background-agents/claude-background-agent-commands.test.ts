@@ -2,11 +2,24 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProcessSpec } from '@orca/process-host/process-spec'
 import { CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES } from '../../../shared/claude-background-agents'
+import { PARENT_AGENT_SESSION_STAMP_ENV_KEYS } from '../../../shared/agent-launch/startup/parent-agent-session-env'
 import {
   dispatchClaudeBackgroundAgent,
   removeClaudeBackgroundAgent,
   stopClaudeBackgroundAgent
 } from './claude-background-agent-commands'
+
+const stampKeys = new Set<string>(PARENT_AGENT_SESSION_STAMP_ENV_KEYS)
+
+/** An environment that carries every session stamp the repo knows, plus the job dir. */
+function environmentWithSessionStamps(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { PATH: '/usr/local/bin' }
+  for (const key of PARENT_AGENT_SESSION_STAMP_ENV_KEYS) {
+    env[key] = 'stamped'
+  }
+  env.CLAUDE_JOB_DIR = '/tmp/claude-jobs/4f5d4302'
+  return env
+}
 
 const deps = (stdout: string, code = 0, stderr = '') => ({
   runCommand: async () => ({ code, signal: null, stdout, stderr, timedOut: false }),
@@ -195,6 +208,56 @@ describe('dispatchClaudeBackgroundAgent', () => {
       }
     )
     expect(result).toEqual({ ok: false, message: 'Claude Code CLI not found' })
+  })
+})
+
+describe('the environment the CLI runs in', () => {
+  it('hands the CLI no session stamp, so the dispatch starts a new agent', async () => {
+    // Why: the CLI continues the session it finds in its environment, so a stamped environment
+    // would hand the user their own session back instead of a new agent.
+    let seen: NodeJS.ProcessEnv | undefined
+    await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      {
+        ...deps('backgrounded · 4db4f587\n'),
+        resolveEnvironment: async () => environmentWithSessionStamps(),
+        runCommand: async (spec: ProcessSpec) => {
+          seen = spec.env
+          return {
+            code: 0,
+            signal: null,
+            stdout: 'backgrounded · 4db4f587\n',
+            stderr: '',
+            timedOut: false
+          }
+        }
+      }
+    )
+    expect(Object.keys(seen ?? {}).filter((key) => stampKeys.has(key))).toEqual([])
+    expect(seen?.CLAUDE_JOB_DIR).toBeUndefined()
+  })
+
+  it('hands the removal no session stamp either, because it deletes for good', async () => {
+    let seen: NodeJS.ProcessEnv | undefined
+    await removeClaudeBackgroundAgent(
+      { id: '4db4f587' },
+      {
+        ...deps('removed 4db4f587\n'),
+        resolveEnvironment: async () => environmentWithSessionStamps(),
+        runCommand: async (spec: ProcessSpec) => {
+          seen = spec.env
+          return {
+            code: 0,
+            signal: null,
+            stdout: 'removed 4db4f587\n',
+            stderr: '',
+            timedOut: false
+          }
+        }
+      }
+    )
+    expect(Object.keys(seen ?? {}).filter((key) => stampKeys.has(key))).toEqual([])
+    expect(seen?.CLAUDE_JOB_DIR).toBeUndefined()
   })
 })
 

@@ -12,6 +12,7 @@ import {
 } from '../../../shared/claude-background-agents'
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
+import { backgroundAgentCommandEnvironment } from './claude-background-agent-environment'
 import { CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS } from './claude-background-agent-list'
 
 /** Dispatching waits for the agent to come up, which takes longer than a listing does. */
@@ -161,7 +162,9 @@ async function runClaudeCommand(
   dependencies: ClaudeBackgroundAgentCommandDependencies
 ): Promise<ClaudeCommandRun> {
   try {
-    const env = await (dependencies.resolveEnvironment ?? hostShellEnvironment)()
+    const env = backgroundAgentCommandEnvironment(
+      await (dependencies.resolveEnvironment ?? hostShellEnvironment)()
+    )
     const program = await (dependencies.resolveCommand ?? resolveCommandOnLocalPath)('claude', {
       platform: process.platform,
       env

@@ -1,10 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ProcessResult, ProcessSpec } from '@orca/process-host/process-spec'
+import { PARENT_AGENT_SESSION_STAMP_ENV_KEYS } from '../../../shared/agent-launch/startup/parent-agent-session-env'
 import {
   listClaudeBackgroundAgents,
   listClaudeBackgroundAgentsOrNull,
   type ClaudeBackgroundAgentAllFlagMemory
 } from './claude-background-agent-list'
+
+const stampKeys = new Set<string>(PARENT_AGENT_SESSION_STAMP_ENV_KEYS)
+
+/** An environment that carries every session stamp the repo knows, plus the job dir. */
+function environmentWithSessionStamps(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { PATH: '/usr/local/bin' }
+  for (const key of PARENT_AGENT_SESSION_STAMP_ENV_KEYS) {
+    env[key] = 'stamped'
+  }
+  env.CLAUDE_JOB_DIR = '/tmp/claude-jobs/4f5d4302'
+  return env
+}
 
 function result(overrides: Partial<ProcessResult>): ProcessResult {
   return { code: 0, signal: null, stdout: '', stderr: '', timedOut: false, ...overrides }
@@ -98,6 +111,22 @@ describe('listClaudeBackgroundAgents', () => {
       resolveEnvironment: async () => ({})
     })
     expect(agents).toEqual([])
+  })
+
+  it('asks the CLI without the parent session stamps, so the listing is the machine’s own', async () => {
+    // Why: the CLI continues the session it finds in its environment, and a listing answered by
+    // that session is not this machine's roster.
+    let seen: NodeJS.ProcessEnv | undefined
+    await listClaudeBackgroundAgents({
+      runCommand: async (spec: ProcessSpec) => {
+        seen = spec.env
+        return result({ stdout: '[]' })
+      },
+      resolveCommand: async () => '/usr/local/bin/claude',
+      resolveEnvironment: async () => environmentWithSessionStamps()
+    })
+    expect(Object.keys(seen ?? {}).filter((key) => stampKeys.has(key))).toEqual([])
+    expect(seen?.CLAUDE_JOB_DIR).toBeUndefined()
   })
 })
 
@@ -193,8 +222,10 @@ describe('a CLI that does not know --all', () => {
   })
 
   it('does not ask again when the CLI times out', async () => {
+    // Why: a real timeout is `code: null`, and its stderr may still carry the diagnostic — only
+    // the timeout guard keeps that case out of the fallback.
     const runCommand = vi.fn(async (_spec: ProcessSpec): Promise<ProcessResult> =>
-      result({ timedOut: true })
+      result({ code: null, timedOut: true, stderr: "error: unknown option '--all'" })
     )
     await expect(
       listClaudeBackgroundAgentsOrNull({

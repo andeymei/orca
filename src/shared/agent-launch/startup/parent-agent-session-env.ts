@@ -44,6 +44,7 @@ export function stripInheritedAgentSessionEnv(
     platform = process.platform
   }: {
     launchEnv?: NodeJS.ProcessEnv
+    /** Keys the child must not carry, whether or not they are session stamps. */
     envToDelete?: readonly string[]
     platform?: NodeJS.Platform
   } = {}
@@ -61,10 +62,7 @@ export function stripInheritedAgentSessionEnv(
     }
   }
   for (const key of envToDelete) {
-    const canonical = canonicalAgentSessionStampEnvKey(key, platform)
-    if (stampKeys.has(canonical)) {
-      delete env[canonical]
-    }
+    delete env[canonicalAgentSessionStampEnvKey(key, platform)]
   }
 }
 

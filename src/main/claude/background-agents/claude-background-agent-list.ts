@@ -8,6 +8,7 @@ import {
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
 import { UNKNOWN_OPTION_DIAGNOSTIC } from '../claude-cli-flag-support'
+import { backgroundAgentCommandEnvironment } from './claude-background-agent-environment'
 
 /**
  * The listing the panel asks the CLI for.
@@ -100,7 +101,9 @@ export async function listClaudeBackgroundAgentsOrNull(
 async function readLocalClaudeBackgroundAgentListing(
   dependencies: ClaudeBackgroundAgentDependencies
 ): Promise<LocalClaudeBackgroundAgentListing> {
-  const env = await (dependencies.resolveEnvironment ?? hostShellEnvironment)()
+  const env = backgroundAgentCommandEnvironment(
+    await (dependencies.resolveEnvironment ?? hostShellEnvironment)()
+  )
   const program = await (dependencies.resolveCommand ?? resolveCommandOnLocalPath)('claude', {
     platform: process.platform,
     env

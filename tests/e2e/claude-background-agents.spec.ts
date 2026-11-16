@@ -31,6 +31,10 @@ import { runProcess } from '@orca/process-host'
 import { expect, test as base } from './helpers/orca-app'
 import { resolveClaudeCommand } from '../../src/shared/node-cli-command-resolution'
 import {
+  PARENT_AGENT_SESSION_STAMP_ENV_KEYS,
+  stripInheritedAgentSessionEnv
+} from '../../src/shared/agent-launch/startup/parent-agent-session-env'
+import {
   CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
   readClaudeBackgroundAgentDispatchedId,
   readClaudeBackgroundAgentsListing,
@@ -126,24 +130,20 @@ function quoteShellValue(value: string): string {
  * of the probe's. Both write into the terminal the spec is typing in, and a write makes the
  * attach client redraw and drop the draft it was holding. The spec's probe and the app's CLI are
  * their own sessions, so the variables go.
+ *
+ * The list is the repo's own — the same one the panel strips and the PTY path deletes — so the
+ * spec and the product isolate a CLI the same way.
  */
 const AMBIENT_SESSION_ENV_VARS = [
-  'CLAUDE_CODE_SESSION_ID',
-  'CLAUDE_CODE_CHILD_SESSION',
-  'CLAUDE_CODE_MESSAGING_SOCKET',
-  'CLAUDE_CODE_MESSAGING_TOKEN',
-  'CLAUDE_CODE_SESSION_ATTENDED',
-  'CLAUDE_JOB_DIR',
-  'CLAUDE_PID',
-  'CLAUDECODE'
+  ...PARENT_AGENT_SESSION_STAMP_ENV_KEYS,
+  // A pane is never a Claude background job, and neither is the spec's probe.
+  'CLAUDE_JOB_DIR'
 ] as const
 
 /** The machine's environment, without the session that happens to be running the spec. */
 function environmentWithoutAmbientSession(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
-  for (const name of AMBIENT_SESSION_ENV_VARS) {
-    delete env[name]
-  }
+  stripInheritedAgentSessionEnv(env, { envToDelete: ['CLAUDE_JOB_DIR'] })
   return env
 }
 

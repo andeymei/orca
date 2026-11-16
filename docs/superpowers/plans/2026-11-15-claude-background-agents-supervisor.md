@@ -1325,7 +1325,7 @@ it('says the panel lists this machine when the workspace runs elsewhere', () => 
 - Ctrl+X 第一次之后，行内出现 `ctrl+x again to stop` 的文字，且 `window.api.claudeAgents.stop` **没有被调用**；第二次之后它被调用了一次，且参数是 `{ id: 'bbbb2222' }`。
 - composer 里输入 `do the thing` 并 Enter 之后，`window.api.claudeAgents.dispatch` 被调用，参数含 `prompt: 'do the thing'`。
 - 派发在飞时，列表**顶部**有一行写着 `opening… · esc to cancel`。
-- 在那行上按 `Escape` 之后，`window.api.claudeAgents.cancelDispatch` 被调用了一次，那一行消失。
+- 在那行上按 `Escape` 之后，`window.api.claudeAgents.cancelDispatch` 被调用了一次，**并且派发 promise 落定为「被取消」之后那一行消失**（按 Esc 的当下这一行**不消失** —— `cancelDispatch` 只是把中止信号送到，进程还没死）。
 - 派发失败之后，那一行变成失败态（写着失败原因），并且 `toast.error` 被调用过一次。
 - 活动 worktree 的 `executionHostId` 是 `ssh:...` 时，列表上方出现「这台机器」的说明，**而且名单照常显示**（不换成空列表）。
 
@@ -1386,12 +1386,15 @@ Expected: FAIL —— 组件不存在。
     backgroundAgentsDispatch: BackgroundAgentsDispatch | null
     publishBackgroundAgentsDispatch: (dispatch: BackgroundAgentsDispatch | null) => void
     ```
-  - 派发期间按 `Esc` → 调 `window.api.claudeAgents.cancelDispatch()`，然后这行消失。
-  - 派发**仍然成功**（CLI 抢先把 agent 起好了，中止没赶上）→ 这行变成 `started · <短 id>`，2 秒后自己消失。**不许假装取消成功** —— 用户按了取消却看到 agent 冒出来，比不说清楚更糟。
-  - 派发失败 → 这行变成失败态（写着失败原因），并且调 `toast.error(reason)`（`sonner`）。
+  - 派发期间按 `Esc` → 调 `window.api.claudeAgents.cancelDispatch()`，**把这次派发标成「正在取消」**。**这一行先不要消失** —— `cancelDispatch` 只是把中止信号送到，进程还没死（`abort()` 立刻返回，子进程是异步杀的），这一行的下场由**派发那个 promise 落定**：
+    - 派发 promise 回 `{ ok: false, message: 'the dispatch was cancelled' }` → 这行消失（什么都没建起来）。
+    - 派发 promise 回 `{ ok: true, id }` → **agent 真的建成了**（CLI 抢在中止之前就把 id 打印出来了）→ 这行变成 `started · <短 id>`，2 秒后自己消失。**不许假装取消成功** —— 用户按了取消却看到 agent 冒出来，比不说清楚更糟。
+    - 派发 promise 回别的失败 → 这行变成失败态（写着失败原因），并且调 `toast.error(reason)`（`sonner`）。
   - 派发正常成功 → 这行直接消失（agent 会在下一次轮询里出现在名单上）。
+  - **派发被中止时，CLI 可能已经把 agent id 打印出来了但那次调用返回的是失败** —— 那个 id 被丢掉了，panel 手里没有一个叫得出名字的 agent。**靠名单轮询兜底**：被中止的那次派发之后，慢层会把这个 agent 收进名单。这不是 bug，是「派发中按 Esc」这条路的固有代价。
   - 这行**不是 agent**：不参与 `countBackgroundAgentListRows` 的计数，也不参与 `↑↓` 的选择移动。
   - **派发在飞时，composer 的 Enter 不接受新的派发**（同一时刻只允许一个派发在飞，Task 06.5 的 main 侧只记一个 controller）。
+    **这条 guard 是唯一的保证**：main 侧**不**强制 —— 第二个派发会把第一个的 controller 顶掉，第一个就再也取消不了（Task 06.5 评审的 Minor 2）。所以 composer 的 guard 必须真的挡住。
 - **两步确认**：第一次 Ctrl+X 记下 `{ id, kind: 'stop' | 'delete', at: Date.now() }`；3s 内第二次 Ctrl+X 且 id 相同才真的执行。行内显示 `ctrl+x again to stop` 或 `ctrl+x again to delete`。
 - **删除的提示语**：删除会连 worktree 一起删，确认文案必须写明这一点。
 

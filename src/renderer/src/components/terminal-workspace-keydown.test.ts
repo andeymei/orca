@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   callRuntimeRpc: vi.fn(async () => ({ ok: true })),
   cancelStructuredAgentLaunch: vi.fn(),
   structuredSessionBusy: vi.fn<() => boolean>(),
+  closeAllFiles: vi.fn(),
   floatingFocused: false,
   targetInsideFloatingPanel: false,
   resolveAgentShortcut: vi.fn<
@@ -105,9 +106,10 @@ vi.mock('../store/slices/browser/cleanup/browser-webview-cleanup', () => ({
   destroyWorkspaceWebviews: vi.fn()
 }))
 
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reads a handful of controller fields; a renamed one leaves the handler undefined and the test fails.
 const controller = {
   activeWorktreeId: 'repo-1::/repo/worktree',
-  handleCloseAllFiles: vi.fn(),
+  handleCloseAllFiles: mocks.closeAllFiles,
   handleCloseBrowserTab: vi.fn(),
   handleCloseFile: vi.fn(),
   handleNewBrowserTab: vi.fn(),
@@ -224,5 +226,44 @@ describe('tab.close uses the unified active tab', () => {
     handleTerminalWorkspaceKeyDown(event, controller, 'darwin')
     expect(event.defaultPrevented).toBe(false)
     expect(closeUnifiedTab).not.toHaveBeenCalled()
+  })
+})
+
+describe('tab.closeAll spares the editor tabs while a preview holds the focus', () => {
+  const closeAllChord = (target: Element): KeyboardEvent => {
+    const event = new KeyboardEvent('keydown', {
+      key: 'w',
+      metaKey: true,
+      altKey: true,
+      cancelable: true
+    })
+    Object.defineProperty(event, 'target', { value: target })
+    return event
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.floatingFocused = false
+    mocks.targetInsideFloatingPanel = false
+    mocks.state = { activeView: 'terminal', activeTabType: 'editor', activeFileId: 'file-1' }
+  })
+
+  it('keeps every editor tab when the close-all chord lands in an agent terminal preview', () => {
+    const preview = document.createElement('div')
+    preview.setAttribute('data-agent-terminal-preview', '')
+    const target = document.createElement('textarea')
+    target.classList.add('xterm-helper-textarea')
+    preview.appendChild(target)
+    const event = closeAllChord(target)
+    handleTerminalWorkspaceKeyDown(event, controller, 'darwin')
+    expect(mocks.closeAllFiles).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('still closes every editor tab when the chord lands outside a preview', () => {
+    const event = closeAllChord(document.createElement('div'))
+    handleTerminalWorkspaceKeyDown(event, controller, 'darwin')
+    expect(event.defaultPrevented).toBe(true)
+    expect(mocks.closeAllFiles).toHaveBeenCalledTimes(1)
   })
 })

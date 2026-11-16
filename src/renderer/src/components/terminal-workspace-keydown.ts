@@ -212,6 +212,9 @@ export function handleTerminalWorkspaceKeyDown(
     return
   }
   if (!event.repeat && matchShortcut('tab.closeAll')) {
+    if (previewOwnsClose) {
+      return
+    }
     event.preventDefault()
     notifyTerminalCapture('tab.closeAll')
     handleCloseAllFiles()

@@ -13,6 +13,7 @@ import {
 import { createWebAgentStatusApi } from './preload-api/web-agent-status-api'
 import { createWebAiVaultApi } from './preload-api/web-ai-vault-api'
 import { createWebAppApi } from './preload-api/web-app-api'
+import { createWebClaudeAgentsApi } from './preload-api/web-claude-agents-api'
 import { createBrowserApi, createEmulatorApi } from './preload-api/web-browser-api'
 import { createCliApi } from './preload-api/web-cli-api'
 import { createWebDiagnosticsApi } from './preload-api/web-diagnostics-api'
@@ -120,6 +121,7 @@ function createWebPreloadApi(): Omit<Partial<PreloadApi>, 'settings' | 'plugins'
       onResourceWindowVisibility: () => () => {}
     },
     aiVault: createWebAiVaultApi(),
+    claudeAgents: createWebClaudeAgentsApi(),
     preflight: createPreflightApi(),
     notifications: createNotificationsApi(),
     rateLimits: createRateLimitsApi(),

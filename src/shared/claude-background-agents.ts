@@ -58,6 +58,19 @@ export type ClaudeBackgroundAgentCommandResult =
   | { ok: true; id: string }
   | { ok: false; message: string }
 
+/** What a dispatch asks the CLI for. */
+export type ClaudeBackgroundAgentDispatchArgs = {
+  prompt: string
+  cwd?: string | null
+  model?: string | null
+  permissionMode?: string | null
+}
+
+/** Which agent a command addresses; always the short id the CLI printed. */
+export type ClaudeBackgroundAgentIdArgs = {
+  id: string
+}
+
 /** How many bytes of `claude agents --json` output are read; the envelope is a small array. */
 export const CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES = 256 * 1024
 

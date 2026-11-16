@@ -75,6 +75,7 @@ import { codexUsageApi } from './api/codex-usage-bridge'
 import { openCodeUsageApi } from './api/open-code-usage-bridge'
 import { museUsageApi } from './api/muse-usage-bridge'
 import { aiVaultApi } from './api/ai-vault-bridge'
+import { claudeAgentsApi } from './api/claude-agents-bridge'
 import { nativeChatApi } from './api/native-chat-bridge'
 import { runtimeApi } from './api/runtime-bridge'
 import { runtimeEnvironmentsApi } from './api/runtime-environments-bridge'
@@ -181,6 +182,7 @@ const api = {
   openCodeUsage: openCodeUsageApi,
   museUsage: museUsageApi,
   aiVault: aiVaultApi,
+  claudeAgents: claudeAgentsApi,
   nativeChat: nativeChatApi,
   runtime: runtimeApi,
   runtimeEnvironments: runtimeEnvironmentsApi,

@@ -2,7 +2,9 @@ import { runProcess } from '@orca/process-host'
 import type { ProcessResult } from '@orca/process-host/process-spec'
 import {
   CLAUDE_BACKGROUND_AGENT_ID_PATTERN,
-  type ClaudeBackgroundAgentCommandResult
+  type ClaudeBackgroundAgentCommandResult,
+  type ClaudeBackgroundAgentDispatchArgs,
+  type ClaudeBackgroundAgentIdArgs
 } from '../../../shared/claude-background-agents'
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
@@ -57,12 +59,7 @@ type ClaudeCommandRun = { ok: true; result: ProcessResult } | { ok: false; messa
  * `claude --bg` takes no `--cwd`, so the agent's directory is the one the command runs in.
  */
 export async function dispatchClaudeBackgroundAgent(
-  args: {
-    prompt: string
-    cwd?: string | null
-    model?: string | null
-    permissionMode?: string | null
-  },
+  args: ClaudeBackgroundAgentDispatchArgs,
   dependencies: ClaudeBackgroundAgentCommandDependencies = {}
 ): Promise<ClaudeBackgroundAgentCommandResult> {
   const refusal = refuseDispatchArguments(args)
@@ -107,7 +104,7 @@ function refuseDispatchArguments(args: {
 
 /** Stop a background agent; its conversation is kept, so the panel can open it again. */
 export async function stopClaudeBackgroundAgent(
-  args: { id: string },
+  args: ClaudeBackgroundAgentIdArgs,
   dependencies: ClaudeBackgroundAgentCommandDependencies = {}
 ): Promise<ClaudeBackgroundAgentCommandResult> {
   return runAgentIdCommand('stop', args.id, dependencies)
@@ -115,7 +112,7 @@ export async function stopClaudeBackgroundAgent(
 
 /** Delete a background agent and its worktree; there is no undo for this. */
 export async function removeClaudeBackgroundAgent(
-  args: { id: string },
+  args: ClaudeBackgroundAgentIdArgs,
   dependencies: ClaudeBackgroundAgentCommandDependencies = {}
 ): Promise<ClaudeBackgroundAgentCommandResult> {
   return runAgentIdCommand('rm', args.id, dependencies)

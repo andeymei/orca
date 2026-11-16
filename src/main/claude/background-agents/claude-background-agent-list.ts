@@ -19,6 +19,12 @@ export type ClaudeBackgroundAgentDependencies = {
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
 }
 
+/** What this machine's Claude Code CLI can tell about its agents. */
+type ClaudeBackgroundAgentListing =
+  | { status: 'ready'; agents: ClaudeBackgroundAgent[] }
+  | { status: 'unsupported' }
+  | { status: 'error'; message: string }
+
 /**
  * The Claude Code agents running on this machine.
  *
@@ -28,13 +34,39 @@ export type ClaudeBackgroundAgentDependencies = {
 export async function listClaudeBackgroundAgents(
   dependencies: ClaudeBackgroundAgentDependencies = {}
 ): Promise<ClaudeBackgroundAgent[]> {
+  const listing = await readClaudeBackgroundAgentListing(dependencies)
+  return listing.status === 'ready' ? listing.agents : []
+}
+
+/**
+ * The same agents, or null when this machine has no Claude Code CLI to ask.
+ *
+ * A CLI that is installed but cannot answer throws: the panel keeps the list it already had
+ * instead of showing an empty one.
+ */
+export async function listClaudeBackgroundAgentsOrNull(
+  dependencies: ClaudeBackgroundAgentDependencies = {}
+): Promise<ClaudeBackgroundAgent[] | null> {
+  const listing = await readClaudeBackgroundAgentListing(dependencies)
+  if (listing.status === 'unsupported') {
+    return null
+  }
+  if (listing.status === 'error') {
+    throw new Error(listing.message)
+  }
+  return listing.agents
+}
+
+async function readClaudeBackgroundAgentListing(
+  dependencies: ClaudeBackgroundAgentDependencies
+): Promise<ClaudeBackgroundAgentListing> {
   const env = await (dependencies.resolveEnvironment ?? hostShellEnvironment)()
   const program = await (dependencies.resolveCommand ?? resolveCommandOnLocalPath)('claude', {
     platform: process.platform,
     env
   })
   if (!program) {
-    return []
+    return { status: 'unsupported' }
   }
   const result = await (dependencies.runCommand ?? runProcess)({
     program,
@@ -43,8 +75,11 @@ export async function listClaudeBackgroundAgents(
     timeoutMs: CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS,
     maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
   })
-  if (result.code !== 0 || result.timedOut) {
-    return []
+  if (result.timedOut) {
+    return { status: 'error', message: 'the Claude Code CLI timed out' }
   }
-  return parseClaudeBackgroundAgents(result.stdout)
+  if (result.code !== 0) {
+    return { status: 'error', message: result.stderr.trim() || 'the Claude Code CLI failed' }
+  }
+  return { status: 'ready', agents: parseClaudeBackgroundAgents(result.stdout) }
 }

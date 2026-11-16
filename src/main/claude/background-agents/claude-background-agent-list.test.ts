@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ProcessResult, ProcessSpec } from '@orca/process-host/process-spec'
-import { listClaudeBackgroundAgents } from './claude-background-agent-list'
+import {
+  listClaudeBackgroundAgents,
+  listClaudeBackgroundAgentsOrNull
+} from './claude-background-agent-list'
 
 function result(overrides: Partial<ProcessResult>): ProcessResult {
   return { code: 0, signal: null, stdout: '', stderr: '', timedOut: false, ...overrides }
@@ -56,5 +59,28 @@ describe('listClaudeBackgroundAgents', () => {
       resolveEnvironment: async () => ({})
     })
     expect(agents).toEqual([])
+  })
+})
+
+describe('listClaudeBackgroundAgentsOrNull', () => {
+  it('says the machine has no CLI when the CLI is not installed', async () => {
+    const agents = await listClaudeBackgroundAgentsOrNull({
+      runCommand: async () => {
+        throw new Error('the CLI must not run')
+      },
+      resolveCommand: async () => null,
+      resolveEnvironment: async () => ({})
+    })
+    expect(agents).toBeNull()
+  })
+
+  it('fails loudly when the CLI cannot answer', async () => {
+    await expect(
+      listClaudeBackgroundAgentsOrNull({
+        runCommand: async () => result({ code: 1, stderr: 'not installed' }),
+        resolveCommand: async () => '/usr/local/bin/claude',
+        resolveEnvironment: async () => ({})
+      })
+    ).rejects.toThrow('not installed')
   })
 })

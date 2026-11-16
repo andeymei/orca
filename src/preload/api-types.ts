@@ -50,6 +50,7 @@ import type {
 import type { PetApi } from './api/pet-api'
 import type { AppIconApi } from './api/app-icon-api'
 import type { BrowserPasswordsApi } from './api/browser-passwords-api'
+import type { ClaudeAgentsApi } from './api/claude-agents-api'
 import type { PluginsApi } from './api/plugin-host-api'
 import type { PreflightApi } from './api/preflight-api'
 import type { PtyApi } from './api/pty-api'
@@ -145,6 +146,7 @@ export type PreloadApi = {
   openCodeUsage: OpenCodeUsageApi
   museUsage: MuseUsageApi
   aiVault: AiVaultApi
+  claudeAgents: ClaudeAgentsApi
   nativeChat: NativeChatApi
   fs: FilesystemApi['fs']
   git: Merged<GitInspectionApi & GitOperationApi>

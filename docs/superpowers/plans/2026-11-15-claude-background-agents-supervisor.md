@@ -32,7 +32,7 @@
 这五条是 spec 暗示、但没有哪个任务自己的测试覆盖、且最可能真正咬到人的输入。**每一条都在下面指明了归属任务的测试步骤。**
 
 1. **两个同名 agent** —— 用户自己起的名字可以重复（实测 agent 的名字会自己从 prompt 文本变成 "bash sleep command"）。按名字 attach 会命中错的那个 → Task 3 用 id 正则守卫 + Task 3 的同名用例。
-2. **agent 在详情屏里死掉** —— `claude attach` 的进程退出后 shell 还在，终端看起来像"还活着" → Task 9 的「attach 进程退出」用例 + Task 7 的 header state 来自轮询。
+2. **agent 在详情屏里死掉** —— `claude attach` 的进程退出后 shell 还在，终端看起来像"还活着" → 靠**名单轮询**发现（spec §4.3：attach 进程死掉不靠 shell 退出判定）：Task 9 的详情屏调 Task 7 的 `useBackgroundAgentRosterRefresh()`，header 的 state 跟着名单变 + Task 11 的 E2E 断言「← 返回后 agent 还在」。
 3. **agent 的 name 自己变了** —— 实测名字会自己改（`Wait 20 seconds…` → `bash sleep command`）。行标题必须跟着变，不能冻结 → Task 5 的「详情轮询后 name 更新」用例。
 4. **agent 在等你做决定** —— `state: "blocked"` / `needs: "answer: …"`。如果它混在 Working 段里，用户永远不会知道有个 agent 卡在等他 → Task 5 的「blocked 落到 needs-input 段」用例。
 5. **慢刷新期间列表闪空** —— `--json` 要 1.2s，这期间旧行必须留在 → Task 6 的「刷新期间保留旧名单」用例。
@@ -1265,6 +1265,7 @@ git commit -m "feat(claude-agents): let the panel cancel a dispatch that is stil
 - Create: `src/renderer/src/components/background-agents/BackgroundAgentListScreen.tsx`
 - Modify: `src/renderer/src/components/background-agents/BackgroundAgentRow.tsx`（重写）
 - Create: `src/renderer/src/components/background-agents/BackgroundAgentListScreen.test.tsx`
+- Create: `src/renderer/src/components/background-agents/use-background-agent-roster-refresh.ts`（慢层轮询的 hook，两屏共用）
 - Modify: `src/renderer/src/store/slices/background-agents/create-background-agents-slice.ts`（加派发占位行的字段）
 - Modify: `src/renderer/src/store/slices/background-agents/create-background-agents-slice.test.ts`（占位行状态的测试）
 
@@ -1280,6 +1281,10 @@ git commit -m "feat(claude-agents): let the panel cancel a dispatch that is stil
     selected: boolean
     onSelect: (row: BackgroundAgentListRow) => void
   }): React.JSX.Element
+
+  // src/renderer/src/components/background-agents/use-background-agent-roster-refresh.ts
+  /** Refreshes the roster (the slow layer). Both screens call it; only one is mounted at a time. */
+  export function useBackgroundAgentRosterRefresh(): void
   ```
 
 - [ ] **Step 1: 写失败的测试**
@@ -1338,9 +1343,11 @@ Expected: FAIL —— 组件不存在。
   - **不要**因此把名单藏起来或换成空列表 —— 用户要看见的是「这台机器上真的有这些 agent」，附带一句它属于哪台机器。
   - 文案走 i18n key `auto.components.backgroundAgents.localOnlyNotice`（Task 10 建）。
 - **elapsed 刷新**：一个 `useEffect` + `setInterval(1000)` 存 `now`，只为了重算 elapsed。行本身不重建。
-- **轮询**：另一个 `useEffect`：
-  - 慢层：`setInterval(15_000)` 调 `window.api.claudeAgents.list()` → `publishBackgroundAgentsListing`；挂载时也立刻调一次。
-  - 快层：`setInterval(2_000)` 调 `window.api.claudeAgents.readDetails(ids)` → `publishBackgroundAgentDetails`。`ids` 来自当前的 `backgroundAgentsAgents`。
+- **轮询**：
+  - **慢层抽成一个导出的 hook**：`useBackgroundAgentRosterRefresh()` —— `setInterval(15_000)` 调 `window.api.claudeAgents.list()` → `publishBackgroundAgentsListing`；挂载时也立刻调一次；卸载时清掉 interval。
+    **为什么抽出来**：慢层不只列表屏要 —— 屏 2 的 header（name / state / cwd / elapsed）也靠它更新。轮询写在列表屏里的话，**进屏 2 时列表屏卸载，header 就永远停在进屏那一刻的样子**（agent 在屏 2 里死了，header 还写着 working）。Task 9 的详情屏也调这个 hook。
+    两屏**不会同时挂载**（Task 10 的面板是二选一渲染），所以不会有两个 interval 抢着轮询。
+  - **快层**留在列表屏自己的 `useEffect` 里：`setInterval(2_000)` 调 `window.api.claudeAgents.readDetails(ids)` → `publishBackgroundAgentDetails`。`ids` 来自当前的 `backgroundAgentsAgents`。屏 2 不需要快层（header 不显示灰字活动行）。
   - **两个 interval 都在面板卸载时清掉。**
   - **派发成功后立刻再刷一次慢层** —— 用户刚派发的 agent 不该等最多 15s 才出现在名单里。快层只读**已知** agent 的 state 文件，新 agent 不在名单里就永远读不到。
 - **键盘**：照 `src/renderer/src/components/right-sidebar/ai-vault/session-list/use-ai-vault-session-keyboard-navigation.ts:117` 的 `aiVaultPanelKeyboardRootProps` 模式 —— 根节点 `tabIndex={-1}`，`onKeyDown` 只在 `event.target === event.currentTarget` 时处理。
@@ -1715,6 +1722,10 @@ const spawned = existing
 ```
 
 header 的 name/state/cwd/elapsed 来自 store 的当前行（所以它跟着轮询变）。
+
+**详情屏也要跑慢层轮询**：调 Task 7 导出的 `useBackgroundAgentRosterRefresh()`。**不调的话，进屏 2 时列表屏已经卸载，轮询停了，header 就永远停在进屏那一刻的样子** —— agent 在屏 2 里死了，header 还写着 working，用户看不出来。列表屏和详情屏**不会同时挂载**（Task 10 的面板二选一渲染），所以不会有两个 interval 抢着轮询。
+
+**测试**：轮询刷新后，header 的 state 跟着变（用一个假 timer 或直接调 store 的 `publishBackgroundAgentsListing` 后断言 header 重新渲染出新状态）。
 
 - [ ] **Step 5: 跑测试确认它通过**
 

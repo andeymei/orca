@@ -143,7 +143,9 @@ const AMBIENT_SESSION_ENV_VARS = [
 /** The machine's environment, without the session that happens to be running the spec. */
 function environmentWithoutAmbientSession(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
-  stripInheritedAgentSessionEnv(env, { envToDelete: ['CLAUDE_JOB_DIR'] })
+  stripInheritedAgentSessionEnv(env)
+  // The job dir is not one of the session stamps, so the helper leaves it alone.
+  delete env.CLAUDE_JOB_DIR
   return env
 }
 

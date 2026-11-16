@@ -16,10 +16,14 @@ const PANEL_JOB_DIR_ENV_KEY = 'CLAUDE_JOB_DIR'
  * their own session back instead of a new agent, and `claude rm` deletes inside a session it does
  * not own. The stamps are the repo's own list, and the inherited job dir goes with them.
  *
+ * The job dir is deleted here rather than through the helper's `envToDelete`, because that option
+ * only removes session stamps and the job dir is not one.
+ *
  * The shell capture is shared and cached, so the strip works on a copy of it.
  */
 export function backgroundAgentCommandEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const commandEnv: NodeJS.ProcessEnv = { ...env }
-  stripInheritedAgentSessionEnv(commandEnv, { envToDelete: [PANEL_JOB_DIR_ENV_KEY] })
+  stripInheritedAgentSessionEnv(commandEnv)
+  delete commandEnv[PANEL_JOB_DIR_ENV_KEY]
   return commandEnv
 }

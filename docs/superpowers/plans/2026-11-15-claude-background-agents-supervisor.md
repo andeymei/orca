@@ -531,12 +531,12 @@ Expected: FAIL —— 模块不存在。
 
 ```ts
 import { runProcess } from '@orca/process-host'
+import { CLAUDE_BACKGROUND_AGENT_ID_PATTERN } from '../../../shared/claude-background-agents'
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
-
-/** `claude attach`/`stop`/`rm` accept a name; the panel only ever knows the short id. */
-const BACKGROUND_AGENT_ID = /^[0-9a-f]{8}$/
 ```
+
+**用共享层那个正则，不要自己再定义一份。** Task 2 已经把 `CLAUDE_BACKGROUND_AGENT_ID_PATTERN` 放进 `src/shared/claude-background-agents.ts`（Task 2 的路径守卫与这里的命令守卫共用同一份定义）。
 
 三个命令共用一个内部 helper：解析 `claude` 的可执行文件 → 跑 `runProcess` → 看退出码。
 
@@ -546,7 +546,7 @@ const BACKGROUND_AGENT_ID = /^[0-9a-f]{8}$/
   - stdout 用 `/^backgrounded\s*·\s*([0-9a-f]{8})/m` 取 id。**取不到 id 就是失败**，不是成功。
   - 失败时 `message` 用 stderr；stderr 为空时用 `'the CLI did not report why'`。
 - `stopClaudeBackgroundAgent` / `removeClaudeBackgroundAgent`：
-  - **先**校验 `id` 匹配 `BACKGROUND_AGENT_ID`，不匹配直接返回 `{ ok: false, message: 'not a background agent id' }`，**不跑任何命令**。
+  - **先**校验 `id` 匹配共享的 `CLAUDE_BACKGROUND_AGENT_ID_PATTERN`，不匹配直接返回 `{ ok: false, message: 'not a background agent id' }`，**不跑任何命令**。
   - 命令分别是 `['stop', id]` 与 `['rm', id]`。
   - 成功返回 `{ ok: true, id }`。
 

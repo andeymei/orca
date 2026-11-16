@@ -11,10 +11,13 @@ const PANEL_JOB_DIR_ENV_KEY = 'CLAUDE_JOB_DIR'
 /**
  * The environment the panel's Claude Code commands run in.
  *
- * A panel command is Orca's own, not part of the agent session that happens to be running Orca:
- * the CLI continues that session instead of answering the command, so the dispatch hands the user
- * their own session back instead of a new agent, and `claude rm` deletes inside a session it does
- * not own. The stamps are the repo's own list, and the inherited job dir goes with them.
+ * A panel command is Orca's own, not part of the agent session that happens to be running Orca.
+ * The stamps are the repo's own list, and the inherited job dir goes with them: a client that
+ * carries them answers with the ambient session instead of the command — the attach client showed
+ * the ambient session's recap, which redrew the screen and dropped what the user was typing.
+ *
+ * A dispatch that continued the parent session was not observed on this CLI build, so the strip
+ * is preventive rather than a fix for a seen failure.
  *
  * The job dir is deleted here rather than through the helper's `envToDelete`, because that option
  * only removes session stamps and the job dir is not one.

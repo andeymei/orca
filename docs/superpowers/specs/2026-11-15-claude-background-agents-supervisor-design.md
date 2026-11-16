@@ -94,14 +94,17 @@ Completed
 - **header 计数**：`N awaiting input · N working · N completed`。
 - **底部 composer**：输入一句话 → `Enter` 派发一个新后台 agent（见 §6.1）。
 - **键盘**：
+
   | 键                           | 行为                                                                                                |
   | ---------------------------- | --------------------------------------------------------------------------------------------------- |
   | `↑` / `↓`                    | 移动选择                                                                                            |
   | `Enter`                      | 进入选中的 agent（屏 2）                                                                            |
   | `Ctrl+X`                     | 停止（Working/Needs input）或删除（Completed）；**两步确认**，第一次行内显示 `ctrl+x again to stop` |
-  | `/`                          | 搜索（按 name / detail / cwd 过滤）                                                                 |
-  | `Esc`                        | 清空搜索；无搜索时退出面板焦点                                                                      |
+  | `/`                          | 聚焦 composer（写一句话派发新 agent）                                                               |
+  | `Esc`                        | composer 有内容就清空；否则把焦点还给面板根                                                         |
   | `Enter`（composer 有内容时） | 派发                                                                                                |
+
+  **v1 不做文本过滤。** Claude Code 的 TUI 本身没有 `/` 搜索（实测它的快捷键条是 `enter to return · space to reply · ctrl+x to delete · ? for shortcuts`），而这个面板的全部意义就是**镜像 CLI 的那个 TUI** —— 它的底部就是一个随时可以写任务的输入框，不是搜索框。`/` 只是把焦点送到那个输入框的快捷键。
 
 ### 3.2 屏 2：详情（内嵌 attach 终端）
 
@@ -298,12 +301,12 @@ spawn 参数：
 
 按 `docs/agents-md-refs/test-antipatterns.md`：测试必须在「回退改动就会失败」的那一层，且只测业务逻辑。
 
-| 层     | 测什么                                                                               | 位置                                         |
-| ------ | ------------------------------------------------------------------------------------ | -------------------------------------------- |
-| 纯函数 | 两个来源合并成行；Working/Needs input/Completed 分段与计数；搜索过滤；elapsed 格式化 | `background-agent-list-rows.test.ts`         |
-| 纯函数 | `state.json` → 行的映射，缺字段时的降级                                              | `claude-background-agent-job-state.test.ts`  |
-| 组件   | 屏 1 ⇄ 屏 2 的状态机；`Enter` 进入、`←` 返回、`Ctrl+X` 两步确认                      | `BackgroundAgentsPanel.test.tsx`             |
-| E2E    | 真实 `claude --bg` 派发 → 出现在列表 → 进入 → 返回后 agent 仍活着                    | `tests/e2e/claude-background-agents.spec.ts` |
+| 层     | 测什么                                                                     | 位置                                         |
+| ------ | -------------------------------------------------------------------------- | -------------------------------------------- |
+| 纯函数 | 两个来源合并成行；Working/Needs input/Completed 分段与计数；elapsed 格式化 | `background-agent-list-rows.test.ts`         |
+| 纯函数 | `state.json` → 行的映射，缺字段时的降级                                    | `claude-background-agent-job-state.test.ts`  |
+| 组件   | 屏 1 ⇄ 屏 2 的状态机；`Enter` 进入、`←` 返回、`Ctrl+X` 两步确认            | `BackgroundAgentsPanel.test.tsx`             |
+| E2E    | 真实 `claude --bg` 派发 → 出现在列表 → 进入 → 返回后 agent 仍活着          | `tests/e2e/claude-background-agents.spec.ts` |
 
 **不做**的测试：不断言 xterm 的像素、不为「列表看起来对」写快照测试。
 

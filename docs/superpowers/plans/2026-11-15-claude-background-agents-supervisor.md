@@ -1370,6 +1370,9 @@ Expected: FAIL —— 组件不存在。
   - `Control+x`：停止/删除的两步确认。
   - `/`：聚焦 composer。
   - `Escape`：composer 有内容就清空，否则把焦点还给面板根。
+
+  **v1 不做文本过滤**：`/` 只把焦点送到 composer，**不**切换到过滤模式。（spec §3.1 的键盘表原来写「/ 搜索」，那是旧面板留下的，**Claude Code 的 TUI 本身没有 `/` 搜索** —— 实测它的快捷键条是 `enter to return · space to reply · ctrl+x to delete · ? for shortcuts`。这个面板的全部意义就是镜像 CLI 的那个 TUI，所以照它来。）Task 5 的 `filterBackgroundAgentListRows` 因此成了死代码，Task 10 把它连同测试一起删掉。
+
 - **composer**：一个受控 input。Enter 提交 `prompt` + 当前工作区路径；`cwd` 取自 `findFirstIndexedWorktree(selectWorktreesByRepo(state), state.activeWorktreeId)?.path`（照 `src/renderer/src/components/right-sidebar/ai-vault/session-actions/ai-vault-session-launch-target.ts:32`），拿不到就不传。
 - **派发占位行**（spec §6.1）：派发在飞时，列表**顶部**（Working 段之前）插一行 `opening… · esc to cancel`。
   - **这行的状态住在 store 里，不在组件的 local state 里** —— 右侧边栏切 tab 时面板是**卸载**的（`right-sidebar-panel-content.tsx:61` 是 `{effectiveTab === 'background-agents' && <BackgroundAgentsPanel />}`），local state 会跟着一起没。Task 6 的 slice 因此要加一个字段：
@@ -1800,6 +1803,8 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
 
 **不要**删 `src/main/ai-vault/` 下的东西 —— AI Vault 面板还在用它的 resume 机器。
 
+**另外删掉一个现在没人用的导出**：`filterBackgroundAgentListRows`（在 `src/renderer/src/components/background-agents/background-agent-list-rows.ts`，连同它在 `background-agent-list-rows.test.ts` 里的那个 `describe` 块）。v1 不做文本过滤（见下面的裁决），所以它成了死代码 —— 仓库的死代码审计会报一个没人引用的导出。**留下一个没人用的函数比删掉它更糟**。
+
 - [ ] **Step 3: 换 i18n**
 
 在 `src/renderer/src/i18n/locales/en.json` 里，把 `auto.components.backgroundAgents` 整块换成新的 key：
@@ -1822,10 +1827,14 @@ git rm src/renderer/src/components/background-agents/background-agent-session-li
   "deleteConfirm": "ctrl+x again to delete",
   "deleteWarning": "Deleting an agent also deletes its worktree",
   "back": "Back to the agent list",
-  "searchLabel": "Search background agents",
-  "shortcuts": "↑↓ select · enter enter · ctrl+x stop · / search"
+  "dispatching": "opening… · esc to cancel",
+  "dispatchStarted": "started · {id}",
+  "shortcuts": "↑↓ select · enter enter · ctrl+x stop · / task"
 }
 ```
+
+**`dispatching` / `dispatchStarted` 是 Task 7 实现时加的两个 key**（计划原来的 key 表里没有给派发占位行留位置）：`dispatching` = `opening… · esc to cancel`，`dispatchStarted` = `started · {id}`（带 `{id}` 插值）。
+**没有 `searchLabel`** —— v1 不做文本过滤（见下面的裁决）。
 
 **其它 10 个语言文件不用改** —— 它们没有这个 key，走 fallback。`auto.components.backgroundAgents.stateRunning` / `stateInterrupted` / `stateSlept` / `stateIdle` / `untitled` / `searchPlaceholder` / `searchLabel` / `loading` / `empty` / `refresh` 一起删掉（旧面板不再用）。
 

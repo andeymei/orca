@@ -83,10 +83,11 @@ Completed
 ```
 
 - **分段**：`Working` / `Needs input` / `Completed`。判定规则（写死，不留歧义）：
-  - `Needs input`：`state.json` 的 `needs` 非空**或** `block.questions` 非空。（对应 FleetView 的 `blocked`：`tempo === "blocked" || status === "waiting"`）
+  - `Needs input`：**名单里的** `state === "blocked"`。这个判断由 CLI 自己算（`tempo === "blocked" || status === "waiting"` → blocked），所以它是最权威的信号。
   - `Working`：其余 `state === "working"` 的条目。
   - `Completed`：`state ∈ {done, stopped, failed}`。
-  - `state.json` 读不到时，回落到 `claude agents --json` 的 `state`：`working` → Working，其余 → Completed。
+  - 名单里的 `state` 缺失时（更旧的 CLI）：`working` → Working，其余 → Completed。
+  - **不要**用 `state.json` 的 `needs` / `block.questions` 来分段。那两个字段是**条件字段** —— 只有 agent 被卡住等决定时才写（实测：本机 18 个 job 一个都没被卡过，全都没有这两个字段）。它们只用来在行里显示"它在问你什么"，不参与分段。
 - **行**：`❯` 指针（仅选中行）+ 状态点 + name + detail + 右侧 elapsed。
   - detail 取自 `state.json` 的 `detail`；缺失时该格留空。
   - elapsed 从 `startedAt`（`--json`）起算，`--json` 不可用时用 `state.json` 的 `createdAt`。

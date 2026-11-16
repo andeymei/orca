@@ -322,7 +322,7 @@ spawn 参数：
 
 ### 10.1 实现期必须验的三件事（代码勘察已定位风险，但没跑过）
 
-1. **终端在几万字节后静默卡死** —— 用裸 `pty.onData` 就没有 ACK，main 会停投递。必须走 `subscribeToPtyData`（§4.3.1）。E2E 里要真的把一段长输出灌进去验证不卡。
+1. **终端在几十万字节后静默卡死** —— ACK 属于 dispatcher：`pty-dispatcher.ts` 每派发一块就 `deliverPtyDataWithDeferredAck`，main 按「已发 − 已 ACK」记账，没 ACK 就不再投递（per-PTY 上限 `PTY_RENDERER_IN_FLIGHT_HIGH_WATER_CHARS = 512 * 1024`，`src/main/ipc/pty/delivery/constants.ts`）。`subscribeToPtyData`（§4.3.1）是**装上** dispatcher 的那一步（它调 `ensurePtyDispatcher()`）；若改用裸 `pty.onData` 且没有别的面板装过 dispatcher，就没有人 ACK，main 会在 512 KB 处停投递。所以必须走 `subscribeToPtyData`。E2E 里要真的把一段长输出灌进去验证不卡。
 2. **Claude Code TUI 的 DA/DSR 终端探测答不上来** —— 取决于 `setRendererPtyVisible(id, true)` 是否真的把 startup 查询权威交给了 xterm（§4.3.2）。
 3. **`claude attach` 的 cwd 被 Orca 的 agent 启动守卫拒绝** —— `assertSafeAgentStartupCwd(cwd, command)`（`src/main/providers/local-pty/local-pty-launch-plan.ts:195`）对 `claude attach` 的判定未验。
 

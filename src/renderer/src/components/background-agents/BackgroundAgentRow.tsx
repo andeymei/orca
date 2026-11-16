@@ -54,6 +54,8 @@ export function BackgroundAgentRowView({
       role="option"
       aria-selected={selected}
       data-selected={selected ? 'true' : undefined}
+      // Why: the agent's id is what a test (and a deep link) needs to name one row.
+      data-agent-id={row.id}
       data-testid="background-agent-row"
       // Why: a row in the tab order takes the focus the panel's keys need, and the root's
       // keyboard guard would then turn every key into a no-op.

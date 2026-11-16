@@ -1,6 +1,15 @@
 /**
  * The supervisor's promise: a running agent keeps running while the user looks at something else.
  *
+ * **This spec writes into a live Claude Code session.** It dispatches its own throw-away agent
+ * with `claude --bg`, attaches to it and types into that agent's prompt box; the draft is never
+ * submitted, so no LLM turn is ever spent, but the session is a real one. It therefore only runs
+ * when the machine's owner asks for it:
+ *
+ *     ORCA_REAL_CLAUDE_CLI_TEST=1 pnpm run test:e2e -- tests/e2e/claude-background-agents.spec.ts
+ *
+ * Without that switch the whole spec skips.
+ *
  * Reaching this machine's real agents needs three harness concessions, each explained where it
  * is made:
  *
@@ -10,12 +19,8 @@
  *    directory, so the app's shell is a wrapper that drops the login flag.
  * 3. A hidden window never polls, so the spec reports the document as visible.
  *
- * A machine without a live background agent has nothing to supervise, and CI has none, so the
- * spec skips there instead of pretending.
- *
- * The spec types into the agent's own prompt box and never presses Enter, so the agent is never
- * asked to do anything and no LLM call is made. What is left behind is a draft in that agent's
- * prompt box, exactly as a half-typed message would be.
+ * A machine without a Claude Code CLI has nothing to supervise, and CI has none, so the spec skips
+ * there instead of pretending.
  */
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -23,15 +28,24 @@ import path from 'node:path'
 import { runProcess } from '@orca/process-host'
 import { expect, test as base } from './helpers/orca-app'
 import { resolveClaudeCommand } from '../../src/shared/node-cli-command-resolution'
+import { stripAnsiEscapeSequences } from '../../src/shared/ansi-escape-sequences'
 import {
   CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES,
   readClaudeBackgroundAgentsListing,
   type ClaudeBackgroundAgent
 } from '../../src/shared/claude-background-agents'
-import { buildBackgroundAgentListRows } from '../../src/renderer/src/components/background-agents/background-agent-list-rows'
 
 /** The CLI answers a listing in a moment; a wedged CLI must not hang the spec. */
 const LISTING_TIMEOUT_MS = 20_000
+
+/** Starting the probe waits for the CLI to bring a session up. */
+const DISPATCH_TIMEOUT_MS = 60_000
+
+/** Removing the probe takes its worktree with it, so it gets its own budget. */
+const REMOVE_TIMEOUT_MS = 60_000
+
+/** What the probe is asked to do; an answer the CLI can give without touching a tool. */
+const PROBE_PROMPT = 'Reply with the single word OK. Do not use any tools.'
 
 /**
  * How many characters the spec types into the attached terminal.
@@ -45,17 +59,31 @@ const TYPED_CHARACTERS = 700
 /** The gap between two keystrokes; the TUI folds a faster burst into one paste. */
 const KEYSTROKE_DELAY_MS = 25
 
+/** The pause between the filler and the tail marker, so no paste collapse can span both. */
+const MARKER_PAUSE_MS = 500
+
 /** How long the tail of the typed stream may take to arrive. */
 const TAIL_TIMEOUT_MS = 60_000
 
 /**
  * How many characters the attached terminal has to carry.
  *
- * The design spec's risk is a terminal that goes silent after "a few tens of kilobytes", so the
- * spec measures what really went through instead of assuming it: the attach client produced about
- * sixty kilobytes for this many keystrokes on this machine.
+ * Calibrated against this machine: 720 keystrokes into the probe agent produced 36,754 characters
+ * (≈51 bytes per keystroke), and a raw pty of the same CLI produced ≈43 bytes per keystroke
+ * (≈30 KB). The floor sits below both, so a Claude Code that redraws more cheaply still clears it;
+ * a run that fails here means the TUI redrew more cheaply than when the floor was set, not that
+ * the panel broke.
  */
 const MINIMUM_DELIVERED_CHARS = 20_000
+
+/** How many backspaces one cleanup batch sends. */
+const PROMPT_CLEAR_BATCH_SIZE = 100
+
+/** How many cleanup batches may run before the spec gives up on an empty prompt box. */
+const PROMPT_CLEAR_BATCHES = 12
+
+/** The gap between two backspaces; the TUI drops a faster burst. */
+const BACKSPACE_DELAY_MS = 10
 
 type ClaudeLauncher = {
   /** The directory the app's PATH starts with; it holds the `claude` launcher. */
@@ -148,6 +176,11 @@ function writeShellWrapper(dir: string, realShell: string): string {
 const test = base.extend<{ claudeLauncher: ClaudeLauncher }>({
   // oxlint-disable-next-line no-empty-pattern -- Playwright fixture callbacks require object destructuring here.
   claudeLauncher: async ({}, provideFixture, testInfo) => {
+    // Why: the spec types into a live agent's prompt box, so it only runs on request.
+    if (process.env.ORCA_REAL_CLAUDE_CLI_TEST !== '1') {
+      testInfo.skip(true, 'set ORCA_REAL_CLAUDE_CLI_TEST=1 to run against the real claude CLI')
+      return
+    }
     const dir = mkdtempSync(path.join(os.tmpdir(), 'orca-e2e-claude-launcher-'))
     const realClaude = resolveRealClaude()
     if (realClaude === null) {
@@ -207,15 +240,72 @@ async function askClaudeAgents(extraArgs: readonly string[]): Promise<AgentsAnsw
   return { ok: true, agents: listing.agents }
 }
 
+/** The CLI prints the new agent's id after `backgrounded`; the panel reads the same line. */
+const DISPATCHED_AGENT_LINE_PATTERN = /^backgrounded\s*·\s*(\S+)/m
+
 /**
- * The agents the panel lists.
+ * Start the spec's own throw-away agent and report the id the CLI gave it.
  *
- * The panel draws the daemon-backed agents only; an interactive `claude` in a terminal is not one
- * of them, so the pre-check has to drop it the same way or it would promise a roster that is not
- * there.
+ * The probe is what the spec supervises, so the spec never touches the agent the developer is
+ * working in.
+ *
+ * The CLI is the machine's own, and it runs without `CLAUDE_CONFIG_DIR`: the launcher the app
+ * uses sets that variable to the real config directory, and with it set the CLI no longer finds
+ * the workspace's trust record and refuses to start a session ("Workspace not trusted"). The
+ * directory the CLI then uses is the same one the launcher points at — `~/.claude` — so the app
+ * and the spec see the same roster.
  */
-function panelAgents(agents: readonly ClaudeBackgroundAgent[]): ClaudeBackgroundAgent[] {
-  return agents.filter((agent) => agent.kind !== 'interactive')
+async function dispatchProbeAgent(): Promise<string> {
+  const realClaude = resolveRealClaude()
+  if (!realClaude) {
+    throw new Error('this machine has no Claude Code CLI')
+  }
+  const result = await runProcess({
+    program: realClaude,
+    args: ['--bg', '--', PROBE_PROMPT],
+    timeoutMs: DISPATCH_TIMEOUT_MS,
+    maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
+  })
+  if (result.timedOut) {
+    throw new Error('the Claude Code CLI timed out while starting the probe agent')
+  }
+  if (result.code !== 0) {
+    throw new Error(
+      `the Claude Code CLI could not start the probe agent: ${
+        result.stderr.trim() || `it exited with ${String(result.code)}`
+      }`
+    )
+  }
+  // The CLI colorizes its answer when the environment asks for color, and the id arrives wrapped
+  // in escape sequences.
+  const id = DISPATCHED_AGENT_LINE_PATTERN.exec(stripAnsiEscapeSequences(result.stdout))?.[1]
+  if (!id) {
+    throw new Error(`the Claude Code CLI did not print an agent id: ${result.stdout.trim()}`)
+  }
+  return id
+}
+
+/**
+ * Delete the probe agent and report why it could not be deleted.
+ *
+ * A probe that outlives the run is litter on the developer's machine, so the removal happens
+ * even when the run failed; a removal that fails is reported rather than failed on.
+ */
+async function removeProbeAgent(id: string): Promise<string | null> {
+  const realClaude = resolveRealClaude()
+  if (!realClaude) {
+    return 'this machine has no Claude Code CLI'
+  }
+  const result = await runProcess({
+    program: realClaude,
+    args: ['rm', id],
+    timeoutMs: REMOVE_TIMEOUT_MS,
+    maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
+  })
+  if (result.code === 0) {
+    return null
+  }
+  return result.stderr.trim() || `the Claude Code CLI exited with ${String(result.code)}`
 }
 
 /** A token no transcript is likely to carry, so what the spec typed is what it looks for. */
@@ -223,114 +313,156 @@ function randomToken(): string {
   return Math.random().toString(36).slice(2, 8)
 }
 
-test('entering a running agent and coming back leaves the agent running', async ({ orcaPage }) => {
-  const active = await askClaudeAgents([])
-  if (!active.ok) {
-    throw new Error(`the Claude Code CLI could not list its agents: ${active.reason}`)
-  }
-  const liveBefore = panelAgents(active.agents)
-  test.skip(liveBefore.length === 0, 'this machine has no live Claude Code background agent')
+test('entering a running agent and coming back leaves the agent running', async ({
+  orcaPage
+}, testInfo) => {
+  const probeId = await dispatchProbeAgent()
+  try {
+    // The panel polls only while the window is visible, and the E2E window stays hidden.
+    await orcaPage.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible'
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await orcaPage.evaluate(() => {
+      const state = window.__store?.getState()
+      state?.setRightSidebarOpen(true)
+      state?.setRightSidebarWidth(400)
+    })
+    await orcaPage.getByRole('button', { name: 'Background agents', exact: true }).click()
 
-  // The panel polls only while the window is visible, and the E2E window stays hidden.
-  await orcaPage.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
-    document.dispatchEvent(new Event('visibilitychange'))
-  })
-  await orcaPage.evaluate(() => {
-    const state = window.__store?.getState()
-    state?.setRightSidebarOpen(true)
-    state?.setRightSidebarWidth(400)
-  })
-  await orcaPage.getByRole('button', { name: 'Background agents', exact: true }).click()
+    const rows = orcaPage.getByTestId('background-agent-row')
+    await expect(rows.first()).toBeVisible({ timeout: 30_000 })
+    await expect(rows.first()).toHaveAttribute('aria-selected', 'true')
 
-  const rows = orcaPage.getByTestId('background-agent-row')
-  await expect(rows.first()).toBeVisible({ timeout: 30_000 })
-  await expect(rows.first()).toHaveAttribute('aria-selected', 'true')
+    // The arrow keys walk the rows the way the CLI's own list does. With a single row there is
+    // nowhere to walk to, and the selection has to stay where it is.
+    const rowCount = await rows.count()
+    const rowAfterArrowDown = rowCount > 1 ? rows.nth(1) : rows.first()
+    await orcaPage.keyboard.press('ArrowDown')
+    await expect(rowAfterArrowDown).toHaveAttribute('aria-selected', 'true')
+    await orcaPage.keyboard.press('ArrowUp')
+    await expect(rows.first()).toHaveAttribute('aria-selected', 'true')
 
-  // The arrow keys walk the rows the way the CLI's own list does. With a single row there is
-  // nowhere to walk to, and the selection has to stay where it is.
-  const rowCount = await rows.count()
-  const rowAfterArrowDown = rowCount > 1 ? rows.nth(1) : rows.first()
-  await orcaPage.keyboard.press('ArrowDown')
-  await expect(rowAfterArrowDown).toHaveAttribute('aria-selected', 'true')
-  await orcaPage.keyboard.press('ArrowUp')
-  await expect(rows.first()).toHaveAttribute('aria-selected', 'true')
+    // The probe's own row, named by its id — the panel's rows carry it.
+    const probeRow = orcaPage.locator(
+      `[data-testid="background-agent-row"][data-agent-id="${probeId}"]`
+    )
+    await expect(probeRow).toHaveCount(1, { timeout: 30_000 })
+    // Walk the selection onto it; the selection starts on the first row and only moves down.
+    await expect
+      .poll(
+        async () => {
+          const selectedId = await orcaPage
+            .locator('[data-testid="background-agent-row"][aria-selected="true"]')
+            .getAttribute('data-agent-id')
+          if (selectedId === probeId) {
+            return true
+          }
+          await orcaPage.keyboard.press('ArrowDown')
+          return false
+        },
+        { timeout: 15_000 }
+      )
+      .toBe(true)
+    await expect(probeRow).toHaveAttribute('aria-selected', 'true')
 
-  // Enter opens the agent's own terminal.
-  await orcaPage.keyboard.press('Enter')
-  await expect(orcaPage.getByTestId('background-agents-agent')).toBeVisible({ timeout: 30_000 })
-  await expect(orcaPage.getByRole('button', { name: 'Back to the agent list' })).toBeVisible()
+    // Enter opens the agent's own terminal.
+    await orcaPage.keyboard.press('Enter')
+    await expect(orcaPage.getByTestId('background-agents-agent')).toBeVisible({ timeout: 30_000 })
+    await expect(orcaPage.getByRole('button', { name: 'Back to the agent list' })).toBeVisible()
 
-  // The Claude Code TUI's prompt box. The TUI draws it only once the terminal answered its DA/DSR
-  // probe, so its absence is what a broken terminal that looks alive looks like.
-  const terminalScreen = orcaPage.locator('[data-testid="background-agent-terminal"] .xterm-screen')
-  await expect(terminalScreen).toContainText('❯', { timeout: 30_000 })
+    // The Claude Code TUI's prompt glyph. It proves the TUI drew itself; the glyph belongs to the
+    // Claude Code CLI, so a CLI release that changes it breaks this assertion.
+    const terminalScreen = orcaPage.locator(
+      '[data-testid="background-agent-terminal"] .xterm-screen'
+    )
+    await expect(terminalScreen).toContainText('❯', { timeout: 30_000 })
 
-  // Push a long stream through the attached terminal. The TUI echoes what is typed and redraws
-  // its prompt box for every keystroke, so the keystrokes are what put tens of kilobytes on the
-  // wire. The marker at the very end of the stream is what proves the tail arrived: a delivery
-  // that stalls half-way through never renders it.
-  const attachPtyId = await orcaPage.evaluate(async () => {
-    const sessions = await window.api.pty.listSessions()
-    // The panel spawns the attach client outside every worktree, in the floating terminal.
-    return sessions.find((session) => session.id.startsWith('global-floating-terminal'))?.id ?? null
-  })
-  if (!attachPtyId) {
-    throw new Error('the attached terminal has no PTY of its own')
-  }
-  const readProducedChars = async (): Promise<number | null> =>
-    await orcaPage.evaluate(async (id) => {
-      const snapshot = await window.api.pty.getMainBufferSnapshot(id)
-      return snapshot?.seq ?? null
-    }, attachPtyId)
-  const producedBefore = await readProducedChars()
+    // Push a long stream through the attached terminal. The TUI echoes what is typed and redraws
+    // its prompt box for every keystroke, so the keystrokes are what put tens of kilobytes on the
+    // wire. The marker at the very end of the stream is what proves the tail arrived: a delivery
+    // that stalls half-way through never renders it.
+    const attachPtyId = await orcaPage.evaluate(
+      () => window.__store?.getState().backgroundAgentsAttachedPtyId ?? null
+    )
+    if (!attachPtyId) {
+      throw new Error('the attached terminal has no PTY of its own')
+    }
+    const readProducedChars = async (): Promise<number | null> =>
+      await orcaPage.evaluate(async (id) => {
+        const snapshot = await window.api.pty.getMainBufferSnapshot(id)
+        return snapshot?.seq ?? null
+      }, attachPtyId)
+    const producedBefore = await readProducedChars()
 
-  const token = randomToken()
-  const marker = `${token}-tail-${Date.now().toString(36)}`
-  const filler = token.repeat(Math.ceil(TYPED_CHARACTERS / token.length)).slice(0, TYPED_CHARACTERS)
-  await orcaPage.keyboard.type(`${filler}${marker}`, { delay: KEYSTROKE_DELAY_MS })
-  // The TUI wraps the prompt box, so the marker can straddle a row boundary.
-  await expect(terminalScreen).toContainText(new RegExp([...marker].join('\\s*')), {
-    timeout: TAIL_TIMEOUT_MS
-  })
+    const token = randomToken()
+    const marker = `${token}-tail-${Date.now().toString(36)}`
+    const filler = token
+      .repeat(Math.ceil(TYPED_CHARACTERS / token.length))
+      .slice(0, TYPED_CHARACTERS)
+    await orcaPage.keyboard.type(filler, { delay: KEYSTROKE_DELAY_MS })
+    // The marker is typed on its own: a paste collapse in the filler must not be able to swallow
+    // the marker too, or the failure would be a timeout instead of a clear error.
+    await orcaPage.waitForTimeout(MARKER_PAUSE_MS)
+    await orcaPage.keyboard.type(marker, { delay: KEYSTROKE_DELAY_MS })
+    // The TUI wraps the prompt box, so the marker can straddle a row boundary.
+    await expect(terminalScreen).toContainText(new RegExp([...marker].join('\\s*')), {
+      timeout: TAIL_TIMEOUT_MS
+    })
 
-  // How much really went through: main counts the characters the attach client produced, and the
-  // difference between the two counts is what the panel had to carry.
-  const producedAfter = await readProducedChars()
-  if (producedBefore === null || producedAfter === null) {
-    throw new Error('the attached terminal produced no measurable output')
-  }
-  expect(
-    producedAfter - producedBefore,
-    'the attached terminal carried too little output to be worth checking'
-  ).toBeGreaterThan(MINIMUM_DELIVERED_CHARS)
-
-  // The left arrow goes back while the agent keeps running.
-  await orcaPage.keyboard.press('ArrowLeft')
-  await expect(orcaPage.getByTestId('background-agents-list')).toBeVisible({ timeout: 15_000 })
-  await expect(orcaPage.getByTestId('background-agents-agent')).toHaveCount(0)
-
-  // The agent the panel entered is the one the panel's own row builder puts first, so the panel
-  // and the spec agree on who is supervised.
-  const enteredAgentId = buildBackgroundAgentListRows(liveBefore, {})[0]?.id
-  if (!enteredAgentId) {
-    throw new Error('the panel has no agent to supervise')
-  }
-  // The promise: it is still there. `--all` also lists the sessions that finished on their own,
-  // so an agent that ran out of work still counts as still there — what must not happen is that
-  // leaving the screen stopped it.
-  const after = await askClaudeAgents(['--all'])
-  if (!after.ok) {
-    throw new Error(`the Claude Code CLI could not list its agents: ${after.reason}`)
-  }
-  const entered = after.agents.find((candidate) => candidate.id === enteredAgentId)
-  expect(entered, `the agent ${enteredAgentId} is gone`).toBeTruthy()
-  expect(entered?.state, `the agent ${enteredAgentId} was stopped`).not.toBe('stopped')
-  // And nothing else that was running was killed on the way out either.
-  for (const agent of liveBefore) {
+    // How much really went through: main counts the characters the attach client produced, and the
+    // difference between the two counts is what the panel had to carry.
+    const producedAfter = await readProducedChars()
+    if (producedBefore === null || producedAfter === null) {
+      throw new Error('the attached terminal produced no measurable output')
+    }
     expect(
-      after.agents.find((candidate) => candidate.id === agent.id),
-      `the agent ${agent.id} is gone`
-    ).toBeTruthy()
+      producedAfter - producedBefore,
+      'the attached terminal carried too little output to be worth checking'
+    ).toBeGreaterThan(MINIMUM_DELIVERED_CHARS)
+    testInfo.annotations.push({
+      type: 'attached-terminal-volume',
+      description: `the attached terminal carried ${producedAfter - producedBefore} characters`
+    })
+
+    // Leave the agent's prompt box as it was found: one backspace per typed character, until the
+    // typed text is gone from the screen.
+    for (let batch = 0; batch < PROMPT_CLEAR_BATCHES; batch++) {
+      const screen = await terminalScreen.textContent()
+      if (!screen?.includes(token)) {
+        break
+      }
+      for (let press = 0; press < PROMPT_CLEAR_BATCH_SIZE; press++) {
+        await orcaPage.keyboard.press('Backspace', { delay: BACKSPACE_DELAY_MS })
+      }
+    }
+    await expect(terminalScreen).not.toContainText(token)
+
+    // The left arrow goes back while the agent keeps running.
+    await orcaPage.keyboard.press('ArrowLeft')
+    await expect(orcaPage.getByTestId('background-agents-list')).toBeVisible({ timeout: 15_000 })
+    await expect(orcaPage.getByTestId('background-agents-agent')).toHaveCount(0)
+
+    // The promise: the probe is still there. `--all` also lists the sessions that finished on
+    // their own, so an agent that ran out of work still counts as still there — what must not
+    // happen is that leaving the screen stopped it.
+    const after = await askClaudeAgents(['--all'])
+    if (!after.ok) {
+      throw new Error(`the Claude Code CLI could not list its agents: ${after.reason}`)
+    }
+    const probe = after.agents.find((agent) => agent.id === probeId)
+    expect(probe, `the agent ${probeId} is gone`).toBeTruthy()
+    expect(probe?.state, `the agent ${probeId} was stopped`).not.toBe('stopped')
+  } finally {
+    const removalFailure = await removeProbeAgent(probeId)
+    if (removalFailure) {
+      testInfo.annotations.push({
+        type: 'probe-agent-removal',
+        description: `the probe agent ${probeId} could not be removed: ${removalFailure}`
+      })
+    }
   }
 })

@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProcessSpec } from '@orca/process-host/process-spec'
 import {
@@ -21,7 +22,7 @@ describe('dispatchClaudeBackgroundAgent', () => {
     expect(result).toEqual({ ok: true, id: '4db4f587' })
   })
 
-  it('passes the model and the permission mode', async () => {
+  it('passes the model and the permission mode, and ends the options before the prompt', async () => {
     const seen: { args?: readonly string[] } = {}
     await dispatchClaudeBackgroundAgent(
       { prompt: 'x', model: 'opus', permissionMode: 'plan' },
@@ -39,7 +40,7 @@ describe('dispatchClaudeBackgroundAgent', () => {
         }
       }
     )
-    expect(seen.args).toEqual(['--bg', '--model', 'opus', '--permission-mode', 'plan', 'x'])
+    expect(seen.args).toEqual(['--bg', '--model', 'opus', '--permission-mode', 'plan', '--', 'x'])
   })
 
   it('reports why the CLI refused', async () => {
@@ -68,12 +69,21 @@ describe('dispatchClaudeBackgroundAgent', () => {
         }
       }
     )
-    expect(seen.cwd).toBe('/repos/app')
+    expect(seen.cwd).toBe(join('/repos', 'app'))
   })
 
   it('fails when the CLI does not print an id', async () => {
     const result = await dispatchClaudeBackgroundAgent({ prompt: 'x' }, deps('nothing useful\n'))
-    expect(result).toEqual({ ok: false, message: 'the CLI did not report why' })
+    expect(result).toEqual({ ok: false, message: 'the CLI did not print an agent id' })
+  })
+
+  it('refuses an id that is longer than the CLI prints', async () => {
+    // A truncated id would name another agent, so a longer hex run is not an id at all.
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x' },
+      deps('backgrounded · 4db4f5879\n')
+    )
+    expect(result).toEqual({ ok: false, message: 'the CLI did not print an agent id' })
   })
 
   it('fails when the CLI is not installed', async () => {
@@ -88,6 +98,24 @@ describe('dispatchClaudeBackgroundAgent', () => {
       }
     )
     expect(result).toEqual({ ok: false, message: 'Claude Code CLI not found' })
+  })
+})
+
+describe('the arguments the CLI takes', () => {
+  it('refuses a permission mode the CLI does not know', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x', permissionMode: 'bogus' },
+      deps('backgrounded · 4db4f587\n')
+    )
+    expect(result).toEqual({ ok: false, message: 'not a permission mode' })
+  })
+
+  it('refuses a model that the CLI would read as an option', async () => {
+    const result = await dispatchClaudeBackgroundAgent(
+      { prompt: 'x', model: '--help' },
+      deps('backgrounded · 4db4f587\n')
+    )
+    expect(result).toEqual({ ok: false, message: 'not a model name' })
   })
 })
 
@@ -163,5 +191,26 @@ describe('the commands the CLI takes', () => {
       deps('', 1, "No job matching '4db4f587'")
     )
     expect(result).toEqual({ ok: false, message: "No job matching '4db4f587'" })
+  })
+
+  it('gives the removal time to delete the worktree', async () => {
+    const seen: { timeoutMs?: number | null } = {}
+    await removeClaudeBackgroundAgent(
+      { id: '4db4f587' },
+      {
+        ...deps('removed 4db4f587\n'),
+        runCommand: async (spec) => {
+          seen.timeoutMs = spec.timeoutMs
+          return {
+            code: 0,
+            signal: null,
+            stdout: 'removed 4db4f587\n',
+            stderr: '',
+            timedOut: false
+          }
+        }
+      }
+    )
+    expect(seen.timeoutMs).toBe(30_000)
   })
 })

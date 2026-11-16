@@ -11,6 +11,9 @@ import { CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS } from './claude-background-agent-l
 /** Dispatching waits for the agent to come up, which takes longer than a listing does. */
 export const CLAUDE_BACKGROUND_AGENT_DISPATCH_TIMEOUT_MS = 30_000
 
+/** Deleting an agent also deletes its worktree; a kill mid-delete leaves half a worktree behind. */
+export const CLAUDE_BACKGROUND_AGENT_REMOVE_TIMEOUT_MS = 30_000
+
 export type ClaudeBackgroundAgentCommandDependencies = {
   /** Injected so the tests exercise the parsing without a Claude Code install. */
   runCommand?: typeof runProcess
@@ -20,6 +23,31 @@ export type ClaudeBackgroundAgentCommandDependencies = {
 
 /** The CLI prints the new agent's id after `backgrounded`; what counts as an id is the shared rule. */
 const DISPATCHED_AGENT_LINE_PATTERN = /^backgrounded\s*·\s*(\S+)/m
+
+/**
+ * The permission modes the CLI itself accepts.
+ *
+ * `bypassPermissions` is in the set on purpose: it is a first-class mode in Claude Code and this
+ * machine's `claude agents` already defaults to it, so dropping it would make the panel's agents
+ * behave unlike the ones the user runs in a terminal — the opposite of what the panel is for. It
+ * crosses no permission boundary either: the caller is Orca's own renderer, which can already run
+ * any command as the user through `window.api.pty.spawn({command})`. The set exists so that what
+ * reaches the CLI is always a mode the CLI knows, never a flag smuggled in as one.
+ */
+const CLAUDE_PERMISSION_MODES: readonly string[] = [
+  'acceptEdits',
+  'auto',
+  'bypassPermissions',
+  'manual',
+  'dontAsk',
+  'plan'
+]
+
+/** Stopping is quick; removing is not, because it takes the worktree with it. */
+const AGENT_COMMAND_TIMEOUTS = {
+  stop: CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS,
+  rm: CLAUDE_BACKGROUND_AGENT_REMOVE_TIMEOUT_MS
+} as const
 
 type ClaudeCommandRun = { ok: true; result: ProcessResult } | { ok: false; message: string }
 
@@ -37,11 +65,17 @@ export async function dispatchClaudeBackgroundAgent(
   },
   dependencies: ClaudeBackgroundAgentCommandDependencies = {}
 ): Promise<ClaudeBackgroundAgentCommandResult> {
+  const refusal = refuseDispatchArguments(args)
+  if (refusal) {
+    return { ok: false, message: refusal }
+  }
   const run = await runClaudeCommand(
     [
       '--bg',
       ...(args.model ? ['--model', args.model] : []),
       ...(args.permissionMode ? ['--permission-mode', args.permissionMode] : []),
+      // Everything after `--` is text, so a prompt that starts with a dash is not read as an option.
+      '--',
       args.prompt
     ],
     { timeoutMs: CLAUDE_BACKGROUND_AGENT_DISPATCH_TIMEOUT_MS, cwd: args.cwd },
@@ -52,9 +86,23 @@ export async function dispatchClaudeBackgroundAgent(
   }
   const id = readDispatchedAgentId(run.result.stdout)
   if (!id) {
-    return { ok: false, message: failureMessage(run.result) }
+    return { ok: false, message: run.result.stderr.trim() || 'the CLI did not print an agent id' }
   }
   return { ok: true, id }
+}
+
+/** A model or a permission mode the CLI would read as an option is neither of them. */
+function refuseDispatchArguments(args: {
+  model?: string | null
+  permissionMode?: string | null
+}): string | null {
+  if (args.permissionMode && !CLAUDE_PERMISSION_MODES.includes(args.permissionMode)) {
+    return 'not a permission mode'
+  }
+  if (args.model && args.model.startsWith('-')) {
+    return 'not a model name'
+  }
+  return null
 }
 
 /** Stop a background agent; its conversation is kept, so the panel can open it again. */
@@ -89,7 +137,7 @@ async function runAgentIdCommand(
   }
   const run = await runClaudeCommand(
     [verb, id],
-    { timeoutMs: CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS },
+    { timeoutMs: AGENT_COMMAND_TIMEOUTS[verb] },
     dependencies
   )
   return run.ok ? { ok: true, id } : run

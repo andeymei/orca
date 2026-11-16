@@ -34,7 +34,13 @@ export type StandaloneTerminalArgs = {
   getTerminalInput: () => DashboardCardTerminalInput | null
   linkHandlers?: PreviewTerminalLinkHandlers
   requestClose?: () => void
-  /** Claims a key before xterm encodes it; returning true stops xterm from handling it. */
+  /**
+   * Claims a key before xterm encodes it; returning true stops xterm from handling it.
+   *
+   * The hook sees every event type the custom handler sees — keydown, keyup and keypress. A caller
+   * must claim a whole chord consistently: claiming the press but not the release lets the release
+   * reach xterm's Kitty encoder, and the release bytes go out to the terminal.
+   */
   claimKeyEvent?: (event: KeyboardEvent) => boolean
 }
 

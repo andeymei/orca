@@ -430,7 +430,10 @@ it('lets the native cut win when the composer has a selection', async () => {
   }))
   installApi({ stop })
   const view = await renderScreen()
-  const composer = view.getByLabelText('New background agent') as HTMLInputElement
+  const composer = view.getByLabelText('New background agent')
+  if (!(composer instanceof HTMLInputElement)) {
+    throw new Error('the composer is not a text input')
+  }
   await type(view, 'do the thing')
   composer.setSelectionRange(0, 3)
   const cut = createEvent.keyDown(composer, { key: 'x', ctrlKey: true })

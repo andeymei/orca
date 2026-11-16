@@ -20051,7 +20051,8 @@
         "completedSection": "Completed",
         "composerPlaceholder": "Describe a task for a new session",
         "composerLabel": "New background agent",
-        "shortcuts": "↑↓ select · enter enter · ctrl+x stop · / task"
+        "shortcuts": "↑↓ select · enter enter · ctrl+x stop · / task",
+        "back": "Back to the agent list"
       },
       "NewWorkspaceComposerFooter": {
         "create": "Create"

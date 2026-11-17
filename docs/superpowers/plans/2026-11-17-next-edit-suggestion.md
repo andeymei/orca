@@ -978,9 +978,23 @@ git commit -m "feat(code-completion): the codeCompletion.plan RPC method"
 
 **Interfaces:**
 
-- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), the existing worktree search (`searchRuntimeFiles`, client at `src/renderer/src/runtime/files/search/runtime-file-search-client.ts`), the existing file read (`readRuntimeFileContent`, client at `src/renderer/src/runtime/files/reads/runtime-file-read-client.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
+- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), the existing worktree search (`searchRuntimeFiles`, client at `src/renderer/src/runtime/files/search/runtime-file-search-client.ts`), the existing file read (`readRuntimeFileContent`, client at `src/renderer/src/runtime/files/reads/runtime-file-read-client.ts`), `getRelativePathInsideWorktree` (`src/renderer/src/runtime/files/runtime-file-routing.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
 
-**Use the runtime clients, not `window.api.fs`.** The editor buffer holds the file's text even when the file lives on an SSH host, but a _related_ file is only on that host. `readRuntimeFileContent` and `searchRuntimeFiles` both take a `RuntimeFileOperationArgs` (`{ target, worktreeId, worktreePath, connectionId }`) and route to the local or the remote side. `window.api.fs.readFile` would silently read the wrong machine's path.
+**Use the runtime clients, not `window.api.fs`.** The editor buffer holds the file's text even when the file lives on an SSH host, but a _related_ file is only on that host. `searchRuntimeFiles` takes a `RuntimeFileOperationArgs` (`{ target, worktreeId, worktreePath, connectionId }`) and routes to the local or the remote side; `readRuntimeFileContent` takes a `RuntimeFileReadArgs` — a _different_ type, with no `worktreePath`. `window.api.fs.readFile` would silently read the wrong machine's path.
+
+The read is therefore assembled field by field, and the path is made root-relative with the repo's own helper, because a remote read is root-relative:
+
+```ts
+const result = await readRuntimeFileContent({
+  target: input.files.target,
+  worktreeId: input.files.worktreeId ?? undefined,
+  connectionId: input.files.connectionId,
+  filePath: path,
+  relativePath: getRelativePathInsideWorktree(input.files.worktreePath, path) ?? undefined
+})
+```
+
+`readRuntimeFileContent` answers `{ content, isBinary, ... }` — a **binary** result is dropped, since the model cannot read a PNG.
 
 - Produces:
   - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal }): Promise<NesEditPlan | null>`
@@ -1072,7 +1086,7 @@ Two sources, in this order:
 1. **The current file's relative imports.** `parseRelativeImports` pulls the module specifiers out of the import statements and keeps only the ones that start with `./` or `../` — a package import names a module the model already knows, not a file in this repository. Each relative specifier resolves against the current file's directory; the extension is tried as written, then with `.ts`, `.tsx`, `.js`, `.jsx` and `/index.ts`, `/index.tsx`.
 2. **The files that mention the symbol at the cursor.** When `symbolAtCursor` is a plain identifier, call `searchRuntimeFiles(input.files, { query: symbolAtCursor, rootPath: input.files.worktreePath ?? '', maxResults: 20 })` and take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
 
-Each result is read through `readRuntimeFileContent({ ...input.files, filePath: path, relativePath: pathRelativeToWorktreeRoot(path) })`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
+Each result is read through `readRuntimeFileContent`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
 
 **Caching.** The caller caches the result per file path and refreshes it when the file is saved or after five idle seconds — running a worktree search on every keystroke pause is not affordable. Keep the cache in `nes-related-files.ts` and expose `clearNesRelatedFilesCache(filePath: string): void`.
 

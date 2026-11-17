@@ -88,6 +88,11 @@ Completed
   - `Completed`：`state ∈ {done, stopped, failed}`。
   - 名单里的 `state` 缺失时（更旧的 CLI）：`working` → Working，其余 → Completed。
   - **不要**用 `state.json` 的 `needs` / `block.questions` 来分段。那两个字段是**条件字段** —— 只有 agent 被卡住等决定时才写（实测：本机 18 个 job 一个都没被卡过，全都没有这两个字段）。它们只用来在行里显示"它在问你什么"，不参与分段。
+- **名单的作用域**：**当前工作区的**。CLI 的 `claude agents --json --all` 列出的是**整台机器**的 agent，而面板是长在某个项目旁边的 —— 所以面板按**当前工作区**过滤：agent 的 `cwd` 落在该工作区的目录集合里，才算这个项目的 agent。
+  - 工作区的目录集合用**旁边「代理」面板同一条规则**算：`deriveAiVaultWorkspaceScopePaths(activeWorktree, allWorktrees)`（当前 worktree 的路径 + 它重命名前的路径；**不含**同 repo 的其它 worktree —— 那是「项目」作用域的规则）；cwd 的归属判定复用 `createAiVaultScopeCwdMatcher`。
+  - **切换左侧项目 ⇒ 名单跟着换。**（这是重做时丢掉的旧行为：旧面板用 `resolveBackgroundAgentWorkspaceScope`，用的就是同一条规则。）
+  - 本项目一个 agent 都没有 ⇒ **显示空状态**（和「代理」面板一致），而不是把全机的 agent 列出来。
+  - 作用域只影响**列表**。派发已经在当前工作区的目录里跑（composer 的 `cwd` 取当前 worktree 的路径），停止/删除按 agent 的 id 走，都不受作用域影响。
 - **行**：`❯` 指针（仅选中行）+ 状态点 + name + detail + 右侧 elapsed。
   - detail 取自 `state.json` 的 `detail`；缺失时该格留空。
   - elapsed 从 `startedAt`（`--json`）起算，`--json` 不可用时用 `state.json` 的 `createdAt`。
@@ -298,7 +303,8 @@ spawn 参数：
 | `state.json` 读不到                               | 该行没有 detail，其余正常                                                                                                                                                                                                           |
 | `claude attach` 一个已完成的 agent（`done`）      | CLI 打印 `Waking session <id>` 并**把会话唤醒**（实测 claude 2.1.319）；面板**不拦**——CLI 自己的 agent 视图也允许唤醒，面板与 CLI 一致。header 显示 agent 的状态词 + 返回按钮；面板不订阅 attach PTY 的退出事件，状态靠名单轮询得到 |
 | `claude attach` 一个已停止的 agent（`stopped`）   | 未实测（claude 2.1.319）：面板同样不拦，行为以 CLI 为准                                                                                                                                                                             |
-| attach 的 agent 在别的主机                        | v1：不列出（列表是本机的）                                                                                                                                                                                                          |
+| attach 的 agent 在别的主机                        | v1：不列出（**宿主**维度：列表只答本机）                                                                                                                                                                                            |
+| 当前项目没有后台 agent                            | 显示空状态（和「代理」面板一致），不列出全机的 agent                                                                                                                                                                                |
 | 侧栏太窄（默认 280px ≈ 35 列）                    | **右侧边栏可以拖宽**（`right-sidebar/index.tsx:234` 有 resize 手柄）→ 用户拖宽即可。v1 **不做**「在主区域打开」那个按钮：它要接 Orca 的终端 pane 启动路径，而计划里没有任何任务映射过那条路径                                       |
 
 ## 9. 测试策略

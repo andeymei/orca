@@ -12,7 +12,9 @@ import {
   groupBackgroundAgentListRows,
   type BackgroundAgentListRow
 } from './background-agent-list-rows'
+import { BackgroundAgentEmptyState } from './BackgroundAgentEmptyState'
 import { BackgroundAgentRowView } from './BackgroundAgentRow'
+import { useBackgroundAgentScopeMatcher } from './use-background-agent-scope-matcher'
 import { useBackgroundAgentDispatch } from './use-background-agent-dispatch'
 import {
   refreshBackgroundAgentRoster,
@@ -65,7 +67,14 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       (state.activeWorkspaceExecutionHostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
   )
 
-  const rows = useMemo(() => buildBackgroundAgentListRows(agents, details), [agents, details])
+  // Why: the CLI lists this machine's agents, so the panel keeps the ones of the open workspace.
+  // The scope follows the workspace, so switching projects swaps the roster.
+  const inScope = useBackgroundAgentScopeMatcher()
+  // The filter runs before the grouping, so the header counts the workspace's agents only.
+  const rows = useMemo(
+    () => buildBackgroundAgentListRows(agents, details).filter((row) => inScope(row.cwd)),
+    [agents, details, inScope]
+  )
   const groups = useMemo(() => groupBackgroundAgentListRows(rows), [rows])
   const counts = useMemo(() => countBackgroundAgentListRows(rows), [rows])
   const selectableRows = useMemo(
@@ -402,11 +411,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
             ) : null}
           </div>
         ) : null}
-        {status === 'ready' && rows.length === 0 ? (
-          <div className="py-6 text-center text-xs text-muted-foreground">
-            {t('auto.components.backgroundAgents.empty', 'No background agents')}
-          </div>
-        ) : null}
+        {status === 'ready' && rows.length === 0 ? <BackgroundAgentEmptyState /> : null}
         <div
           role="listbox"
           aria-label={t('auto.components.backgroundAgents.title', 'Background agents')}

@@ -21,15 +21,30 @@
  * 4. The CLI is started without the session the spec happens to run in, so the probe is a session
  *    of its own instead of a copy of the developer's.
  *
+ * The panel lists the agents of the workspace the user is in, so the probe is started in the
+ * app's own workspace directory — the directory the CLI is told to trust for the length of the
+ * run, because it refuses to start a session in a directory it does not know.
+ *
  * A machine without a Claude Code CLI has nothing to supervise, and CI has none, so the spec skips
  * there instead of pretending.
  */
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import type { Page } from '@stablyai/playwright-test'
 import { runProcess } from '@orca/process-host'
 import { expect, test as base } from './helpers/orca-app'
+import { getActiveWorktreeId } from './helpers/store'
 import { resolveClaudeCommand } from '../../src/shared/node-cli-command-resolution'
+import {
+  applyClaudeFolderTrust,
+  claudeTrustKeysForHostPath,
+  resolveClaudeGlobalConfigFile,
+  updateClaudeGlobalConfig,
+  type ClaudeGlobalConfigChange,
+  type ClaudeGlobalConfigUpdateOutcome,
+  type ClaudeTrustPathStyle
+} from '../../src/main/claude/claude-folder-trust-file'
 import {
   PARENT_AGENT_SESSION_STAMP_ENV_KEYS,
   stripInheritedAgentSessionEnv
@@ -107,6 +122,175 @@ function resolveRealClaude(): string | null {
 /** The directory the Claude Code CLI keeps its agents in. */
 function resolveRealClaudeConfigDir(): string {
   return process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(os.homedir(), '.claude')
+}
+
+/** The path style the CLI uses for its trust keys on this machine. */
+function resolveTrustPathStyle(): ClaudeTrustPathStyle {
+  return process.platform === 'win32' ? 'win32' : 'posix'
+}
+
+/**
+ * The config file the CLI keeps its workspace trust records in.
+ *
+ * The app's own module resolves it the way Claude does: the legacy `.config.json` first, then
+ * `.claude.json` — and it points at the directory the spec hands the CLI, so the app and the spec
+ * read one file.
+ */
+function resolveTrustConfigFile(): string {
+  return resolveClaudeGlobalConfigFile({
+    env: { CLAUDE_CONFIG_DIR: resolveRealClaudeConfigDir() },
+    homeDir: os.homedir(),
+    style: resolveTrustPathStyle(),
+    exists: existsSync
+  })
+}
+
+/** A JSON object, or nothing else. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** What the CLI kept for a trust key before the run. */
+type TrustRecord = { present: boolean; value: unknown }
+
+/**
+ * The trust records the CLI kept before the run, and how the config could be read.
+ *
+ * `state` says which of the three cases it is: the config read, the config could not be parsed,
+ * or there is no config file at all. `hadProjects` says whether the config carried a `projects`
+ * map in the first place, so the restore can take the map away again instead of leaving an empty
+ * one behind.
+ */
+type TrustSnapshot = {
+  state: 'read' | 'unreadable' | 'missing'
+  hadProjects: boolean
+  records: Map<string, TrustRecord>
+}
+
+/**
+ * The trust records the CLI keeps for the workspace, as they were before the run.
+ *
+ * The snapshot is a plain read — reading cannot damage anything — and it says which of the three
+ * cases it is, so a config that cannot be parsed is never mistaken for a config without the key.
+ */
+function readTrustSnapshot(configFile: string, keys: readonly string[]): TrustSnapshot {
+  let raw: string
+  try {
+    raw = readFileSync(configFile, 'utf8')
+  } catch (error) {
+    const code = error instanceof Error && 'code' in error ? error.code : undefined
+    return {
+      state: code === 'ENOENT' ? 'missing' : 'unreadable',
+      hadProjects: false,
+      records: new Map()
+    }
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { state: 'unreadable', hadProjects: false, records: new Map() }
+  }
+  if (!isRecord(parsed)) {
+    return { state: 'unreadable', hadProjects: false, records: new Map() }
+  }
+  const projects = parsed.projects
+  const records = new Map<string, TrustRecord>()
+  if (isRecord(projects)) {
+    for (const key of keys) {
+      records.set(key, { present: Object.hasOwn(projects, key), value: projects[key] })
+    }
+  }
+  return { state: 'read', hadProjects: projects !== undefined, records }
+}
+
+/**
+ * Give the trust records back exactly as they were: the same keys, the same values.
+ *
+ * Only the spec's own keys are touched, and the `projects` map is taken away again when the run is
+ * what put it there. When the config already matches the pre-run state the answer is 'unchanged',
+ * so the writer does not touch the file at all.
+ */
+function restoreTrustRecords(
+  config: Record<string, unknown>,
+  keys: readonly string[],
+  snapshot: TrustSnapshot
+): ClaudeGlobalConfigChange {
+  const projects = config.projects
+  if (projects !== undefined && !isRecord(projects)) {
+    return { kind: 'refuse' }
+  }
+  const current: Record<string, unknown> = { ...projects }
+  const restored: Record<string, unknown> = { ...current }
+  for (const key of keys) {
+    const record = snapshot.records.get(key)
+    if (record?.present) {
+      restored[key] = record.value
+    } else {
+      delete restored[key]
+    }
+  }
+  if (JSON.stringify(restored) === JSON.stringify(current)) {
+    return { kind: 'unchanged' }
+  }
+  const next: Record<string, unknown> = { ...config }
+  if (Object.keys(restored).length === 0 && !snapshot.hadProjects) {
+    delete next.projects
+  } else {
+    next.projects = restored
+  }
+  return { kind: 'changed', config: next }
+}
+
+/**
+ * Trust the workspace for the length of the run, and report how to take the trust back.
+ *
+ * The CLI refuses to start a session in a directory it does not know, and the E2E's workspace is a
+ * fresh temporary checkout. The keys are the ones the CLI itself looks up — the resolved path, the
+ * real path and their NFC forms — and both the grant and the restore go through the app's own
+ * locked, atomic writer, so a config that cannot be read is never replaced and the user's other
+ * projects keep their records.
+ */
+async function trustWorkspace(
+  configFile: string,
+  workspacePath: string
+): Promise<{ restore: () => Promise<ClaudeGlobalConfigUpdateOutcome> }> {
+  const keys = claudeTrustKeysForHostPath(workspacePath, resolveTrustPathStyle())
+  const snapshot = readTrustSnapshot(configFile, keys)
+  const granted = await updateClaudeGlobalConfig(configFile, (config) =>
+    applyClaudeFolderTrust(config, keys)
+  )
+  if (granted !== 'updated' && granted !== 'unchanged') {
+    throw new Error(
+      `the workspace could not be trusted: ${granted} (the Claude config at ${configFile} is ${snapshot.state})`
+    )
+  }
+  return {
+    restore: () =>
+      updateClaudeGlobalConfig(configFile, (config) => restoreTrustRecords(config, keys, snapshot))
+  }
+}
+
+/**
+ * The directory the app's active workspace lives in.
+ *
+ * The store's own record is the path the renderer scopes the panel with, so the probe runs where
+ * the panel looks for it. The worktree id carries the same path, but a folder workspace adds a
+ * suffix to it, and the record already is the real path.
+ */
+async function readActiveWorkspacePath(page: Page): Promise<string | null> {
+  return await page.evaluate(() => {
+    const state = window.__store?.getState()
+    const worktreeId = state?.activeWorktreeId
+    if (!state || !worktreeId) {
+      return null
+    }
+    const worktree = state.getKnownWorktreeById(
+      worktreeId,
+      state.activeWorkspaceExecutionHostId ?? undefined
+    )
+    return worktree?.path ?? null
+  })
 }
 
 /** The user's own shell; the app's shell has to be one the daemon knows how to drive. */
@@ -256,7 +440,7 @@ async function askClaudeAgents(extraArgs: readonly string[]): Promise<AgentsAnsw
   const result = await runProcess({
     program: realClaude,
     args: ['agents', '--json', ...extraArgs],
-    env: environmentWithoutAmbientSession(),
+    env: { ...environmentWithoutAmbientSession(), CLAUDE_CONFIG_DIR: resolveRealClaudeConfigDir() },
     timeoutMs: LISTING_TIMEOUT_MS,
     maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
   })
@@ -282,17 +466,16 @@ async function askClaudeAgents(extraArgs: readonly string[]): Promise<AgentsAnsw
  * The probe is what the spec supervises, so the spec never touches the agent the developer is
  * working in.
  *
- * The CLI is the machine's own, and it runs without `CLAUDE_CONFIG_DIR`: the launcher the app
- * uses sets that variable to the real config directory, and with it set the CLI no longer finds
- * the workspace's trust record and refuses to start a session ("Workspace not trusted"). The
- * directory the CLI then uses is the same one the launcher points at — `~/.claude` — so the app
- * and the spec see the same roster.
+ * The CLI is the machine's own, and it runs with the same config directory the launcher the app
+ * uses points at: the app and the spec then read one roster, and the trust record the spec wrote
+ * is the one the CLI reads. The probe runs in the app's own workspace directory, because the
+ * panel only lists the agents that ran there.
  *
  * The probe also runs without the session the spec was started from: a probe that continued that
  * session would inherit the developer's own conversation, and its recap of it would land in the
  * terminal the spec is typing in.
  */
-async function dispatchProbeAgent(): Promise<string> {
+async function dispatchProbeAgent(cwd: string): Promise<string> {
   const realClaude = resolveRealClaude()
   if (!realClaude) {
     throw new Error('this machine has no Claude Code CLI')
@@ -300,7 +483,8 @@ async function dispatchProbeAgent(): Promise<string> {
   const result = await runProcess({
     program: realClaude,
     args: ['--bg', '--', PROBE_PROMPT],
-    env: environmentWithoutAmbientSession(),
+    cwd,
+    env: { ...environmentWithoutAmbientSession(), CLAUDE_CONFIG_DIR: resolveRealClaudeConfigDir() },
     timeoutMs: DISPATCH_TIMEOUT_MS,
     maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
   })
@@ -336,7 +520,7 @@ async function removeProbeAgent(id: string): Promise<string | null> {
   const result = await runProcess({
     program: realClaude,
     args: ['rm', id],
-    env: environmentWithoutAmbientSession(),
+    env: { ...environmentWithoutAmbientSession(), CLAUDE_CONFIG_DIR: resolveRealClaudeConfigDir() },
     timeoutMs: REMOVE_TIMEOUT_MS,
     maxOutputBytes: CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES
   })
@@ -354,7 +538,26 @@ function randomToken(): string {
 test('entering a running agent and coming back leaves the agent running', async ({
   orcaPage
 }, testInfo) => {
-  const probeId = await dispatchProbeAgent()
+  // The panel answers for the workspace the user is in, so the probe has to run in it.
+  const activeWorktreeId = await getActiveWorktreeId(orcaPage)
+  if (activeWorktreeId === null) {
+    test.skip(true, 'the app has no active workspace, so the panel has no workspace to scope to')
+    return
+  }
+  const workspacePath = await readActiveWorkspacePath(orcaPage)
+  if (workspacePath === null) {
+    test.skip(true, 'the active workspace has no directory here, so no agent can run in it')
+    return
+  }
+  const trust = await trustWorkspace(resolveTrustConfigFile(), workspacePath)
+  let probeId: string
+  try {
+    probeId = await dispatchProbeAgent(workspacePath)
+  } catch (error) {
+    // The trust record is only needed for the probe's own start.
+    await trust.restore()
+    throw error
+  }
   try {
     // The panel polls only while the window is visible, and the E2E window stays hidden.
     await orcaPage.evaluate(() => {
@@ -501,6 +704,14 @@ test('entering a running agent and coming back leaves the agent running', async 
       testInfo.annotations.push({
         type: 'probe-agent-removal',
         description: `the probe agent ${probeId} could not be removed: ${removalFailure}`
+      })
+    }
+    // The workspace is trusted again, so the machine keeps the workspaces it had.
+    const restoreOutcome = await trust.restore()
+    if (restoreOutcome !== 'updated' && restoreOutcome !== 'unchanged') {
+      testInfo.annotations.push({
+        type: 'workspace-trust-restore',
+        description: `the workspace trust could not be taken back: ${restoreOutcome}`
       })
     }
   }

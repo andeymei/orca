@@ -910,6 +910,7 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - **pill 的删除**:pill 是 `atom: true` 的 inline 节点,ProseMirror 默认在光标紧贴 pill 后方时 Backspace 删掉整个 pill;**不要**自己再实现一遍。
 - **pill 的三种态**:上传中(spinner + `Hourglass` 图标,取自 `NativeChatFileReferencePill` 的既有做法)、失败(`FileX` 图标 + 「需要重新添加」提示)、就绪。失败只摘掉那一个 pill,**其余附件保留**。
 - **正文里的图片 pill 在发送时被摘掉**,由 Task 5 的写序列负责;编辑器本身不知道 agent 的存在。
+- **写草稿时必须在写入时刻从 store 读当前草稿,不要用捕获的快照。** `setTerminalComposerDraft` 是**整份替换**(带 ProseMirror 文档),而 Task 4 的 intake 先产生 `workspacePath: null`、落地之后才拿到路径;中间用户打的字会被整份覆盖掉。同理,附件落地后回填路径时,要在那一刻读最新的 draft 再写回去。
 - 提示行用 `<ShortcutKeyCombo />`;标签按平台显示 `⌘↵` / `Ctrl+↵`。
 - 工具条:Paperclip ghost icon button(`Tooltip`「添加附件」)+ 发送 primary button。
 - **三路来源的接线**(Task 4 的产出在这里落地,否则那一层无人使用):
@@ -1024,8 +1025,10 @@ git commit -m "feat(composer): the terminal composer's field and overlay"
   ): boolean
 
   // terminal-composer.ts (slice)
+  /** Drops one pane's draft and open flag. */
+  clearTerminalComposerPane: (paneKey: string) => void
   /** Drops every draft and open flag this tab's panes owned. */
-  clearTerminalComposerDraftsForTab: (tabId: string) => void
+  clearTerminalComposerStateForTab: (tabId: string) => void
   ```
 
 - [ ] **Step 1: Write the failing test**
@@ -1123,8 +1126,12 @@ Expected: PASS
 
 spec §4.4 说「pane 关闭时清掉草稿」。pane 的移除有**两条**路径,两条都要覆盖:
 
-1. **关掉一个兄弟 pane** → `use-terminal-pane-close-actions.ts` 的 `closePaneLocally`。清**这个 pane** 的:在已有的 `dropAgentStatus(...)` / `setCacheTimerStartedAt(...)` 旁边加一句 `clearTerminalComposerDraft(makePaneKey(tabId, leafId))`。
-2. **关掉整个 tab(含最后一个 pane)** → `closePaneLocally` 在只剩一个 pane 时会转去 `onCloseTab(reason)` 并**提前返回**,所以第 1 条覆盖不到。tab 关掉时清**这个 tab 的所有 pane**:给 slice 加 `clearTerminalComposerDraftsForTab(tabId)`(按 pane key 前缀 `${tabId}:` 清),在 tab 的关闭路径上调它。`onCloseTab` 在两处被接线(`TerminalOverlaySlot.tsx` 与 `TerminalLegacyTerminalPanes.tsx`),两处都要调,或者找到一处能同时覆盖它们的接缝。
+1. **关掉一个兄弟 pane** → `use-terminal-pane-close-actions.ts` 的 `closePaneLocally`。在已有的 `dropAgentStatus(...)` / `setCacheTimerStartedAt(...)` 旁边加一句 `clearTerminalComposerPane(makePaneKey(tabId, leafId))`。
+2. **关掉整个 tab(含最后一个 pane)** → `closePaneLocally` 在只剩一个 pane 时会转去 `onCloseTab(reason)` 并**提前返回**,所以第 1 条覆盖不到。tab 关掉时清**这个 tab 的所有 pane**:给 slice 加 `clearTerminalComposerStateForTab(tabId)`,在 tab 的关闭路径上调它。`onCloseTab` 在两处被接线(`TerminalOverlaySlot.tsx` 与 `TerminalLegacyTerminalPanes.tsx`),两处都要调,或者找到一处能同时覆盖它们的接缝。
+
+两个方法都要把**草稿和展开标记**一起清掉:只清草稿会留下一个 `false` 的展开标记挂在死掉的 pane 上,两条路径不对称。
+
+**找 tab 的 pane 时用 `parsePaneKey`(在 `src/shared/workspace-layout/stable-pane-id.ts`),不要用前缀匹配** —— 前缀虽然安全(`makePaneKey` 拒绝含 `':'` 的 tabId),但 `parsePaneKey` 本来就能把 key 拆回 tabId,更准。
 
 草稿只在内存里,但它带着一整个 ProseMirror 文档;不清就是每次关 pane 漏一份。
 

@@ -421,6 +421,8 @@ Create `src/main/code-completion/completion-service.ts`. The service:
 
 A failure is silent to the user — that is the spec's rule — but it is **not** silent to the log: an endpoint 401, a 429 and a truncated stream are indistinguishable after the fact if nothing is written down. Log the failure with `console.error` (the repo's convention in `src/main`), leaving the abort and timeout paths out: the user typed, and that is not an error.
 
+**Log only a fixed, safe set of facts — never the error object.** A caught exception can carry the request (with the API key in its headers) or the response (the model's answer, which is the user's source code); a `SyntaxError` from parsing a non-JSON answer includes a fragment of that answer in modern V8. So the log line carries the **backend id** and the error's **`name`** (a class name) — never the message, never the error object, never anything derived from the request or the response.
+
 **An abort is not a failure to cache.** The backend distinguishes an aborted request from an endpoint error, and the service must not cache "nothing to propose" for an abort: the user kept typing, so the answer would be stale the moment it arrived. Check `signal.aborted` before caching.
 
 - [ ] **Step 7: Run both test files**

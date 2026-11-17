@@ -2,6 +2,7 @@ import { normalizeAgentDefaultSurface } from '../../../../shared/native-chat/nat
 import { normalizeNativeChatAppearanceSettings } from '../../../../shared/native-chat/native-chat-appearance-settings'
 import { getDefaultVoiceSettings } from '../../../../shared/constants'
 import { normalizePRBotAuthorOverrides } from '../../../../shared/source-control/review-comments/pr-bot-author-overrides'
+import { normalizeCodeCompletionSettings } from '../../../../shared/code-completion/code-completion-settings'
 import { normalizeTerminalQuickCommands } from '../../../../shared/terminal/quick-commands/terminal-quick-commands'
 import { normalizeOpenInApplications } from '../../../../shared/open-in-applications'
 import '../../../../shared/keybindings'
@@ -99,6 +100,8 @@ export function normalizeLoadedGlobalSettings(
     ),
     worktreeVisibilityDefaults: migratedExternalVisibility.defaults,
     prBotAuthorOverrides: normalizePRBotAuthorOverrides(parsed.settings?.prBotAuthorOverrides),
+    // A hand-edited or imported profile can carry a malformed block; normalize it on the way in.
+    codeCompletion: normalizeCodeCompletionSettings(parsed.settings?.codeCompletion),
     // Only fresh profiles take the on default; a stored profile saved before the key existed was off.
     artifactSharingEnabled: parsed.settings?.artifactSharingEnabled === true,
     // Carry the retired sidekick flag into pet settings.

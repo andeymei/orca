@@ -340,6 +340,7 @@ git commit -m "feat(store): the terminal composer's open state and drafts"
 
 - Create: `src/renderer/src/components/terminal-pane/composer/attachments/terminal-composer-workspace-copy.ts`
 - Create: `src/renderer/src/components/terminal-pane/composer/attachments/terminal-composer-workspace-copy.test.ts`
+- Modify: `src/main/ipc/filesystem/filesystem-mutations.ts`
 
 **Interfaces:**
 
@@ -453,18 +454,34 @@ Expected: FAIL — "Cannot find module './terminal-composer-workspace-copy'"
   2. `const context: RuntimeFileOperationArgs = { target: runtimeTargetForOwnerEnvironment(request.runtimeEnvironmentId) , worktreeId, worktreePath: request.workspacePath, expectedExecutionHostId, expectedSshTargetId, expectedSshConnectionGeneration, connectionId }` —— `runtimeTargetForOwnerEnvironment` 在 `@/runtime/rpc/targets/runtime-client-target`。
   3. `const { results } = await importExternalPathsToRuntime(context, [...request.sourcePaths], destDir, { ensureDestinationDir: true, assertCurrent: request.assertCurrent, nameExtensionlessImages: true })`
   4. 把 `results` 映射成 `copied` / `skipped` / `failed` 三组(`skipped` 的 `reason` 是 `ImportSkipReason` 字符串;`failed` 的 `reason` 是字符串)。
-  5. 若 `copied.length > 0` 且不是 runtime 路径(`!request.runtimeEnvironmentId`),best-effort 写 `.gitignore`。
+  5. 若 `copied.length > 0` 且**拷贝实际发生在本机**,best-effort 写 `.gitignore`。
 - 整个函数**不吞异常**:`assertCurrent` 抛出的错误要往上抛(调用方转成「宿主已改变,请重试」);单个文件的失败已经在 `results` 里,不要额外抛。
+- **「拷贝实际发生在哪台机器」只能算一次。** importer 的分支条件是 `target.kind !== 'environment' || !worktreeId || !worktreePath`(`runtime-file-import-client.ts:41`);「要不要写 `.gitignore`」必须用**同一个**判断,否则会出现「拷到本机了但不写 ignore」或「传到 runtime 了却往本机写 ignore」。抽一个 `copiesLocally` 布尔量,两处都用它。
+- `sourcePaths` 为空时**直接返回**,不要走一趟远端(会白建一个空的 drop 目录)。
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 4: Honor `ensureDir` in main's `fs:importExternalPaths`**
 
-Run: `pnpm test src/renderer/src/components/terminal-pane/composer/attachments/terminal-composer-workspace-copy.test.ts --maxWorkers=2`
+`fs:importExternalPaths` **声明了 `ensureDir` 却从不读它**(`filesystem-mutations.ts` 的 handler 里没有任何 mkdir),所以目标目录不存在时拷贝必然 ENOENT(`filesystem-import-local-tree-copy.ts:87` 的 `open(dstPath, 'wx')` 不会建父目录)。
+
+**这不只是 composer 的问题**:`editor-dropped-file-open.ts` 和 `attachment-drop-state.ts` 早就传了 `ensureDestinationDir: true`,目标目录同样是 `.orca/drops`——也就是说**在本机工作区把文件拖进编辑器或聊天框,今天就是坏的**。
+
+修在 main:在 `resolveLocalRequestPath` 之后、拷贝之前,`if (args.ensureDir) await mkdir(windowsFsPath(resolvedDest), { recursive: true })`。
+
+- 这是**兑现已声明的契约**,不是新加行为:preload 的类型、main 的参数类型、renderer 的 client 都传了这个选项,只有 handler 忽略了它。
+- 对现有调用方是**严格改进**:传了 `ensureDir: true` 的调用方今天在目录缺失时静默失败,修好后正常;没传的不受影响(不会建目录)。
+- 不要改 renderer 去建目录:`fs:createDir` 拒绝已存在的路径(`filesystem-create-path-guards.ts`),要额外写「已存在就放过」的容错,更脆,而且留着契约仍然是坏的。
+
+`.gitignore` 那一步不用另建目录:本机路径下 `.orca/drops` 由上面这步建出来了。
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `pnpm test src/renderer/src/components/terminal-pane/composer/attachments/terminal-composer-workspace-copy.test.ts --maxWorkers=2` && `pnpm test src/main/ipc/filesystem --maxWorkers=2`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/renderer/src/components/terminal-pane/composer/attachments/
+git add src/renderer/src/components/terminal-pane/composer/attachments/ src/main/ipc/filesystem/filesystem-mutations.ts
 git commit -m "feat(composer): copy attachments into the workspace that owns the terminal"
 ```
 

@@ -58,7 +58,7 @@ Five input classes the spec implies but no task's tests exercise — each line b
   - `NesBackendId = 'anthropic-messages' | 'openai-chat' | 'openai-completions-fim'`
   - `NesRequest` — the request both sides speak: `{ filePath: string; relativePath: string; languageId: string; prefix: string; suffix: string; relatedFiles: readonly { path: string; content: string }[]; recentEdits: readonly { path: string; label: string }[] }`
   - `validateNesEditPlan(raw: unknown, options: { allowedPaths: readonly string[] }): NesEditPlan` — drops unusable edits instead of failing the whole plan
-  - `sliceRange(text: string, range: NesEditRange): string | null` — the text a range covers, or null when it is out of bounds
+  - `sliceRange(text: string, range: NesEditRange): string | null` — the text a range covers, or null when the range is out of bounds or a column is below one
   - `buildNesSystemPrompt(options?: { autoImport?: boolean }): string`
   - `buildNesUserPrompt(input: NesPromptInput): string`
   - `type NesPromptInput = NesRequest & { autoImport: boolean }`
@@ -134,7 +134,7 @@ For each parsed edit, keep it only when all of these hold:
 - `kind === 'delete'` implies `text === ''`
 - `kind === 'replace'` implies both texts are non-empty
 
-`sliceRange(text, range)` returns the text a range covers: 1-based line and column, column counted in UTF-16 code units, lines split on `\n`, null when the range is out of bounds.
+`sliceRange(text, range)` returns the text a range covers: 1-based line and column, column counted in UTF-16 code units, lines split on `\n`. It returns null when the range is out of bounds **or when a column is below one** — a zero start column would otherwise reach `slice(-1, …)` and answer with the line's last character, and a zero end column would drop the end line's last character.
 
 - [ ] **Step 4: Write the prompt test**
 

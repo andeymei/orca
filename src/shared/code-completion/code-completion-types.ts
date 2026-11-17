@@ -44,7 +44,14 @@ export type NesEditRange = z.infer<typeof NesEditRange>
 export type NesEdit = z.infer<typeof NesEdit>
 export type NesEditPlan = z.infer<typeof NesEditPlan>
 
-export type NesBackendId = 'anthropic-messages' | 'openai-chat' | 'openai-completions-fim'
+/** The protocols a completion backend can speak; the id type is derived from this list. */
+export const NES_BACKEND_IDS = [
+  'anthropic-messages',
+  'openai-chat',
+  'openai-completions-fim'
+] as const
+
+export type NesBackendId = (typeof NES_BACKEND_IDS)[number]
 
 export type NesRequest = {
   filePath: string

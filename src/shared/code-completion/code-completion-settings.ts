@@ -1,11 +1,4 @@
-import type { NesBackendId } from './code-completion-types'
-
-/** The protocols the user can pick from; the type stays the source of truth. */
-const NES_BACKEND_IDS = [
-  'anthropic-messages',
-  'openai-chat',
-  'openai-completions-fim'
-] as const satisfies readonly NesBackendId[]
+import { NES_BACKEND_IDS, type NesBackendId } from './code-completion-types'
 
 const DEFAULT_TRIGGER_DELAY_MS = 500
 const MAX_TRIGGER_DELAY_MS = 5000

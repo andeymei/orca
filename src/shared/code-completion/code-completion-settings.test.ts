@@ -87,4 +87,11 @@ describe('code completion settings', () => {
   it('caps the trigger delay at the ceiling', () => {
     expect(normalizeCodeCompletionSettings({ triggerDelayMs: 99_999 }).triggerDelayMs).toBe(5000)
   })
+
+  it('hands out a fresh extension list per call', () => {
+    const first = getDefaultCodeCompletionSettings()
+    first.enabledExtensions.push('zz')
+
+    expect(getDefaultCodeCompletionSettings().enabledExtensions).toEqual(DEFAULT_EXTENSIONS)
+  })
 })

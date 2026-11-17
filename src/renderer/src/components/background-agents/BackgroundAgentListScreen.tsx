@@ -12,8 +12,9 @@ import {
   groupBackgroundAgentListRows,
   type BackgroundAgentListRow
 } from './background-agent-list-rows'
+import { BackgroundAgentEmptyState } from './BackgroundAgentEmptyState'
 import { BackgroundAgentRowView } from './BackgroundAgentRow'
-import { useBackgroundAgentScopeMatcher } from './background-agent-workspace-scope'
+import { useBackgroundAgentScopeMatcher } from './use-background-agent-scope-matcher'
 import { useBackgroundAgentDispatch } from './use-background-agent-dispatch'
 import {
   refreshBackgroundAgentRoster,
@@ -410,11 +411,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
             ) : null}
           </div>
         ) : null}
-        {status === 'ready' && rows.length === 0 ? (
-          <div className="py-6 text-center text-xs text-muted-foreground">
-            {t('auto.components.backgroundAgents.empty', 'No background agents in this project')}
-          </div>
-        ) : null}
+        {status === 'ready' && rows.length === 0 ? <BackgroundAgentEmptyState /> : null}
         <div
           role="listbox"
           aria-label={t('auto.components.backgroundAgents.title', 'Background agents')}

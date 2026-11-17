@@ -1,80 +1,47 @@
-import { describe, expect, it, beforeEach } from 'vitest'
-import { createTestStore } from '@/store/testing/app-store-test-fixture'
+import { describe, expect, it } from 'vitest'
 import { makeWorktree } from '@/store/slices/worktrees/worktree.test-fixture'
-import { TEST_REPO } from '@/store/repos/repo.test-fixture'
 import {
   createBackgroundAgentScopeMatcher,
-  resolveBackgroundAgentWorkspaceScope
+  deriveBackgroundAgentScopePaths
 } from './background-agent-workspace-scope'
 
-let store: ReturnType<typeof createTestStore>
-
-beforeEach(() => {
-  store = createTestStore()
+const WORKSPACE = makeWorktree({
+  id: 'repo1::/repos/app',
+  repoId: 'repo1',
+  path: '/repos/app'
+})
+const SIBLING = makeWorktree({
+  id: 'repo1::/repos/app-feature',
+  repoId: 'repo1',
+  path: '/repos/app-feature'
 })
 
-describe('resolveBackgroundAgentWorkspaceScope', () => {
-  it('names the workspace the user is in and the directory it owns', () => {
-    store.setState({
-      repos: [TEST_REPO],
-      worktreesByRepo: {
-        repo1: [makeWorktree({ id: 'repo1::/repos/app', repoId: 'repo1', path: '/repos/app' })]
-      },
-      activeWorktreeId: 'repo1::/repos/app',
-      activeWorkspaceExecutionHostId: 'local'
-    })
-    const scope = resolveBackgroundAgentWorkspaceScope(store.getState())
-    expect(scope.workspaceId).toBe('repo1::/repos/app')
-    expect(scope.scopePaths).toEqual(['/repos/app'])
+describe('deriveBackgroundAgentScopePaths', () => {
+  it('names the directory the workspace owns', () => {
+    expect(deriveBackgroundAgentScopePaths(WORKSPACE, [WORKSPACE])).toEqual(['/repos/app'])
   })
 
   it('keeps the directory a renamed workspace had', () => {
-    store.setState({
-      repos: [TEST_REPO],
-      worktreesByRepo: {
-        repo1: [
-          makeWorktree({
-            id: 'repo1::/repos/app',
-            repoId: 'repo1',
-            path: '/repos/app',
-            priorWorktreeIds: ['repo1::/repos/app-old']
-          })
-        ]
-      },
-      activeWorktreeId: 'repo1::/repos/app',
-      activeWorkspaceExecutionHostId: 'local'
+    const renamed = makeWorktree({
+      id: 'repo1::/repos/app',
+      repoId: 'repo1',
+      path: '/repos/app',
+      priorWorktreeIds: ['repo1::/repos/app-old']
     })
-    const scope = resolveBackgroundAgentWorkspaceScope(store.getState())
-    expect(scope.scopePaths).toEqual(['/repos/app', '/repos/app-old'])
+    expect(deriveBackgroundAgentScopePaths(renamed, [renamed])).toEqual([
+      '/repos/app',
+      '/repos/app-old'
+    ])
   })
 
   it('leaves the sibling worktree of the same repo out', () => {
-    store.setState({
-      repos: [TEST_REPO],
-      worktreesByRepo: {
-        repo1: [
-          makeWorktree({ id: 'repo1::/repos/app', repoId: 'repo1', path: '/repos/app' }),
-          makeWorktree({
-            id: 'repo1::/repos/app-feature',
-            repoId: 'repo1',
-            path: '/repos/app-feature'
-          })
-        ]
-      },
-      activeWorktreeId: 'repo1::/repos/app',
-      activeWorkspaceExecutionHostId: 'local'
-    })
-    const scope = resolveBackgroundAgentWorkspaceScope(store.getState())
-    expect(scope.scopePaths).toEqual(['/repos/app'])
-    expect(scope.scopePaths).not.toContain('/repos/app-feature')
+    // The workspace rule is not the project rule: the sibling belongs to the project, not to this
+    // workspace. The project rule would answer ['/repos/app', '/repos/app-feature'].
+    expect(deriveBackgroundAgentScopePaths(WORKSPACE, [WORKSPACE, SIBLING])).toEqual(['/repos/app'])
   })
 
   it('has nothing to scope when no workspace is open', () => {
-    store.setState({ activeWorktreeId: null })
-    expect(resolveBackgroundAgentWorkspaceScope(store.getState())).toEqual({
-      workspaceId: null,
-      scopePaths: []
-    })
+    expect(deriveBackgroundAgentScopePaths(null, [WORKSPACE, SIBLING])).toEqual([])
   })
 })
 
@@ -92,7 +59,7 @@ describe('createBackgroundAgentScopeMatcher', () => {
 
   it('drops a sibling directory that only shares the workspace prefix', () => {
     const inScope = createBackgroundAgentScopeMatcher(['/repos/app'])
-    expect(inScope('/repos/app-old')).toBe(false)
+    expect(inScope('/repos/app-feature')).toBe(false)
   })
 
   it('claims nothing when the workspace has no directory', () => {

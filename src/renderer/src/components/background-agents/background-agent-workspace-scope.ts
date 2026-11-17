@@ -1,45 +1,21 @@
-import { useMemo } from 'react'
 import { createAiVaultScopeCwdMatcher } from '../../../../shared/ai-vault/scanning/ai-vault-scope-cwd-match'
 import { deriveAiVaultWorkspaceScopePaths } from '../../../../shared/ai-vault/scanning/ai-vault-scope-paths'
-import type { AppState } from '@/store/types'
-import { getIndexedAllWorktrees } from '@/store/slices/worktrees/listing/worktree-catalog-index'
-import { useAllWorktrees } from '@/store/slices/worktrees/listing/use-worktree-catalog'
-import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-record-fields'
-import { selectKnownWorktreeById } from '@/store/workspaces/selection/known-worktree-selection'
-import { useActiveWorktree } from '@/store/workspaces/selection/use-selected-worktree'
-
-/** The workspace the panel answers for, and the directories its agents live in. */
-export type BackgroundAgentWorkspaceScope = {
-  workspaceId: string | null
-  scopePaths: readonly string[]
-}
+import type { Worktree } from '../../../../shared/worktree/types'
 
 /**
- * The workspace the user is in, with the directories that belong to it.
+ * The directories an agent may have run in for it to be one of this workspace's agents.
  *
  * An agent is recorded by the directory it ran in, so the workspace's own path — and the paths it
- * had before a rename — are what decide whether an agent is one of this workspace's agents. The
- * same paths the AI Vault panel scopes its list with: the workspace's own directory, not the whole
- * project.
+ * had before a rename — are what decide whether an agent belongs to it. This is the **workspace**
+ * rule, the same one the AI Vault panel scopes its list with: the sibling worktrees of the same
+ * repository are *not* part of it. (The project rule, which does include them, is
+ * `deriveAiVaultScopeSessionPaths`.)
  */
-export function resolveBackgroundAgentWorkspaceScope(
-  state: AppState
-): BackgroundAgentWorkspaceScope {
-  const workspaceId = state.activeWorktreeId
-  if (!workspaceId) {
-    return { workspaceId: null, scopePaths: [] }
-  }
-  const worktree = selectKnownWorktreeById(state, workspaceId)
-  if (!worktree) {
-    return { workspaceId, scopePaths: [] }
-  }
-  return {
-    workspaceId,
-    scopePaths: deriveAiVaultWorkspaceScopePaths(
-      worktree,
-      getIndexedAllWorktrees(selectWorktreesByRepo(state))
-    )
-  }
+export function deriveBackgroundAgentScopePaths(
+  activeWorktree: Pick<Worktree, 'id' | 'path' | 'priorWorktreeIds' | 'repoId'> | null,
+  liveWorktrees: readonly Pick<Worktree, 'id' | 'path' | 'repoId'>[] = []
+): readonly string[] {
+  return deriveAiVaultWorkspaceScopePaths(activeWorktree, liveWorktrees)
 }
 
 /**
@@ -57,20 +33,4 @@ export function createBackgroundAgentScopeMatcher(
   }
   const inScope = createAiVaultScopeCwdMatcher(scopePaths)
   return (cwd) => inScope(cwd)
-}
-
-/**
- * The matcher for the workspace the user is in, recomputed when the workspace changes.
- *
- * The panel subscribes to the workspace instead of reading the store while it renders, so
- * switching projects swaps the roster instead of leaving it on the machine's agents.
- */
-export function useBackgroundAgentScopeMatcher(): (cwd: string | null | undefined) => boolean {
-  const activeWorktree = useActiveWorktree()
-  const allWorktrees = useAllWorktrees()
-  const scopePaths = useMemo(
-    () => deriveAiVaultWorkspaceScopePaths(activeWorktree ?? null, allWorktrees),
-    [activeWorktree, allWorktrees]
-  )
-  return useMemo(() => createBackgroundAgentScopeMatcher(scopePaths), [scopePaths])
 }

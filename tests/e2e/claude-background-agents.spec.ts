@@ -28,7 +28,7 @@
  * A machine without a Claude Code CLI has nothing to supervise, and CI has none, so the spec skips
  * there instead of pretending.
  */
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { Page } from '@stablyai/playwright-test'
@@ -36,6 +36,15 @@ import { runProcess } from '@orca/process-host'
 import { expect, test as base } from './helpers/orca-app'
 import { getActiveWorktreeId } from './helpers/store'
 import { resolveClaudeCommand } from '../../src/shared/node-cli-command-resolution'
+import {
+  applyClaudeFolderTrust,
+  claudeTrustKeysForHostPath,
+  resolveClaudeGlobalConfigFile,
+  updateClaudeGlobalConfig,
+  type ClaudeGlobalConfigChange,
+  type ClaudeGlobalConfigUpdateOutcome,
+  type ClaudeTrustPathStyle
+} from '../../src/main/claude/claude-folder-trust-file'
 import {
   PARENT_AGENT_SESSION_STAMP_ENV_KEYS,
   stripInheritedAgentSessionEnv
@@ -115,15 +124,25 @@ function resolveRealClaudeConfigDir(): string {
   return process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(os.homedir(), '.claude')
 }
 
+/** The path style the CLI uses for its trust keys on this machine. */
+function resolveTrustPathStyle(): ClaudeTrustPathStyle {
+  return process.platform === 'win32' ? 'win32' : 'posix'
+}
+
 /**
- * The main config file the CLI reads its workspace trust records from.
+ * The config file the CLI keeps its workspace trust records in.
  *
- * The CLI looks for the config next to the directory it was given, so the app's launcher and the
- * spec's probe read the same file — and the trust record the spec writes there is the one both
- * of them see.
+ * The app's own module resolves it the way Claude does: the legacy `.config.json` first, then
+ * `.claude.json` — and it points at the directory the spec hands the CLI, so the app and the spec
+ * read one file.
  */
-function resolveRealClaudeMainConfigPath(): string {
-  return path.join(resolveRealClaudeConfigDir(), '.claude.json')
+function resolveTrustConfigFile(): string {
+  return resolveClaudeGlobalConfigFile({
+    env: { CLAUDE_CONFIG_DIR: resolveRealClaudeConfigDir() },
+    homeDir: os.homedir(),
+    style: resolveTrustPathStyle(),
+    exists: existsSync
+  })
 }
 
 /** A JSON object, or nothing else. */
@@ -131,62 +150,81 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** The workspace trust records the CLI keeps in its main config. */
-function readClaudeTrustRecords(configPath: string): Record<string, unknown> {
-  if (!existsSync(configPath)) {
-    return {}
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(readFileSync(configPath, 'utf8'))
-  } catch {
-    return {}
-  }
-  if (!isRecord(parsed)) {
-    return {}
-  }
-  const projects = parsed.projects
-  return isRecord(projects) ? projects : {}
-}
+/** What the CLI kept for a trust key before the run. */
+type TrustRecord = { present: boolean; value: unknown }
 
-/** Write the workspace trust records back, leaving the rest of the config alone. */
-function writeClaudeTrustRecords(configPath: string, records: Record<string, unknown>): void {
-  let parsed: unknown = {}
-  if (existsSync(configPath)) {
-    try {
-      parsed = JSON.parse(readFileSync(configPath, 'utf8'))
-    } catch {
-      parsed = {}
+/**
+ * The trust records the CLI keeps for the workspace, as they were before the run.
+ *
+ * The app's module is the one that reads: the change function is handed the parsed config, and an
+ * 'unchanged' answer means nothing is written.
+ */
+async function readTrustRecords(
+  configFile: string,
+  keys: readonly string[]
+): Promise<Map<string, TrustRecord>> {
+  const records = new Map<string, TrustRecord>()
+  await updateClaudeGlobalConfig(configFile, (config) => {
+    const projects = isRecord(config.projects) ? config.projects : {}
+    for (const key of keys) {
+      records.set(key, { present: Object.hasOwn(projects, key), value: projects[key] })
     }
-  }
-  const config: Record<string, unknown> = isRecord(parsed) ? { ...parsed } : {}
-  config.projects = records
-  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`)
+    return { kind: 'unchanged' }
+  })
+  return records
 }
 
 /**
- * Trust a directory, so the CLI starts a session in it, and report how to take the trust back.
+ * Give the trust records back exactly as they were: the same keys, the same values.
+ *
+ * Only the spec's own keys are touched — the rest of the `projects` map, and the rest of the
+ * config, are left alone.
+ */
+function restoreTrustRecords(
+  config: Record<string, unknown>,
+  keys: readonly string[],
+  previous: ReadonlyMap<string, TrustRecord>
+): ClaudeGlobalConfigChange {
+  const projects = config.projects
+  if (projects !== undefined && !isRecord(projects)) {
+    return { kind: 'refuse' }
+  }
+  const restored: Record<string, unknown> = { ...projects }
+  for (const key of keys) {
+    const record = previous.get(key)
+    if (record?.present) {
+      restored[key] = record.value
+    } else {
+      delete restored[key]
+    }
+  }
+  return { kind: 'changed', config: { ...config, projects: restored } }
+}
+
+/**
+ * Trust the workspace for the length of the run, and report how to take the trust back.
  *
  * The CLI refuses to start a session in a directory it does not know, and the E2E's workspace is a
- * fresh temporary checkout. The record is what accepting the trust prompt writes. It is taken back
- * when the spec is done, so the machine keeps the workspaces it had.
+ * fresh temporary checkout. The keys are the ones the CLI itself looks up — the resolved path, the
+ * real path and their NFC forms — and both the grant and the restore go through the app's own
+ * locked, atomic writer, so a config that cannot be read is never replaced and the user's other
+ * projects keep their records.
  */
-function trustWorkspace(configPath: string, workspacePath: string): () => void {
-  const records = readClaudeTrustRecords(configPath)
-  const hadRecord = Object.hasOwn(records, workspacePath)
-  const previous = records[workspacePath]
-  writeClaudeTrustRecords(configPath, {
-    ...records,
-    [workspacePath]: { hasTrustDialogAccepted: true }
-  })
-  return () => {
-    const restored = { ...readClaudeTrustRecords(configPath) }
-    if (hadRecord) {
-      restored[workspacePath] = previous
-    } else {
-      delete restored[workspacePath]
-    }
-    writeClaudeTrustRecords(configPath, restored)
+async function trustWorkspace(
+  configFile: string,
+  workspacePath: string
+): Promise<{ restore: () => Promise<ClaudeGlobalConfigUpdateOutcome> }> {
+  const keys = claudeTrustKeysForHostPath(workspacePath, resolveTrustPathStyle())
+  const previous = await readTrustRecords(configFile, keys)
+  const granted = await updateClaudeGlobalConfig(configFile, (config) =>
+    applyClaudeFolderTrust(config, keys)
+  )
+  if (granted !== 'updated' && granted !== 'unchanged') {
+    throw new Error(`the workspace could not be trusted: ${granted}`)
+  }
+  return {
+    restore: () =>
+      updateClaudeGlobalConfig(configFile, (config) => restoreTrustRecords(config, keys, previous))
   }
 }
 
@@ -468,13 +506,13 @@ test('entering a running agent and coming back leaves the agent running', async 
     test.skip(true, 'the active workspace has no directory here, so no agent can run in it')
     return
   }
-  const restoreTrust = trustWorkspace(resolveRealClaudeMainConfigPath(), workspacePath)
+  const trust = await trustWorkspace(resolveTrustConfigFile(), workspacePath)
   let probeId: string
   try {
     probeId = await dispatchProbeAgent(workspacePath)
   } catch (error) {
     // The trust record is only needed for the probe's own start.
-    restoreTrust()
+    await trust.restore()
     throw error
   }
   try {
@@ -626,6 +664,12 @@ test('entering a running agent and coming back leaves the agent running', async 
       })
     }
     // The workspace is trusted again, so the machine keeps the workspaces it had.
-    restoreTrust()
+    const restoreOutcome = await trust.restore()
+    if (restoreOutcome !== 'updated' && restoreOutcome !== 'unchanged') {
+      testInfo.annotations.push({
+        type: 'workspace-trust-restore',
+        description: `the workspace trust could not be taken back: ${restoreOutcome}`
+      })
+    }
   }
 })

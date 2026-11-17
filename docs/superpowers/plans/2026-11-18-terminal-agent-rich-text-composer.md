@@ -361,7 +361,7 @@ git commit -m "feat(store): the terminal composer's open state and drafts"
     runtimeEnvironmentId?: string | null
     /** The SSH target that owns the terminal, when it is a direct SSH host. */
     connectionId?: string | null
-    expectedExecutionHostId?: ExecutionHostId
+    expectedExecutionHostId?: 'local' | `ssh:${string}`
     expectedSshTargetId?: string
     expectedSshConnectionGeneration?: number
     /** Throws when the host changed under the copy; the caller turns it into a retry notice. */
@@ -493,7 +493,7 @@ git commit -m "feat(composer): copy attachments into the workspace that owns the
     worktreeId: string
     runtimeEnvironmentId?: string | null
     connectionId?: string | null
-    expectedExecutionHostId?: ExecutionHostId
+    expectedExecutionHostId?: 'local' | `ssh:${string}`
     expectedSshTargetId?: string
     expectedSshConnectionGeneration?: number
     assertCurrent?: () => void
@@ -890,7 +890,7 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
     worktreeId: string
     runtimeEnvironmentId?: string | null
     connectionId?: string | null
-    expectedExecutionHostId?: ExecutionHostId
+    expectedExecutionHostId?: 'local' | `ssh:${string}`
     expectedSshTargetId?: string
     expectedSshConnectionGeneration?: number
     agent: string | null

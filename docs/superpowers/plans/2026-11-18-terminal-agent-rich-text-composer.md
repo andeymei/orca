@@ -127,7 +127,6 @@ import {
   FILE_REFERENCE_NODE,
   IMAGE_REFERENCE_NODE,
   fileReferenceContent,
-  imageReferenceContent,
   promptHasAttachmentReferences,
   promptLeafString,
   promptTextContent,
@@ -162,7 +161,19 @@ describe('prompt editor nodes', () => {
     expect(promptLeafString('hardBreak', undefined, null)).toBe('\n')
   })
 
-  it('removes an image pill and the space that followed it', () => {
+  it('keeps a blank line as an empty paragraph', () => {
+    // ProseMirror rejects empty text nodes, so a blank line must not become one.
+    expect(promptTextContent('a\n\nb')).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'a' }] },
+        { type: 'paragraph', content: [] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'b' }] }
+      ]
+    })
+  })
+
+  it('removes an image pill and keeps the spaces around it', () => {
     const document = {
       type: 'doc',
       content: [
@@ -208,6 +219,7 @@ Expected: FAIL — "Cannot find module './prompt-editor-nodes'"
 - `promptLeafString(type, attrs, text)`:依次判断 `type === 'hardBreak'` → `'\n'`;`type === IMAGE_REFERENCE_NODE` → `imageReferenceToken(String(attrs?.attachmentId))`;`type === FILE_REFERENCE_NODE` → `String(attrs?.token ?? '')`;否则 `text ?? String(attrs?.token ?? '')`。
 - `promptTextContent(text)`:把纯文本按 `\n` 切成 `paragraph`,每段一个 `text` 节点。**不要**复用 native chat 的 `promptTextContent`——那个会切 pasted-text token 与图片引用,是 native chat 专属。
 - `withoutImageReferenceNodes`:从 `native-chat-prompt-document-text.ts` 的同名函数搬过来,并去掉「紧邻 chip 的前导空格」那一条(终端侧不需要;native chat 的版本保留在自己的文件里,直到 Task 10 切换)。
+- **另外要把相邻的两个 text 节点合成一个**(marks 相同才合)。ProseMirror 自己会用 `Fragment.fromArray` 合并同 marks 的相邻文本;不合并的话,删掉一个 chip 之后的 JSON 与 ProseMirror 规范化后的文档不一致,草稿会被误判成「改过了」。native chat 的版本不做这件事(它的输出直接进 ProseMirror,会被规范化),共用件输出的是**要存起来的 JSON**,所以必须自己合并。
 
 - [ ] **Step 4: Run the test to verify it passes**
 

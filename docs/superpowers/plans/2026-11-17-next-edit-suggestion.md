@@ -578,6 +578,7 @@ git commit -m "feat(code-completion): the completion settings block"
 - Modify: `src/preload/index.ts` (expose the bridge)
 - Modify: `src/main/ipc/register-core-handlers/register-core-handlers.ts` (register the handlers)
 - Create: `src/main/code-completion/code-completion-api-key-store.test.ts`
+- Create: `src/preload/code-completion-credentials.test.ts`
 
 **Interfaces:**
 
@@ -705,17 +706,50 @@ export function registerCodeCompletionCredentialHandlers(): void {
 
 Register `registerCodeCompletionCredentialHandlers()` in `src/main/ipc/register-core-handlers/register-core-handlers.ts` alongside the minimax credential handlers.
 
-- [ ] **Step 7: Run the test to verify it passes**
+- [ ] **Step 7: Write the failing bridge test**
 
-Run: `pnpm test src/main/code-completion --maxWorkers=2`
+Create `src/preload/code-completion-credentials.test.ts`, following `src/preload/opencode-go-credentials.test.ts`:
+
+```ts
+import { describe, expect, it, vi } from 'vitest'
+import { codeCompletionApi } from './api/code-completion-bridge'
+
+const invoke = vi.hoisted(() => vi.fn(async () => ({ configured: true, protection: null })))
+vi.mock('electron', () => ({ ipcRenderer: { invoke } }))
+
+describe('Code completion credential bridge', () => {
+  it('exposes only status and write operations', async () => {
+    expect(await codeCompletionApi.getStatus()).toEqual({ configured: true, protection: null })
+    await codeCompletionApi.saveApiKey('fake-key')
+    await codeCompletionApi.clearApiKey()
+    expect(invoke.mock.calls).toEqual([
+      ['codeCompletion:getCredentialStatus'],
+      ['codeCompletion:saveApiKey', 'fake-key'],
+      ['codeCompletion:clearApiKey']
+    ])
+    expect(Object.keys(codeCompletionApi)).toEqual(['getStatus', 'saveApiKey', 'clearApiKey'])
+  })
+})
+```
+
+The channel names are the contract between this bridge and the main-process handlers; a typo in either side would only show up as a settings UI that silently does nothing (Task 12). This test fails if either side's name changes.
+
+- [ ] **Step 8: Run the bridge test to verify it fails**
+
+Run: `pnpm test src/preload/code-completion-credentials.test.ts --maxWorkers=2`
+Expected: FAIL — the bridge does not exist.
+
+- [ ] **Step 9: Run the tests to verify they pass**
+
+Run: `pnpm test src/main/code-completion src/preload/code-completion-credentials.test.ts --maxWorkers=2`
 Expected: PASS.
 
-- [ ] **Step 8: Typecheck**
+- [ ] **Step 10: Typecheck**
 
 Run: `pnpm tc:node && pnpm tc:web`
 Expected: no errors.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add src/main/code-completion src/main/ipc/code-completion-credentials.ts src/main/ipc/register-core-handlers src/preload src/shared/code-completion

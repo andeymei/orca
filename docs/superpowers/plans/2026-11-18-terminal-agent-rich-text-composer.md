@@ -579,10 +579,11 @@ async function landAttachments(
 
 - `pickTerminalComposerAttachments`:`const paths = await window.api.shell.pickAttachments()`;空数组直接返回空结果(不开 toast)。
 - `pasteTerminalComposerAttachments`:
-  1. 先看 `clipboardData.files` 里有没有图片(`file.type.startsWith('image/')`)。有 → `window.api.ui.saveClipboardImageAsTempFile()`(**不带** `connectionId` / `runtimeEnvironmentId`,即存到**本机**)拿到本机临时路径,把它当成一个 source path,交给上传通路送到目标宿主的 `.orca/drops`。**不要**把图片先存到目标宿主——上传通路的源路径按契约是客户端本机路径,已经在远端的临时路径它读不到。
-  2. 非图片的 `files` 直接当 source path。
-  3. `clipboardData.items` 里的 `text/plain` **不进附件** —— 它是正文文本,由编辑器自己的 paste handler 处理(见 Task 7)。本函数只负责附件。
-  4. 调 `landAttachments`。
+  1. **遍历 `clipboardData.files` 的每一个文件**,按 `file.type.startsWith('image/')` 分成图片与非图片两类。
+  2. **每个文件都按自己的本机路径当 source path**(`localPathForFile(file)`)。解析不出本机路径的(浏览器里复制的 blob 之类)**不许消失**:进 `failed`,reason 用导出的 `TERMINAL_COMPOSER_NO_LOCAL_PATH_REASON`。
+  3. **剪贴板保存只顶一次,而且只顶给「没有本机路径的图片」**:`window.api.ui.saveClipboardImageAsTempFile()`(**不带** `connectionId` / `runtimeEnvironmentId`,即存到**本机**)拿到本机临时路径。**不要**把图片先存到目标宿主——上传通路的源路径按契约是客户端本机路径,已经在远端的临时路径它读不到。保存失败或返回 null 时,那一张图片按第 2 条进 `failed`。
+  4. `clipboardData.items` 里的 `text/plain` **不进附件** —— 它是正文文本,由编辑器自己的 paste handler 处理(见 Task 7)。本函数只负责附件。
+  5. 调 `landAttachments`。
 - `dropTerminalComposerAttachments`:`droppedPaths` → `landAttachments`。
 - `landAttachments`:调 `copyTerminalComposerAttachmentsToWorkspace`,把 `copied` 变成 `TerminalComposerAttachment[]`:
   - `id` 用 `createNonSecureContextUuid()`(来自 `src/shared/non-secure-context-uuid.ts`)。**不要用 `crypto.randomUUID()`** —— 仓库的 oxlint 规则禁止在 renderer 里用它(非安全上下文没有它)。

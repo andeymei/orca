@@ -33,11 +33,11 @@
 
 Five input classes the spec implies but no task's tests exercise — each line below gets a test in the owning task.
 
-1. **The user keeps typing while a request is in flight.** The stale plan must not be applied to text that changed under it. (Task 8 — the plan carries the cursor position it was built for; an edit only matches a cursor at its range end, so a moved cursor finds no suggestion.)
-2. **The model returns an edit for a file the user is no longer in.** The marker must not appear in a file the plan did not name, and a plan whose file has changed must not apply. (Task 8 — the plan is keyed by path and each edit re-verifies `originalText` before it is applied.)
-3. **The user presses Tab with no suggestion showing.** That must fall through to the TypeScript intellisense suggest widget, not swallow the key. (Task 9.)
-4. **The endpoint returns a 401, a 429, or a truncated stream.** The user must see no suggestion and no error dialog; the failure must not be cached as "no suggestions". (Task 3 and Task 4.)
-5. **The user has no API key configured, or the key was revoked.** The feature must be inert and the settings UI must say why, rather than firing requests that fail. (Task 5 and Task 11.)
+1. **The user keeps typing while a request is in flight.** The stale plan must not be applied to text that changed under it. (Task 9 and Task 11 — an edit only matches a cursor at its range end, so a moved cursor finds no suggestion, and an edit whose `originalText` no longer matches is refused before it is applied.)
+2. **The model returns an edit for a file the user is no longer in.** The marker must not appear in a file the plan did not name, and a plan whose file has changed must not apply. (Task 8 — the plan is keyed by path and the markers are drawn only in the file the plan named.)
+3. **The user presses Tab with no suggestion showing.** That must fall through to the TypeScript intellisense suggest widget, not swallow the key. (Task 10.)
+4. **The endpoint returns a 401, a 429, or a truncated stream.** The user must see no suggestion and no error dialog; the failure must not be cached as "no suggestions". (Task 2 and Task 3.)
+5. **The user has no API key configured, or the key was revoked.** The feature must be inert and the settings UI must say why, rather than firing requests that fail. (Task 5, Task 6 and Task 12.)
 
 ---
 
@@ -769,21 +769,26 @@ git commit -m "feat(code-completion): the codeCompletion.plan RPC method"
 
 ---
 
-### Task 7: The renderer client and the context builder
+### Task 7: The renderer client, the context builder and the related files
 
 **Files:**
 
 - Create: `src/renderer/src/components/editor/code-completion/nes-runtime-client.ts`
 - Create: `src/renderer/src/components/editor/code-completion/nes-context-builder.ts`
 - Create: `src/renderer/src/components/editor/code-completion/nes-context-builder.test.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-related-files.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-related-files.test.ts`
 
 **Interfaces:**
 
-- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
+- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), the existing worktree search (`files.search`, client at `src/renderer/src/runtime/files/search/runtime-file-search-client.ts`), the existing file read (`window.api.fs.readFile`, see `src/renderer/src/runtime/files/reads/runtime-file-read-client.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
 - Produces:
   - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal }): Promise<NesEditPlan | null>`
   - `buildNesContext(model: editor.ITextModel, position: editor.IPosition, options): NesContextInput`
   - `type NesContextInput = { prefix: string; suffix: string; filePath: string; relativePath: string; languageId: string }`
+  - `collectNesRelatedFiles(input: NesRelatedFilesInput): Promise<{ path: string; content: string }[]>`
+  - `type NesRelatedFilesInput = { filePath: string; fileText: string; symbolAtCursor: string | null; worktreeId: string | null; rootPath: string | null; readFile: (path: string) => Promise<string | null> }`
+  - `NES_RELATED_FILE_MAX = 8`, `NES_RELATED_FILE_TOKEN_BUDGET = 1000`
 
 - [ ] **Step 1: Write the failing context test**
 
@@ -822,7 +827,51 @@ export function buildNesContext(
 
 The prefix is the text before the cursor, trimmed from the front to the character budget; the suffix is the text after it, trimmed from the back to its budget. The suffix is trimmed from the back, not the front, because the text right after the cursor matters most.
 
-- [ ] **Step 4: Write the runtime client**
+- [ ] **Step 4: Write the failing related-files test**
+
+Create `src/renderer/src/components/editor/code-completion/nes-related-files.test.ts`:
+
+```ts
+describe('collectNesRelatedFiles', () => {
+  it('resolves the relative imports of the current file', ...)
+  it('keeps a package import out of the results', ...)
+  it('adds the files that mention the symbol at the cursor', ...)
+  it('never returns more than eight files', ...)
+  it('gives every file at most a thousand tokens', ...)
+  it('returns an empty list when there is no worktree', ...)
+})
+```
+
+- [ ] **Step 5: Run the test to verify it fails**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 6: Write the related-files collector**
+
+Create `src/renderer/src/components/editor/code-completion/nes-related-files.ts`:
+
+```ts
+export const NES_RELATED_FILE_MAX = 8
+export const NES_RELATED_FILE_TOKEN_BUDGET = 1000
+export const NES_CHARS_PER_TOKEN = 4
+
+export function parseRelativeImports(fileText: string, filePath: string): string[]
+export async function collectNesRelatedFiles(
+  input: NesRelatedFilesInput
+): Promise<{ path: string; content: string }[]>
+```
+
+Two sources, in this order:
+
+1. **The current file's relative imports.** `parseRelativeImports` pulls the module specifiers out of the import statements and keeps only the ones that start with `./` or `../` — a package import names a module the model already knows, not a file in this repository. Each relative specifier resolves against the current file's directory; the extension is tried as written, then with `.ts`, `.tsx`, `.js`, `.jsx` and `/index.ts`, `/index.tsx`.
+2. **The files that mention the symbol at the cursor.** When `symbolAtCursor` is a plain identifier, ask the worktree search for it (`files.search` with `{ worktree, query: symbolAtCursor, maxResults: 20 }`) and take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
+
+Each result is read through `readFile`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
+
+**Caching.** The caller caches the result per file path and refreshes it when the file is saved or after five idle seconds — running a worktree search on every keystroke pause is not affordable. Keep the cache in `nes-related-files.ts` and expose `clearNesRelatedFilesCache(filePath: string): void`.
+
+- [ ] **Step 7: Write the runtime client**
 
 Create `src/renderer/src/components/editor/code-completion/nes-runtime-client.ts`:
 
@@ -836,6 +885,18 @@ export async function requestNesPlan(
 It calls `callRuntimeRpc<{ plan: unknown }>({ kind: 'local' }, 'codeCompletion.plan', input, { signal: options.signal, timeoutMs: options.timeoutMs ?? 12_000 })` and validates the response with `NesEditPlan.safeParse`, returning null when the payload does not parse.
 
 The completion talks to the **local** runtime even when the file lives on a remote host: the buffer is already in the renderer, and the endpoint is the user's own.
+
+- [ ] **Step 8: Run the tests**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/renderer/src/components/editor/code-completion
+git commit -m "feat(code-completion): the renderer client, the context and the related files"
+```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -1181,9 +1242,11 @@ The hook:
 
 - subscribes to the editor's `onDidChangeModelContent` and `onDidChangeCursorPosition`
 - debounces both by `triggerDelayMs`
-- on a tick it builds the context (Task 7), asks for the plan (Task 7), stores it (Task 8) and fires the `onDidChangeInlineCompletions` event so Monaco re-queries the provider
+- on a tick it builds the context (Task 7), collects the related files (Task 7), asks for the plan (Task 7), stores it (Task 9) and fires `fireNesInlineCompletionsChanged()` so Monaco re-queries the provider
 - cancels the in-flight request when the user types again
 - skips the whole cycle when the file's extension is not in the enabled list, when the feature is off, or when the editor is read-only
+
+The related files are collected from the **cached** list (Task 7). The hook never waits on a worktree search before asking for the plan: a stale related-file list is better than a slow suggestion.
 
 - [ ] **Step 7: Wire the hook and the installers**
 

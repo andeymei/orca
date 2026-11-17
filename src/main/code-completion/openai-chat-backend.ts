@@ -5,6 +5,7 @@ import {
 } from '../../shared/code-completion/code-completion-prompt'
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import {
+  nesBackendIdentity,
   planFromCompletionStream,
   planFromCompletionText,
   type CompletionBackendOptions,
@@ -26,6 +27,7 @@ export function createOpenAiChatBackend(
 ): NesBackend {
   return {
     id: 'openai-chat',
+    identity: nesBackendIdentity('openai-chat', config),
     planCapable: true,
     plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
       return planFromCompletionStream(

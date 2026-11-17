@@ -4,6 +4,7 @@ import { completionCacheKey, createCompletionCache } from './completion-cache'
 
 const FILE_PATH = '/repo/src/foo.ts'
 const OTHER_FILE_PATH = '/repo/src/bar.ts'
+const SOURCE = 'anthropic-messages|https://endpoint.invalid|test-model|no-auto-import'
 
 function plan(label: string): NesEditPlan {
   return {
@@ -27,6 +28,7 @@ function keyFor(filePath: string, prefix: string): string {
     prefix,
     suffix: '',
     prefixStartLine: 1,
+    source: SOURCE,
     relatedFiles: []
   })
 }
@@ -84,6 +86,7 @@ describe('completion cache', () => {
       prefix: 'const a = 1\n',
       suffix: 'const b = 2',
       prefixStartLine: 1,
+      source: SOURCE,
       relatedFiles: [{ path: OTHER_FILE_PATH, content: 'export const bar = 1\n' }]
     }
     const key = completionCacheKey(context)
@@ -100,7 +103,8 @@ describe('completion cache', () => {
       filePath: FILE_PATH,
       prefix: 'const a = 1\n',
       suffix: 'const b = 2',
-      prefixStartLine: 1
+      prefixStartLine: 1,
+      source: SOURCE
     }
 
     expect(
@@ -118,7 +122,8 @@ describe('completion cache', () => {
       filePath: FILE_PATH,
       prefix: 'const a = 1\n',
       suffix: 'const b = 2',
-      prefixStartLine: 1
+      prefixStartLine: 1,
+      source: SOURCE
     }
 
     expect(
@@ -134,16 +139,49 @@ describe('completion cache', () => {
     )
   })
 
+  it('gives the same key to the same related files in another order', () => {
+    const context = {
+      filePath: FILE_PATH,
+      prefix: 'const a = 1\n',
+      suffix: 'const b = 2',
+      prefixStartLine: 1,
+      source: SOURCE
+    }
+    const relatedFiles = [
+      { path: OTHER_FILE_PATH, content: 'export const bar = 1\n' },
+      { path: '/repo/src/baz.ts', content: 'export const baz = 2\n' }
+    ]
+
+    expect(completionCacheKey({ ...context, relatedFiles })).toBe(
+      completionCacheKey({ ...context, relatedFiles: relatedFiles.toReversed() })
+    )
+  })
+
   it('gives another key to the same text at another line', () => {
     const context = {
       filePath: FILE_PATH,
       prefix: 'const a = 1\n',
       suffix: 'const b = 2',
+      source: SOURCE,
       relatedFiles: []
     }
 
     expect(completionCacheKey({ ...context, prefixStartLine: 1 })).not.toBe(
       completionCacheKey({ ...context, prefixStartLine: 40 })
+    )
+  })
+
+  it('gives another key to another model', () => {
+    const context = {
+      filePath: FILE_PATH,
+      prefix: 'const a = 1\n',
+      suffix: 'const b = 2',
+      prefixStartLine: 1,
+      relatedFiles: []
+    }
+
+    expect(completionCacheKey({ ...context, source: SOURCE })).not.toBe(
+      completionCacheKey({ ...context, source: `${SOURCE}|auto-import` })
     )
   })
 })

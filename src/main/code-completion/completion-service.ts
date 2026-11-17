@@ -35,6 +35,7 @@ export function createCompletionService(options: {
         prefix: input.prefix,
         suffix: input.suffix,
         prefixStartLine: input.prefixStartLine,
+        source: backend.identity,
         relatedFiles: input.relatedFiles.map((relatedFile) => ({
           path: relatedFile.path,
           content: relatedFile.content
@@ -56,7 +57,7 @@ export function createCompletionService(options: {
         return { plan: null, usage: emptyCompletionUsage() }
       }
       if (!outcome.result.plan) {
-        console.error('[code-completion] The endpoint returned no plan.')
+        console.error('[code-completion] The endpoint returned no plan.', { backend: backend.id })
         return { plan: null, usage: outcome.result.usage }
       }
       cache.set(key, outcome.result.plan)

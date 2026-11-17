@@ -5,6 +5,7 @@ import {
 } from '../../shared/code-completion/code-completion-prompt'
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import {
+  nesBackendIdentity,
   planFromCompletionStream,
   planFromCompletionText,
   type CompletionBackendOptions,
@@ -28,6 +29,7 @@ export function createAnthropicMessagesBackend(
 ): NesBackend {
   return {
     id: 'anthropic-messages',
+    identity: nesBackendIdentity('anthropic-messages', config),
     planCapable: true,
     plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
       return planFromCompletionStream(

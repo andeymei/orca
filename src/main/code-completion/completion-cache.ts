@@ -25,9 +25,10 @@ const SEGMENT_SEPARATOR = String.fromCharCode(0)
 const RELATED_FILE_SEPARATOR = String.fromCharCode(2)
 
 /**
- * The key of one cursor context: the file it belongs to, the text around the cursor, its offset
- * and the related files the model was shown. The related content is in the key because the model
- * answered with it: a related file that changed can change the answer.
+ * The key of one cursor context: the file it belongs to, the text around the cursor, its offset,
+ * the related files the model was shown and who was asked. The related content is in the key
+ * because the model answered with it, and the source because another model would answer
+ * differently.
  */
 export function completionCacheKey(input: {
   filePath: string
@@ -35,6 +36,8 @@ export function completionCacheKey(input: {
   suffix: string
   /** The file line the shown prefix starts at; the plan's line numbers count from it. */
   prefixStartLine: number
+  /** Who answers: the protocol, the endpoint, the model and the auto-import switch. */
+  source: string
   relatedFiles: readonly { path: string; content: string }[]
 }): string {
   const file = digest(input.filePath)
@@ -42,7 +45,7 @@ export function completionCacheKey(input: {
     .map((relatedFile) => `${relatedFile.path}${RELATED_FILE_SEPARATOR}${relatedFile.content}`)
     .sort()
   const context = digest(
-    [input.prefix, input.suffix, String(input.prefixStartLine), ...relatedParts].join(
+    [input.prefix, input.suffix, String(input.prefixStartLine), input.source, ...relatedParts].join(
       SEGMENT_SEPARATOR
     )
   )

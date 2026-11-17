@@ -253,6 +253,20 @@ describe('completion backends', () => {
   })
 })
 
+describe('backend identity', () => {
+  it('tells two models apart', () => {
+    expect(createAnthropicMessagesBackend(CONFIG).identity).not.toBe(
+      createAnthropicMessagesBackend({ ...CONFIG, model: 'other-model' }).identity
+    )
+  })
+
+  it('tells the auto-import switch apart', () => {
+    expect(createAnthropicMessagesBackend(CONFIG).identity).not.toBe(
+      createAnthropicMessagesBackend({ ...CONFIG, autoImport: true }).identity
+    )
+  })
+})
+
 describe('translateNesEditLines', () => {
   it('moves a line to the file the text was shown from', () => {
     const plan: NesEditPlan = {

@@ -5,6 +5,7 @@ import { completionCache, createCompletionCache } from './completion-cache'
 import { createCompletionService } from './completion-service'
 
 const FILE_PATH = '/repo/src/foo.ts'
+const IDENTITY = 'anthropic-messages|https://endpoint.invalid|test-model|no-auto-import'
 
 const PLAN: NesEditPlan = {
   edits: [
@@ -46,11 +47,15 @@ function request(overrides: Partial<NesRequest> = {}): NesRequest {
   }
 }
 
-function backendAnswering(result: NesBackendResult): { backend: NesBackend; calls: () => number } {
+function backendAnswering(
+  result: NesBackendResult,
+  identity = IDENTITY
+): { backend: NesBackend; calls: () => number } {
   let calls = 0
   return {
     backend: {
       id: 'anthropic-messages',
+      identity,
       planCapable: true,
       plan: async () => {
         calls += 1
@@ -109,6 +114,9 @@ describe('completion service', () => {
       expect(second.plan).toBeNull()
       expect(calls()).toBe(2)
       expect(log).toHaveBeenCalledTimes(2)
+      expect(log).toHaveBeenCalledWith('[code-completion] The endpoint returned no plan.', {
+        backend: 'anthropic-messages'
+      })
     } finally {
       log.mockRestore()
     }
@@ -119,6 +127,7 @@ describe('completion service', () => {
     try {
       const backend: NesBackend = {
         id: 'anthropic-messages',
+        identity: IDENTITY,
         planCapable: true,
         plan: () => Promise.reject(new TypeError('the request carried x-api-key: sk-secret'))
       }
@@ -147,6 +156,7 @@ describe('completion service', () => {
       let calls = 0
       const backend: NesBackend = {
         id: 'anthropic-messages',
+        identity: IDENTITY,
         planCapable: true,
         plan: () => {
           calls += 1
@@ -184,6 +194,7 @@ describe('completion service', () => {
       const controller = new AbortController()
       const backend: NesBackend = {
         id: 'anthropic-messages',
+        identity: IDENTITY,
         planCapable: true,
         plan: (_input, signal) =>
           new Promise<NesBackendResult>((_resolve, reject) => {
@@ -209,6 +220,26 @@ describe('completion service', () => {
     }
   })
 
+  it('does not serve one model’s answer to another model', async () => {
+    const cache = createCompletionCache()
+    const first = backendAnswering(
+      { plan: PLAN, usage: emptyCompletionUsage() },
+      'anthropic-messages|https://endpoint.invalid|test-model|auto-import'
+    )
+    const second = backendAnswering(
+      { plan: PLAN, usage: emptyCompletionUsage() },
+      'anthropic-messages|https://endpoint.invalid|test-model|no-auto-import'
+    )
+    const firstService = createCompletionService({ resolveBackend: () => first.backend, cache })
+    const secondService = createCompletionService({ resolveBackend: () => second.backend, cache })
+
+    await firstService.plan(request(), new AbortController().signal)
+    await secondService.plan(request(), new AbortController().signal)
+
+    expect(first.calls()).toBe(1)
+    expect(second.calls()).toBe(1)
+  })
+
   it('serves a later request from the shared cache', async () => {
     completionCache.clear()
     const { backend, calls } = backendAnswering({ plan: PLAN, usage: emptyCompletionUsage() })
@@ -228,6 +259,7 @@ describe('completion service', () => {
     try {
       const backend: NesBackend = {
         id: 'anthropic-messages',
+        identity: IDENTITY,
         planCapable: true,
         plan: () => new Promise<NesBackendResult>(() => {})
       }
@@ -253,6 +285,7 @@ describe('completion service', () => {
     let peak = 0
     const backend: NesBackend = {
       id: 'anthropic-messages',
+      identity: IDENTITY,
       planCapable: true,
       plan: () => {
         started += 1

@@ -5,6 +5,7 @@ import {
   type NesRequest
 } from '../../shared/code-completion/code-completion-types'
 import {
+  completionEndpointUrl,
   parseCompletionSseEvents,
   postCompletionJson,
   type CompletionHttpRequest
@@ -26,6 +27,8 @@ export type NesBackendResult = {
 
 export type NesBackend = {
   readonly id: NesBackendId
+  /** Who answers: the protocol, the endpoint, the model and the auto-import switch. */
+  readonly identity: string
   readonly planCapable: boolean
   plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult>
 }
@@ -49,6 +52,20 @@ export function emptyCompletionUsage(): CompletionUsage {
 /** The absolute paths a plan may name: the edited file and the related files. */
 export function nesAllowedPaths(input: NesRequest): string[] {
   return [input.filePath, ...input.relatedFiles.map((relatedFile) => relatedFile.path)]
+}
+
+/**
+ * Who answers a request: the protocol, the endpoint, the model and the auto-import switch.
+ * Two backends with different identities answer differently, so an answer is only good for
+ * the identity that produced it.
+ */
+export function nesBackendIdentity(protocol: NesBackendId, config: NesBackendConfig): string {
+  return [
+    protocol,
+    completionEndpointUrl(config.baseUrl, ''),
+    config.model,
+    config.autoImport ? 'auto-import' : 'no-auto-import'
+  ].join('|')
 }
 
 /** The file line the shown text of a path starts at; the model counts from it. */

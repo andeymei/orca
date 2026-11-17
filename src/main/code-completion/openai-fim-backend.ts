@@ -8,6 +8,7 @@ import {
 } from '../../shared/code-completion/code-completion-types'
 import {
   NES_COMPLETION_OUTPUT_LIMIT,
+  nesBackendIdentity,
   planFromCompletionStream,
   type CompletionBackendOptions,
   type NesBackend,
@@ -28,6 +29,7 @@ export function createOpenAiFimBackend(
 ): NesBackend {
   return {
     id: 'openai-completions-fim',
+    identity: nesBackendIdentity('openai-completions-fim', config),
     planCapable: false,
     plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
       return planFromCompletionStream(

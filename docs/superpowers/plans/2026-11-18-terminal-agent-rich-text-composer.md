@@ -620,7 +620,8 @@ git commit -m "feat(composer): one intake for picked, pasted and dropped attachm
 
 - Consumes:
   - `AGENT_TUI_CLEAR_INPUT_MAX` from `src/shared/agent-launch/startup/agent-tui-input-clear`
-  - `buildNativeChatPasteBytes(text)`, `buildNativeChatImagePasteBytes(filePath)`, `NATIVE_CHAT_SUBMIT`, `NATIVE_CHAT_SUBMIT_DELAY_MS` from `src/shared/native-chat/input/native-chat-paste-bytes`
+  - `buildNativeChatPasteBytes(text)`, `buildNativeChatImagePasteBytes(filePath)`, `NATIVE_CHAT_SUBMIT` from `src/shared/native-chat/input/native-chat-paste-bytes`
+  - `NATIVE_CHAT_SUBMIT_DELAY_MS` from `src/shared/native-chat/input/native-chat-answer-stepping`(不在 paste-bytes 里)
   - `agentImagePastePath(agent, path)` from `src/shared/agent-image-paste-path`
   - `agentImagePasteWrites(agent, framedPastes, followedByText)` from `src/shared/agent-image-paste`
   - `PtyTransport.sendInput(data, 'driving')` from `../../pty-transport/pty-transport-types`
@@ -641,7 +642,7 @@ git commit -m "feat(composer): one intake for picked, pasted and dropped attachm
   }
   export type TerminalComposerSendResult = {
     sent: boolean
-    reason?: 'pane-changed' | 'write-rejected' | 'pty-disconnected'
+    reason?: 'pane-changed' | 'host-changed' | 'write-rejected' | 'pty-disconnected'
   }
   export function buildTerminalComposerWrites(args: {
     body: string
@@ -730,7 +731,7 @@ export function buildTerminalComposerWrites({
 - [ ] **Step 4: Implement `useTerminalComposerSend`**
 
 - **transport 的取法照抄拖放**:`captureTerminalDropTarget(pane, transport)` 在发送前捕获身份,之后每次写之前用 `getCurrentTerminalDropTransport(manager, paneTransports, target)` 复核。`managerRef` 与 `paneTransportsRef` 由 `TerminalPaneSurface` 的 controller 提供,**通过 props 传进来**,不要去 store 里找(它们不是 store 状态)。
-- **写进 PTY 之前必须再复核一次宿主。** Task 3 的上传通路在本机分支**不强制** `assertCurrent`(它只在 runtime 分支强制)。所以发送层要自己复核:写入前确认 transport 仍是同一个、宿主没变;变了就取消并告诉用户「宿主已改变,请重试」,不要写。
+- **写进 PTY 之前必须再复核一次宿主。** Task 3 的上传通路在本机分支**不强制** `assertCurrent`(它只在 runtime 分支强制)。所以发送层要自己复核:写入前确认 transport 仍是同一个、宿主没变;变了就取消并告诉用户「宿主已改变,请重试」,不要写。**宿主变了要单独报 `'host-changed'`**,不要和「pane 没了」共用 `'pane-changed'` —— 两者的用户提示不同,Task 7 手里有 `hostChanged` 这条文案。
 - **WSL 工作区的路径要转成 WSL 里的样子。** 一个 WSL 拥有的工作区,附件落地的路径是 Windows 侧的 UNC 形式(`\\wsl.localhost\…`),但**跑在 WSL 里的 agent 要的是 Linux 路径**。写进 PTY 之前用 `toLocalWslDropPath(path)`(在 `terminal-pane/input/file-drop/terminal-drop-local-wsl.ts`)把路径转过来;拖放那条路就是这么做的。
 - **只 import 共用件的那三份函数**,不要 import 原生 chat 的同名副本(`promptTextContent` / `withoutImageReferenceNodes` / `promptLeafString`)。两份同名不同语义,import 错了会让 agent 收到不同的正文。
 - 复核失败 → `{ sent: false, reason: 'pane-changed' }`,**不写**。

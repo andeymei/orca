@@ -528,6 +528,10 @@ if ('codeCompletion' in sanitizedUpdates) {
 
 in `src/main/persistence/applying-settings/settings-update.ts` (beside the `prBotAuthorOverrides` block), and cover it in that directory's existing test family.
 
+**The load path normalizes too.** A profile file that was hand-edited, or that came from somewhere else, can carry a malformed block, and the loader is where the settings enter the system from disk. `src/main/persistence/loading-store/profile-loading/normalize-loaded-global-settings.ts` already normalizes `prBotAuthorOverrides`; normalize the completion block there as well, beside it.
+
+**The normalizer resets the fields it is not given — it does not merge with the stored block.** A partial write such as `{ enabled: false }` rewrites `baseUrl`, `model` and `enabledExtensions` to their defaults. Whoever writes the settings UI must therefore send the **whole** block.
+
 **The protocol list must be the source of truth, not a copy of it.** In `src/shared/code-completion/code-completion-types.ts`, make the runtime list the origin:
 
 ```ts

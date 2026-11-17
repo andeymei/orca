@@ -30,8 +30,8 @@ export type TerminalComposerIntakeResult = {
 /** The attachment size the agent accepts, in the unit the limit is written in. */
 const ATTACHMENT_LIMIT_MIB = AGENT_SESSION_ATTACHMENT_MAX_BYTES / (1024 * 1024)
 
-/** The pasted file has no file behind it on this machine, so no path can carry it. */
-const NO_LOCAL_PATH_REASON = 'no-local-path'
+/** The reason code for a pasted file with no file behind it. */
+export const TERMINAL_COMPOSER_NO_LOCAL_PATH_REASON = 'no-local-path'
 
 export async function pickTerminalComposerAttachments(
   host: TerminalComposerIntakeHost
@@ -67,7 +67,7 @@ export async function pasteTerminalComposerAttachments(
       failed.push({ name: file.name, reason: saved.reason })
       continue
     }
-    failed.push({ name: file.name, reason: NO_LOCAL_PATH_REASON })
+    failed.push({ name: file.name, reason: TERMINAL_COMPOSER_NO_LOCAL_PATH_REASON })
   }
   // The text half of the paste is the prompt body; the editor's own paste handler owns it.
   return landAttachments(host, sourcePaths, failed)
@@ -155,7 +155,9 @@ async function saveClipboardImage(): Promise<
   try {
     // The clipboard image is saved on this machine: the copy reads client-local sources.
     const tempPath = await window.api.ui.saveClipboardImageAsTempFile()
-    return tempPath ? { ok: true, path: tempPath } : { ok: false, reason: NO_LOCAL_PATH_REASON }
+    return tempPath
+      ? { ok: true, path: tempPath }
+      : { ok: false, reason: TERMINAL_COMPOSER_NO_LOCAL_PATH_REASON }
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }

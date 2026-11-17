@@ -21,16 +21,23 @@ type CompletionCacheEntry = {
 /** A NUL byte cannot appear in a path or in file text, so it separates the hashed parts. */
 const SEGMENT_SEPARATOR = String.fromCharCode(0)
 
-/** The key of one cursor context: the file it belongs to and the text around the cursor. */
+/** The key of one cursor context: the file it belongs to, the text around the cursor and its offset. */
 export function completionCacheKey(input: {
   filePath: string
   prefix: string
   suffix: string
+  /** The file line the shown prefix starts at; the plan's line numbers count from it. */
+  prefixStartLine: number
   relatedPaths: readonly string[]
 }): string {
   const file = digest(input.filePath)
   const context = digest(
-    [input.prefix, input.suffix, ...[...input.relatedPaths].sort()].join(SEGMENT_SEPARATOR)
+    [
+      input.prefix,
+      input.suffix,
+      String(input.prefixStartLine),
+      ...[...input.relatedPaths].sort()
+    ].join(SEGMENT_SEPARATOR)
   )
   return `${file}${SEGMENT_SEPARATOR}${context}`
 }
@@ -97,3 +104,6 @@ function fileSegment(key: string): string {
 function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex').slice(0, 32)
 }
+
+/** The cache outlives the request: the same context comes back on the next pause in typing. */
+export const completionCache: CompletionCache = createCompletionCache()

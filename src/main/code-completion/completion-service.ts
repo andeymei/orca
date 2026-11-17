@@ -1,7 +1,7 @@
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import { PrioritySemaphore } from '../../shared/priority-semaphore'
 import { emptyCompletionUsage, type NesBackend, type NesBackendResult } from './completion-backend'
-import { completionCacheKey, createCompletionCache, type CompletionCache } from './completion-cache'
+import { completionCache, completionCacheKey, type CompletionCache } from './completion-cache'
 
 /** A request that has not answered in eight seconds is abandoned, the queue wait included. */
 export const NES_COMPLETION_REQUEST_TIMEOUT_MS = 8_000
@@ -20,8 +20,8 @@ export function createCompletionService(options: {
   cache?: CompletionCache
   now?: () => number
 }): CompletionService {
-  // The clock is the one the cache ages with, so a caller that fakes time fakes both.
-  const cache = options.cache ?? createCompletionCache({ now: options.now })
+  const cache = options.cache ?? completionCache
+  // The caller's clock measures the deadline only; the cache ages with its own.
   const now = options.now ?? Date.now
 
   return {
@@ -34,29 +34,43 @@ export function createCompletionService(options: {
         filePath: input.filePath,
         prefix: input.prefix,
         suffix: input.suffix,
+        prefixStartLine: input.prefixStartLine,
         relatedPaths: input.relatedFiles.map((relatedFile) => relatedFile.path)
       })
       const cached = cache.get(key)
       if (cached) {
         return { plan: cached, usage: emptyCompletionUsage() }
       }
-      const result = await requestPlan(backend, input, signal, now)
-      if (!result?.plan) {
-        return { plan: null, usage: result?.usage ?? emptyCompletionUsage() }
+      const outcome = await requestPlan(backend, input, signal, now)
+      if (outcome.kind === 'abandoned') {
+        return { plan: null, usage: emptyCompletionUsage() }
       }
-      cache.set(key, result.plan)
-      return result
+      if (outcome.kind === 'failed') {
+        console.error('[code-completion] The request failed:', outcome.error)
+        return { plan: null, usage: emptyCompletionUsage() }
+      }
+      if (!outcome.result.plan) {
+        console.error('[code-completion] The endpoint returned no plan.')
+        return { plan: null, usage: outcome.result.usage }
+      }
+      cache.set(key, outcome.result.plan)
+      return outcome.result
     }
   }
 }
 
-/** The backend's answer, or null when the request failed, timed out or was abandoned. */
+type CompletionOutcome =
+  | { kind: 'answered'; result: NesBackendResult }
+  | { kind: 'failed'; error: unknown }
+  | { kind: 'abandoned' }
+
+/** The backend's answer, or why there is none. */
 async function requestPlan(
   backend: NesBackend,
   input: NesRequest,
   signal: AbortSignal,
   now: () => number
-): Promise<NesBackendResult | null> {
+): Promise<CompletionOutcome> {
   const controller = new AbortController()
   const abortFromCaller = (): void => controller.abort(signal.reason)
   if (signal.aborted) {
@@ -79,14 +93,15 @@ async function requestPlan(
       const result = await Promise.race([backend.plan(input, controller.signal), timedOut])
       // An answer that arrives after the deadline is stale: the file moved on while it was in flight.
       if (result === null || now() > deadline || signal.aborted) {
-        return null
+        return { kind: 'abandoned' }
       }
-      return result
+      return { kind: 'answered', result }
     } finally {
       release()
     }
-  } catch {
-    return null
+  } catch (error) {
+    // The caller typed on or the request timed out; neither is an error worth writing down.
+    return controller.signal.aborted ? { kind: 'abandoned' } : { kind: 'failed', error }
   } finally {
     clearTimeout(timer)
     signal.removeEventListener('abort', abortFromCaller)

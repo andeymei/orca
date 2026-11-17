@@ -22,7 +22,13 @@ function plan(label: string): NesEditPlan {
 }
 
 function keyFor(filePath: string, prefix: string): string {
-  return completionCacheKey({ filePath, prefix, suffix: '', relatedPaths: [] })
+  return completionCacheKey({
+    filePath,
+    prefix,
+    suffix: '',
+    prefixStartLine: 1,
+    relatedPaths: []
+  })
 }
 
 describe('completion cache', () => {
@@ -77,6 +83,7 @@ describe('completion cache', () => {
       filePath: FILE_PATH,
       prefix: 'const a = 1\n',
       suffix: 'const b = 2',
+      prefixStartLine: 1,
       relatedPaths: [OTHER_FILE_PATH]
     }
     const key = completionCacheKey(context)
@@ -86,5 +93,31 @@ describe('completion cache', () => {
     expect(cache.get(movedKey)).toBeNull()
     expect(cache.get(key)).toEqual(plan('a'))
     expect(completionCacheKey({ ...context, relatedPaths: [OTHER_FILE_PATH] })).toBe(key)
+  })
+
+  it('gives another key to another set of related files', () => {
+    const context = {
+      filePath: FILE_PATH,
+      prefix: 'const a = 1\n',
+      suffix: 'const b = 2',
+      prefixStartLine: 1
+    }
+
+    expect(completionCacheKey({ ...context, relatedPaths: [OTHER_FILE_PATH] })).not.toBe(
+      completionCacheKey({ ...context, relatedPaths: ['/repo/src/baz.ts'] })
+    )
+  })
+
+  it('gives another key to the same text at another line', () => {
+    const context = {
+      filePath: FILE_PATH,
+      prefix: 'const a = 1\n',
+      suffix: 'const b = 2',
+      relatedPaths: []
+    }
+
+    expect(completionCacheKey({ ...context, prefixStartLine: 1 })).not.toBe(
+      completionCacheKey({ ...context, prefixStartLine: 40 })
+    )
   })
 })

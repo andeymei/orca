@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { NesEditPlan, NesRequest } from '../../shared/code-completion/code-completion-types'
 import { emptyCompletionUsage, type NesBackend, type NesBackendResult } from './completion-backend'
-import { createCompletionCache } from './completion-cache'
+import { completionCache, createCompletionCache } from './completion-cache'
 import { createCompletionService } from './completion-service'
 
 const FILE_PATH = '/repo/src/foo.ts'
@@ -94,50 +94,108 @@ describe('completion service', () => {
   })
 
   it('does not cache a failure', async () => {
-    const { backend, calls } = backendAnswering({ plan: null, usage: emptyCompletionUsage() })
-    const service = createCompletionService({
-      resolveBackend: () => backend,
-      cache: createCompletionCache()
-    })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { backend, calls } = backendAnswering({ plan: null, usage: emptyCompletionUsage() })
+      const service = createCompletionService({
+        resolveBackend: () => backend,
+        cache: createCompletionCache()
+      })
 
-    const first = await service.plan(request(), new AbortController().signal)
-    const second = await service.plan(request(), new AbortController().signal)
+      const first = await service.plan(request(), new AbortController().signal)
+      const second = await service.plan(request(), new AbortController().signal)
 
-    expect(first.plan).toBeNull()
-    expect(second.plan).toBeNull()
-    expect(calls()).toBe(2)
+      expect(first.plan).toBeNull()
+      expect(second.plan).toBeNull()
+      expect(calls()).toBe(2)
+      expect(log).toHaveBeenCalledTimes(2)
+    } finally {
+      log.mockRestore()
+    }
   })
 
   it('does not cache an aborted request', async () => {
-    const controller = new AbortController()
-    const firstAnswer = deferred<NesBackendResult>()
-    let calls = 0
-    const backend: NesBackend = {
-      id: 'anthropic-messages',
-      planCapable: true,
-      plan: () => {
-        calls += 1
-        if (calls > 1) {
-          return Promise.resolve({ plan: PLAN, usage: emptyCompletionUsage() })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const controller = new AbortController()
+      const firstAnswer = deferred<NesBackendResult>()
+      let calls = 0
+      const backend: NesBackend = {
+        id: 'anthropic-messages',
+        planCapable: true,
+        plan: () => {
+          calls += 1
+          if (calls > 1) {
+            return Promise.resolve({ plan: PLAN, usage: emptyCompletionUsage() })
+          }
+          return firstAnswer.promise
         }
-        return firstAnswer.promise
       }
+      const service = createCompletionService({
+        resolveBackend: () => backend,
+        cache: createCompletionCache()
+      })
+
+      const pending = service.plan(request(), controller.signal)
+      await flushMicrotasks()
+      controller.abort()
+      firstAnswer.resolve({ plan: PLAN, usage: emptyCompletionUsage() })
+      const aborted = await pending
+      expect(aborted.plan).toBeNull()
+
+      const second = await service.plan(request(), new AbortController().signal)
+      expect(second.plan).toEqual(PLAN)
+      expect(calls).toBe(2)
+      // The user typed on; that is not an error worth writing down.
+      expect(log).not.toHaveBeenCalled()
+    } finally {
+      log.mockRestore()
     }
-    const service = createCompletionService({
-      resolveBackend: () => backend,
-      cache: createCompletionCache()
-    })
+  })
 
-    const pending = service.plan(request(), controller.signal)
-    await flushMicrotasks()
-    controller.abort()
-    firstAnswer.resolve({ plan: PLAN, usage: emptyCompletionUsage() })
-    const aborted = await pending
-    expect(aborted.plan).toBeNull()
+  it('does not write an aborted request down', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const controller = new AbortController()
+      const backend: NesBackend = {
+        id: 'anthropic-messages',
+        planCapable: true,
+        plan: (_input, signal) =>
+          new Promise<NesBackendResult>((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(new Error('The request was aborted.')), {
+              once: true
+            })
+          })
+      }
+      const service = createCompletionService({
+        resolveBackend: () => backend,
+        cache: createCompletionCache()
+      })
 
-    const second = await service.plan(request(), new AbortController().signal)
-    expect(second.plan).toEqual(PLAN)
-    expect(calls).toBe(2)
+      const pending = service.plan(request(), controller.signal)
+      await flushMicrotasks()
+      controller.abort()
+      const aborted = await pending
+
+      expect(aborted.plan).toBeNull()
+      expect(log).not.toHaveBeenCalled()
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('serves a later request from the shared cache', async () => {
+    completionCache.clear()
+    const { backend, calls } = backendAnswering({ plan: PLAN, usage: emptyCompletionUsage() })
+    const first = createCompletionService({ resolveBackend: () => backend })
+    const second = createCompletionService({ resolveBackend: () => backend })
+    const shared = request({ filePath: '/repo/src/shared-cache.ts' })
+
+    await first.plan(shared, new AbortController().signal)
+    const served = await second.plan(shared, new AbortController().signal)
+
+    expect(served.plan).toEqual(PLAN)
+    expect(calls()).toBe(1)
   })
 
   it('gives up after the request timeout', async () => {

@@ -3,7 +3,6 @@ import {
   FILE_REFERENCE_NODE,
   IMAGE_REFERENCE_NODE,
   fileReferenceContent,
-  imageReferenceContent,
   promptHasAttachmentReferences,
   promptLeafString,
   promptTextContent,
@@ -38,7 +37,19 @@ describe('prompt editor nodes', () => {
     expect(promptLeafString('hardBreak', undefined, null)).toBe('\n')
   })
 
-  it('removes an image pill and the space that followed it', () => {
+  it('keeps a blank line as an empty paragraph', () => {
+    // ProseMirror rejects empty text nodes, so a blank line must not become one.
+    expect(promptTextContent('a\n\nb')).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'a' }] },
+        { type: 'paragraph', content: [] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'b' }] }
+      ]
+    })
+  })
+
+  it('removes an image pill and keeps the spaces around it', () => {
     const document = {
       type: 'doc',
       content: [
@@ -46,7 +57,7 @@ describe('prompt editor nodes', () => {
           type: 'paragraph',
           content: [
             { type: 'text', text: 'look at ' },
-            imageReferenceContent('a1', 'shot.png'),
+            { type: IMAGE_REFERENCE_NODE, attrs: { attachmentId: 'a1', name: 'shot.png' } },
             { type: 'text', text: ' please' }
           ]
         }

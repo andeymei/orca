@@ -578,6 +578,7 @@ git commit -m "feat(code-completion): the completion settings block"
 - Modify: `src/preload/index.ts` (expose the bridge)
 - Modify: `src/main/ipc/register-core-handlers/register-core-handlers.ts` (register the handlers)
 - Create: `src/main/code-completion/code-completion-api-key-store.test.ts`
+- Create: `src/main/code-completion/code-completion-credential-commands.test.ts`
 - Create: `src/preload/code-completion-credentials.test.ts`
 
 **Interfaces:**
@@ -604,7 +605,7 @@ describe('code completion api key store', () => {
 
 The store resolves its path at call time — `join(homedir(), '.orca', fileName)` — so the test isolates it by mocking `node:os`, `node:fs`, `node:path` and `../../shared/secure-storage/secure-file`, and it installs a stub secret store with `setSecretStore(...)` because `getSecretStore()` throws when no store is installed. `src/main/zcode/zcode-plan-api-key-store.test.ts` is the closest model in the repo: it mocks the same four modules, calls `setSecretStore({ ...safeStorageMock, describeProtectionGap: () => null })` in `beforeEach`, and re-imports the store with `vi.resetModules()` between cases (the store caches the key in a module-level closure).
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 2: Run the store test to verify it fails**
 
 Run: `pnpm test src/main/code-completion/code-completion-api-key-store.test.ts --maxWorkers=2`
 Expected: FAIL — the module does not exist.
@@ -649,7 +650,28 @@ export type CodeCompletionCredentialsStatus = {
 
 It lives in `src/shared/` because the main process, the preload and the renderer all speak it — the same reason `src/shared/minimax-credentials-status.ts` exists.
 
-- [ ] **Step 5: Write the credential commands**
+- [ ] **Step 5: Write the failing command test**
+
+Create `src/main/code-completion/code-completion-credential-commands.test.ts`. The command layer is where the untrusted-argument checks live, so it gets its own test — the store test cannot reach them. Mock `./code-completion-api-key-store` so the test never touches the real home directory.
+
+```ts
+describe('code completion credential commands', () => {
+  it('reports no key when none is saved', ...)
+  it('reports the key as configured after a save', ...)
+  it('rejects a key that is not a string', ...)
+  it('rejects a key with an interior newline', ...)
+  it('clears the key', ...)
+})
+```
+
+The two rejection cases are the ones that matter: the value arrives over IPC and is untrusted, and the key becomes an HTTP `Authorization` header value, so an interior newline cannot be sent. Each must fail if the check is reverted.
+
+- [ ] **Step 6: Run the command test to verify it fails**
+
+Run: `pnpm test src/main/code-completion/code-completion-credential-commands.test.ts --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 7: Write the credential commands**
 
 Create `src/main/code-completion/code-completion-credential-commands.ts`, mirroring `src/main/minimax/minimax-credential-commands.ts`:
 
@@ -659,7 +681,7 @@ Create `src/main/code-completion/code-completion-credential-commands.ts`, mirror
 
 The API key never enters the settings, the RPC params catalog, a cache key or a log line.
 
-- [ ] **Step 6: Write the preload surface**
+- [ ] **Step 8: Write the preload surface**
 
 Create `src/preload/api/code-completion-api.ts`:
 
@@ -706,7 +728,7 @@ export function registerCodeCompletionCredentialHandlers(): void {
 
 Register `registerCodeCompletionCredentialHandlers()` in `src/main/ipc/register-core-handlers/register-core-handlers.ts` alongside the minimax credential handlers.
 
-- [ ] **Step 7: Write the failing bridge test**
+- [ ] **Step 9: Write the failing bridge test**
 
 Create `src/preload/code-completion-credentials.test.ts`, following `src/preload/opencode-go-credentials.test.ts`:
 
@@ -734,22 +756,22 @@ describe('Code completion credential bridge', () => {
 
 The channel names are the contract between this bridge and the main-process handlers; a typo in either side would only show up as a settings UI that silently does nothing (Task 12). This test fails if either side's name changes.
 
-- [ ] **Step 8: Run the bridge test to verify it fails**
+- [ ] **Step 10: Run the bridge test to verify it fails**
 
 Run: `pnpm test src/preload/code-completion-credentials.test.ts --maxWorkers=2`
 Expected: FAIL — the bridge does not exist.
 
-- [ ] **Step 9: Run the tests to verify they pass**
+- [ ] **Step 11: Run the tests to verify they pass**
 
 Run: `pnpm test src/main/code-completion src/preload/code-completion-credentials.test.ts --maxWorkers=2`
 Expected: PASS.
 
-- [ ] **Step 10: Typecheck**
+- [ ] **Step 12: Typecheck**
 
 Run: `pnpm tc:node && pnpm tc:web`
 Expected: no errors.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
 git add src/main/code-completion src/main/ipc/code-completion-credentials.ts src/main/ipc/register-core-handlers src/preload src/shared/code-completion

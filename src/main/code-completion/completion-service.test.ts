@@ -114,6 +114,31 @@ describe('completion service', () => {
     }
   })
 
+  it('writes a failed request down without its payload', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const backend: NesBackend = {
+        id: 'anthropic-messages',
+        planCapable: true,
+        plan: () => Promise.reject(new TypeError('the request carried x-api-key: sk-secret'))
+      }
+      const service = createCompletionService({
+        resolveBackend: () => backend,
+        cache: createCompletionCache()
+      })
+
+      const result = await service.plan(request(), new AbortController().signal)
+
+      expect(result.plan).toBeNull()
+      expect(log).toHaveBeenCalledWith('[code-completion] The request failed.', {
+        backend: 'anthropic-messages',
+        error: 'TypeError'
+      })
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   it('does not cache an aborted request', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {

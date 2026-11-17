@@ -27,7 +27,7 @@ function keyFor(filePath: string, prefix: string): string {
     prefix,
     suffix: '',
     prefixStartLine: 1,
-    relatedPaths: []
+    relatedFiles: []
   })
 }
 
@@ -84,7 +84,7 @@ describe('completion cache', () => {
       prefix: 'const a = 1\n',
       suffix: 'const b = 2',
       prefixStartLine: 1,
-      relatedPaths: [OTHER_FILE_PATH]
+      relatedFiles: [{ path: OTHER_FILE_PATH, content: 'export const bar = 1\n' }]
     }
     const key = completionCacheKey(context)
     const movedKey = completionCacheKey({ ...context, prefix: 'const a = 1\nconst c = 3\n' })
@@ -92,7 +92,7 @@ describe('completion cache', () => {
 
     expect(cache.get(movedKey)).toBeNull()
     expect(cache.get(key)).toEqual(plan('a'))
-    expect(completionCacheKey({ ...context, relatedPaths: [OTHER_FILE_PATH] })).toBe(key)
+    expect(completionCacheKey(context)).toBe(key)
   })
 
   it('gives another key to another set of related files', () => {
@@ -103,8 +103,34 @@ describe('completion cache', () => {
       prefixStartLine: 1
     }
 
-    expect(completionCacheKey({ ...context, relatedPaths: [OTHER_FILE_PATH] })).not.toBe(
-      completionCacheKey({ ...context, relatedPaths: ['/repo/src/baz.ts'] })
+    expect(
+      completionCacheKey({ ...context, relatedFiles: [{ path: OTHER_FILE_PATH, content: 'a\n' }] })
+    ).not.toBe(
+      completionCacheKey({
+        ...context,
+        relatedFiles: [{ path: '/repo/src/baz.ts', content: 'a\n' }]
+      })
+    )
+  })
+
+  it('gives another key when a related file changed', () => {
+    const context = {
+      filePath: FILE_PATH,
+      prefix: 'const a = 1\n',
+      suffix: 'const b = 2',
+      prefixStartLine: 1
+    }
+
+    expect(
+      completionCacheKey({
+        ...context,
+        relatedFiles: [{ path: OTHER_FILE_PATH, content: 'export const bar = 1\n' }]
+      })
+    ).not.toBe(
+      completionCacheKey({
+        ...context,
+        relatedFiles: [{ path: OTHER_FILE_PATH, content: 'export const bar = 2\n' }]
+      })
     )
   })
 
@@ -113,7 +139,7 @@ describe('completion cache', () => {
       filePath: FILE_PATH,
       prefix: 'const a = 1\n',
       suffix: 'const b = 2',
-      relatedPaths: []
+      relatedFiles: []
     }
 
     expect(completionCacheKey({ ...context, prefixStartLine: 1 })).not.toBe(

@@ -21,23 +21,30 @@ type CompletionCacheEntry = {
 /** A NUL byte cannot appear in a path or in file text, so it separates the hashed parts. */
 const SEGMENT_SEPARATOR = String.fromCharCode(0)
 
-/** The key of one cursor context: the file it belongs to, the text around the cursor and its offset. */
+/** The path and the text of a related file are two parts of one thing. */
+const RELATED_FILE_SEPARATOR = String.fromCharCode(2)
+
+/**
+ * The key of one cursor context: the file it belongs to, the text around the cursor, its offset
+ * and the related files the model was shown. The related content is in the key because the model
+ * answered with it: a related file that changed can change the answer.
+ */
 export function completionCacheKey(input: {
   filePath: string
   prefix: string
   suffix: string
   /** The file line the shown prefix starts at; the plan's line numbers count from it. */
   prefixStartLine: number
-  relatedPaths: readonly string[]
+  relatedFiles: readonly { path: string; content: string }[]
 }): string {
   const file = digest(input.filePath)
+  const relatedParts = input.relatedFiles
+    .map((relatedFile) => `${relatedFile.path}${RELATED_FILE_SEPARATOR}${relatedFile.content}`)
+    .sort()
   const context = digest(
-    [
-      input.prefix,
-      input.suffix,
-      String(input.prefixStartLine),
-      ...[...input.relatedPaths].sort()
-    ].join(SEGMENT_SEPARATOR)
+    [input.prefix, input.suffix, String(input.prefixStartLine), ...relatedParts].join(
+      SEGMENT_SEPARATOR
+    )
   )
   return `${file}${SEGMENT_SEPARATOR}${context}`
 }

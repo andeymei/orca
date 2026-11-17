@@ -35,7 +35,10 @@ export function createCompletionService(options: {
         prefix: input.prefix,
         suffix: input.suffix,
         prefixStartLine: input.prefixStartLine,
-        relatedPaths: input.relatedFiles.map((relatedFile) => relatedFile.path)
+        relatedFiles: input.relatedFiles.map((relatedFile) => ({
+          path: relatedFile.path,
+          content: relatedFile.content
+        }))
       })
       const cached = cache.get(key)
       if (cached) {
@@ -46,7 +49,10 @@ export function createCompletionService(options: {
         return { plan: null, usage: emptyCompletionUsage() }
       }
       if (outcome.kind === 'failed') {
-        console.error('[code-completion] The request failed:', outcome.error)
+        console.error('[code-completion] The request failed.', {
+          backend: backend.id,
+          error: errorName(outcome.error)
+        })
         return { plan: null, usage: emptyCompletionUsage() }
       }
       if (!outcome.result.plan) {
@@ -63,6 +69,15 @@ type CompletionOutcome =
   | { kind: 'answered'; result: NesBackendResult }
   | { kind: 'failed'; error: unknown }
   | { kind: 'abandoned' }
+
+/** The error's class name; its message can carry the request or the model's answer. */
+function errorName(error: unknown): string {
+  if (typeof error !== 'object' || error === null) {
+    return 'unknown'
+  }
+  const name = (error as { name?: unknown }).name
+  return typeof name === 'string' ? name : 'unknown'
+}
 
 /** The backend's answer, or why there is none. */
 async function requestPlan(

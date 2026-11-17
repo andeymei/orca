@@ -228,13 +228,16 @@ git commit -m "feat(code-completion): the edit plan contract and its prompt"
 
 - Consumes: `NesEditPlan`, `validateNesEditPlan`, `NesBackendId`, `NesRequest` — all from `src/shared/code-completion/code-completion-types.ts` (Task 1).
 - Produces:
-  - `type NesBackend = { id: NesBackendId; planCapable: boolean; plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> }`
-  - `type NesBackendResult = { plan: NesEditPlan | null; usage: CompletionUsage }` — the usage is filled in by Task 14; until then it is all zeros
-  - `type CompletionUsage = { inputTokens: number; outputTokens: number; cacheReadTokens: number }`
-  - `createAnthropicMessagesBackend(config): NesBackend`
-  - `createOpenAiChatBackend(config): NesBackend`
-  - `createOpenAiFimBackend(config): NesBackend`
-  - `type NesBackendConfig = { baseUrl: string; model: string; apiKey: string; maxTokens: number; autoImport: boolean }`
+  - `type NesBackend = { id: NesBackendId; planCapable: boolean; identity: string; plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> }`
+
+`identity` names who answered — the protocol, the endpoint, the model and the auto-import switch. Each factory computes it from its config. The completion cache is a module-level singleton, so the identity has to travel with the answer: without it, a plan produced by one model is served to a request that would have gone to another, and turning the auto-import switch off would still surface the old model's import edit.
+
+- `type NesBackendResult = { plan: NesEditPlan | null; usage: CompletionUsage }` — the usage is filled in by Task 14; until then it is all zeros
+- `type CompletionUsage = { inputTokens: number; outputTokens: number; cacheReadTokens: number }`
+- `createAnthropicMessagesBackend(config): NesBackend`
+- `createOpenAiChatBackend(config): NesBackend`
+- `createOpenAiFimBackend(config): NesBackend`
+- `type NesBackendConfig = { baseUrl: string; model: string; apiKey: string; maxTokens: number; autoImport: boolean }`
 
 `autoImport` is a **setting**, not part of the request: the renderer must not decide whether the model may propose an import. The main process reads it from the settings and passes it in the backend config; the backend puts it on the prompt input (`NesPromptInput = NesRequest & { autoImport: boolean }`). The FIM backend does not use the prompt at all.
 
@@ -361,7 +364,7 @@ git commit -m "feat(code-completion): the Anthropic, OpenAI chat and FIM backend
   - `type CompletionCache = { get(key: string): NesEditPlan | null; set(key: string, plan: NesEditPlan): void; clear(): void }`
   - `createCompletionCache(options?: { ttlMs?: number; maxPerFile?: number; now?: () => number }): CompletionCache`
   - `completionCache: CompletionCache` — the **module-level singleton**. The service takes it when the caller injects none; a cache that lives only as long as the request is not a cache.
-  - `completionCacheKey(input: { filePath: string; prefix: string; suffix: string; prefixStartLine: number; relatedFiles: readonly { path: string; content: string }[] }): string`
+  - `completionCacheKey(input: { filePath: string; prefix: string; suffix: string; prefixStartLine: number; relatedFiles: readonly { path: string; content: string }[]; source: string }): string`
   - `type CompletionService = { plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> }`
   - `createCompletionService(options: { resolveBackend: () => NesBackend | null; cache?: CompletionCache; now?: () => number }): CompletionService`
 
@@ -389,7 +392,9 @@ Expected: FAIL — the module does not exist.
 
 Create `src/main/code-completion/completion-cache.ts`. The cache holds `{ plan, storedAt, lastUsedAt }` per key. `get` returns the plan when `now - storedAt < ttlMs` and refreshes `lastUsedAt`; otherwise it deletes the entry and returns null. `set` stores and, when the file has more than `maxPerFile` entries, evicts the one with the smallest `lastUsedAt`.
 
-`completionCacheKey` hashes the file path, the prefix, the suffix, `prefixStartLine` and the related files' **paths and shown content** into one string. A moved cursor changes the prefix and suffix, so it misses. `prefixStartLine` is in the key because the plan's line numbers are absolute after the conversion (the spec's §5.5): the same text at a different offset is a different answer, and an edit above the prefix window changes the offset without changing the text. The related files' content is in the key because the model saw that content — a changed related file can change the answer — and because identical content implies an identical start line, which covers their offset too.
+`completionCacheKey` hashes the file path, the prefix, the suffix, `prefixStartLine`, the related files' **paths and shown content**, and the **source** into one string. A moved cursor changes the prefix and suffix, so it misses. `prefixStartLine` is in the key because the plan's line numbers are absolute after the conversion (the spec's §5.5): the same text at a different offset is a different answer, and an edit above the prefix window changes the offset without changing the text. The related files' content is in the key because the model saw that content — a changed related file can change the answer — and because identical content implies an identical start line, which covers their offset too.
+
+`source` names **who answered**: the protocol, the endpoint, the model and the auto-import switch. The cache is a module-level singleton, so without it a plan produced by one model is served to a request that would have gone to another — and turning the auto-import switch off would still surface the old model's import edit for the length of the ttl.
 
 - [ ] **Step 4: Write the failing service test**
 
@@ -838,7 +843,7 @@ git commit -m "feat(code-completion): the codeCompletion.plan RPC method"
   - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal }): Promise<NesEditPlan | null>`
   - `buildNesContext(model: editor.ITextModel, position: editor.IPosition, options): NesContextInput`
   - `type NesContextInput = { prefix: string; suffix: string; filePath: string; relativePath: string; languageId: string }`
-  - `collectNesRelatedFiles(input: NesRelatedFilesInput): Promise<{ path: string; content: string }[]>`
+  - `collectNesRelatedFiles(input: NesRelatedFilesInput): Promise<{ path: string; content: string; startLine: number }[]>`
   - `type NesRelatedFilesInput = { filePath: string; fileText: string; symbolAtCursor: string | null; files: RuntimeFileOperationArgs }`
   - `NES_RELATED_FILE_MAX = 8`, `NES_RELATED_FILE_TOKEN_BUDGET = 1000`
 

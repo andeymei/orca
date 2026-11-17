@@ -8,6 +8,7 @@ import {
   emptyCompletionUsage,
   nesAllowedPaths,
   parseNesPlanText,
+  translateNesEditLines,
   type CompletionBackendOptions,
   type NesBackend,
   type NesBackendConfig,
@@ -61,8 +62,9 @@ export function createOpenAiChatBackend(
       if (!events) {
         return { plan: null, usage: emptyCompletionUsage() }
       }
+      const plan = parseNesPlanText(openAiChatStreamText(events), nesAllowedPaths(input))
       return {
-        plan: parseNesPlanText(openAiChatStreamText(events), nesAllowedPaths(input)),
+        plan: plan ? translateNesEditLines(plan, input) : null,
         usage: emptyCompletionUsage()
       }
     }

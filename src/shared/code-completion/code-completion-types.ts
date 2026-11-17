@@ -52,7 +52,13 @@ export type NesRequest = {
   languageId: string
   prefix: string
   suffix: string
-  relatedFiles: readonly { path: string; content: string }[]
+  /** The file line the shown prefix starts at; 1 when the whole file precedes the cursor. */
+  prefixStartLine: number
+  /** The cursor's absolute position in the file. */
+  cursorLine: number
+  cursorColumn: number
+  /** Each related file carries the file line its shown content starts at. */
+  relatedFiles: readonly { path: string; content: string; startLine: number }[]
   recentEdits: readonly { path: string; label: string }[]
 }
 

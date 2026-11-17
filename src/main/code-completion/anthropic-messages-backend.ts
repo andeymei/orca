@@ -8,6 +8,7 @@ import {
   emptyCompletionUsage,
   nesAllowedPaths,
   parseNesPlanText,
+  translateNesEditLines,
   type CompletionBackendOptions,
   type NesBackend,
   type NesBackendConfig,
@@ -64,8 +65,9 @@ export function createAnthropicMessagesBackend(
       if (!events) {
         return { plan: null, usage: emptyCompletionUsage() }
       }
+      const plan = parseNesPlanText(anthropicStreamText(events), nesAllowedPaths(input))
       return {
-        plan: parseNesPlanText(anthropicStreamText(events), nesAllowedPaths(input)),
+        plan: plan ? translateNesEditLines(plan, input) : null,
         usage: emptyCompletionUsage()
       }
     }

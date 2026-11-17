@@ -3,7 +3,6 @@ import { NES_CURSOR_MARKER } from '../../shared/code-completion/code-completion-
 import {
   validateNesEditPlan,
   type NesEdit,
-  type NesEditRange,
   type NesRequest
 } from '../../shared/code-completion/code-completion-types'
 import {
@@ -77,23 +76,20 @@ function openAiCompletionStreamText(events: readonly unknown[]): string {
   return text
 }
 
+/** The completion lands at the cursor, whose position the request carries in absolute terms. */
 function fimCursorEdit(text: string, input: NesRequest): NesEdit {
-  const range = cursorRange(input.prefix)
   return {
     id: 'fim-cursor',
     path: input.filePath,
     kind: 'insert',
-    range,
+    range: {
+      startLine: input.cursorLine,
+      startColumn: input.cursorColumn,
+      endLine: input.cursorLine,
+      endColumn: input.cursorColumn
+    },
     originalText: '',
     text,
     label: 'Completion'
   }
-}
-
-/** The cursor sits at the end of the prefix, so its position is the prefix's last line. */
-function cursorRange(prefix: string): NesEditRange {
-  const lines = prefix.split('\n')
-  const line = lines.length
-  const column = (lines.at(-1)?.length ?? 0) + 1
-  return { startLine: line, startColumn: column, endLine: line, endColumn: column }
 }

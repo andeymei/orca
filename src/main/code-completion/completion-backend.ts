@@ -46,6 +46,29 @@ export function nesAllowedPaths(input: NesRequest): string[] {
   return [input.filePath, ...input.relatedFiles.map((relatedFile) => relatedFile.path)]
 }
 
+/** The file line the shown text of a path starts at; the model counts from it. */
+export function nesStartLineFor(request: NesRequest, path: string): number {
+  const relatedFile = request.relatedFiles.find((candidate) => candidate.path === path)
+  return relatedFile ? relatedFile.startLine : request.prefixStartLine
+}
+
+/** The plan with absolute line numbers; the model's line numbers count from what it saw. */
+export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): NesEditPlan {
+  return {
+    edits: plan.edits.map((edit) => {
+      const offset = nesStartLineFor(request, edit.path) - 1
+      return {
+        ...edit,
+        range: {
+          ...edit.range,
+          startLine: edit.range.startLine + offset,
+          endLine: edit.range.endLine + offset
+        }
+      }
+    })
+  }
+}
+
 /** The plan a model answer carries, or null when the answer is not JSON. */
 export function parseNesPlanText(
   text: string,

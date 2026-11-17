@@ -1,18 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { NesRequest } from '../../shared/code-completion/code-completion-types'
+import type { NesEditPlan, NesRequest } from '../../shared/code-completion/code-completion-types'
 import { createAnthropicMessagesBackend } from './anthropic-messages-backend'
+import { translateNesEditLines } from './completion-backend'
 import { createOpenAiChatBackend } from './openai-chat-backend'
 import { createOpenAiFimBackend } from './openai-fim-backend'
 
 const FILE_PATH = '/repo/src/foo.ts'
+const RELATED_FILE_PATH = '/repo/src/bar.ts'
 
+// The prefix shows one line of a longer file, so the model's line numbers drift from the file's.
 const REQUEST: NesRequest = {
   filePath: FILE_PATH,
   relativePath: 'src/foo.ts',
   languageId: 'typescript',
   prefix: 'const a = 1\n',
   suffix: '\nconst b = 2',
-  relatedFiles: [{ path: '/repo/src/bar.ts', content: 'export const bar = 1\n' }],
+  prefixStartLine: 40,
+  cursorLine: 41,
+  cursorColumn: 1,
+  relatedFiles: [{ path: RELATED_FILE_PATH, content: 'export const bar = 1\n', startLine: 5 }],
   recentEdits: []
 }
 
@@ -24,13 +30,29 @@ const CONFIG = {
   autoImport: false
 }
 
-const PLAN = {
+/** What the model answers: line numbers count from the text it was shown. */
+const MODEL_PLAN = {
   edits: [
     {
       id: 'e1',
       path: FILE_PATH,
       kind: 'insert',
       range: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 1 },
+      originalText: '',
+      text: 'const c = 3\n',
+      label: 'add the third constant'
+    }
+  ]
+}
+
+/** What the backend answers: the same edit at the file's own line. */
+const ABSOLUTE_PLAN = {
+  edits: [
+    {
+      id: 'e1',
+      path: FILE_PATH,
+      kind: 'insert',
+      range: { startLine: 41, startColumn: 1, endLine: 41, endColumn: 1 },
       originalText: '',
       text: 'const c = 3\n',
       label: 'add the third constant'
@@ -60,7 +82,7 @@ function requestBody(
 
 describe('completion backends', () => {
   it('reads an Anthropic stream and returns the validated plan', async () => {
-    const planJson = JSON.stringify(PLAN)
+    const planJson = JSON.stringify(MODEL_PLAN)
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       sseResponse([
         JSON.stringify({ type: 'message_start', message: { id: 'm1' } }),
@@ -73,7 +95,7 @@ describe('completion backends', () => {
 
     const result = await backend.plan(REQUEST, new AbortController().signal)
 
-    expect(result.plan).toEqual(PLAN)
+    expect(result.plan).toEqual(ABSOLUTE_PLAN)
     expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 })
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://endpoint.invalid/v1/messages',
@@ -97,7 +119,7 @@ describe('completion backends', () => {
   })
 
   it('reads an OpenAI chat stream and returns the validated plan', async () => {
-    const planJson = JSON.stringify(PLAN)
+    const planJson = JSON.stringify(MODEL_PLAN)
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       sseResponse([
         JSON.stringify({ choices: [{ delta: { role: 'assistant' } }] }),
@@ -110,7 +132,7 @@ describe('completion backends', () => {
 
     const result = await backend.plan(REQUEST, new AbortController().signal)
 
-    expect(result.plan).toEqual(PLAN)
+    expect(result.plan).toEqual(ABSOLUTE_PLAN)
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://endpoint.invalid/chat/completions',
       expect.objectContaining({
@@ -141,7 +163,7 @@ describe('completion backends', () => {
         id: 'fim-cursor',
         path: FILE_PATH,
         kind: 'insert',
-        range: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 1 },
+        range: { startLine: 41, startColumn: 1, endLine: 41, endColumn: 1 },
         originalText: '',
         text: 'const c = 3',
         label: 'Completion'
@@ -162,7 +184,7 @@ describe('completion backends', () => {
 
   it('returns null when the stream ends mid-object', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
-      sseResponse([anthropicTextEvent(JSON.stringify(PLAN).slice(0, -5))])
+      sseResponse([anthropicTextEvent(JSON.stringify(MODEL_PLAN).slice(0, -5))])
     )
     const backend = createAnthropicMessagesBackend(CONFIG, { fetchImpl })
 
@@ -183,12 +205,56 @@ describe('completion backends', () => {
   })
 
   it('returns null when the answer is longer than the output cap', async () => {
-    const oversized = JSON.stringify({ edits: [{ ...PLAN.edits[0], text: 'x'.repeat(9000) }] })
+    const oversized = JSON.stringify({
+      edits: [{ ...MODEL_PLAN.edits[0], text: 'x'.repeat(9000) }]
+    })
     const fetchImpl = vi.fn<typeof fetch>(async () => sseResponse([anthropicTextEvent(oversized)]))
     const backend = createAnthropicMessagesBackend(CONFIG, { fetchImpl })
 
     const result = await backend.plan(REQUEST, new AbortController().signal)
 
     expect(result.plan).toBeNull()
+  })
+})
+
+describe('translateNesEditLines', () => {
+  it('moves a line to the file the text was shown from', () => {
+    const plan: NesEditPlan = {
+      edits: [
+        {
+          id: 'e1',
+          path: FILE_PATH,
+          kind: 'insert',
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+          originalText: '',
+          text: 'const c = 3\n',
+          label: 'add the third constant'
+        },
+        {
+          id: 'e2',
+          path: RELATED_FILE_PATH,
+          kind: 'insert',
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+          originalText: '',
+          text: 'export const baz = 2\n',
+          label: 'add the second export'
+        }
+      ]
+    }
+
+    const translated = translateNesEditLines(plan, REQUEST)
+
+    expect(translated.edits[0].range).toEqual({
+      startLine: 40,
+      startColumn: 1,
+      endLine: 40,
+      endColumn: 1
+    })
+    expect(translated.edits[1].range).toEqual({
+      startLine: 5,
+      startColumn: 1,
+      endLine: 5,
+      endColumn: 1
+    })
   })
 })

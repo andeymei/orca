@@ -28,7 +28,7 @@
  * A machine without a Claude Code CLI has nothing to supervise, and CI has none, so the spec skips
  * there instead of pretending.
  */
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { Page } from '@stablyai/playwright-test'
@@ -154,51 +154,92 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 type TrustRecord = { present: boolean; value: unknown }
 
 /**
+ * The trust records the CLI kept before the run, and how the config could be read.
+ *
+ * `state` says which of the three cases it is: the config read, the config could not be parsed,
+ * or there is no config file at all. `hadProjects` says whether the config carried a `projects`
+ * map in the first place, so the restore can take the map away again instead of leaving an empty
+ * one behind.
+ */
+type TrustSnapshot = {
+  state: 'read' | 'unreadable' | 'missing'
+  hadProjects: boolean
+  records: Map<string, TrustRecord>
+}
+
+/**
  * The trust records the CLI keeps for the workspace, as they were before the run.
  *
- * The app's module is the one that reads: the change function is handed the parsed config, and an
- * 'unchanged' answer means nothing is written.
+ * The snapshot is a plain read — reading cannot damage anything — and it says which of the three
+ * cases it is, so a config that cannot be parsed is never mistaken for a config without the key.
  */
-async function readTrustRecords(
-  configFile: string,
-  keys: readonly string[]
-): Promise<Map<string, TrustRecord>> {
+function readTrustSnapshot(configFile: string, keys: readonly string[]): TrustSnapshot {
+  let raw: string
+  try {
+    raw = readFileSync(configFile, 'utf8')
+  } catch (error) {
+    const code = error instanceof Error && 'code' in error ? error.code : undefined
+    return {
+      state: code === 'ENOENT' ? 'missing' : 'unreadable',
+      hadProjects: false,
+      records: new Map()
+    }
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { state: 'unreadable', hadProjects: false, records: new Map() }
+  }
+  if (!isRecord(parsed)) {
+    return { state: 'unreadable', hadProjects: false, records: new Map() }
+  }
+  const projects = parsed.projects
   const records = new Map<string, TrustRecord>()
-  await updateClaudeGlobalConfig(configFile, (config) => {
-    const projects = isRecord(config.projects) ? config.projects : {}
+  if (isRecord(projects)) {
     for (const key of keys) {
       records.set(key, { present: Object.hasOwn(projects, key), value: projects[key] })
     }
-    return { kind: 'unchanged' }
-  })
-  return records
+  }
+  return { state: 'read', hadProjects: projects !== undefined, records }
 }
 
 /**
  * Give the trust records back exactly as they were: the same keys, the same values.
  *
- * Only the spec's own keys are touched — the rest of the `projects` map, and the rest of the
- * config, are left alone.
+ * Only the spec's own keys are touched, and the `projects` map is taken away again when the run is
+ * what put it there. When the config already matches the pre-run state the answer is 'unchanged',
+ * so the writer does not touch the file at all.
  */
 function restoreTrustRecords(
   config: Record<string, unknown>,
   keys: readonly string[],
-  previous: ReadonlyMap<string, TrustRecord>
+  snapshot: TrustSnapshot
 ): ClaudeGlobalConfigChange {
   const projects = config.projects
   if (projects !== undefined && !isRecord(projects)) {
     return { kind: 'refuse' }
   }
-  const restored: Record<string, unknown> = { ...projects }
+  const current: Record<string, unknown> = { ...projects }
+  const restored: Record<string, unknown> = { ...current }
   for (const key of keys) {
-    const record = previous.get(key)
+    const record = snapshot.records.get(key)
     if (record?.present) {
       restored[key] = record.value
     } else {
       delete restored[key]
     }
   }
-  return { kind: 'changed', config: { ...config, projects: restored } }
+  if (JSON.stringify(restored) === JSON.stringify(current)) {
+    return { kind: 'unchanged' }
+  }
+  const next: Record<string, unknown> = { ...config }
+  if (Object.keys(restored).length === 0 && !snapshot.hadProjects) {
+    delete next.projects
+  } else {
+    next.projects = restored
+  }
+  return { kind: 'changed', config: next }
 }
 
 /**
@@ -215,16 +256,18 @@ async function trustWorkspace(
   workspacePath: string
 ): Promise<{ restore: () => Promise<ClaudeGlobalConfigUpdateOutcome> }> {
   const keys = claudeTrustKeysForHostPath(workspacePath, resolveTrustPathStyle())
-  const previous = await readTrustRecords(configFile, keys)
+  const snapshot = readTrustSnapshot(configFile, keys)
   const granted = await updateClaudeGlobalConfig(configFile, (config) =>
     applyClaudeFolderTrust(config, keys)
   )
   if (granted !== 'updated' && granted !== 'unchanged') {
-    throw new Error(`the workspace could not be trusted: ${granted}`)
+    throw new Error(
+      `the workspace could not be trusted: ${granted} (the Claude config at ${configFile} is ${snapshot.state})`
+    )
   }
   return {
     restore: () =>
-      updateClaudeGlobalConfig(configFile, (config) => restoreTrustRecords(config, keys, previous))
+      updateClaudeGlobalConfig(configFile, (config) => restoreTrustRecords(config, keys, snapshot))
   }
 }
 

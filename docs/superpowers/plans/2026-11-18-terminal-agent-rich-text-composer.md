@@ -71,22 +71,22 @@ spec 暗示、但没有 task 的测试直接覆盖的五类输入 / 失败模式
 
 **修改**
 
-| 路径                                                                                          | 改动                                                        |
-| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `src/renderer/src/store/index.ts`                                                             | 注册 `createTerminalComposerSlice`                          |
-| `src/renderer/src/store/testing/app-store-test-fixture.ts`                                    | 注册 `createTerminalComposerSlice`(漏了单测就红)            |
-| `src/renderer/src/store/types.ts`                                                             | `AppState` 加上 `TerminalComposerSlice`                     |
-| `src/shared/keybindings/types.ts`                                                             | `KeybindingActionId` 联合类型加 `'terminal.toggleComposer'` |
-| `src/shared/keybindings/definitions-core-4.ts`                                                | 新增 `terminal.toggleComposer` 定义                         |
-| `src/renderer/src/components/settings/shortcuts/keybinding-title-copy.ts`                     | 新增该 action 的标题文案                                    |
-| `src/renderer/src/components/terminal-pane/controller/TerminalPaneSurface.tsx`                | 把 composer 覆盖层 portal 进 `activePane.container`         |
-| `src/renderer/src/components/terminal-pane/input/file-drop/terminal-native-file-drop.ts`      | 抽出「解析路径」与「写进 PTY」两步,composer 复用前一步      |
-| `src/renderer/src/i18n/locales/*.json`                                                        | 新增文案                                                    |
-| `src/renderer/src/components/native-chat/composer/editor/native-chat-prompt-document.ts`      | Task 10:改用共用节点                                        |
-| `src/renderer/src/components/native-chat/composer/editor/native-chat-prompt-document-text.ts` | Task 10:委托给共用的 `promptLeafString`                     |
-| `src/renderer/src/components/native-chat/composer/editor/NativeChatPromptEditor.tsx`          | Task 10:改用共用件                                          |
-| `src/renderer/src/components/native-chat/composer/editor/NativeChatFileReferencePill.tsx`     | Task 10:用 `PromptFileLabelContext` 保留 pasted-text 态     |
-| `src/renderer/src/components/native-chat/composer/editor/NativeChatImageReferencePill.tsx`    | Task 10:用 `PromptImageLabelContext` 保留编号               |
+| 路径                                                                                          | 改动                                                                                    |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/renderer/src/store/index.ts`                                                             | 注册 `createTerminalComposerSlice`                                                      |
+| `src/renderer/src/store/testing/app-store-test-fixture.ts`                                    | 注册 `createTerminalComposerSlice`(漏了单测就红)                                        |
+| `src/renderer/src/store/types.ts`                                                             | `AppState` 加上 `TerminalComposerSlice`                                                 |
+| `src/shared/keybindings/types.ts`                                                             | `KeybindingActionId` 联合类型加 `'terminal.toggleComposer'`                             |
+| `src/shared/keybindings/definitions-core-4.ts`                                                | 新增 `terminal.toggleComposer` 定义                                                     |
+| `src/renderer/src/components/settings/shortcuts/keybinding-title-copy.ts`                     | 新增该 action 的标题文案                                                                |
+| `src/renderer/src/components/terminal-pane/controller/TerminalPaneSurface.tsx`                | 把 composer 覆盖层 portal 进 `activePane.container`                                     |
+| `src/renderer/src/components/terminal-pane/input/file-drop/terminal-native-file-drop.ts`      | **不改**。composer 直接用 `importExternalPathsToRuntime`,不共用拖放的外层包装(语义不同) |
+| `src/renderer/src/i18n/locales/*.json`                                                        | 新增文案                                                                                |
+| `src/renderer/src/components/native-chat/composer/editor/native-chat-prompt-document.ts`      | Task 10:改用共用节点                                                                    |
+| `src/renderer/src/components/native-chat/composer/editor/native-chat-prompt-document-text.ts` | Task 10:委托给共用的 `promptLeafString`                                                 |
+| `src/renderer/src/components/native-chat/composer/editor/NativeChatPromptEditor.tsx`          | Task 10:扩展改指向共用节点(编辑器组件本身保留)                                          |
+| `src/renderer/src/components/native-chat/composer/editor/NativeChatFileReferencePill.tsx`     | Task 10:用 `PromptFileLabelContext` 保留 pasted-text 态                                 |
+| `src/renderer/src/components/native-chat/composer/editor/NativeChatImageReferencePill.tsx`    | Task 10:用 `PromptImageLabelContext` 保留编号                                           |
 
 ---
 
@@ -328,7 +328,6 @@ git commit -m "feat(store): the terminal composer's open state and drafts"
 
 - Create: `src/renderer/src/components/terminal-pane/composer/attachments/terminal-composer-workspace-copy.ts`
 - Create: `src/renderer/src/components/terminal-pane/composer/attachments/terminal-composer-workspace-copy.test.ts`
-- Modify: `src/renderer/src/components/terminal-pane/input/file-drop/terminal-native-file-drop.ts`
 
 **Interfaces:**
 
@@ -445,21 +444,15 @@ Expected: FAIL — "Cannot find module './terminal-composer-workspace-copy'"
   5. 若 `copied.length > 0` 且不是 runtime 路径(`!request.runtimeEnvironmentId`),best-effort 写 `.gitignore`。
 - 整个函数**不吞异常**:`assertCurrent` 抛出的错误要往上抛(调用方转成「宿主已改变,请重试」);单个文件的失败已经在 `results` 里,不要额外抛。
 
-- [ ] **Step 4: Split the drop flow so both callers share the resolve step**
+- [ ] **Step 4: Run the tests to verify they pass**
 
-`src/renderer/src/components/terminal-pane/input/file-drop/terminal-native-file-drop.ts`:
-把 `uploadRuntimeDropPaths` / `pasteLocalDropPaths` / `uploadRemoteDropPaths` 里「算出 `resolvedPaths`」的部分抽成一个导出的纯函数 `resolveNativeDropPaths(args): Promise<ResolveDroppedPathsResult>`,三个分支各自调用它,再把结果交给 `pasteResolvedDropPaths`。
-**本次改动只做「抽出来」,不改任何现有行为** —— 拖放的用户可见行为必须完全不变。
+Run: `pnpm test src/renderer/src/components/terminal-pane/composer/attachments/terminal-composer-workspace-copy.test.ts --maxWorkers=2`
+Expected: PASS
 
-- [ ] **Step 5: Run the tests to verify they pass**
-
-Run: `pnpm test src/renderer/src/components/terminal-pane/composer/attachments/terminal-composer-workspace-copy.test.ts --maxWorkers=2` && `pnpm test src/renderer/src/components/terminal-pane/input/file-drop --maxWorkers=2`
-Expected: PASS(两个都过;拖放那组证明重构没改行为)
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/renderer/src/components/terminal-pane/composer/attachments/ src/renderer/src/components/terminal-pane/input/file-drop/terminal-native-file-drop.ts
+git add src/renderer/src/components/terminal-pane/composer/attachments/
 git commit -m "feat(composer): copy attachments into the workspace that owns the terminal"
 ```
 
@@ -749,13 +742,14 @@ git commit -m "feat(composer): clear the agent input, then write the paths, the 
     insertFileReferences?: (paths: readonly string[]) => void
     insertImageReference?: (attachmentId: string, name: string) => void
     removeImageReferences?: (attachmentId: string) => void
-    stagePastedText?: (token: string) => void
   }
   export type PromptEditorProps = {
     inputRef: React.RefObject<PromptEditorInput | null>
     initialDocument: JSONContent
     disabled: boolean
     placeholder: string
+    /** The editor owns the document, so it reports it; the text facade alone cannot carry pills. */
+    onDocumentChange?: (document: JSONContent) => void
     onChange?: (input: PromptEditorInput) => void
     onSelect?: (input: PromptEditorInput) => void
     className?: string
@@ -865,6 +859,12 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
     onSend: () => void
     onAttach: () => void
     onDismiss: () => void
+    /** The host that owns this terminal; the intake needs it to land attachments on the right machine. */
+    host: TerminalComposerIntakeHost
+    /** Claims a paste that carries images or files; plain text falls through to the editor. */
+    onPasteCapture?: (event: React.ClipboardEvent) => void
+    /** Claims dropped files; the drop lands on the terminal's own workspace. */
+    onDrop?: (paths: readonly string[]) => void
   }
   export const TerminalComposerField: React.FC<TerminalComposerFieldProps>
 
@@ -900,29 +900,51 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - **正文里的图片 pill 在发送时被摘掉**,由 Task 5 的写序列负责;编辑器本身不知道 agent 的存在。
 - 提示行用 `<ShortcutKeyCombo />`;标签按平台显示 `⌘↵` / `Ctrl+↵`。
 - 工具条:Paperclip ghost icon button(`Tooltip`「添加附件」)+ 发送 primary button。
+- **三路来源的接线**(Task 4 的产出在这里落地,否则那一层无人使用):
+  - **粘贴**:编辑器容器的 **capture 阶段** `onPasteCapture`(与 `NativeChatComposerField.tsx:348` 同法)。剪贴板里有图片/文件 → 调 `pasteTerminalComposerAttachments(host, clipboardData)` 并 `preventDefault()` **独占**该事件(否则 ProseMirror 会把图片当二进制文本插进去);只有纯文本 → **不** preventDefault,让编辑器的 `handlePaste` 插纯文本。
+  - **按钮**:Paperclip → `window.api.shell.pickAttachments()` → `pickTerminalComposerAttachments(host)`。
+  - **拖放**:覆盖层的 `onDragOver`(`preventDefault()` 让它成为合法 drop 目标)+ `onDrop` → `dropTerminalComposerAttachments(host, paths)`。
 - 覆盖层卡片:`absolute inset-x-0 bottom-0`,`rounded-lg`,`border`,`bg-popover`/`bg-card` token,`shadow-lg`;**不**改终端高度。
 - 焦点:展开时 `inputRef.current?.focus()`;收起时把焦点还给终端(`pane.terminal.focus()`)。
+- **稳定的定位钩子**:编辑器容器带 `data-terminal-composer-editor="true"`(与原生 chat 的 `data-native-chat-prompt-editor` 同法)。E2E 用它定位,**不要**用 placeholder 文案——那会绑死语言。
 
 - [ ] **Step 1: Write the failing test**
 
 `TerminalComposerField.test.tsx`(`// @vitest-environment happy-dom`):
 
 ```ts
-it('turns Enter into a line break and never sends', () => {
+function setup(overrides: Partial<TerminalComposerFieldProps> = {}) {
   const onSend = vi.fn()
-  const inputRef = createRef<PromptEditorInput>()
-  render(<PromptEditor ... />)   // 或直接测字段
+  const onAttach = vi.fn()
+  const onDismiss = vi.fn()
+  const view = render(
+    <TerminalComposerField
+      paneKey="tab1:leaf1"
+      disabled={false}
+      onSend={onSend}
+      onAttach={onAttach}
+      onDismiss={onDismiss}
+      {...overrides}
+    />
+  )
+  const editor = within(view.container).getByRole('textbox')
+  return { ...view, editor, onSend, onAttach, onDismiss }
+}
+
+it('turns Enter into a line break and never sends', () => {
+  const { editor, onSend } = setup()
   fireEvent.keyDown(editor, { key: 'Enter' })
   expect(onSend).not.toHaveBeenCalled()
 })
 
 it('sends on Mod+Enter', () => {
-  const onSend = vi.fn()
+  const { editor, onSend } = setup()
   fireEvent.keyDown(editor, { key: 'Enter', metaKey: true })
   expect(onSend).toHaveBeenCalledOnce()
 })
 
 it('does not send while an IME composition is open', () => {
+  const { editor, onSend } = setup()
   fireEvent.keyDown(editor, { key: 'Enter', keyCode: 229 })
   expect(onSend).not.toHaveBeenCalled()
 })
@@ -1110,6 +1132,8 @@ git commit -m "feat(composer): mount the composer in the terminal pane and bind 
 - ptyId:`await orcaPage.evaluate((id) => window.__paneManagers?.get(id)?.getActivePane()?.container.dataset.ptyId, tabId)`。
 - **断言写入 PTY 的字节**用 main 进程的写间谍:`installTerminalPtyWriteSpy(electronApp)` / `clearTerminalPtyWriteLog(electronApp)` / `readTerminalPtyWriteEntries(electronApp)`(从 `./helpers/terminal-pty-write-spy` 导入)。
 - **`window.__store` 只用来搭场景**(开 tab、切状态),断言一律走 DOM 或写间谍。
+- **用稳定的 `data-*` 选择器定位 composer**(`[data-terminal-composer-editor="true"]`),**不要**用 placeholder 文案——那会绑死语言。
+- **本机是中文 locale**:仓库既有 E2E 都硬编码英文标签,跑之前先 `defaults write com.github.Electron AppleLanguages -array en`(跑完可 `defaults delete com.github.Electron AppleLanguages` 还原)。composer 自己的断言不依赖它,但同一条 spec 里若有别的英文文案断言就会中招。
 - **这个间谍在每个 Electron 进程里是单例**,所以本 spec 必须 `test.describe.configure({ mode: 'serial' })`,或者用一个独一无二的 marker 字符串,避免与其它 spec 的字节串撞车。
 
 - [ ] **Step 1: Write the failing spec**
@@ -1156,7 +1180,7 @@ test('the terminal composer writes a multi-line prompt and then Enter', async ({
       })
     )
   )
-  const editor = orcaPage.getByRole('textbox', { name: /message/i })
+  const editor = orcaPage.locator('[data-terminal-composer-editor="true"]')
   await expect(editor).toBeVisible()
 
   await editor.fill('first line')
@@ -1228,6 +1252,7 @@ git commit -m "test(composer): the terminal composer writes a multi-line prompt 
 
 **Notes:**
 
+- **本 task 的「切换」范围 = 节点定义 + pill 组件**,原生 chat **保留自己的 `NativeChatPromptEditor`**(它带草稿库、pasted-text scope、图片编号 provider、unkerned 装饰;共用的 `PromptEditor` 刻意不带这些)。共享的 `PromptEditor` 只有终端侧在用。依据:spec §4.2「原生 chat 保留自己的扩展、草稿库、图片编号 provider、pasted-text 解析」。
 - **节点类型名不变**(`nativeChatFileReference` / `nativeChatImageReference`),所以**已持久化的草稿不需要迁移**。
 - native chat 的 `promptLeafString` 保留自己的 `nativeChatAgentReference` 分支,其余委托给共用的 `promptLeafString`。
 - native chat 的文件 pill 要保留**pasted-text** 的 `saving` / `unsaved` 态:用 `PromptFileLabelContext` 注入一个 resolver,而不是把 pasted-text 逻辑搬进共用件。

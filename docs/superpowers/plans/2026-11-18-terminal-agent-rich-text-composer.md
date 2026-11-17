@@ -498,7 +498,7 @@ git commit -m "feat(composer): copy attachments into the workspace that owns the
 
 - Consumes:
   - `window.api.shell.pickAttachments(): Promise<string[]>`
-  - `window.api.ui.saveClipboardImageAsTempFile({ connectionId?, runtimeEnvironmentId? }): Promise<string | null>`
+  - `window.api.ui.saveClipboardImageAsTempFile(): Promise<string | null>` —— **不带** host 参数,即存到本机
   - `copyTerminalComposerAttachmentsToWorkspace(request)` from Task 3
   - `imageReferenceContent(attachmentId, name)` / `fileReferenceContent(path)` from Task 1
 - Produces:
@@ -577,7 +577,7 @@ async function landAttachments(
 
 - `pickTerminalComposerAttachments`:`const paths = await window.api.shell.pickAttachments()`;空数组直接返回空结果(不开 toast)。
 - `pasteTerminalComposerAttachments`:
-  1. 先看 `clipboardData.files` 里有没有图片(`file.type.startsWith('image/')`)。有 → `window.api.ui.saveClipboardImageAsTempFile({ connectionId, runtimeEnvironmentId })` 拿到**目标宿主上**的临时路径,把它当成一个 source path。
+  1. 先看 `clipboardData.files` 里有没有图片(`file.type.startsWith('image/')`)。有 → `window.api.ui.saveClipboardImageAsTempFile()`(**不带** `connectionId` / `runtimeEnvironmentId`,即存到**本机**)拿到本机临时路径,把它当成一个 source path,交给上传通路送到目标宿主的 `.orca/drops`。**不要**把图片先存到目标宿主——上传通路的源路径按契约是客户端本机路径,已经在远端的临时路径它读不到。
   2. 非图片的 `files` 直接当 source path。
   3. `clipboardData.items` 里的 `text/plain` **不进附件** —— 它是正文文本,由编辑器自己的 paste handler 处理(见 Task 7)。本函数只负责附件。
   4. 调 `landAttachments`。

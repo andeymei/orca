@@ -194,7 +194,9 @@ type TerminalComposerAttachment = {
 
 ### 5.3 剪贴板图片
 
-`saveClipboardImageAsTempFile` 已经会把图片存到**目标宿主**上的临时文件（远端走 `clipboard.startImageUpload` / `appendImageUploadChunk` / `commitImageUpload` 的分片 base64 通道），返回该宿主上的路径。之后再走 §5.2 拷进 `.orca/drops`，让「附件都在工作区里」这条规则统一成立。
+剪贴板图片先**存到本机**（`saveClipboardImageAsTempFile` 不带 `connectionId` / `runtimeEnvironmentId`，走本机临时文件分支），再把那个**本机路径**交给 §5.2 的上传/拷贝通路，由它送到拥有该终端的那台机器的 `.orca/drops`，让「附件都在工作区里」这条规则统一成立。
+
+**不要**把图片先存到目标宿主再「从那里拷到工作区」：§5.2 的源路径按契约是**客户端本机路径**（远端时它从客户端读字节再上传），一个已经在远端的临时路径它根本读不到。存本机再上传，字节只走一遍（客户端 → 远端），和「挑一个本地文件」完全同一条路。
 
 ### 5.4 失败语义
 

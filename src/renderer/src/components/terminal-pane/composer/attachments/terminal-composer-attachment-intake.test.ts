@@ -214,6 +214,26 @@ describe('terminal composer attachment intake', () => {
     ])
   })
 
+  it('calls an extensionless image an image once the copy names it', async () => {
+    pickAttachments.mockResolvedValue(['/tmp/Screenshot'])
+    copyMock.mockResolvedValue({
+      copied: [{ sourcePath: '/tmp/Screenshot', workspacePath: '/ws/.orca/drops/Screenshot.png' }],
+      skipped: [],
+      failed: []
+    })
+
+    const result = await pickTerminalComposerAttachments(host)
+
+    expect(result.attachments).toEqual([
+      {
+        id: expect.any(String),
+        name: 'Screenshot.png',
+        workspacePath: '/ws/.orca/drops/Screenshot.png',
+        isImage: true
+      }
+    ])
+  })
+
   it('refuses a file over the attachment size limit before uploading it', async () => {
     pickAttachments.mockResolvedValue(['/tmp/big.bin', '/tmp/small.txt'])
     stat.mockImplementation(async ({ filePath }) => ({

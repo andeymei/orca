@@ -121,7 +121,9 @@ async function landAttachments(
     id: createNonSecureContextUuid(),
     name: basename(copied.workspacePath),
     workspacePath: copied.workspacePath,
-    isImage: isImageDropPath(copied.sourcePath)
+    // The copy names an extensionless image with an image extension, so the landed path is the
+    // extension it already judged; the source path covers a destination with no extension at all.
+    isImage: isImageDropPath(copied.workspacePath) || isImageDropPath(copied.sourcePath)
   }))
   // A skipped source landed no better than a failed one; report it instead of dropping it.
   for (const skipped of copy.skipped) {

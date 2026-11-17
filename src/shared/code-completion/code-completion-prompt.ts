@@ -1,4 +1,4 @@
-import { NES_MAX_EDITS, type NesPromptInput } from './code-completion-types'
+import { NES_MAX_EDITS, NES_MAX_EDITS_PER_FILE, type NesPromptInput } from './code-completion-types'
 
 export const NES_CURSOR_MARKER = '<<<CURSOR>>>'
 export const NES_PATH_HEADER_PREFIX = '###PATH: '
@@ -13,7 +13,7 @@ export function buildNesSystemPrompt(options?: { autoImport?: boolean }): string
     'Every edit carries id, path, kind, range, originalText, text and label: kind is insert, replace or delete, and range is {startLine, startColumn, endLine, endColumn}.',
     'An insert carries an empty originalText, a delete carries an empty text, and a replace carries both.',
     'Only propose paths that appear in the context you are given.',
-    `Propose at most ${NES_MAX_EDITS} edits, and at most two edits per file.`,
+    `Propose at most ${NES_MAX_EDITS} edits, and at most ${NES_MAX_EDITS_PER_FILE} edits per file.`,
     'A range is 1-based, its columns count UTF-16 code units, and it covers the text up to but not including its end.',
     `The cursor is marked with \`${NES_CURSOR_MARKER}\` in the file content.`,
     'The edit at the cursor must end at the cursor position, so the suggestion applies where the user is typing.',

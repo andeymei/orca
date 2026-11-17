@@ -1,6 +1,8 @@
 import { z } from 'zod'
+import { salvagingArray } from '../zod-salvage'
 
 export const NES_MAX_EDITS = 5
+export const NES_MAX_EDITS_PER_FILE = 2
 
 export const NesEditKind = z.enum(['insert', 'replace', 'delete'])
 
@@ -32,7 +34,10 @@ function capNesEditCount(raw: unknown): unknown {
   return { edits: unvalidated.data.edits.slice(0, NES_MAX_EDITS) }
 }
 
-export const NesEditPlan = z.object({ edits: z.array(NesEdit).max(NES_MAX_EDITS) })
+// Why: one broken edit drops itself, so the edits the model got right still reach the user.
+export const NesEditPlan = z.object({
+  edits: salvagingArray(NesEdit).check(z.maxLength(NES_MAX_EDITS))
+})
 
 export type NesEditKind = z.infer<typeof NesEditKind>
 export type NesEditRange = z.infer<typeof NesEditRange>
@@ -62,9 +67,20 @@ export function validateNesEditPlan(
     return { edits: [] }
   }
   const allowedPaths = new Set(options.allowedPaths)
-  return {
-    edits: parsed.data.edits.filter((edit) => isApplicableNesEdit(edit, allowedPaths))
+  const kept: NesEdit[] = []
+  const keptPerPath = new Map<string, number>()
+  for (const edit of parsed.data.edits) {
+    if (!isApplicableNesEdit(edit, allowedPaths)) {
+      continue
+    }
+    const keptCount = keptPerPath.get(edit.path) ?? 0
+    if (keptCount >= NES_MAX_EDITS_PER_FILE) {
+      continue
+    }
+    keptPerPath.set(edit.path, keptCount + 1)
+    kept.push(edit)
   }
+  return { edits: kept }
 }
 
 function isApplicableNesEdit(edit: NesEdit, allowedPaths: ReadonlySet<string>): boolean {

@@ -90,13 +90,59 @@ describe('validateNesEditPlan', () => {
   })
 
   it('truncates a plan with more than five edits', () => {
-    const edits = Array.from({ length: NES_MAX_EDITS + 1 }, (_unused, index) =>
-      buildEdit({ id: `e${index + 1}` })
+    const paths = ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts', 'src/f.ts']
+    const edits = paths.map((path, index) => buildEdit({ id: `e${index + 1}`, path }))
+
+    const plan = validateNesEditPlan({ edits }, { allowedPaths: paths })
+
+    expect(plan.edits).toHaveLength(NES_MAX_EDITS)
+    expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e2', 'e3', 'e4', 'e5'])
+  })
+
+  it('keeps the first two edits of a file and drops the third', () => {
+    const plan = validateNesEditPlan(
+      { edits: [buildEdit({ id: 'e1' }), buildEdit({ id: 'e2' }), buildEdit({ id: 'e3' })] },
+      { allowedPaths: [FILE_PATH] }
     )
 
-    const plan = validateNesEditPlan({ edits }, { allowedPaths: [FILE_PATH] })
+    expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e2'])
+  })
 
-    expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e2', 'e3', 'e4', 'e5'])
+  it('keeps two edits in one file and one in another', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          buildEdit({ id: 'e1' }),
+          buildEdit({ id: 'e2' }),
+          buildEdit({ id: 'e3', path: 'src/other.ts' })
+        ]
+      },
+      { allowedPaths: [FILE_PATH, 'src/other.ts'] }
+    )
+
+    expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e2', 'e3'])
+  })
+
+  it('keeps the edits around a structurally broken one', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          buildEdit({ id: 'e1' }),
+          {
+            id: 'e2',
+            path: FILE_PATH,
+            range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+            originalText: '',
+            text: 'const answer = 42\n',
+            label: 'no kind'
+          },
+          buildEdit({ id: 'e3' })
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e3'])
   })
 
   it('returns an empty plan when the payload is not JSON', () => {

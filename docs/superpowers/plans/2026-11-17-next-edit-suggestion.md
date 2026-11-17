@@ -1804,7 +1804,13 @@ Create `src/main/code-completion/completion-usage.ts`. It keeps `{ inputTokens, 
 
 - [ ] **Step 4: Report the usage from the backends**
 
-Each backend reads the token counts from its own stream — Anthropic reports them in `message_delta`'s `usage`, the OpenAI protocols in the final chunk's `usage` — and returns them beside the plan. A stream that reports no usage contributes zeros.
+Each backend reads the token counts from its own stream and returns them beside the plan. A stream that reports no usage contributes zeros.
+
+- **Anthropic Messages** reports the **input** tokens in `message_start`'s `message.usage` and the **output** tokens in `message_delta`'s `usage` — two different events, so the reader has to keep the first and update with the second. `cache_read_input_tokens` arrives on the same `message.usage` object.
+- **OpenAI Chat Completions** reports the whole `usage` object on the **final** chunk, but only when the request asks for it: the request must send `stream_options: { include_usage: true }`, otherwise no chunk carries a usage object and the totals stay zero.
+- **OpenAI FIM** is a plain completions stream with no usage at all, so it always contributes zeros unless the endpoint volunteers a `usage` object.
+
+The three backends already share a stream reader, so the parsing belongs in the shared code where the events are dispatched — not three times over.
 
 Update `createCompletionService` to pass the usage through, and update the RPC handler to call `recordCompletionUsage` after a successful plan.
 

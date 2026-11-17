@@ -1348,7 +1348,7 @@ git commit -m "feat(code-completion): the Monaco inline completion provider"
 - Modify: `src/shared/keybindings/definitions-core-3.ts` (add the definitions)
 - Modify: `src/renderer/src/components/editor/editor-shortcuts.ts` (add the installers)
 - Modify: `src/renderer/src/components/editor/monaco-editor-input-bindings.ts` (install and dispose them)
-- Modify: `src/renderer/src/components/editor/MonacoEditor.tsx` (mount the hook)
+- Modify: `src/renderer/src/components/editor/MonacoEditor.tsx` (mount the hook, pass the editor instance and the extension list)
 - Modify: `src/renderer/src/components/editor/use-monaco-editor-mount.ts` (register the inline provider)
 
 **Interfaces:**
@@ -1503,7 +1503,7 @@ Changing `window.api.runtime.call` to carry an abort would give real cancellatio
 
 - [ ] **Step 7: Wire the hook and the installers**
 
-In `src/renderer/src/components/editor/MonacoEditor.tsx`, call `useMonacoNextEditSuggestions(...)` with the file's path, relative path and language.
+In `src/renderer/src/components/editor/MonacoEditor.tsx`, call `useMonacoNextEditSuggestions(...)` with the file's path, relative path and language, **the live editor instance** (the component already holds it as `mountedEditor` state) and **the enabled extension list** from the settings. The hook needs both: it builds the context from the model, and it skips a file whose extension is not enabled.
 
 In `src/renderer/src/components/editor/monaco-editor-input-bindings.ts`, install the two new shortcuts next to the existing ones and add their cleanup functions to `disposeInputBindings`.
 

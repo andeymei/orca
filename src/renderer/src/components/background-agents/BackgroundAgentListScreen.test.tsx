@@ -12,6 +12,7 @@ import type {
 } from '../../../../shared/claude-background-agents'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '../../store/index'
+import { makeWorktree } from '@/store/slices/worktrees/worktree.test-fixture'
 import BackgroundAgentListScreen from './BackgroundAgentListScreen'
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
@@ -32,6 +33,9 @@ const DETAILS: Record<string, ClaudeBackgroundAgentDetail> = {
   aaaa1111: { detail: 'running the tests', needs: null, updatedAt: 1 },
   bbbb2222: { detail: 'waiting on a review', needs: null, updatedAt: 2 }
 }
+
+/** The workspace the panel answers for; its directory is where its own agents ran. */
+const WORKSPACE_ID = 'repo1::/w'
 
 function installApi(overrides: Partial<ClaudeAgentsApi> = {}): void {
   vi.stubGlobal('api', {
@@ -99,9 +103,11 @@ beforeEach(() => {
     backgroundAgentsAgents: ROSTER,
     backgroundAgentsDetails: DETAILS,
     backgroundAgentsDispatch: null,
-    activeWorktreeId: null,
+    activeWorktreeId: WORKSPACE_ID,
     activeWorkspaceExecutionHostId: null,
-    worktreesByRepo: {}
+    worktreesByRepo: {
+      repo1: [makeWorktree({ id: WORKSPACE_ID, repoId: 'repo1', path: '/w' })]
+    }
   })
 })
 
@@ -373,7 +379,45 @@ it('says the panel lists this machine when the workspace runs elsewhere', async 
   })
   const view = await renderScreen()
   expect(view.getByTestId('background-agents-local-only-notice')).toBeTruthy()
-  expect(view.getAllByTestId('background-agent-row')).toHaveLength(2)
+  // The workspace's own directory is on the other host, so this machine's agents are out of scope.
+  expect(view.queryAllByTestId('background-agent-row')).toHaveLength(0)
+})
+
+it('leaves the agents of other workspaces out of the rows and the counts', async () => {
+  const mixed: ClaudeBackgroundAgent[] = [
+    ...ROSTER,
+    { id: 'eeee5555', sessionId: 's5', name: 'epsilon', cwd: '/other', state: 'working' }
+  ]
+  installApi({
+    list: vi.fn(async (): Promise<ClaudeBackgroundAgentListResult> => ({
+      status: 'ready',
+      agents: mixed,
+      details: DETAILS,
+      message: null
+    })),
+    readDetails: vi.fn(async (): Promise<Record<string, ClaudeBackgroundAgentDetail>> => DETAILS)
+  })
+  useAppStore.setState({ backgroundAgentsAgents: mixed })
+  const view = await renderScreen()
+  const rows = view.getAllByTestId('background-agent-row')
+  expect(rows).toHaveLength(2)
+  expect(rows.map((row) => row.getAttribute('data-agent-id'))).not.toContain('eeee5555')
+  expect(view.getByText('0 awaiting input · 2 working · 0 completed')).toBeTruthy()
+})
+
+it('says the project has no background agents when the workspace has none', async () => {
+  installApi({
+    list: vi.fn(async (): Promise<ClaudeBackgroundAgentListResult> => ({
+      status: 'ready',
+      agents: [],
+      details: {},
+      message: null
+    })),
+    readDetails: vi.fn(async (): Promise<Record<string, ClaudeBackgroundAgentDetail>> => ({}))
+  })
+  useAppStore.setState({ backgroundAgentsAgents: [] })
+  const view = await renderScreen()
+  expect(view.getByText('No background agents in this project')).toBeTruthy()
 })
 
 it('refuses a second dispatch while one is on its way', async () => {

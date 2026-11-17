@@ -222,7 +222,9 @@ git commit -m "feat(code-completion): the edit plan contract and its prompt"
   - `createAnthropicMessagesBackend(config): NesBackend`
   - `createOpenAiChatBackend(config): NesBackend`
   - `createOpenAiFimBackend(config): NesBackend`
-  - `type NesBackendConfig = { baseUrl: string; model: string; apiKey: string; maxTokens: number }`
+  - `type NesBackendConfig = { baseUrl: string; model: string; apiKey: string; maxTokens: number; autoImport: boolean }`
+
+`autoImport` is a **setting**, not part of the request: the renderer must not decide whether the model may propose an import. The main process reads it from the settings and passes it in the backend config; the backend puts it on the prompt input (`NesPromptInput = NesRequest & { autoImport: boolean }`). The FIM backend does not use the prompt at all.
 
 - [ ] **Step 1: Write the failing backend test**
 
@@ -299,6 +301,8 @@ export function createOpenAiFimBackend(config: NesBackendConfig): NesBackend
 Posts to `${config.baseUrl}/completions` with `{ model, max_tokens, prompt, stream: true }` where `prompt` is the prefix, a cursor sentinel, and the suffix. The streamed text is the concatenation of `choices[0].text`. This backend has `planCapable: false`; it returns one edit whose `path` is the current file and whose range is the cursor, and it never asks for multi-location edits.
 
 All three backends finish the same way: parse the accumulated text as JSON, run it through `validateNesEditPlan` with the request's file paths, and return `null` on any failure.
+
+The two prompt-building backends build their prompts with `buildNesSystemPrompt({ autoImport: config.autoImport })` and `buildNesUserPrompt({ ...input, autoImport: config.autoImport })`.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -718,7 +722,8 @@ export const CODE_COMPLETION_METHODS = [
             baseUrl: settings.baseUrl,
             model: settings.model,
             apiKey,
-            maxTokens: 2000
+            maxTokens: 2000,
+            autoImport: settings.autoImport
           })
       })
       const result = await service.plan(

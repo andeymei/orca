@@ -114,7 +114,9 @@ export const NesEdit = z.object({
   label: z.string()
 })
 
-export const NesEditPlan = z.object({ edits: z.array(NesEdit).max(NES_MAX_EDITS) })
+export const NesEditPlan = z.object({
+  edits: salvagingArray(NesEdit).check(z.maxLength(NES_MAX_EDITS))
+})
 
 export type NesEditKind = z.infer<typeof NesEditKind>
 export type NesEditRange = z.infer<typeof NesEditRange>
@@ -127,6 +129,7 @@ export type NesEditPlan = z.infer<typeof NesEditPlan>
 For each parsed edit, keep it only when all of these hold:
 
 - `allowedPaths` includes `edit.path`
+- a path that already has two **kept** edits drops any further edit for that path — an edit that fails another rule never consumes a slot
 - `kind === 'insert'` implies `originalText === ''`
 - `kind === 'delete'` implies `text === ''`
 - `kind === 'replace'` implies both texts are non-empty
@@ -168,6 +171,11 @@ export function buildNesUserPrompt(input: NesPromptInput): string
 The system prompt states, in this order: the response is a single JSON object `{"edits":[…]}` with no prose and no markdown fence; each edit carries `id`, `path`, `kind`, `range`, `originalText`, `text`, `label`; at most five edits; at most two edits per file; `range` is 1-based with columns in UTF-16 code units; **the range's end must be the cursor position** so the suggestion applies where the user is typing; `originalText` must be the exact text the range currently covers; `label` is a short human-readable intent; and the model must return `{"edits":[]}` when it has nothing to propose.
 
 When `autoImport` is true the system prompt adds one sentence: when the new code needs a module that is not imported, propose an `insert` edit at the top of the file that adds the import. When it is false, the sentence is absent — the switch changes the prompt, not the filter.
+
+Two rules the prompt must state, because the validator silently drops anything that misses them:
+
+- **Reply with each path exactly as it appears after `###PATH:`.** The prompt shows the current file twice — once as `Current file: <relativePath>` and once as `###PATH: <absolute path>` — and the validator only keeps a path that is in `allowedPaths`, which holds the absolute forms. A model that answers with the relative path has its edit dropped.
+- **The edit at the cursor must end at the cursor position.** Not every edit: an import insert has no cursor, and a plan may carry both.
 
 The user prompt is:
 
@@ -301,6 +309,8 @@ export function createOpenAiFimBackend(config: NesBackendConfig): NesBackend
 Posts to `${config.baseUrl}/completions` with `{ model, max_tokens, prompt, stream: true }` where `prompt` is the prefix, a cursor sentinel, and the suffix. The streamed text is the concatenation of `choices[0].text`. This backend has `planCapable: false`; it returns one edit whose `path` is the current file and whose range is the cursor, and it never asks for multi-location edits.
 
 All three backends finish the same way: parse the accumulated text as JSON, run it through `validateNesEditPlan` with the request's file paths, and return `null` on any failure.
+
+`allowedPaths` holds the **absolute** paths — the same strings the prompt prints after `###PATH:`. The relative path the prompt also prints (`Current file: <relativePath>`) is not in `allowedPaths`, so an edit that answers with it is dropped.
 
 The two prompt-building backends build their prompts with `buildNesSystemPrompt({ autoImport: config.autoImport })` and `buildNesUserPrompt({ ...input, autoImport: config.autoImport })`.
 

@@ -530,6 +530,8 @@ git commit -m "feat(composer): copy attachments into the workspace that owns the
     host: TerminalComposerIntakeHost,
     droppedPaths: readonly string[]
   ): Promise<TerminalComposerIntakeResult>
+  /** The reason code for a pasted file with no file behind it. */
+  export const TERMINAL_COMPOSER_NO_LOCAL_PATH_REASON = 'no-local-path'
   ```
 
 - [ ] **Step 1: Write the failing test**
@@ -587,7 +589,10 @@ async function landAttachments(
   - `name` 用 `basename(workspacePath)`——即**去重后的**那个名字,和实际存在的文件一致。
   - `isImage` 用 **`isImageDropPath(copied.workspacePath) || isImageDropPath(copied.sourcePath)`**:**先看落地后的路径**。拷贝那一层开着 `nameExtensionlessImages`,会给无扩展名的图片补上图片扩展名(`Screenshot` → `Screenshot.png`);只看源路径的话,一个无扩展名的图片会被判成非图片,于是正文里发出去的是 `@path` 文件引用而不是图片附件——和拷贝自己的判断矛盾。落地路径的扩展名是拷贝已经认过的那个,所以它更可信。
   - 把 `failed` 变成 `failed[]`;`copy.skipped[]` 也并进 `failed[]`(它同样没落地,悄悄丢掉才是错的)。**注意 `reason` 是机器可读的码**(`missing` / `symlink` / `permission-denied` / `unsupported`),不是给用户看的句子——Task 7 负责把它翻成人话。
-- 体积上限按 `AGENT_SESSION_ATTACHMENT_MAX_BYTES`(50 MiB)判定;超限的文件**不进上传**,直接进 `failed`,reason 写明上限。
+- 体积上限按 `AGENT_SESSION_ATTACHMENT_MAX_BYTES`(50 MiB)判定;超限的文件**不进上传**,直接进 `failed`,reason 写明上限。**多个源文件的体积检查要并行**(`Promise.all`),不要在循环里一个个 await。
+- **一次粘贴里的每一张图片都要处理。** 早先的写法用 `files.find(...)` 只取第一张图片,循环又对每张图片 `continue` —— 第 2..n 张既不进源路径、也不进 `failed`、也没有 pill(Finder 里选两张 PNG 粘贴就会这样;Windows 上剪贴板给的是图片字节,走的又是另一条路,表现还不一致)。正确做法:**遍历每一个文件**,各自按自己的本机路径落地;剪贴板保存出来的临时路径**只在某个图片没有本机路径时顶上,而且只顶一次**。
+- **解析不出本机路径的粘贴源不许消失。** 浏览器里复制的 blob 之类没有磁盘文件的粘贴,`localPathForFile` 会返回 null —— 这时要进 `failed`(reason 用 `'no-local-path'`),不能悄悄丢掉。**这个 reason 码要导出**,Task 7 要靠它把码翻成人话;写死字符串会漂。
+- **`id` 用 `createNonSecureContextUuid()`**(`src/shared/non-secure-context-uuid.ts`)。**不要用 `crypto.randomUUID()`** —— 仓库的 oxlint 规则禁止在 renderer 里用它(非安全上下文没有它)。
 
 - [ ] **Step 4: Run the test to verify it passes**
 

@@ -572,8 +572,12 @@ git commit -m "feat(code-completion): the completion settings block"
 - Create: `src/main/code-completion/code-completion-credential-commands.ts`
 - Create: `src/main/ipc/code-completion-credentials.ts`
 - Create: `src/shared/code-completion/code-completion-credentials-status.ts`
+- Create: `src/shared/code-completion/code-completion-credential-channels.ts`
 - Create: `src/preload/api/code-completion-api.ts`
 - Create: `src/preload/api/code-completion-bridge.ts`
+- Modify: `src/renderer/src/web/preload-api/web-agent-accounts-api.ts` (the browser client's stub)
+- Modify: `src/renderer/src/web/web-preload-api.ts` (register the stub)
+- Modify: `src/main/orcad/orcad-plaintext-credential-migration.ts` (re-seal a plaintext key)
 - Modify: `src/preload/api-types.ts` (register the API type)
 - Modify: `src/preload/index.ts` (expose the bridge)
 - Modify: `src/main/ipc/register-core-handlers/register-core-handlers.ts` (register the handlers)
@@ -645,10 +649,13 @@ export type CodeCompletionCredentialsStatus = {
   configured: boolean
   /** How the stored key sits on disk, so the settings UI can warn when it is unsealed. */
   protection: SecretAtRestProtection | null
+  /** Set when the saved file cannot be used here: 'sealed-elsewhere' means the other Orca app
+   *  on that machine (desktop vs orcad) saved it. */
+  unreadable?: 'sealed-elsewhere' | 'unreadable'
 }
 ```
 
-It lives in `src/shared/` because the main process, the preload and the renderer all speak it — the same reason `src/shared/minimax-credentials-status.ts` exists.
+It lives in `src/shared/` because the main process, the preload and the renderer all speak it — the same reason `src/shared/minimax-credentials-status.ts` exists. The `unreadable` union is spelled out inline rather than imported: `src/shared/` must not depend on `src/main/`, and `src/shared/minimax-credentials-status.ts` already declares the same union inline.
 
 - [ ] **Step 5: Write the failing command test**
 
@@ -676,7 +683,7 @@ Expected: FAIL — the module does not exist.
 Create `src/main/code-completion/code-completion-credential-commands.ts`, mirroring `src/main/minimax/minimax-credential-commands.ts`:
 
 - `getCodeCompletionCredentialStatus(): CodeCompletionCredentialsStatus` — `configured` is `hasCodeCompletionApiKey()`, and `protection` is `getCodeCompletionApiKeyProtection()` when a key exists, `null` otherwise.
-- `saveCodeCompletionApiKeyCredential(key: unknown): CodeCompletionCredentialsStatus` — the argument is untrusted because it arrives over IPC: reject anything that is not a string, and reject a key that contains a newline (the key becomes an HTTP `Authorization` header value, so an interior newline cannot be sent). The factory's own `save` rejects an empty key; the command layer adds the type check.
+- `saveCodeCompletionApiKeyCredential(key: unknown): CodeCompletionCredentialsStatus` — the argument is untrusted because it arrives over IPC: reject anything that is not a string. Then **trim** the key and reject it if what remains contains a newline (the key becomes an HTTP `Authorization` header value, so an interior newline cannot be sent). Trimming first means a key pasted with a trailing newline is accepted while an interior one is refused — the rule `src/main/zcode/zcode-plan-api-key-store.ts` already uses. The factory's own `save` rejects an empty key; the command layer adds the type check.
 - `clearCodeCompletionApiKeyCredential(): CodeCompletionCredentialsStatus` — clears the key and returns the status.
 
 The API key never enters the settings, the RPC params catalog, a cache key or a log line.
@@ -1660,7 +1667,14 @@ Every string goes through `useTranslate()` with an `auto.` key and an English de
 
 **Every write sends the whole block.** `updateSettings` takes a `Partial<GlobalSettings>` and writes the given key verbatim, and the normalizer **resets every field it is not given** — so `updateSettings({ codeCompletion: { model } })` would wipe `baseUrl`, `protocol` and `enabledExtensions`. Every write is `updateSettings({ codeCompletion: { ...settings.codeCompletion, model: next } })`.
 
-**The section must say why the feature is off.** When `getStatus()` reports `configured: false`, the section says the feature stays off until an API key is saved — the Review Focus case: the user must not have to guess why no suggestion ever appears.
+**The section must say why the feature is off.** The status carries three states and the section must name the one that applies — the Review Focus case: the user must not have to guess why no suggestion ever appears.
+
+- `configured: false` — the feature stays off until an API key is saved.
+- `unreadable: 'sealed-elsewhere'` — the saved key was sealed by the _other_ Orca app on this machine (the desktop and orcad cannot decrypt each other's files), so the section says the key must be entered again here.
+- `unreadable: 'unreadable'` — the saved file cannot be read; the section says the key should be re-entered.
+- `protection: 'plaintext'` — the key is stored unencrypted on this machine; the section warns about that.
+
+The status is polled, so the section re-reads it rather than caching it.
 
 - [ ] **Step 2: Write the failing section test**
 

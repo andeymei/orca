@@ -179,7 +179,7 @@ Two rules the prompt must state, because the validator silently drops anything t
 
 - **Reply with each path exactly as it appears after `###PATH:`.** The prompt shows the current file twice — once as `Current file: <relativePath>` and once as `###PATH: <absolute path>` — and the validator only keeps a path that is in `allowedPaths`, which holds the absolute forms. A model that answers with the relative path has its edit dropped.
 - **The edit at the cursor must end at the cursor position.** Not every edit: an import insert has no cursor, and a plan may carry both.
-- **Line numbers are relative to the text you are shown — the first line you see is line 1.** The shown text may start part-way through a file, and the backend converts your line numbers to the file's own. This is what lets the renderer apply an edit without guessing.
+- **Count each file's lines separately — the first line of a file's content, the line right after its `###PATH:` header, is line 1 of that file.** The shown text may start part-way through a file, and the backend converts your line numbers to the file's own. Counting must not run across the files in this prompt: each `###PATH:` block is numbered on its own.
 
 The user prompt is:
 
@@ -325,6 +325,8 @@ export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): N
 
 The FIM backend needs no translation of a model's answer — it synthesizes the insert itself — but its range is built from the request's **absolute** `cursorLine` / `cursorColumn`, so it is exempt from the conversion.
 
+The FIM completion text is used as the model wrote it, except that **trailing newlines are stripped** — a model that ends its answer with a line break would otherwise insert a blank line. Leading whitespace is kept: it is the indentation the model chose for the code it is continuing.
+
 `allowedPaths` holds the **absolute** paths — the same strings the prompt prints after `###PATH:`. The relative path the prompt also prints (`Current file: <relativePath>`) is not in `allowedPaths`, so an edit that answers with it is dropped.
 
 The two prompt-building backends build their prompts with `buildNesSystemPrompt({ autoImport: config.autoImport })` and `buildNesUserPrompt({ ...input, autoImport: config.autoImport })`.
@@ -415,6 +417,8 @@ Create `src/main/code-completion/completion-service.ts`. The service:
 2. looks the cache up by `completionCacheKey(input)`; a hit is returned immediately
 3. otherwise calls `backend.plan(input, signal)` under an 8 000 ms timeout and a global concurrency cap of four (a queue that lets a fifth caller wait)
 4. caches a **successful** plan and returns it; a failure returns `null` and caches nothing
+
+**An abort is not a failure to cache.** The backend distinguishes an aborted request from an endpoint error, and the service must not cache "nothing to propose" for an abort: the user kept typing, so the answer would be stale the moment it arrived. Check `signal.aborted` before caching.
 
 - [ ] **Step 7: Run both test files**
 

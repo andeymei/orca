@@ -582,7 +582,11 @@ async function landAttachments(
   3. `clipboardData.items` 里的 `text/plain` **不进附件** —— 它是正文文本,由编辑器自己的 paste handler 处理(见 Task 7)。本函数只负责附件。
   4. 调 `landAttachments`。
 - `dropTerminalComposerAttachments`:`droppedPaths` → `landAttachments`。
-- `landAttachments`:调 `copyTerminalComposerAttachmentsToWorkspace`,把 `copied` 变成 `TerminalComposerAttachment[]`(`id` 用 `crypto.randomUUID()`;`name` 用 `basename(workspacePath)`;`isImage` 按源文件扩展名判定,用 `isImageDropPath(path)`);把 `failed` 变成 `failed[]`。
+- `landAttachments`:调 `copyTerminalComposerAttachmentsToWorkspace`,把 `copied` 变成 `TerminalComposerAttachment[]`:
+  - `id` 用 `createNonSecureContextUuid()`(来自 `src/shared/non-secure-context-uuid.ts`)。**不要用 `crypto.randomUUID()`** —— 仓库的 oxlint 规则禁止在 renderer 里用它(非安全上下文没有它)。
+  - `name` 用 `basename(workspacePath)`——即**去重后的**那个名字,和实际存在的文件一致。
+  - `isImage` 用 **`isImageDropPath(copied.workspacePath) || isImageDropPath(copied.sourcePath)`**:**先看落地后的路径**。拷贝那一层开着 `nameExtensionlessImages`,会给无扩展名的图片补上图片扩展名(`Screenshot` → `Screenshot.png`);只看源路径的话,一个无扩展名的图片会被判成非图片,于是正文里发出去的是 `@path` 文件引用而不是图片附件——和拷贝自己的判断矛盾。落地路径的扩展名是拷贝已经认过的那个,所以它更可信。
+  - 把 `failed` 变成 `failed[]`;`copy.skipped[]` 也并进 `failed[]`(它同样没落地,悄悄丢掉才是错的)。**注意 `reason` 是机器可读的码**(`missing` / `symlink` / `permission-denied` / `unsupported`),不是给用户看的句子——Task 7 负责把它翻成人话。
 - 体积上限按 `AGENT_SESSION_ATTACHMENT_MAX_BYTES`(50 MiB)判定;超限的文件**不进上传**,直接进 `failed`,reason 写明上限。
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -926,6 +930,7 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - **Esc 收起**:`event.key === 'Escape'` → `onDismiss()`。
 - **pill 的删除**:pill 是 `atom: true` 的 inline 节点,ProseMirror 默认在光标紧贴 pill 后方时 Backspace 删掉整个 pill;**不要**自己再实现一遍。
 - **pill 的三种态**:上传中(spinner + `Hourglass` 图标,取自 `NativeChatFileReferencePill` 的既有做法)、失败(`FileX` 图标 + 「需要重新添加」提示)、就绪。失败只摘掉那一个 pill,**其余附件保留**。
+- **失败的 `reason` 是机器码,不是给用户看的句子。** intake 回的 `reason` 形如 `missing` / `symlink` / `permission-denied` / `unsupported`,UI 要把它翻成用户能懂的话(「文件不在了」「没有权限」……),不要把码直接甩到 toast 或 pill 上。
 - **正文里的图片 pill 在发送时被摘掉**,由 Task 5 的写序列负责;编辑器本身不知道 agent 的存在。
 - **写草稿时必须在写入时刻从 store 读当前草稿,不要用捕获的快照。** `setTerminalComposerDraft` 是**整份替换**(带 ProseMirror 文档),而 Task 4 的 intake 先产生 `workspacePath: null`、落地之后才拿到路径;中间用户打的字会被整份覆盖掉。同理,附件落地后回填路径时,要在那一刻读最新的 draft 再写回去。
 - 提示行用 `<ShortcutKeyCombo />`;标签按平台显示 `⌘↵` / `Ctrl+↵`。

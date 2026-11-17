@@ -730,6 +730,9 @@ export function buildTerminalComposerWrites({
 - [ ] **Step 4: Implement `useTerminalComposerSend`**
 
 - **transport 的取法照抄拖放**:`captureTerminalDropTarget(pane, transport)` 在发送前捕获身份,之后每次写之前用 `getCurrentTerminalDropTransport(manager, paneTransports, target)` 复核。`managerRef` 与 `paneTransportsRef` 由 `TerminalPaneSurface` 的 controller 提供,**通过 props 传进来**,不要去 store 里找(它们不是 store 状态)。
+- **写进 PTY 之前必须再复核一次宿主。** Task 3 的上传通路在本机分支**不强制** `assertCurrent`(它只在 runtime 分支强制)。所以发送层要自己复核:写入前确认 transport 仍是同一个、宿主没变;变了就取消并告诉用户「宿主已改变,请重试」,不要写。
+- **WSL 工作区的路径要转成 WSL 里的样子。** 一个 WSL 拥有的工作区,附件落地的路径是 Windows 侧的 UNC 形式(`\\wsl.localhost\…`),但**跑在 WSL 里的 agent 要的是 Linux 路径**。写进 PTY 之前用 `toLocalWslDropPath(path)`(在 `terminal-pane/input/file-drop/terminal-drop-local-wsl.ts`)把路径转过来;拖放那条路就是这么做的。
+- **只 import 共用件的那三份函数**,不要 import 原生 chat 的同名副本(`promptTextContent` / `withoutImageReferenceNodes` / `promptLeafString`)。两份同名不同语义,import 错了会让 agent 收到不同的正文。
 - 复核失败 → `{ sent: false, reason: 'pane-changed' }`,**不写**。
 - 按 `delayBeforeMs` 串行写:用 `setTimeout` 链,第一次 `delayBeforeMs` 为 0 时立即写。
 - `transport.sendInput(write.data, 'driving')` 返回 false → `{ sent: false, reason: 'write-rejected' }`。
@@ -937,7 +940,7 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - **pill 的删除**:pill 是 `atom: true` 的 inline 节点,ProseMirror 默认在光标紧贴 pill 后方时 Backspace 删掉整个 pill;**不要**自己再实现一遍。
 - **pill 的三种态**:上传中(spinner + `Hourglass` 图标,取自 `NativeChatFileReferencePill` 的既有做法)、失败(`FileX` 图标 + 「需要重新添加」提示)、就绪。失败只摘掉那一个 pill,**其余附件保留**。
 - **失败的 `reason` 是机器码,不是给用户看的句子。** intake 回的 `reason` 形如 `missing` / `symlink` / `permission-denied` / `unsupported`,UI 要把它翻成用户能懂的话(「文件不在了」「没有权限」……),不要把码直接甩到 toast 或 pill 上。**但词表是混的**:拷贝自己的 `skipped` 原因是码,拷贝的 `failed` 原因是原始错误消息,intake 的体积超限原因是一句完整的话。UI 要**先认码、认不出来的按原文显示**,不能假设每条 reason 都能翻译。
-- **粘贴的图片 pill 名字是临时文件名**,不是用户原本的文件名:无参调用 `saveClipboardImageAsTempFile` 时 main 会把它命名成 `orca-paste-<时间>-<uuid>.<扩展名>`。UI **不要**承诺显示用户原来的文件名。
+- **只有「没有本机路径」的粘贴图片会用临时文件名。** 一张粘贴进来的图片如果自己就有磁盘文件(比如从 Finder 复制的),它按自己的路径落地,pill 显示的就是用户自己的文件名;只有浏览器里复制出来的 blob 这种没有磁盘文件的,才会走剪贴板保存,那时 main 把它命名成 `orca-paste-<时间>-<uuid>.<扩展名>`。UI **不要**假设 pill 一定是临时文件名。
 - **正文里的图片 pill 在发送时被摘掉**,由 Task 5 的写序列负责;编辑器本身不知道 agent 的存在。
 - **写草稿时必须在写入时刻从 store 读当前草稿,不要用捕获的快照。** `setTerminalComposerDraft` 是**整份替换**(带 ProseMirror 文档)。附件的「上传中」状态是**那个还没 resolve 的 promise**,不是「`workspacePath` 为 null 的附件」——Task 4 的 intake 是先落地再返回,回来的每个 attachment 都**已经**带着落地路径。所以:在上传 resolve 之前不要写草稿;resolve 之后写,写之前读最新的 draft。
 - **失败的附件没有 id。** intake 的 `failed[]` 是 `{ name, reason }`,没有 id;要给它一个 pill,UI 得自己造一个 id。

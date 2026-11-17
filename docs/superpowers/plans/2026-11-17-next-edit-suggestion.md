@@ -1593,7 +1593,7 @@ If Monaco 0.55's injected text cannot carry a multi-line string, fall back to re
 
 - [ ] **Step 5: Write the diff preview**
 
-The spec asks for a diff per change type, not just the inline overlay. **Do not reuse `EditorDiffFileSurface.tsx`** — that is a _git_ diff surface: it takes an `activeFile`, a `GitDiffResult` and an `editBuffer`, and is rendered by the git-diff editor panel. There is no entry point that opens it with an arbitrary original/proposed pair. Use the repo's `DiffViewer` in `src/renderer/src/components/editor/editor-lazy-views/` instead — it hosts a Monaco diff editor over a pair of texts, which is what the NES preview needs.
+The spec asks for a diff per change type, not just the inline overlay. **Do not reuse `EditorDiffFileSurface.tsx`** — that is a _git_ diff surface: it takes an `activeFile`, a `GitDiffResult` and an `editBuffer`, and is rendered by the git-diff editor panel. There is no entry point that opens it with an arbitrary original/proposed pair. `DiffViewer` (`src/renderer/src/components/editor/diff/monaco-view/DiffViewer.tsx`) is not a drop-in either — it is the full diff panel, with the diff-comment and diff-navigation plumbing and a prop set that reaches into the app store. **Build the NES preview on `@monaco-editor/react`'s `DiffEditor` directly**, over two in-memory models: the current buffer's text and the proposed text. The repo already drives `DiffEditor` that way, so the pattern is known, and the NES preview stays a self-contained surface with no store dependency.
 
 Create `src/renderer/src/components/editor/code-completion/nes-diff-preview.ts`:
 
@@ -1608,7 +1608,9 @@ export type NesDiffPreviewInput = {
 export function buildNesProposedText(originalText: string, edit: NesEdit): string
 ```
 
-`buildNesProposedText` applies the edit to the file's text and returns the result. `buildNesDiffPreviewInput` builds the pair the diff surface needs.
+`buildNesProposedText` applies the edit to the file's text and returns the result — it is the one place that decides what the proposed file looks like, so the inline preview (Step 4) and the diff preview (Step 5) cannot disagree. `buildNesDiffPreviewInput` builds the pair the diff surface needs.
+
+**Leave the user a contribution point here.** `buildNesProposedText` is the one function in the feature that turns an edit into text; how a `replace` that spans several lines is rendered — whether the whole replaced block is shown as removed-and-added, or only the lines that actually differ — is a judgement the implementer can reasonably make either way. Pick one, say which in a comment, and cover it with the test.
 
 Colour the three change types with the diff editor's existing tokens rather than new ones: an insert is a green addition, a replace is a modified line, a delete is a red removal. Monaco's diff editor already distinguishes modified and removed lines; an inserted line appears as an addition because it exists only on the proposed side.
 

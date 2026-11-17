@@ -1015,7 +1015,7 @@ const result = await readRuntimeFileContent({
 `readRuntimeFileContent` answers `{ content, isBinary, ... }` — a **binary** result is dropped, since the model cannot read a PNG.
 
 - Produces:
-  - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal }): Promise<NesEditPlan | null>`
+  - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal; timeoutMs?: number }): Promise<NesEditPlan | null>`
   - `buildNesContext(model: editor.ITextModel, position: editor.IPosition, options): NesContextInput`
   - `type NesContextInput = { prefix: string; suffix: string; filePath: string; relativePath: string; languageId: string; prefixStartLine: number; cursorLine: number; cursorColumn: number }`
   - `collectNesRelatedFiles(input: NesRelatedFilesInput): Promise<{ path: string; content: string; startLine: number }[]>`
@@ -1119,7 +1119,9 @@ export async function requestNesPlan(
 ): Promise<NesEditPlan | null>
 ```
 
-It calls `callRuntimeRpc<{ plan: unknown }>({ kind: 'local' }, 'codeCompletion.plan', input, { signal: options.signal, timeoutMs: options.timeoutMs ?? 12_000 })` and validates the response with `NesEditPlan.safeParse`, returning null when the payload does not parse.
+It calls `callRuntimeRpc<CodeCompletionPlanResult>({ kind: 'local' }, 'codeCompletion.plan', input, { signal: options.signal, timeoutMs: options.timeoutMs ?? 12_000 })`, then validates `response.plan` with `NesEditPlan.safeParse` and returns null when the payload does not parse.
+
+**The timeout is the renderer's own, not the transport's.** `callRuntimeRpc` forwards `signal` and `timeoutMs` only on the `environment` branch; on the `local` branch it calls `window.api.runtime.call({ method, params })` and drops both. So the request cannot be cancelled, and the caller's `timeoutMs` never fires. `requestNesPlan` therefore races the call against its own timer and returns `null` when the timer wins — the underlying request may still complete, and its answer is discarded by the hook's generation counter (Task 10).
 
 The completion talks to the **local** runtime even when the file lives on a remote host: the buffer is already in the renderer, and the endpoint is the user's own.
 

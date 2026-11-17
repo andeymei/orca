@@ -18,6 +18,7 @@ import { DEFAULT_SOURCE_CONTROL_GROUP_ORDER } from './source-control/listing/sou
 import { DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT } from './terminal/replay/terminal-scrollback-policy'
 import { NESTED_WORKER_MAX_DEPTH_DEFAULT } from './orchestration/workers/nested-worker-depth'
 import { DEFAULT_TASK_CHECKOUT_TARGET } from './new-workspace/task-checkout-target'
+import { getDefaultCodeCompletionSettings } from './code-completion/code-completion-settings'
 
 export function buildDefaultSettings(args: {
   workspaceDir: string
@@ -316,6 +317,7 @@ export function buildDefaultSettings(args: {
       customAgentCommand: ''
     },
     sourceControlAi: getDefaultSourceControlAiSettings(),
+    codeCompletion: getDefaultCodeCompletionSettings(),
     voice: args.voice,
     voiceDictationModeDefaultedToAuto: true
   }

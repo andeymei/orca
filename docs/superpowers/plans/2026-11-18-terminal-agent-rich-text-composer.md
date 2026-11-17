@@ -1004,6 +1004,8 @@ git commit -m "feat(composer): the terminal composer's field and overlay"
 - Modify: `src/shared/keybindings/definitions-core-4.ts`
 - Modify: `src/renderer/src/components/settings/shortcuts/keybinding-title-copy.ts`
 - Modify: `src/renderer/src/components/terminal-pane/controller/TerminalPaneSurface.tsx`
+- Modify: `src/renderer/src/components/terminal-pane/layout/close/use-terminal-pane-close-actions.ts`
+- Modify: `src/renderer/src/store/slices/terminal-composer/terminal-composer.ts`
 - Create: `src/renderer/src/components/terminal-pane/composer/TerminalComposerShortcut.ts`
 - Create: `src/renderer/src/components/terminal-pane/composer/TerminalComposerShortcut.test.ts`
 - Create: `src/renderer/src/components/terminal-pane/composer/terminal-composer-agent.ts`
@@ -1020,6 +1022,10 @@ git commit -m "feat(composer): the terminal composer's field and overlay"
     platform: NodeJS.Platform,
     keybindings?: KeybindingOverrides
   ): boolean
+
+  // terminal-composer.ts (slice)
+  /** Drops every draft and open flag this tab's panes owned. */
+  clearTerminalComposerDraftsForTab: (tabId: string) => void
   ```
 
 - [ ] **Step 1: Write the failing test**
@@ -1113,13 +1119,22 @@ export function resolveTerminalComposerAgentType(
 Run: `pnpm test src/renderer/src/components/terminal-pane/composer/TerminalComposerShortcut.test.ts --maxWorkers=2`
 Expected: PASS
 
-- [ ] **Step 6: Typecheck and commit**
+- [ ] **Step 6: Drop the composer's state with the pane**
+
+spec §4.4 说「pane 关闭时清掉草稿」。pane 的移除有**两条**路径,两条都要覆盖:
+
+1. **关掉一个兄弟 pane** → `use-terminal-pane-close-actions.ts` 的 `closePaneLocally`。清**这个 pane** 的:在已有的 `dropAgentStatus(...)` / `setCacheTimerStartedAt(...)` 旁边加一句 `clearTerminalComposerDraft(makePaneKey(tabId, leafId))`。
+2. **关掉整个 tab(含最后一个 pane)** → `closePaneLocally` 在只剩一个 pane 时会转去 `onCloseTab(reason)` 并**提前返回**,所以第 1 条覆盖不到。tab 关掉时清**这个 tab 的所有 pane**:给 slice 加 `clearTerminalComposerDraftsForTab(tabId)`(按 pane key 前缀 `${tabId}:` 清),在 tab 的关闭路径上调它。`onCloseTab` 在两处被接线(`TerminalOverlaySlot.tsx` 与 `TerminalLegacyTerminalPanes.tsx`),两处都要调,或者找到一处能同时覆盖它们的接缝。
+
+草稿只在内存里,但它带着一整个 ProseMirror 文档;不清就是每次关 pane 漏一份。
+
+- [ ] **Step 7: Typecheck and commit**
 
 Run: `pnpm tc:web`
 Expected: 0 errors
 
 ```bash
-git add src/shared/keybindings/ src/renderer/src/components/terminal-pane/
+git add src/shared/keybindings/ src/renderer/src/components/terminal-pane/ src/renderer/src/store/slices/terminal-composer/
 git commit -m "feat(composer): mount the composer in the terminal pane and bind its shortcut"
 ```
 

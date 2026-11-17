@@ -736,7 +736,7 @@ git commit -m "feat(code-completion): store the completion API key outside the s
 
 **Interfaces:**
 
-- Consumes: `createCompletionService` (Task 3), `getClientSettings` / `updateClientSettings` (the runtime's settings controller), `readCodeCompletionApiKey` (Task 5), `NesBackendId` (Task 2), `NesRequest` (Task 2).
+- Consumes: `createCompletionService` (Task 3), the runtime's settings store (`runtime.requireStore().getSettings()`), `readCodeCompletionApiKey` (Task 5), `NesBackendId` (Task 2), `NesRequest` (Task 2).
 - Produces: the RPC method `codeCompletion.plan`, callable as `callRuntimeRpc(target, 'codeCompletion.plan', params)`.
 
 - [ ] **Step 1: Write the params schema**
@@ -819,7 +819,7 @@ export const CODE_COMPLETION_METHODS = [
     permission: 'workspace',
     params: CodeCompletionPlan,
     handler: async (params, { runtime, signal }) => {
-      const settings = runtime.getClientSettings().codeCompletion
+      const settings = runtime.requireStore().getSettings().codeCompletion
       if (!settings?.enabled) {
         return { plan: null }
       }
@@ -859,6 +859,8 @@ export const CODE_COMPLETION_METHODS = [
 ```
 
 `createBackend` maps the protocol id to the three backend factories. The **cache** is a module-level singleton (`completionCache` in `src/main/code-completion/completion-cache.ts`) that the service takes when the caller injects none — a cache that lives only as long as the request is not a cache. The service itself is still created per call, because the backend it resolves depends on the settings at that moment.
+
+**Read the settings from the store, not from the client projection.** `runtime.getClientSettings()` returns the _paired-client_ projection (`RuntimeClientSettingsController.get()`), which deliberately omits the completion block — a phone has no editor and must not receive the endpoint and model settings. The handler reads the desktop's own settings with `runtime.requireStore().getSettings().codeCompletion`, the pattern the other settings-reading RPC methods use.
 
 - [ ] **Step 5: Register the family**
 

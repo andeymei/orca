@@ -569,7 +569,9 @@ git commit -m "feat(code-completion): the completion settings block"
 **Files:**
 
 - Create: `src/main/code-completion/code-completion-api-key-store.ts`
+- Create: `src/main/code-completion/code-completion-credential-commands.ts`
 - Create: `src/main/ipc/code-completion-credentials.ts`
+- Create: `src/shared/code-completion/code-completion-credentials-status.ts`
 - Create: `src/preload/api/code-completion-api.ts`
 - Create: `src/preload/api/code-completion-bridge.ts`
 - Modify: `src/preload/api-types.ts` (register the API type)
@@ -579,11 +581,12 @@ git commit -m "feat(code-completion): the completion settings block"
 
 **Interfaces:**
 
-- Consumes: `createEncryptedApiKeyFileStore` (`src/main/credentials/encrypted-api-key-file-store.ts`), the minimax credential pattern (`src/main/minimax/minimax-credential-commands.ts`).
+- Consumes: `createEncryptedApiKeyFileStore` (`src/main/credentials/encrypted-api-key-file-store.ts`), the minimax credential pattern (`src/main/minimax/minimax-credential-commands.ts`, `src/main/ipc/minimax-credentials.ts`, `src/shared/minimax-credentials-status.ts`).
 - Produces:
-  - `hasCodeCompletionApiKey(): boolean`, `readCodeCompletionApiKey(): string | null`, `saveCodeCompletionApiKey(key: string): void`, `clearCodeCompletionApiKey(): void`
+  - `hasCodeCompletionApiKey(): boolean`, `readCodeCompletionApiKey(): string | null`, `saveCodeCompletionApiKey(key: string): void`, `clearCodeCompletionApiKey(): void`, `getCodeCompletionApiKeyProtection(): SecretAtRestProtection | null`
+  - `type CodeCompletionCredentialsStatus = { configured: boolean; protection: SecretAtRestProtection | null }` in `src/shared/code-completion/code-completion-credentials-status.ts`
+  - `getCodeCompletionCredentialStatus(): CodeCompletionCredentialsStatus`, `saveCodeCompletionApiKeyCredential(key: unknown): CodeCompletionCredentialsStatus`, `clearCodeCompletionApiKeyCredential(): CodeCompletionCredentialsStatus` in `src/main/code-completion/code-completion-credential-commands.ts`
   - `type CodeCompletionCredentialsApi = { getStatus: () => Promise<CodeCompletionCredentialsStatus>; saveApiKey: (key: string) => Promise<CodeCompletionCredentialsStatus>; clearApiKey: () => Promise<CodeCompletionCredentialsStatus> }` exposed as `window.api.codeCompletion`
-  - `type CodeCompletionCredentialsStatus = { configured: boolean; protection: SecretAtRestProtection | null }`
 
 - [ ] **Step 1: Write the failing store test**
 
@@ -598,7 +601,7 @@ describe('code completion api key store', () => {
 })
 ```
 
-The test must point the store at a temporary home. Read how `src/main/minimax/` tests isolate the store, or how `createEncryptedApiKeyFileStore` resolves its path (`join(homedir(), '.orca', fileName)`), and follow the same isolation.
+The store resolves its path at call time — `join(homedir(), '.orca', fileName)` — so the test isolates it by mocking `node:os`, `node:fs`, `node:path` and `../../shared/secure-storage/secure-file`, and it installs a stub secret store with `setSecretStore(...)` because `getSecretStore()` throws when no store is installed. `src/main/zcode/zcode-plan-api-key-store.test.ts` is the closest model in the repo: it mocks the same four modules, calls `setSecretStore({ ...safeStorageMock, describeProtectionGap: () => null })` in `beforeEach`, and re-imports the store with `vi.resetModules()` between cases (the store caches the key in a module-level closure).
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -623,14 +626,45 @@ export const hasCodeCompletionApiKey = store.has
 export const readCodeCompletionApiKey = store.read
 export const saveCodeCompletionApiKey = store.save
 export const clearCodeCompletionApiKey = store.clear
+export const getCodeCompletionApiKeyProtection = store.protection
 export const codeCompletionApiKeyEnvelopeFile = store.envelopeFile
 ```
 
-- [ ] **Step 4: Write the preload surface**
+`store.protection` reports how the key sits on disk — `'sealed'`, `'plaintext'` or `null` when there is no key — and the status type carries it so the settings UI can warn when the key is not sealed.
+
+- [ ] **Step 4: Write the shared status type**
+
+Create `src/shared/code-completion/code-completion-credentials-status.ts`:
+
+```ts
+import type { SecretAtRestProtection } from '../secret-at-rest-protection'
+
+export type CodeCompletionCredentialsStatus = {
+  configured: boolean
+  /** How the stored key sits on disk, so the settings UI can warn when it is unsealed. */
+  protection: SecretAtRestProtection | null
+}
+```
+
+It lives in `src/shared/` because the main process, the preload and the renderer all speak it — the same reason `src/shared/minimax-credentials-status.ts` exists.
+
+- [ ] **Step 5: Write the credential commands**
+
+Create `src/main/code-completion/code-completion-credential-commands.ts`, mirroring `src/main/minimax/minimax-credential-commands.ts`:
+
+- `getCodeCompletionCredentialStatus(): CodeCompletionCredentialsStatus` — `configured` is `hasCodeCompletionApiKey()`, and `protection` is `getCodeCompletionApiKeyProtection()` when a key exists, `null` otherwise.
+- `saveCodeCompletionApiKeyCredential(key: unknown): CodeCompletionCredentialsStatus` — the argument is untrusted because it arrives over IPC: reject anything that is not a string, and reject a key that contains a newline (the key becomes an HTTP `Authorization` header value, so an interior newline cannot be sent). The factory's own `save` rejects an empty key; the command layer adds the type check.
+- `clearCodeCompletionApiKeyCredential(): CodeCompletionCredentialsStatus` — clears the key and returns the status.
+
+The API key never enters the settings, the RPC params catalog, a cache key or a log line.
+
+- [ ] **Step 6: Write the preload surface**
 
 Create `src/preload/api/code-completion-api.ts`:
 
 ```ts
+import type { CodeCompletionCredentialsStatus } from '../../shared/code-completion/code-completion-credentials-status'
+
 export type CodeCompletionCredentialsApi = {
   getStatus: () => Promise<CodeCompletionCredentialsStatus>
   saveApiKey: (key: string) => Promise<CodeCompletionCredentialsStatus>
@@ -643,6 +677,7 @@ Create `src/preload/api/code-completion-bridge.ts`:
 ```ts
 import { ipcRenderer } from 'electron'
 import type { PreloadApi } from '../api-types'
+import type { CodeCompletionCredentialsStatus } from '../../shared/code-completion/code-completion-credentials-status'
 
 export const codeCompletionApi = {
   getStatus: (): Promise<CodeCompletionCredentialsStatus> =>
@@ -654,7 +689,7 @@ export const codeCompletionApi = {
 } satisfies PreloadApi['codeCompletion']
 ```
 
-Register `codeCompletion: CodeCompletionCredentialsApi` in `src/preload/api-types.ts` and `codeCompletion: codeCompletionApi` in `src/preload/index.ts`.
+Register `codeCompletion: CodeCompletionCredentialsApi` in `src/preload/api-types.ts` (with the type import) and `codeCompletion: codeCompletionApi` in `src/preload/index.ts` (with the bridge import).
 
 Create `src/main/ipc/code-completion-credentials.ts`:
 
@@ -668,22 +703,22 @@ export function registerCodeCompletionCredentialHandlers(): void {
 }
 ```
 
-The save handler validates `typeof key === 'string'` before storing — IPC arguments are untrusted. Register `registerCodeCompletionCredentialHandlers()` in `src/main/ipc/register-core-handlers/register-core-handlers.ts` alongside the minimax credential handlers.
+Register `registerCodeCompletionCredentialHandlers()` in `src/main/ipc/register-core-handlers/register-core-handlers.ts` alongside the minimax credential handlers.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [ ] **Step 7: Run the test to verify it passes**
 
 Run: `pnpm test src/main/code-completion --maxWorkers=2`
 Expected: PASS.
 
-- [ ] **Step 6: Typecheck**
+- [ ] **Step 8: Typecheck**
 
 Run: `pnpm tc:node && pnpm tc:web`
 Expected: no errors.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/main/code-completion src/main/ipc/code-completion-credentials.ts src/main/ipc/register-core-handlers src/preload
+git add src/main/code-completion src/main/ipc/code-completion-credentials.ts src/main/ipc/register-core-handlers src/preload src/shared/code-completion
 git commit -m "feat(code-completion): store the completion API key outside the settings"
 ```
 

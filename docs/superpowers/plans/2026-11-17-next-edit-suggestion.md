@@ -16,7 +16,7 @@
 - **Do not use `beginProgrammaticContentSync` / `endProgrammaticContentSync` when applying an accepted suggestion.** Those suppress the change event, which would leave the file clean and unsaved. They exist for content _syncs_, not for user edits.
 - An accepted suggestion must be one undoable step: `editorInstance.pushUndoStop()`, `model.pushEditOperations([], [edit], () => null)`, `editorInstance.pushUndoStop()`.
 - The API key never enters `GlobalSettings` (that is plaintext JSON on disk) and never enters the RPC params catalog. It lives in an encrypted file store (`createEncryptedApiKeyFileStore`) reached through a dedicated preload channel.
-- New runtime RPC methods need seven things: a zod params schema in `src/shared/rpc-contract/`, a `defineMethod` with an explicit `permission`, a family file exporting a `*_METHODS` array, a spread into a domain aggregate, a spread into `ALL_RPC_METHODS` in `src/main/runtime/rpc/methods/rpc-method-registry.ts`, a regenerated `src/shared/rpc-contract/rpc-params-catalog.generated.ts` (`pnpm generate:rpc-params-catalog` — the `rpc-params-type-parity.ts` type gate fails otherwise), and the renderer call site.
+- New runtime RPC methods need seven things: a zod params schema in `src/shared/rpc-contract/`, a `defineMethod` with an explicit `permission`, a family file exporting a `*_METHODS` array, a spread into `ALL_RPC_METHODS` in `src/main/runtime/rpc/methods/rpc-method-registry.ts`, a regenerated `src/shared/rpc-contract/rpc-params-catalog.generated.ts` (`pnpm generate:rpc-params-catalog` — the `rpc-params-type-parity.ts` type gate fails otherwise), and the renderer call site.
 - `RpcMethodPermission` is a closed union: `'workspace' | 'desktop-control' | 'accounts-admin' | 'settings-write' | 'skills-admin' | 'pairing-admin' | 'host-admin' | 'device-self'`.
 - Outbound HTTP goes through `getMainHttpClient().fetch` (`src/main/network/http-client.ts`) — it honours the Chromium proxy session. Never call `globalThis.fetch` directly in main.
 - A settings write goes through the `SettingsUpdate` zod schema (`src/shared/rpc-contract/client-settings-params.ts`), which is `.strict()` — a new setting must be added to it or the write is rejected.
@@ -787,6 +787,11 @@ git commit -m "feat(code-completion): store the completion API key outside the s
 - Create: `src/shared/rpc-contract/code-completion-params.ts`
 - Create: `src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts`
 - Modify: `src/main/runtime/rpc/methods/rpc-method-registry.ts` (import and spread)
+- Modify: `src/shared/code-completion/code-completion-types.ts` (the import label prefix)
+- Modify: `src/shared/code-completion/code-completion-prompt.ts` (the import rule)
+- Modify: `src/main/code-completion/completion-backend.ts` (the import's absolute position)
+- Modify: `src/shared/code-completion/code-completion-prompt.test.ts` (the import rule)
+- Modify: `src/main/code-completion/completion-backends.test.ts` (the import's position)
 - Regenerate: `src/shared/rpc-contract/rpc-params-catalog.generated.ts`
 - Create: `src/main/runtime/rpc/methods/code-completion/code-completion-methods.test.ts`
 
@@ -835,6 +840,8 @@ export const CodeCompletionPlanResult = z.object({
 })
 ```
 
+`CodeCompletionPlanResult` is the method's declared result type — the handler's return value is typed with it, so it is not a dead export. The plan itself is validated by the renderer (Task 7), because only the renderer holds the file's text and can check the `originalText`.
+
 - [ ] **Step 2: Write the failing method test**
 
 Create `src/main/runtime/rpc/methods/code-completion/code-completion-methods.test.ts`:
@@ -861,7 +868,7 @@ Expected: FAIL — the module does not exist.
 Create `src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts`:
 
 ```ts
-import { defineMethod } from '../../../core'
+import { defineMethod } from '../../core'
 import { CodeCompletionPlan } from '../../../../../shared/rpc-contract/code-completion-params'
 import { createCompletionService } from '../../../../code-completion/completion-service'
 import { createAnthropicMessagesBackend } from '../../../../code-completion/anthropic-messages-backend'
@@ -922,22 +929,35 @@ export const CODE_COMPLETION_METHODS = [
 
 In `src/main/runtime/rpc/methods/rpc-method-registry.ts`, import `CODE_COMPLETION_METHODS` and spread it into `ALL_RPC_METHODS`.
 
-- [ ] **Step 6: Regenerate the params catalog**
+- [ ] **Step 6: Land the auto-import at the top of the file**
+
+The prompt tells the model to "propose an `insert` edit at the top of the file that adds the import". But the model only ever sees the _shown_ content, and the prefix is trimmed from the front to fit the token budget — so the model's "top of the file" is the shown line 1, and the backend's relative-to-absolute translation (adding `prefixStartLine - 1`) would put the import at `prefixStartLine`: **in the middle of the file**. An import statement in the middle of a file body is broken code, and the model cannot fix it — it has no way to name the file's absolute line 1.
+
+**The edit must carry a marker.** Add `NES_IMPORT_LABEL_PREFIX = 'import: '` to `src/shared/code-completion/code-completion-types.ts` — one definition that the prompt and the backend both import, the way `NES_PATH_HEADER_PREFIX` and `NES_CURSOR_MARKER` work today. The prompt's import sentence ends with "…and give the edit the label `import: <what it imports>`". The backend's `translateNesEditLines` maps an insert whose label starts with the prefix to **file line 1, column 1** for the current file, whatever the prefix's offset.
+
+Tests:
+
+- in `code-completion-prompt.test.ts`: the import sentence names the label prefix.
+- in `completion-backends.test.ts`: an import edit in a plan for a **trimmed** prefix lands on file line 1; a non-import insert at the same shown line keeps its translated position. Without these, the import silently lands mid-file.
+
+This task re-touches Task 1's and Task 2's files — the marker has to be defined once and read by both sides, and splitting it across two tasks would cost a context handover for three lines.
+
+- [ ] **Step 7: Regenerate the params catalog**
 
 Run: `pnpm generate:rpc-params-catalog`
 Expected: `src/shared/rpc-contract/rpc-params-catalog.generated.ts` now carries a `codeCompletion.plan` entry.
 
-- [ ] **Step 7: Run the test to verify it passes**
+- [ ] **Step 8: Run the test to verify it passes**
 
 Run: `pnpm test src/main/runtime/rpc/methods/code-completion --maxWorkers=2`
 Expected: PASS.
 
-- [ ] **Step 8: Typecheck**
+- [ ] **Step 9: Typecheck**
 
 Run: `pnpm tc:node`
 Expected: no errors — the params-catalog parity gate runs here.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/shared/rpc-contract src/main/runtime/rpc
@@ -958,14 +978,14 @@ git commit -m "feat(code-completion): the codeCompletion.plan RPC method"
 
 **Interfaces:**
 
-- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), the existing worktree search (`searchRuntimeFiles`, client at `src/renderer/src/runtime/files/search/runtime-file-search-client.ts`), the existing file read (`readRuntimeFile`, client at `src/renderer/src/runtime/files/reads/runtime-file-read-client.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
+- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), the existing worktree search (`searchRuntimeFiles`, client at `src/renderer/src/runtime/files/search/runtime-file-search-client.ts`), the existing file read (`readRuntimeFileContent`, client at `src/renderer/src/runtime/files/reads/runtime-file-read-client.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
 
-**Use the runtime clients, not `window.api.fs`.** The editor buffer holds the file's text even when the file lives on an SSH host, but a _related_ file is only on that host. `readRuntimeFile` and `searchRuntimeFiles` both take a `RuntimeFileOperationArgs` (`{ target, worktreeId, rootPath, connectionId }`) and route to the local or the remote side. `window.api.fs.readFile` would silently read the wrong machine's path.
+**Use the runtime clients, not `window.api.fs`.** The editor buffer holds the file's text even when the file lives on an SSH host, but a _related_ file is only on that host. `readRuntimeFileContent` and `searchRuntimeFiles` both take a `RuntimeFileOperationArgs` (`{ target, worktreeId, worktreePath, connectionId }`) and route to the local or the remote side. `window.api.fs.readFile` would silently read the wrong machine's path.
 
 - Produces:
   - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal }): Promise<NesEditPlan | null>`
   - `buildNesContext(model: editor.ITextModel, position: editor.IPosition, options): NesContextInput`
-  - `type NesContextInput = { prefix: string; suffix: string; filePath: string; relativePath: string; languageId: string }`
+  - `type NesContextInput = { prefix: string; suffix: string; filePath: string; relativePath: string; languageId: string; prefixStartLine: number; cursorLine: number; cursorColumn: number }`
   - `collectNesRelatedFiles(input: NesRelatedFilesInput): Promise<{ path: string; content: string; startLine: number }[]>`
   - `type NesRelatedFilesInput = { filePath: string; fileText: string; symbolAtCursor: string | null; files: RuntimeFileOperationArgs }`
   - `NES_RELATED_FILE_MAX = 8`, `NES_RELATED_FILE_TOKEN_BUDGET = 1000`
@@ -1050,9 +1070,9 @@ export async function collectNesRelatedFiles(
 Two sources, in this order:
 
 1. **The current file's relative imports.** `parseRelativeImports` pulls the module specifiers out of the import statements and keeps only the ones that start with `./` or `../` — a package import names a module the model already knows, not a file in this repository. Each relative specifier resolves against the current file's directory; the extension is tried as written, then with `.ts`, `.tsx`, `.js`, `.jsx` and `/index.ts`, `/index.tsx`.
-2. **The files that mention the symbol at the cursor.** When `symbolAtCursor` is a plain identifier, call `searchRuntimeFiles(input.files, { query: symbolAtCursor, maxResults: 20 })` and take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
+2. **The files that mention the symbol at the cursor.** When `symbolAtCursor` is a plain identifier, call `searchRuntimeFiles(input.files, { query: symbolAtCursor, rootPath: input.files.worktreePath ?? '', maxResults: 20 })` and take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
 
-Each result is read through `readRuntimeFile(input.files, path)`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
+Each result is read through `readRuntimeFileContent({ ...input.files, filePath: path, relativePath: pathRelativeToWorktreeRoot(path) })`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
 
 **Caching.** The caller caches the result per file path and refreshes it when the file is saved or after five idle seconds — running a worktree search on every keystroke pause is not affordable. Keep the cache in `nes-related-files.ts` and expose `clearNesRelatedFilesCache(filePath: string): void`.
 
@@ -1083,18 +1103,6 @@ git add src/renderer/src/components/editor/code-completion
 git commit -m "feat(code-completion): the renderer client, the context and the related files"
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
-
-Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/renderer/src/components/editor/code-completion
-git commit -m "feat(code-completion): the renderer client and context builder"
-```
-
 ---
 
 ### Task 8: The plan store and the location markers
@@ -1116,7 +1124,7 @@ git commit -m "feat(code-completion): the renderer client and context builder"
   - `type NesLocationMarker = { edit: NesEdit; lineNumber: number }`
   - `nesLocationMarkers(edits: readonly NesEdit[], cursor: { lineNumber: number; column: number }): NesLocationMarker[]`
 
-**Why the store is keyed by model as well as by path.** The provider (Task 9) is registered globally and gets only a Monaco model. The model URI is **not** reversibly decodable back to a file path: `toEditorModelUri` builds an owned model's URI as `vscode-remote:<hashed-owner-authority>/<path>`, so the authority is a hash of the owner key and the file path cannot be recovered from it. The editor hook (Task 10) _does_ know the path — it is a prop of `MonacoEditor` — so the hook binds the model's URI string to the path, and the provider asks the store by model key.
+**Why the store is keyed by model as well as by path.** The provider (Task 9) is registered globally and gets only a Monaco model. The model URI _does_ carry the path — `toEditorModelUri` builds it as `vscode-remote:<hashed-owner-authority>/<path>` — but its **authority is a hash of the owner key**, so the URI alone cannot say _which host's_ editor it is. Two editors on different hosts can show the same path with different URIs. The editor hook (Task 10) _does_ know the path — it is a prop of `MonacoEditor` — so the hook binds the model's URI string to the path, and the provider asks the store by model key.
 
 - [ ] **Step 1: Write the failing store test**
 
@@ -1189,7 +1197,7 @@ git commit -m "feat(code-completion): the plan store and the location markers"
 - Produces:
   - `ensureNesInlineCompletionsProvider(monaco: MonacoApi): void` — the module-level singleton
   - `nesInlineCompletionForEdit(edit: NesEdit, model: editor.ITextModel): monaco.languages.InlineCompletion | null`
-  - `fireNesInlineCompletionsChanged(): void` — asks Monaco to re-query the provider. The provider registers `onDidChangeInlineCompletions` on this emitter; Task 10 calls the function when a new plan lands, so the suggestion appears without the user moving the cursor.
+  - `fireNesInlineCompletionsChanged(): void` — asks Monaco to re-query the provider. The provider registers `onDidChangeInlineCompletions` on the module-level `changeEmitter`; Task 10 calls the function when a new plan lands, so the suggestion appears without the user moving the cursor.
 
 - [ ] **Step 1: Write the failing provider test**
 
@@ -1201,8 +1209,11 @@ describe('nes inline completion', () => {
   it('turns a replace edit into an inline completion over the replaced range', ...)
   it('returns null for a delete edit', ...)
   it('rejects an edit whose range no longer matches the model', ...)
+  it('returns null for a replace edit that starts on an earlier line', ...)
 })
 ```
+
+The last case is Monaco's own constraint: an inline completion's range must begin on the cursor's line, so a `replace` that starts higher is never displayable and must not be offered.
 
 The last case is the "the user typed while the request was in flight" case from Review Focus: the provider re-checks the model's current text against the edit's `originalText` before it offers the suggestion.
 
@@ -1218,17 +1229,17 @@ Create `src/renderer/src/components/editor/code-completion/nes-inline-provider.t
 ```ts
 import type { OnMount } from '@monaco-editor/react'
 import type { IDisposable, editor } from 'monaco-editor'
-import type { NesEdit } from '@shared/code-completion/code-completion-types'
-import { nesEditMatchesPosition } from './nes-plan-store'
+import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
+import { nesEditMatchesPosition, nesPlanStore } from './nes-plan-store'
 
 type MonacoApi = Parameters<OnMount>[1]
 
 let provider: IDisposable | null = null
 let providerMonaco: MonacoApi = null
-const changeEmitter = new monaco.EventEmitter<void>() // created lazily against the live Monaco
+let changeEmitter: monaco.EventEmitter<void> | null = null
 ```
 
-Because the emitter needs the live Monaco namespace, create it inside `ensureNesInlineCompletionsProvider` and keep it in a module-level variable.
+Because the emitter needs the live Monaco namespace, create it inside `ensureNesInlineCompletionsProvider` and keep it in a module-level variable. `fireNesInlineCompletionsChanged()` is a no-op while `changeEmitter` is null.
 
 `ensureNesInlineCompletionsProvider(monaco)` re-registers the provider when the Monaco instance changed, following `ensureMarkdownDocCompletionProvider` exactly.
 
@@ -1248,11 +1259,13 @@ monaco.languages.registerInlineCompletionsProvider('*', {
     const completion = nesInlineCompletionForEdit(edit, model)
     return completion ? { items: [completion] } : null
   },
-  onDidChangeInlineCompletions: nesInlineCompletionsChanged.event
+  onDidChangeInlineCompletions: changeEmitter?.event,
+  // Why: the interface has no optional member here — an omitted method is a type error.
+  disposeInlineCompletions() {}
 })
 ```
 
-The provider asks the store by **model key**, not by file path: the model URI is not reversibly decodable (see Task 8's note), so the hook's binding is the only way to know which file a model shows.
+The provider asks the store by **model key**, not by file path: the model URI's authority is a hash of the owner key, so it cannot say which host's editor it is (see Task 8's note). The hook's binding is the only way to know which file a model shows.
 
 `nesInlineCompletionForEdit` maps an edit to Monaco's shape:
 
@@ -1269,6 +1282,8 @@ The provider asks the store by **model key**, not by file path: the model URI is
 ```
 
 A `delete` edit has no `insertText` and yields null — deleting is a plan-level action, not a suggestion the user accepts with Tab.
+
+**An edit whose range does not start on the cursor's line yields null.** Monaco's `InlineCompletion.range` "must begin and end on the same line", and `inlineCompletionIsVisible` refuses any suggestion whose `range.startLineNumber` is not the cursor's line — so a multi-line range would be silently _never displayed_. Such an edit is not lost: it still gets a gutter marker (Task 10) and the user can jump to it. **Reject, do not clamp** — clamping the range to the cursor's line would change which text the suggestion overwrites.
 
 - [ ] **Step 4: Add the CSS**
 
@@ -1307,7 +1322,7 @@ git commit -m "feat(code-completion): the Monaco inline completion provider"
 - Consumes: `requestNesPlan` (Task 7), `NesPlanStore` (Task 8), `ensureNesInlineCompletionsProvider` (Task 9).
 - Produces:
   - `type NesTabDecision = 'accept-suggestion' | 'jump-to-next-location' | 'pass-through'`
-  - `decideNesTabAction(input: { hasInlineSuggestion: boolean; hasOtherLocations: boolean }): NesTabDecision` — the pure routing rule
+  - `decideNesTabAction(input: { hasInlineSuggestion: boolean; hasOtherLocations: boolean }): NesTabDecision` — the pure routing rule. `hasInlineSuggestion` is **our own state**, not Monaco's: it is true when `nesPlanStore.editAt(modelKey, cursor)` returns an edit whose `originalText` still matches the live model — the same check the provider (Task 9) makes. Monaco exposes no public query for whether _its_ inline widget is showing; `editor.action.inlineSuggest.commit`'s `isSupported()` is the closest, but it answers for whichever provider owns the widget.
   - `useMonacoNextEditSuggestions(params): void` — the hook that owns the trigger and the plan state
   - two new keybinding ids: `editor.acceptAiSuggestion` and `editor.nextAiSuggestion`
 
@@ -1396,7 +1411,9 @@ export function installEditorAcceptAiSuggestionShortcut(
 ): () => void
 ```
 
-It listens in the capture phase, calls `decide()`, and for `accept-suggestion` runs Monaco's `editor.action.inlineSuggest.commit` before consuming the key; for `jump-to-next-location` it moves the cursor to the next marked location; for `pass-through` it does **not** call `preventDefault()`, so the key reaches the suggest widget.
+It listens in the capture phase, calls `decide()`, and consumes the key for `accept-suggestion` and `jump-to-next-location`; for `pass-through` it does **not** call `preventDefault()`, so the key reaches the suggest widget.
+
+**The accept path is ours, not Monaco's.** On `accept-suggestion` the hook calls `applyNesEdit` (Task 11) — it does **not** run Monaco's `editor.action.inlineSuggest.commit`. The Global Constraints require an accepted suggestion to be one undoable step made with `pushUndoStop()` / `pushEditOperations` / `pushUndoStop()`, and Task 11's `originalText` guard must sit on the path that actually applies the edit. The hook hides the inline widget first (`editor.action.inlineSuggest.hide`) so Monaco's ghost text does not outlive the text we applied.
 
 Add a second installer for the preview modifier:
 
@@ -1420,6 +1437,10 @@ export function useMonacoNextEditSuggestions(params: {
   languageId: string
   enabled: boolean
   triggerDelayMs: number
+  /** The extensions the feature is on for; a file outside the list is skipped whole. */
+  enabledExtensions: readonly string[]
+  /** The live editor — the hook needs its model, its cursor and its decoration collection. */
+  editorInstance: editor.IStandaloneCodeEditor | null
   /** The worktree that owns the file, for the related-file search. */
   files: RuntimeFileOperationArgs
 }): void
@@ -1431,12 +1452,20 @@ The hook:
 - debounces both by `triggerDelayMs`
 - binds the model to its file path in the plan store (`nesPlanStore.bindModel(model.uri.toString(), filePath)`) as soon as it mounts, so the provider (Task 9) can resolve the model
 - on a tick it builds the context (Task 7), collects the related files (Task 7), asks for the plan (Task 7), stores it (Task 8) and fires `fireNesInlineCompletionsChanged()` so Monaco re-queries the provider
-- cancels the in-flight request when the user types again
+- **renders the other predicted locations**: `nesLocationMarkers(nesPlanStore.editsForPath(filePath), cursor)` into a `createNesMarkerDecorations(editorInstance, markers)` collection, refreshed on each tick and disposed with the editor. This is the spec's second layer — the gutter markers — and the hook is its only caller. The same list is what `decideNesTabAction`'s `hasOtherLocations` reads.
+- **discards a stale answer**: the request cannot be cancelled end to end (see below), so the hook keeps a generation counter and applies a plan only when the generation still matches the one the request was made under.
 - skips the whole cycle when the file's extension is not in the enabled list, when the feature is off, or when the editor is read-only
 
 The related files are collected from the **cached** list (Task 7). The hook never waits on a worktree search before asking for the plan: a stale related-file list is better than a slow suggestion.
 
-**Where `files` comes from.** `MonacoEditor` already receives `worktreeId` (a prop). The editor surface (`EditorEditFileSurface.tsx`) knows the open file's `worktreeId` and `runtimeEnvironmentId`, and the repo's `getConnectionIdForFile(worktreeId, filePath)` resolves the connection. Assemble `RuntimeFileOperationArgs` from those: `target` is `{ kind: 'local' }` for a local worktree and `{ kind: 'environment', environmentId }` for a paired one; `worktreePath` comes from the worktree in the store. Follow the assembly in `src/renderer/src/runtime/source-control/git/runtime-git-client-context.ts` — it builds the same shape for the git clients.
+**The request cannot be cancelled end to end.** `callRuntimeRpc` forwards `signal` and `timeoutMs` only on the `environment` branch; on the `local` branch it calls `window.api.runtime.call({ method, params })`, and the `runtime:call` IPC dispatches with no signal — so the runtime's handler sees `ctx.signal === undefined` and the request runs to completion whatever the renderer does. Two consequences, and the plan is written around them:
+
+1. **Staleness is handled renderer-side.** The hook keeps a generation counter; every tick increments it, and a plan is applied only when the counter still matches the value captured when the request went out. A plan that arrives after the user has typed again is discarded.
+2. **The timeout stops the _waiting_, not the request.** `requestNesPlan` races the call against a timer and returns `null` when the timer wins. The underlying request may still complete; its answer is discarded by the generation check.
+
+Changing `window.api.runtime.call` to carry an abort would give real cancellation, but it changes a shared contract for one feature's benefit — not worth it in this plan.
+
+**Where `files` comes from.** Do not hand-roll it. `src/renderer/src/runtime/source-control/git/runtime-git-client-context.ts` only _declares_ the `RuntimeGitContext` type — it has no assembly function. The real assembler is `buildWorkspaceFileContextForFile(worktreeId, worktreePath, filePath, runtimeEnvironmentId)` in `src/renderer/src/runtime/files/workspace-file-host-routing.ts`, which resolves the target through `requireRuntimeTargetForFileOwner` and sets `connectionId` through `getConnectionIdForFile`. Use it: a hand-rolled `target` drops the SSH connection id and breaks folder workspaces and per-file ownership.
 
 - [ ] **Step 7: Wire the hook and the installers**
 
@@ -1466,6 +1495,7 @@ git commit -m "feat(code-completion): the suggestion trigger and the Tab routing
 
 - Create: `src/renderer/src/components/editor/code-completion/nes-edit-application.ts`
 - Create: `src/renderer/src/components/editor/code-completion/nes-edit-application.test.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-diff-preview.ts`
 
 **Interfaces:**
 
@@ -1517,6 +1547,8 @@ editorInstance.pushUndoStop()
 
 and returns true.
 
+`applyNesEdit` is **on the accept path**: Task 10's shortcut calls it when the routing decision is `accept-suggestion`. It is not a helper for some later flow — the `originalText` check above is the guard that stops a stale plan from being applied to text that changed under it, so it has to sit on the path that actually writes. Task 9's provider check is the _first_ line of defence (it decides whether to offer the suggestion at all); this one is the second, at the moment of acceptance.
+
 The write goes straight into the model. The model's change event then reaches `use-monaco-content-sync-bridge.ts`, which turns it into `onContentChange` → draft → dirty → autosave. **Do not** call `onContentChange` yourself and **do not** wrap the write in `beginProgrammaticContentSync` — either would break the save path.
 
 - [ ] **Step 4: Write the inline preview**
@@ -1527,7 +1559,7 @@ If Monaco 0.55's injected text cannot carry a multi-line string, fall back to re
 
 - [ ] **Step 5: Write the diff preview**
 
-The spec asks for a diff per change type, not just the inline overlay. Reuse the repo's diff surface — `src/renderer/src/components/editor/EditorDiffFileSurface.tsx` opens a Monaco diff editor for a file.
+The spec asks for a diff per change type, not just the inline overlay. **Do not reuse `EditorDiffFileSurface.tsx`** — that is a _git_ diff surface: it takes an `activeFile`, a `GitDiffResult` and an `editBuffer`, and is rendered by the git-diff editor panel. There is no entry point that opens it with an arbitrary original/proposed pair. Use the repo's `DiffViewer` in `src/renderer/src/components/editor/editor-lazy-views/` instead — it hosts a Monaco diff editor over a pair of texts, which is what the NES preview needs.
 
 Create `src/renderer/src/components/editor/code-completion/nes-diff-preview.ts`:
 
@@ -1565,7 +1597,9 @@ git commit -m "feat(code-completion): apply an accepted edit and preview it"
 **Files:**
 
 - Create: `src/renderer/src/components/settings/editor/CodeCompletionSection.tsx`
+- Create: `src/renderer/src/components/settings/editor/CodeCompletionSection.test.tsx`
 - Modify: `src/renderer/src/components/settings/editor/GeneralEditorSettingsSection.tsx` (render the section)
+- Modify: `src/renderer/src/components/settings/general/general-setting-anchors.ts` (the new anchor id and its owner)
 
 **Interfaces:**
 
@@ -1588,16 +1622,24 @@ The section offers:
 
 Every string goes through `useTranslate()` with an `auto.` key and an English default, matching the convention in `EditorWordWrapSetting.tsx`.
 
-- [ ] **Step 2: Render the section**
+**Every write sends the whole block.** `updateSettings` takes a `Partial<GlobalSettings>` and writes the given key verbatim, and the normalizer **resets every field it is not given** — so `updateSettings({ codeCompletion: { model } })` would wipe `baseUrl`, `protocol` and `enabledExtensions`. Every write is `updateSettings({ codeCompletion: { ...settings.codeCompletion, model: next } })`.
+
+**The section must say why the feature is off.** When `getStatus()` reports `configured: false`, the section says the feature stays off until an API key is saved — the Review Focus case: the user must not have to guess why no suggestion ever appears.
+
+- [ ] **Step 2: Write the failing section test**
+
+Create `src/renderer/src/components/settings/editor/CodeCompletionSection.test.tsx`. The case that matters pins Review Focus #5: **"tells the user the feature is off until an API key is saved"** — with `getStatus()` reporting `configured: false`, the section says so. A test must fail if that message is removed.
+
+- [ ] **Step 3: Render the section**
 
 In `src/renderer/src/components/settings/editor/GeneralEditorSettingsSection.tsx`, render `<CodeCompletionSection settings={settings} updateSettings={updateSettings} />` inside the editor group.
 
-- [ ] **Step 3: Typecheck**
+- [ ] **Step 4: Typecheck**
 
 Run: `pnpm tc:web`
 Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/renderer/src/components/settings/editor
@@ -1667,6 +1709,11 @@ git commit -m "test(code-completion): prove a suggestion appears and Tab accepts
 
 - Create: `src/main/code-completion/completion-usage.ts`
 - Create: `src/main/code-completion/completion-usage.test.ts`
+- Modify: `src/main/code-completion/completion-backend.ts` (parse the usage out of the stream)
+- Modify: `src/main/code-completion/anthropic-messages-backend.ts` (report the usage)
+- Modify: `src/main/code-completion/openai-chat-backend.ts` (report the usage)
+- Modify: `src/main/code-completion/openai-fim-backend.ts` (report the usage)
+- Modify: `src/main/code-completion/completion-service.ts` (pass the usage through)
 - Modify: `src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts` (report the usage)
 
 **Interfaces:**
@@ -1679,7 +1726,7 @@ git commit -m "test(code-completion): prove a suggestion appears and Tab accepts
 
 The `NesBackend.plan` shape is already final in Task 2 (`Promise<NesBackendResult>`, where `NesBackendResult` carries both the plan and the usage). Task 14 only fills in the usage **values** — it does not change the interface.
 
-**Why this cannot reuse the existing usage pipeline.** The usage scanner reads a provider's transcript files and attributes each session to a worktree (`src/main/usage/worktree-attribution.ts`). A completion request has no transcript and belongs to no worktree, so the scanner cannot see it. The spec calls for a new path.
+**Why this cannot reuse the existing usage pipeline.** The usage scanner reads a provider's transcript files and attributes each session to a worktree (`src/main/usage/worktree-attribution/usage-worktree-resolver.ts`). A completion request has no transcript and belongs to no worktree, so the scanner cannot see it. The spec calls for a new path.
 
 **Why this stays small.** The full usage-provider lifecycle (`UsageProviderStoreLifecycle`, a scan worker, the stats-UI breakdowns) is built for providers whose sessions live on disk. The completion has neither. This task records a running total in a small JSON file in the runtime's userData path and exposes it through the existing RPC method family — enough to answer "how much did the completions cost" without rebuilding the usage service.
 

@@ -56,12 +56,15 @@ Five input classes the spec implies but no task's tests exercise — each line b
 - Produces (all in `src/shared/code-completion/code-completion-types.ts` unless noted — the renderer and the main process both import them, so **nothing here may live under `src/main/`**):
   - `NesEditKind`, `NesEditRange`, `NesEdit`, `NesEditPlan` (zod schemas and inferred types)
   - `NesBackendId = 'anthropic-messages' | 'openai-chat' | 'openai-completions-fim'`
-  - `NesRequest` — the request both sides speak: `{ filePath: string; relativePath: string; languageId: string; prefix: string; suffix: string; relatedFiles: readonly { path: string; content: string }[]; recentEdits: readonly { path: string; label: string }[] }`
-  - `validateNesEditPlan(raw: unknown, options: { allowedPaths: readonly string[] }): NesEditPlan` — drops unusable edits instead of failing the whole plan
-  - `sliceRange(text: string, range: NesEditRange): string | null` — the text a range covers, or null when the range is out of bounds or a column is below one
-  - `buildNesSystemPrompt(options?: { autoImport?: boolean }): string`
-  - `buildNesUserPrompt(input: NesPromptInput): string`
-  - `type NesPromptInput = NesRequest & { autoImport: boolean }`
+  - `NesRequest` — the request both sides speak: `{ filePath: string; relativePath: string; languageId: string; prefix: string; suffix: string; prefixStartLine: number; cursorLine: number; cursorColumn: number; relatedFiles: readonly { path: string; content: string; startLine: number }[]; recentEdits: readonly { path: string; label: string }[] }`
+
+`prefixStartLine` is the file line the shown prefix starts at (1 when the whole file precedes the cursor); each related file carries its own `startLine`. `cursorLine` / `cursorColumn` are the cursor's **absolute** position. The model's line numbers are relative to the text it was shown, and the backend converts them to absolute before returning the plan — see the spec's §5.5.
+
+- `validateNesEditPlan(raw: unknown, options: { allowedPaths: readonly string[] }): NesEditPlan` — drops unusable edits instead of failing the whole plan
+- `sliceRange(text: string, range: NesEditRange): string | null` — the text a range covers, or null when the range is out of bounds or a column is below one
+- `buildNesSystemPrompt(options?: { autoImport?: boolean }): string`
+- `buildNesUserPrompt(input: NesPromptInput): string`
+- `type NesPromptInput = NesRequest & { autoImport: boolean }`
 
 **Where the `originalText` check happens.** The backend never sees the file's full text — it only has the prefix and the suffix — so it **cannot** verify that `originalText` matches the range. The backend validates structure and paths; the **renderer** validates content, against the live model, in Task 9 (before offering) and again in Task 11 (before applying).
 
@@ -176,6 +179,7 @@ Two rules the prompt must state, because the validator silently drops anything t
 
 - **Reply with each path exactly as it appears after `###PATH:`.** The prompt shows the current file twice — once as `Current file: <relativePath>` and once as `###PATH: <absolute path>` — and the validator only keeps a path that is in `allowedPaths`, which holds the absolute forms. A model that answers with the relative path has its edit dropped.
 - **The edit at the cursor must end at the cursor position.** Not every edit: an import insert has no cursor, and a plan may carry both.
+- **Line numbers are relative to the text you are shown — the first line you see is line 1.** The shown text may start part-way through a file, and the backend converts your line numbers to the file's own. This is what lets the renderer apply an edit without guessing.
 
 The user prompt is:
 
@@ -309,6 +313,17 @@ export function createOpenAiFimBackend(config: NesBackendConfig): NesBackend
 Posts to `${config.baseUrl}/completions` with `{ model, max_tokens, prompt, stream: true }` where `prompt` is the prefix, a cursor sentinel, and the suffix. The streamed text is the concatenation of `choices[0].text`. This backend has `planCapable: false`; it returns one edit whose `path` is the current file and whose range is the cursor, and it never asks for multi-location edits.
 
 All three backends finish the same way: parse the accumulated text as JSON, run it through `validateNesEditPlan` with the request's file paths, and return `null` on any failure.
+
+**Then the backend converts the model's relative line numbers to the file's absolute ones.** The model sees a prefix that may start part-way through the file, so its line 1 is the file's `prefixStartLine` (and a related file's own `startLine`). Every edit's `range.startLine` and `range.endLine` get `startLineFor(edit.path) - 1` added. The renderer therefore always receives absolute coordinates and never has to know the model was shown a fragment.
+
+```ts
+export function nesStartLineFor(request: NesRequest, path: string): number
+export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): NesEditPlan
+```
+
+`nesStartLineFor` returns the related file's `startLine` when the path names one, and `request.prefixStartLine` otherwise. `translateNesEditLines` returns a plan whose ranges are absolute; a `delete` edit's range still covers the same text, since only the line numbers move.
+
+The FIM backend needs no translation of a model's answer — it synthesizes the insert itself — but its range is built from the request's **absolute** `cursorLine` / `cursorColumn`, so it is exempt from the conversion.
 
 `allowedPaths` holds the **absolute** paths — the same strings the prompt prints after `###PATH:`. The relative path the prompt also prints (`Current file: <relativePath>`) is not in `allowedPaths`, so an edit that answers with it is dropped.
 
@@ -844,6 +859,10 @@ export function buildNesContext(
 ```
 
 The prefix is the text before the cursor, trimmed from the front to the character budget; the suffix is the text after it, trimmed from the back to its budget. The suffix is trimmed from the back, not the front, because the text right after the cursor matters most.
+
+**The prefix is trimmed at a line boundary**, and the result carries the line it starts at (`prefixStartLine`) and the cursor's absolute position (`cursorLine` / `cursorColumn`). The model sees a fragment of the file and answers with line numbers relative to that fragment; the backend converts them back to absolute (the spec's §5.5). Trimming mid-line would make the shown text's first line a partial one and the cursor's column ambiguous.
+
+`NesContextInput` therefore also carries `prefixStartLine`, `cursorLine` and `cursorColumn`. The related files carry their own `startLine` the same way — a related file shown from its first line has `startLine: 1`.
 
 - [ ] **Step 4: Write the failing related-files test**
 

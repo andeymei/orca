@@ -781,13 +781,16 @@ git commit -m "feat(code-completion): the codeCompletion.plan RPC method"
 
 **Interfaces:**
 
-- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), the existing worktree search (`files.search`, client at `src/renderer/src/runtime/files/search/runtime-file-search-client.ts`), the existing file read (`window.api.fs.readFile`, see `src/renderer/src/runtime/files/reads/runtime-file-read-client.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
+- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), the existing worktree search (`searchRuntimeFiles`, client at `src/renderer/src/runtime/files/search/runtime-file-search-client.ts`), the existing file read (`readRuntimeFile`, client at `src/renderer/src/runtime/files/reads/runtime-file-read-client.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
+
+**Use the runtime clients, not `window.api.fs`.** The editor buffer holds the file's text even when the file lives on an SSH host, but a _related_ file is only on that host. `readRuntimeFile` and `searchRuntimeFiles` both take a `RuntimeFileOperationArgs` (`{ target, worktreeId, rootPath, connectionId }`) and route to the local or the remote side. `window.api.fs.readFile` would silently read the wrong machine's path.
+
 - Produces:
   - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal }): Promise<NesEditPlan | null>`
   - `buildNesContext(model: editor.ITextModel, position: editor.IPosition, options): NesContextInput`
   - `type NesContextInput = { prefix: string; suffix: string; filePath: string; relativePath: string; languageId: string }`
   - `collectNesRelatedFiles(input: NesRelatedFilesInput): Promise<{ path: string; content: string }[]>`
-  - `type NesRelatedFilesInput = { filePath: string; fileText: string; symbolAtCursor: string | null; worktreeId: string | null; rootPath: string | null; readFile: (path: string) => Promise<string | null> }`
+  - `type NesRelatedFilesInput = { filePath: string; fileText: string; symbolAtCursor: string | null; files: RuntimeFileOperationArgs }`
   - `NES_RELATED_FILE_MAX = 8`, `NES_RELATED_FILE_TOKEN_BUDGET = 1000`
 
 - [ ] **Step 1: Write the failing context test**
@@ -865,9 +868,9 @@ export async function collectNesRelatedFiles(
 Two sources, in this order:
 
 1. **The current file's relative imports.** `parseRelativeImports` pulls the module specifiers out of the import statements and keeps only the ones that start with `./` or `../` — a package import names a module the model already knows, not a file in this repository. Each relative specifier resolves against the current file's directory; the extension is tried as written, then with `.ts`, `.tsx`, `.js`, `.jsx` and `/index.ts`, `/index.tsx`.
-2. **The files that mention the symbol at the cursor.** When `symbolAtCursor` is a plain identifier, ask the worktree search for it (`files.search` with `{ worktree, query: symbolAtCursor, maxResults: 20 }`) and take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
+2. **The files that mention the symbol at the cursor.** When `symbolAtCursor` is a plain identifier, call `searchRuntimeFiles(input.files, { query: symbolAtCursor, maxResults: 20 })` and take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
 
-Each result is read through `readFile`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
+Each result is read through `readRuntimeFile(input.files, path)`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
 
 **Caching.** The caller caches the result per file path and refreshes it when the file is saved or after five idle seconds — running a worktree search on every keystroke pause is not affordable. Keep the cache in `nes-related-files.ts` and expose `clearNesRelatedFilesCache(filePath: string): void`.
 
@@ -924,12 +927,14 @@ git commit -m "feat(code-completion): the renderer client and context builder"
 
 - Consumes: `NesEdit`, `NesEditPlan` (Task 1).
 - Produces:
-  - `type NesPlanStore = { set(plan: NesEditPlan, filePath: string): void; get(filePath: string): NesEditPlan | null; editAt(filePath: string, position: { lineNumber: number; column: number }): NesEdit | null; remove(filePath: string): void; clear(): void }`
+  - `type NesPlanStore = { bindModel(modelKey: string, filePath: string): void; setPlan(filePath: string, plan: NesEditPlan): void; getPlan(filePath: string): NesEditPlan | null; editAt(modelKey: string, position: { lineNumber: number; column: number }): NesEdit | null; editsForPath(filePath: string): NesEdit[]; remove(filePath: string): void; clear(): void }`
   - `createNesPlanStore(): NesPlanStore`
   - `nesPlanStore: NesPlanStore` — the module-level singleton the provider and the hook share. The provider is registered globally (Task 9) but the plan belongs to the open editor, so both sides must reach the same store.
   - `nesEditMatchesPosition(edit: NesEdit, position: { lineNumber: number; column: number }): boolean`
   - `type NesLocationMarker = { edit: NesEdit; lineNumber: number }`
-  - `nesLocationMarkers(plan: NesEditPlan, filePath: string, cursor: { lineNumber: number; column: number }): NesLocationMarker[]`
+  - `nesLocationMarkers(edits: readonly NesEdit[], cursor: { lineNumber: number; column: number }): NesLocationMarker[]`
+
+**Why the store is keyed by model as well as by path.** The provider (Task 9) is registered globally and gets only a Monaco model. The model URI is **not** reversibly decodable back to a file path: `toEditorModelUri` builds an owned model's URI as `vscode-remote:<hashed-owner-authority>/<path>`, so the authority is a hash of the owner key and the file path cannot be recovered from it. The editor hook (Task 10) _does_ know the path — it is a prop of `MonacoEditor` — so the hook binds the model's URI string to the path, and the provider asks the store by model key.
 
 - [ ] **Step 1: Write the failing store test**
 
@@ -940,8 +945,9 @@ describe('nes plan store', () => {
   it('finds the edit whose range ends at the cursor', ...)
   it('finds nothing when the cursor moved past the edit', ...)
   it('finds nothing when the cursor moved before the edit', ...)
-  it('marks every other edit of the plan in the file', ...)
-  it('does not mark an edit of another file', ...)
+  it('resolves a bound model to the plan of its file', ...)
+  it('lists the edits of another file that a plan mentions', ...)
+  it('does not list an edit of a file the plan never named', ...)
 })
 ```
 
@@ -954,9 +960,9 @@ Expected: FAIL — the module does not exist.
 
 - [ ] **Step 3: Write the store and the marker selection**
 
-Create `src/renderer/src/components/editor/code-completion/nes-plan-store.ts` with the types above. The store keeps one plan per file path. `editAt` returns the edit of that file whose range end equals the position.
+Create `src/renderer/src/components/editor/code-completion/nes-plan-store.ts` with the types above. The store keeps two maps: `modelKey → filePath` (the bindings the hook makes) and `filePath → plan` (the plans that arrived). `editAt(modelKey, position)` resolves the model to its file, then returns that file's edit whose range end equals the position. `editsForPath(filePath)` returns every edit any stored plan makes in that file — that is how a file the user is _not_ in still shows its marker.
 
-Create `src/renderer/src/components/editor/code-completion/nes-location-markers.ts` with `nesLocationMarkers(plan, filePath, cursor)`: the edits of `filePath` whose range end is **not** the cursor position, each with the line of its range start.
+Create `src/renderer/src/components/editor/code-completion/nes-location-markers.ts` with `nesLocationMarkers(edits, cursor)`: the given edits whose range end is **not** the cursor position, each with the line of its range start.
 
 - [ ] **Step 4: Write the marker decoration**
 
@@ -1049,11 +1055,8 @@ The provider:
 ```ts
 monaco.languages.registerInlineCompletionsProvider('*', {
   provideInlineCompletions(model, position) {
-    const filePath = nesFilePathForModel(model)
-    if (!filePath) {
-      return null
-    }
-    const edit = nesPlanStore.editAt(filePath, {
+    const modelKey = model.uri.toString()
+    const edit = nesPlanStore.editAt(modelKey, {
       lineNumber: position.lineNumber,
       column: position.column
     })
@@ -1067,7 +1070,7 @@ monaco.languages.registerInlineCompletionsProvider('*', {
 })
 ```
 
-`nesFilePathForModel(model)` maps the model back to the file path it shows. Orca keys its editor models by URI (`toEditorModelUri(filePath, modelOwnerKey)` in `src/renderer/src/components/editor/model-lifetime/identity/editor-model-uri.ts`); read the path from that URI rather than inventing a second mapping.
+The provider asks the store by **model key**, not by file path: the model URI is not reversibly decodable (see Task 8's note), so the hook's binding is the only way to know which file a model shows.
 
 `nesInlineCompletionForEdit` maps an edit to Monaco's shape:
 
@@ -1235,6 +1238,8 @@ export function useMonacoNextEditSuggestions(params: {
   languageId: string
   enabled: boolean
   triggerDelayMs: number
+  /** The worktree that owns the file, for the related-file search. */
+  files: RuntimeFileOperationArgs
 }): void
 ```
 
@@ -1242,11 +1247,14 @@ The hook:
 
 - subscribes to the editor's `onDidChangeModelContent` and `onDidChangeCursorPosition`
 - debounces both by `triggerDelayMs`
-- on a tick it builds the context (Task 7), collects the related files (Task 7), asks for the plan (Task 7), stores it (Task 9) and fires `fireNesInlineCompletionsChanged()` so Monaco re-queries the provider
+- binds the model to its file path in the plan store (`nesPlanStore.bindModel(model.uri.toString(), filePath)`) as soon as it mounts, so the provider (Task 9) can resolve the model
+- on a tick it builds the context (Task 7), collects the related files (Task 7), asks for the plan (Task 7), stores it (Task 8) and fires `fireNesInlineCompletionsChanged()` so Monaco re-queries the provider
 - cancels the in-flight request when the user types again
 - skips the whole cycle when the file's extension is not in the enabled list, when the feature is off, or when the editor is read-only
 
 The related files are collected from the **cached** list (Task 7). The hook never waits on a worktree search before asking for the plan: a stale related-file list is better than a slow suggestion.
+
+**Where `files` comes from.** `MonacoEditor` already receives `worktreeId` (a prop). The editor surface (`EditorEditFileSurface.tsx`) knows the open file's `worktreeId` and `runtimeEnvironmentId`, and the repo's `getConnectionIdForFile(worktreeId, filePath)` resolves the connection. Assemble `RuntimeFileOperationArgs` from those: `target` is `{ kind: 'local' }` for a local worktree and `{ kind: 'environment', environmentId }` for a paired one; `worktreePath` comes from the worktree in the store. Follow the assembly in `src/renderer/src/runtime/source-control/git/runtime-git-client-context.ts` — it builds the same shape for the git clients.
 
 - [ ] **Step 7: Wire the hook and the installers**
 
@@ -1486,7 +1494,8 @@ git commit -m "test(code-completion): prove a suggestion appears and Tab accepts
   - `type CompletionUsage = { inputTokens: number; outputTokens: number; cacheReadTokens: number }`
   - `recordCompletionUsage(entry: { model: string; usage: CompletionUsage; at: number }): void`
   - `readCompletionUsageToday(now?: number): CompletionUsage`
-  - `NesBackend.plan` returns the plan **and** the usage — change its shape to `Promise<{ plan: NesEditPlan | null; usage: CompletionUsage }>`
+
+The `NesBackend.plan` shape is already final in Task 2 (`Promise<NesBackendResult>`, where `NesBackendResult` carries both the plan and the usage). Task 14 only fills in the usage **values** — it does not change the interface.
 
 **Why this cannot reuse the existing usage pipeline.** The usage scanner reads a provider's transcript files and attributes each session to a worktree (`src/main/usage/worktree-attribution.ts`). A completion request has no transcript and belongs to no worktree, so the scanner cannot see it. The spec calls for a new path.
 

@@ -869,7 +869,10 @@ Create `src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts`
 
 ```ts
 import { defineMethod } from '../../core'
-import { CodeCompletionPlan } from '../../../../../shared/rpc-contract/code-completion-params'
+import {
+  CodeCompletionPlan,
+  CodeCompletionPlanResult
+} from '../../../../../shared/rpc-contract/code-completion-params'
 import { createCompletionService } from '../../../../code-completion/completion-service'
 import { createAnthropicMessagesBackend } from '../../../../code-completion/anthropic-messages-backend'
 import { createOpenAiChatBackend } from '../../../../code-completion/openai-chat-backend'
@@ -881,7 +884,7 @@ export const CODE_COMPLETION_METHODS = [
     name: 'codeCompletion.plan',
     permission: 'workspace',
     params: CodeCompletionPlan,
-    handler: async (params, { runtime, signal }) => {
+    handler: async (params, { runtime, signal }): Promise<CodeCompletionPlanResult> => {
       const settings = runtime.requireStore().getSettings().codeCompletion
       if (!settings?.enabled) {
         return { plan: null }
@@ -921,7 +924,22 @@ export const CODE_COMPLETION_METHODS = [
 ]
 ```
 
-`createBackend` maps the protocol id to the three backend factories. The **cache** is a module-level singleton (`completionCache` in `src/main/code-completion/completion-cache.ts`) that the service takes when the caller injects none — a cache that lives only as long as the request is not a cache. The service itself is still created per call, because the backend it resolves depends on the settings at that moment.
+`createBackend` maps the protocol id to the three backend factories:
+
+```ts
+function createBackend(protocol: NesBackendId, config: NesBackendConfig): NesBackend {
+  switch (protocol) {
+    case 'anthropic-messages':
+      return createAnthropicMessagesBackend(config)
+    case 'openai-chat':
+      return createOpenAiChatBackend(config)
+    case 'openai-completions-fim':
+      return createOpenAiFimBackend(config)
+  }
+}
+```
+
+The switch is exhaustive over `NesBackendId`, so a fourth protocol fails to compile rather than falling back at runtime. The **cache** is a module-level singleton (`completionCache` in `src/main/code-completion/completion-cache.ts`) that the service takes when the caller injects none — a cache that lives only as long as the request is not a cache. The service itself is still created per call, because the backend it resolves depends on the settings at that moment.
 
 **Read the settings from the store, not from the client projection.** `runtime.getClientSettings()` returns the _paired-client_ projection (`RuntimeClientSettingsController.get()`), which deliberately omits the completion block — a phone has no editor and must not receive the endpoint and model settings. The handler reads the desktop's own settings with `runtime.requireStore().getSettings().codeCompletion`, the pattern the other settings-reading RPC methods use.
 

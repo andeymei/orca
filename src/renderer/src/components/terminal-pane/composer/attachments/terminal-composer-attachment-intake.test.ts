@@ -27,6 +27,7 @@ const host: TerminalComposerIntakeHost = {
 }
 
 const pngFile = new File([new Uint8Array([1, 2, 3])], 'shot.png', { type: 'image/png' })
+const secondPngFile = new File([new Uint8Array([4, 5])], 'second.png', { type: 'image/png' })
 const textFile = new File([new Uint8Array([1])], 'notes.txt', { type: 'text/plain' })
 const textItem: DataTransferItem = {
   kind: 'string',
@@ -140,6 +141,56 @@ describe('terminal composer attachment intake', () => {
 
     expect(result.attachments).toEqual([])
     expect(result.failed).toEqual([{ name: 'shot.png', reason: 'Clipboard image is too large' }])
+    expect(copyMock).not.toHaveBeenCalled()
+  })
+
+  it('attaches every image a paste carries', async () => {
+    getPathForFile.mockImplementation((file) => `/tmp/${file.name}`)
+    copyMock.mockResolvedValue({
+      copied: [
+        { sourcePath: '/tmp/shot.png', workspacePath: '/ws/.orca/drops/shot.png' },
+        { sourcePath: '/tmp/second.png', workspacePath: '/ws/.orca/drops/second.png' }
+      ],
+      skipped: [],
+      failed: []
+    })
+
+    const result = await pasteTerminalComposerAttachments(host, {
+      files: [pngFile, secondPngFile]
+    })
+
+    expect(copyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ sourcePaths: ['/tmp/shot.png', '/tmp/second.png'] })
+    )
+    expect(result.attachments).toHaveLength(2)
+    expect(result.failed).toEqual([])
+  })
+
+  it('reports the second pasted image the one clipboard image cannot carry', async () => {
+    saveClipboardImageAsTempFile.mockResolvedValue('/tmp/orca-paste-1.png')
+    copyMock.mockResolvedValue({
+      copied: [
+        { sourcePath: '/tmp/orca-paste-1.png', workspacePath: '/ws/.orca/drops/orca-paste-1.png' }
+      ],
+      skipped: [],
+      failed: []
+    })
+
+    const result = await pasteTerminalComposerAttachments(host, {
+      files: [pngFile, secondPngFile]
+    })
+
+    expect(result.attachments).toHaveLength(1)
+    expect(result.failed).toEqual([{ name: 'second.png', reason: 'no-local-path' }])
+  })
+
+  it('reports a pasted file with no file behind it', async () => {
+    getPathForFile.mockReturnValue('')
+
+    const result = await pasteTerminalComposerAttachments(host, { files: [textFile] })
+
+    expect(result.attachments).toEqual([])
+    expect(result.failed).toEqual([{ name: 'notes.txt', reason: 'no-local-path' }])
     expect(copyMock).not.toHaveBeenCalled()
   })
 

@@ -30,6 +30,9 @@ export type TerminalComposerIntakeResult = {
 /** The attachment size the agent accepts, in the unit the limit is written in. */
 const ATTACHMENT_LIMIT_MIB = AGENT_SESSION_ATTACHMENT_MAX_BYTES / (1024 * 1024)
 
+/** The pasted file has no file behind it on this machine, so no path can carry it. */
+const NO_LOCAL_PATH_REASON = 'no-local-path'
+
 export async function pickTerminalComposerAttachments(
   host: TerminalComposerIntakeHost
 ): Promise<TerminalComposerIntakeResult> {
@@ -44,34 +47,27 @@ export async function pasteTerminalComposerAttachments(
   host: TerminalComposerIntakeHost,
   clipboardData: { files: File[]; items?: DataTransferItem[] }
 ): Promise<TerminalComposerIntakeResult> {
-  const files = clipboardData.files
   const sourcePaths: string[] = []
   const failed: { name: string; reason: string }[] = []
-  const image = files.find((file) => file.type.startsWith('image/'))
-  if (image) {
-    try {
-      // The clipboard image is saved on this machine: the copy reads client-local sources.
-      const tempPath = await window.api.ui.saveClipboardImageAsTempFile()
-      // An image the clipboard could not render still carries its own local path.
-      const path = tempPath ?? localPathForFile(image)
-      if (path) {
-        sourcePaths.push(path)
-      }
-    } catch (error) {
-      failed.push({
-        name: image.name,
-        reason: error instanceof Error ? error.message : String(error)
-      })
-    }
-  }
-  for (const file of files) {
-    if (file.type.startsWith('image/')) {
-      continue
-    }
+  // The clipboard holds one image, so it can stand in for one pasted bitmap at a time.
+  let clipboardImageUsed = false
+  for (const file of clipboardData.files) {
     const path = localPathForFile(file)
     if (path) {
       sourcePaths.push(path)
+      continue
     }
+    if (file.type.startsWith('image/') && !clipboardImageUsed) {
+      clipboardImageUsed = true
+      const saved = await saveClipboardImage()
+      if (saved.ok) {
+        sourcePaths.push(saved.path)
+        continue
+      }
+      failed.push({ name: file.name, reason: saved.reason })
+      continue
+    }
+    failed.push({ name: file.name, reason: NO_LOCAL_PATH_REASON })
   }
   // The text half of the paste is the prompt body; the editor's own paste handler owns it.
   return landAttachments(host, sourcePaths, failed)
@@ -92,8 +88,14 @@ async function landAttachments(
 ): Promise<TerminalComposerIntakeResult> {
   const failed = [...failures]
   const withinLimit: string[] = []
-  for (const sourcePath of sourcePaths) {
-    const byteLength = await sourceByteLength(sourcePath)
+  // The sizes cost one round trip each, so they travel together.
+  const sizes = await Promise.all(
+    sourcePaths.map(async (sourcePath) => ({
+      sourcePath,
+      byteLength: await sourceByteLength(sourcePath)
+    }))
+  )
+  for (const { sourcePath, byteLength } of sizes) {
     if (byteLength !== null && byteLength > AGENT_SESSION_ATTACHMENT_MAX_BYTES) {
       failed.push({
         name: basename(sourcePath),
@@ -143,6 +145,19 @@ async function sourceByteLength(sourcePath: string): Promise<number | null> {
   } catch {
     // An unreadable source has no known size; the copy reports why it could not land.
     return null
+  }
+}
+
+/** The clipboard's own copy of a pasted bitmap, saved on this machine. */
+async function saveClipboardImage(): Promise<
+  { ok: true; path: string } | { ok: false; reason: string }
+> {
+  try {
+    // The clipboard image is saved on this machine: the copy reads client-local sources.
+    const tempPath = await window.api.ui.saveClipboardImageAsTempFile()
+    return tempPath ? { ok: true, path: tempPath } : { ok: false, reason: NO_LOCAL_PATH_REASON }
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }
 }
 

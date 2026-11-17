@@ -106,6 +106,10 @@ export function sliceRange(text: string, range: NesEditRange): string | null {
   }
   const startLineText = lines[startLineIndex]
   const endLineText = lines[endLineIndex]
+  // Why: a column below one would slice from the end of the line and answer with the wrong text.
+  if (range.startColumn < 1 || range.endColumn < 1) {
+    return null
+  }
   if (range.startColumn > startLineText.length + 1 || range.endColumn > endLineText.length + 1) {
     return null
   }

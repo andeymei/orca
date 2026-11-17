@@ -103,4 +103,33 @@ describe('buildNesSystemPrompt', () => {
     expect(prompt).not.toContain('adds the import')
     expect(buildNesSystemPrompt()).not.toContain('adds the import')
   })
+
+  it('asks for the path exactly as the path header carries it', () => {
+    const prompt = buildNesSystemPrompt()
+
+    expect(prompt).toContain('exactly as it appears after `###PATH:`')
+  })
+
+  it('states the nine rules in order', () => {
+    const statements = [
+      'Reply with a single JSON object of the form {"edits":[…]}',
+      'Every edit carries id, path, kind, range, originalText, text and label',
+      'Propose at most 5 edits',
+      'and at most 2 edits per file',
+      'A range is 1-based, its columns count UTF-16 code units',
+      'The edit at the cursor must end at the cursor position',
+      'originalText must be the exact text the range currently covers',
+      'label is a short human-readable intent',
+      'When you have nothing to propose, answer {"edits":[]}'
+    ]
+
+    for (const prompt of [buildNesSystemPrompt(), buildNesSystemPrompt({ autoImport: true })]) {
+      const positions = statements.map((statement) => prompt.indexOf(statement))
+
+      expect(positions).not.toContain(-1)
+      for (let index = 1; index < positions.length; index += 1) {
+        expect(positions[index]).toBeGreaterThan(positions[index - 1])
+      }
+    }
+  })
 })

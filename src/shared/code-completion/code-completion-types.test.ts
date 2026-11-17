@@ -99,6 +99,28 @@ describe('validateNesEditPlan', () => {
     expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e2', 'e3', 'e4', 'e5'])
   })
 
+  it('truncates to the first five edits before it drops the unusable ones', () => {
+    const paths = ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts', 'src/f.ts']
+    const edits = [
+      buildEdit({ id: 'e1', path: paths[0] }),
+      buildEdit({
+        id: 'e2',
+        path: paths[1],
+        kind: 'delete',
+        originalText: 'const answer = 42\n',
+        text: 'new'
+      }),
+      buildEdit({ id: 'e3', path: paths[2] }),
+      buildEdit({ id: 'e4', path: paths[3] }),
+      buildEdit({ id: 'e5', path: paths[4] }),
+      buildEdit({ id: 'e6', path: paths[5] })
+    ]
+
+    const plan = validateNesEditPlan({ edits }, { allowedPaths: paths })
+
+    expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e3', 'e4', 'e5'])
+  })
+
   it('keeps the first two edits of a file and drops the third', () => {
     const plan = validateNesEditPlan(
       { edits: [buildEdit({ id: 'e1' }), buildEdit({ id: 'e2' }), buildEdit({ id: 'e3' })] },
@@ -106,6 +128,36 @@ describe('validateNesEditPlan', () => {
     )
 
     expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e2'])
+  })
+
+  it('keeps two edits for a file when the third is unusable', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          buildEdit({ id: 'e1' }),
+          buildEdit({ id: 'e2' }),
+          buildEdit({ id: 'e3', kind: 'delete', originalText: 'const answer = 42\n', text: 'new' })
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e2'])
+  })
+
+  it('does not let an unusable edit take a slot of the two allowed for its file', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          buildEdit({ id: 'e1' }),
+          buildEdit({ id: 'e2', kind: 'delete', originalText: 'const answer = 42\n', text: 'new' }),
+          buildEdit({ id: 'e3' })
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    expect(plan.edits.map((edit) => edit.id)).toEqual(['e1', 'e3'])
   })
 
   it('keeps two edits in one file and one in another', () => {
@@ -172,6 +224,13 @@ describe('sliceRange', () => {
   it('returns null when the range is out of bounds', () => {
     expect(sliceRange(text, { startLine: 4, startColumn: 1, endLine: 4, endColumn: 1 })).toBeNull()
     expect(sliceRange(text, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 99 })).toBeNull()
+  })
+
+  it('returns null when a column is below one', () => {
+    expect(sliceRange(text, { startLine: 1, startColumn: 0, endLine: 1, endColumn: 3 })).toBeNull()
+    expect(sliceRange(text, { startLine: 1, startColumn: -2, endLine: 1, endColumn: 3 })).toBeNull()
+    expect(sliceRange(text, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 0 })).toBeNull()
+    expect(sliceRange(text, { startLine: 1, startColumn: 1, endLine: 2, endColumn: 0 })).toBeNull()
   })
 
   it('counts columns in UTF-16 code units', () => {

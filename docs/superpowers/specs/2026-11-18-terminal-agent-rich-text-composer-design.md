@@ -150,7 +150,7 @@ type TerminalComposerAttachment = {
   id: string
   /** Display name in the pill (the file's base name). */
   name: string
-  /** Where the bytes landed, on the host that owns this terminal. */
+  /** Where the bytes landed, on the host that owns this terminal. The intake always returns a landed path — "still uploading" is the pending promise, not a null path. */
   workspacePath: string | null
   /** True for image pills, which the agent receives as a separate path write. */
   isImage: boolean

@@ -930,9 +930,11 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - **Esc 收起**:`event.key === 'Escape'` → `onDismiss()`。
 - **pill 的删除**:pill 是 `atom: true` 的 inline 节点,ProseMirror 默认在光标紧贴 pill 后方时 Backspace 删掉整个 pill;**不要**自己再实现一遍。
 - **pill 的三种态**:上传中(spinner + `Hourglass` 图标,取自 `NativeChatFileReferencePill` 的既有做法)、失败(`FileX` 图标 + 「需要重新添加」提示)、就绪。失败只摘掉那一个 pill,**其余附件保留**。
-- **失败的 `reason` 是机器码,不是给用户看的句子。** intake 回的 `reason` 形如 `missing` / `symlink` / `permission-denied` / `unsupported`,UI 要把它翻成用户能懂的话(「文件不在了」「没有权限」……),不要把码直接甩到 toast 或 pill 上。
+- **失败的 `reason` 是机器码,不是给用户看的句子。** intake 回的 `reason` 形如 `missing` / `symlink` / `permission-denied` / `unsupported`,UI 要把它翻成用户能懂的话(「文件不在了」「没有权限」……),不要把码直接甩到 toast 或 pill 上。**但词表是混的**:拷贝自己的 `skipped` 原因是码,拷贝的 `failed` 原因是原始错误消息,intake 的体积超限原因是一句完整的话。UI 要**先认码、认不出来的按原文显示**,不能假设每条 reason 都能翻译。
+- **粘贴的图片 pill 名字是临时文件名**,不是用户原本的文件名:无参调用 `saveClipboardImageAsTempFile` 时 main 会把它命名成 `orca-paste-<时间>-<uuid>.<扩展名>`。UI **不要**承诺显示用户原来的文件名。
 - **正文里的图片 pill 在发送时被摘掉**,由 Task 5 的写序列负责;编辑器本身不知道 agent 的存在。
-- **写草稿时必须在写入时刻从 store 读当前草稿,不要用捕获的快照。** `setTerminalComposerDraft` 是**整份替换**(带 ProseMirror 文档),而 Task 4 的 intake 先产生 `workspacePath: null`、落地之后才拿到路径;中间用户打的字会被整份覆盖掉。同理,附件落地后回填路径时,要在那一刻读最新的 draft 再写回去。
+- **写草稿时必须在写入时刻从 store 读当前草稿,不要用捕获的快照。** `setTerminalComposerDraft` 是**整份替换**(带 ProseMirror 文档)。附件的「上传中」状态是**那个还没 resolve 的 promise**,不是「`workspacePath` 为 null 的附件」——Task 4 的 intake 是先落地再返回,回来的每个 attachment 都**已经**带着落地路径。所以:在上传 resolve 之前不要写草稿;resolve 之后写,写之前读最新的 draft。
+- **失败的附件没有 id。** intake 的 `failed[]` 是 `{ name, reason }`,没有 id;要给它一个 pill,UI 得自己造一个 id。
 - 提示行用 `<ShortcutKeyCombo />`;标签按平台显示 `⌘↵` / `Ctrl+↵`。
 - 工具条:Paperclip ghost icon button(`Tooltip`「添加附件」)+ 发送 primary button。
 - **三路来源的接线**(Task 4 的产出在这里落地,否则那一层无人使用):

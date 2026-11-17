@@ -5,20 +5,14 @@ import {
 } from '../../shared/code-completion/code-completion-prompt'
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import {
-  emptyCompletionUsage,
-  nesAllowedPaths,
-  parseNesPlanText,
-  translateNesEditLines,
+  planFromCompletionStream,
+  planFromCompletionText,
   type CompletionBackendOptions,
   type NesBackend,
   type NesBackendConfig,
   type NesBackendResult
 } from './completion-backend'
-import {
-  completionEndpointUrl,
-  parseCompletionSseEvents,
-  postCompletionJson
-} from './completion-http'
+import { completionEndpointUrl } from './completion-http'
 
 const OPENAI_CHAT_PATH = '/chat/completions'
 
@@ -33,40 +27,32 @@ export function createOpenAiChatBackend(
   return {
     id: 'openai-chat',
     planCapable: true,
-    async plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
-      const result = await postCompletionJson({
-        url: completionEndpointUrl(config.baseUrl, OPENAI_CHAT_PATH),
-        headers: {
-          authorization: `Bearer ${config.apiKey}`,
-          'content-type': 'application/json'
+    plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
+      return planFromCompletionStream(
+        {
+          url: completionEndpointUrl(config.baseUrl, OPENAI_CHAT_PATH),
+          headers: {
+            authorization: `Bearer ${config.apiKey}`,
+            'content-type': 'application/json'
+          },
+          body: {
+            model: config.model,
+            max_tokens: config.maxTokens,
+            messages: [
+              { role: 'system', content: buildNesSystemPrompt({ autoImport: config.autoImport }) },
+              {
+                role: 'user',
+                content: buildNesUserPrompt({ ...input, autoImport: config.autoImport })
+              }
+            ],
+            stream: true
+          },
+          signal,
+          fetchImpl: options?.fetchImpl
         },
-        body: {
-          model: config.model,
-          max_tokens: config.maxTokens,
-          messages: [
-            { role: 'system', content: buildNesSystemPrompt({ autoImport: config.autoImport }) },
-            {
-              role: 'user',
-              content: buildNesUserPrompt({ ...input, autoImport: config.autoImport })
-            }
-          ],
-          stream: true
-        },
-        signal,
-        fetchImpl: options?.fetchImpl
-      })
-      if (!result.ok) {
-        return { plan: null, usage: emptyCompletionUsage() }
-      }
-      const events = parseCompletionSseEvents(result.text)
-      if (!events) {
-        return { plan: null, usage: emptyCompletionUsage() }
-      }
-      const plan = parseNesPlanText(openAiChatStreamText(events), nesAllowedPaths(input))
-      return {
-        plan: plan ? translateNesEditLines(plan, input) : null,
-        usage: emptyCompletionUsage()
-      }
+        openAiChatStreamText,
+        (text) => planFromCompletionText(text, input)
+      )
     }
   }
 }

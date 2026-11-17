@@ -4,6 +4,11 @@ import {
   type NesEditPlan,
   type NesRequest
 } from '../../shared/code-completion/code-completion-types'
+import {
+  parseCompletionSseEvents,
+  postCompletionJson,
+  type CompletionHttpRequest
+} from './completion-http'
 
 /** The spec caps a completion answer; a longer one is dropped as a parse failure. */
 export const NES_COMPLETION_OUTPUT_LIMIT = 8000
@@ -69,6 +74,12 @@ export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): N
   }
 }
 
+/** The plan a model answer carries, in the file's own line numbers. */
+export function planFromCompletionText(text: string, input: NesRequest): NesEditPlan | null {
+  const plan = parseNesPlanText(text, nesAllowedPaths(input))
+  return plan ? translateNesEditLines(plan, input) : null
+}
+
 /** The plan a model answer carries, or null when the answer is not JSON. */
 export function parseNesPlanText(
   text: string,
@@ -81,4 +92,21 @@ export function parseNesPlanText(
     return null
   }
   return validateNesEditPlan(parsed, { allowedPaths })
+}
+
+/** The plan a completion stream carries; the finishing step differs per protocol. */
+export async function planFromCompletionStream(
+  request: CompletionHttpRequest,
+  extractText: (events: readonly unknown[]) => string,
+  finish: (text: string) => NesEditPlan | null
+): Promise<NesBackendResult> {
+  const result = await postCompletionJson(request)
+  if (!result.ok) {
+    return { plan: null, usage: emptyCompletionUsage() }
+  }
+  const events = parseCompletionSseEvents(result.text)
+  if (!events) {
+    return { plan: null, usage: emptyCompletionUsage() }
+  }
+  return { plan: finish(extractText(events)), usage: emptyCompletionUsage() }
 }

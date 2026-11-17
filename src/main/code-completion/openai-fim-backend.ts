@@ -3,21 +3,18 @@ import { NES_CURSOR_MARKER } from '../../shared/code-completion/code-completion-
 import {
   validateNesEditPlan,
   type NesEdit,
+  type NesEditPlan,
   type NesRequest
 } from '../../shared/code-completion/code-completion-types'
 import {
-  emptyCompletionUsage,
   NES_COMPLETION_OUTPUT_LIMIT,
+  planFromCompletionStream,
   type CompletionBackendOptions,
   type NesBackend,
   type NesBackendConfig,
   type NesBackendResult
 } from './completion-backend'
-import {
-  completionEndpointUrl,
-  parseCompletionSseEvents,
-  postCompletionJson
-} from './completion-http'
+import { completionEndpointUrl } from './completion-http'
 
 const OPENAI_COMPLETIONS_PATH = '/completions'
 
@@ -32,35 +29,26 @@ export function createOpenAiFimBackend(
   return {
     id: 'openai-completions-fim',
     planCapable: false,
-    async plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
-      const result = await postCompletionJson({
-        url: completionEndpointUrl(config.baseUrl, OPENAI_COMPLETIONS_PATH),
-        headers: {
-          authorization: `Bearer ${config.apiKey}`,
-          'content-type': 'application/json'
+    plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
+      return planFromCompletionStream(
+        {
+          url: completionEndpointUrl(config.baseUrl, OPENAI_COMPLETIONS_PATH),
+          headers: {
+            authorization: `Bearer ${config.apiKey}`,
+            'content-type': 'application/json'
+          },
+          body: {
+            model: config.model,
+            max_tokens: config.maxTokens,
+            prompt: `${input.prefix}${NES_CURSOR_MARKER}${input.suffix}`,
+            stream: true
+          },
+          signal,
+          fetchImpl: options?.fetchImpl
         },
-        body: {
-          model: config.model,
-          max_tokens: config.maxTokens,
-          prompt: `${input.prefix}${NES_CURSOR_MARKER}${input.suffix}`,
-          stream: true
-        },
-        signal,
-        fetchImpl: options?.fetchImpl
-      })
-      if (!result.ok) {
-        return { plan: null, usage: emptyCompletionUsage() }
-      }
-      const events = parseCompletionSseEvents(result.text)
-      if (!events) {
-        return { plan: null, usage: emptyCompletionUsage() }
-      }
-      const completion = openAiCompletionStreamText(events).slice(0, NES_COMPLETION_OUTPUT_LIMIT)
-      const plan = validateNesEditPlan(
-        { edits: completion ? [fimCursorEdit(completion, input)] : [] },
-        { allowedPaths: [input.filePath] }
+        openAiCompletionStreamText,
+        (text) => fimCompletionPlan(text, input)
       )
-      return { plan, usage: emptyCompletionUsage() }
     }
   }
 }
@@ -92,4 +80,13 @@ function fimCursorEdit(text: string, input: NesRequest): NesEdit {
     text,
     label: 'Completion'
   }
+}
+
+function fimCompletionPlan(text: string, input: NesRequest): NesEditPlan {
+  // The trailing break would insert a blank line; the leading whitespace is the model's own indentation.
+  const completion = text.replace(/\r?\n+$/, '').slice(0, NES_COMPLETION_OUTPUT_LIMIT)
+  return validateNesEditPlan(
+    { edits: completion ? [fimCursorEdit(completion, input)] : [] },
+    { allowedPaths: [input.filePath] }
+  )
 }

@@ -113,6 +113,13 @@ describe('buildNesSystemPrompt', () => {
     expect(prompt).toContain('exactly as it appears after `###PATH:`')
   })
 
+  it('counts the lines of each file on its own', () => {
+    const prompt = buildNesSystemPrompt()
+
+    expect(prompt).toContain("Count each file's lines separately")
+    expect(prompt).toContain('the line right after its `###PATH:` header, is line 1 of that file')
+  })
+
   it('states the ten rules in order', () => {
     const statements = [
       'Reply with a single JSON object of the form {"edits":[…]}',
@@ -120,7 +127,7 @@ describe('buildNesSystemPrompt', () => {
       'Propose at most 5 edits',
       'and at most 2 edits per file',
       'A range is 1-based, its columns count UTF-16 code units',
-      'Line numbers are relative to the text you are shown',
+      "Count each file's lines separately",
       'The edit at the cursor must end at the cursor position',
       'originalText must be the exact text the range currently covers',
       'label is a short human-readable intent',

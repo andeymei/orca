@@ -118,6 +118,42 @@ describe('completion backends', () => {
     ])
   })
 
+  it('asks for the auto-import when the setting is on', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([anthropicTextEvent(JSON.stringify(MODEL_PLAN))])
+    )
+    const backend = createAnthropicMessagesBackend({ ...CONFIG, autoImport: true }, { fetchImpl })
+
+    await backend.plan(REQUEST, new AbortController().signal)
+
+    const body = requestBody(fetchImpl.mock.calls[0])
+    expect(body.system).toContain('adds the import')
+  })
+
+  it('drops an edit that answers with the relative path', async () => {
+    const relativePlan = {
+      edits: [
+        {
+          id: 'e1',
+          path: REQUEST.relativePath,
+          kind: 'insert',
+          range: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 1 },
+          originalText: '',
+          text: 'const c = 3\n',
+          label: 'add the third constant'
+        }
+      ]
+    }
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([anthropicTextEvent(JSON.stringify(relativePlan))])
+    )
+    const backend = createAnthropicMessagesBackend(CONFIG, { fetchImpl })
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.plan?.edits).toEqual([])
+  })
+
   it('reads an OpenAI chat stream and returns the validated plan', async () => {
     const planJson = JSON.stringify(MODEL_PLAN)
     const fetchImpl = vi.fn<typeof fetch>(async () =>
@@ -151,7 +187,7 @@ describe('completion backends', () => {
 
   it('reads an OpenAI FIM stream and returns only the cursor edit', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
-      sseResponse([JSON.stringify({ choices: [{ text: 'const c = 3' }] })])
+      sseResponse([JSON.stringify({ choices: [{ text: '  const c = 3\n' }] })])
     )
     const backend = createOpenAiFimBackend(CONFIG, { fetchImpl })
 
@@ -165,7 +201,7 @@ describe('completion backends', () => {
         kind: 'insert',
         range: { startLine: 41, startColumn: 1, endLine: 41, endColumn: 1 },
         originalText: '',
-        text: 'const c = 3',
+        text: '  const c = 3',
         label: 'Completion'
       }
     ])

@@ -1,0 +1,1479 @@
+# Next Edit Suggestion Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** In Orca's Monaco editor, show an inline code suggestion at the cursor that Tab accepts, and mark the other places the model predicts you will edit next.
+
+**Architecture:** A model returns a structured _edit plan_ (which file, which range, what text, why) as JSON. The renderer sends a paused-editing context to the runtime over RPC; the runtime calls an Anthropic- or OpenAI-compatible endpoint, caches the answer, and returns the plan. The renderer keeps the plan per file, renders the edit at the cursor through Monaco's own inline-completions API, and marks the other predicted locations in the gutter.
+
+**Tech Stack:** TypeScript, Electron (main + preload + renderer), Monaco 0.55, zod, Vitest under Bun, Playwright E2E.
+
+**Spec:** `docs/superpowers/specs/2026-11-17-next-edit-suggestion-design.md` — read it before starting; this plan implements it and does not restate it.
+
+## Global Constraints
+
+- **Never write to the model and then notify the store.** Orca owns content sync (`src/renderer/src/components/editor/monaco-content-sync.ts`); a model edit fires `onDidChangeModelContent`, which the bridge (`use-monaco-content-sync-bridge.ts`) already turns into `onContentChange` → draft → dirty → autosave. Writing through the model _is_ the notification. Calling `onContentChange` yourself as well is a double write.
+- **Do not use `beginProgrammaticContentSync` / `endProgrammaticContentSync` when applying an accepted suggestion.** Those suppress the change event, which would leave the file clean and unsaved. They exist for content _syncs_, not for user edits.
+- An accepted suggestion must be one undoable step: `editorInstance.pushUndoStop()`, `model.pushEditOperations([], [edit], () => null)`, `editorInstance.pushUndoStop()`.
+- The API key never enters `GlobalSettings` (that is plaintext JSON on disk) and never enters the RPC params catalog. It lives in an encrypted file store (`createEncryptedApiKeyFileStore`) reached through a dedicated preload channel.
+- New runtime RPC methods need seven things: a zod params schema in `src/shared/rpc-contract/`, a `defineMethod` with an explicit `permission`, a family file exporting a `*_METHODS` array, a spread into a domain aggregate, a spread into `ALL_RPC_METHODS` in `src/main/runtime/rpc/methods/rpc-method-registry.ts`, a regenerated `src/shared/rpc-contract/rpc-params-catalog.generated.ts` (`pnpm generate:rpc-params-catalog` — the `rpc-params-type-parity.ts` type gate fails otherwise), and the renderer call site.
+- `RpcMethodPermission` is a closed union: `'workspace' | 'desktop-control' | 'accounts-admin' | 'settings-write' | 'skills-admin' | 'pairing-admin' | 'host-admin' | 'device-self'`.
+- Outbound HTTP goes through `getMainHttpClient().fetch` (`src/main/network/http-client.ts`) — it honours the Chromium proxy session. Never call `globalThis.fetch` directly in main.
+- A settings write goes through the `SettingsUpdate` zod schema (`src/shared/rpc-contract/client-settings-params.ts`), which is `.strict()` — a new setting must be added to it or the write is rejected.
+- `GlobalSettingsBase` is an intersection of feature-owned setting modules (`src/shared/global-settings-base.ts`). A new settings block is a new module intersected in, not a field bolted onto the big type.
+- New keybinding ids need **two** edits: a `| 'literal'` member in the `KeybindingActionId` union (`src/shared/keybindings/types.ts`) **and** a `KeybindingDefinition` entry in a `definitions-core-N.ts` file.
+- Editor key handling is a capture-phase `keydown` listener on `editor.getContainerDomNode()` with `preventDefault()` + `stopPropagation()` (`src/renderer/src/components/editor/editor-shortcuts.ts`). Monaco's own keymap is untouched.
+- The inline-completions provider is a module-level singleton guarded by the Monaco instance identity (`ensureMarkdownDocCompletionProvider` in `monaco-markdown-doc-completions.ts` is the pattern).
+- Comments state _why_, not _how_. One line.
+- No `helpers` / `utils` / `common` in a filename — name a file after the domain concept it holds.
+- Cross-platform: `path.join` for paths; never hardcode a shell separator.
+- Run tests with `pnpm test <path> --maxWorkers=2`. Never raw `vitest`. Never run two vitest runs at once on this checkout.
+
+## Review Focus
+
+Five input classes the spec implies but no task's tests exercise — each line below gets a test in the owning task.
+
+1. **The user keeps typing while a request is in flight.** The stale plan must not be applied to text that changed under it. (Task 8 — the plan carries the cursor position it was built for; an edit only matches a cursor at its range end, so a moved cursor finds no suggestion.)
+2. **The model returns an edit for a file the user is no longer in.** The marker must not appear in a file the plan did not name, and a plan whose file has changed must not apply. (Task 8 — the plan is keyed by path and each edit re-verifies `originalText` before it is applied.)
+3. **The user presses Tab with no suggestion showing.** That must fall through to the TypeScript intellisense suggest widget, not swallow the key. (Task 9.)
+4. **The endpoint returns a 401, a 429, or a truncated stream.** The user must see no suggestion and no error dialog; the failure must not be cached as "no suggestions". (Task 3 and Task 4.)
+5. **The user has no API key configured, or the key was revoked.** The feature must be inert and the settings UI must say why, rather than firing requests that fail. (Task 5 and Task 11.)
+
+---
+
+### Task 1: The edit-plan contract and the prompt
+
+**Files:**
+
+- Create: `src/shared/code-completion/code-completion-types.ts`
+- Create: `src/shared/code-completion/code-completion-prompt.ts`
+- Create: `src/shared/code-completion/code-completion-types.test.ts`
+- Create: `src/shared/code-completion/code-completion-prompt.test.ts`
+
+**Interfaces:**
+
+- Consumes: nothing.
+- Produces (all in `src/shared/code-completion/code-completion-types.ts` unless noted — the renderer and the main process both import them, so **nothing here may live under `src/main/`**):
+  - `NesEditKind`, `NesEditRange`, `NesEdit`, `NesEditPlan` (zod schemas and inferred types)
+  - `NesBackendId = 'anthropic-messages' | 'openai-chat' | 'openai-completions-fim'`
+  - `NesRequest` — the request both sides speak: `{ filePath: string; relativePath: string; languageId: string; prefix: string; suffix: string; relatedFiles: readonly { path: string; content: string }[]; recentEdits: readonly { path: string; label: string }[] }`
+  - `validateNesEditPlan(raw: unknown, options: { allowedPaths: readonly string[] }): NesEditPlan` — drops unusable edits instead of failing the whole plan
+  - `sliceRange(text: string, range: NesEditRange): string | null` — the text a range covers, or null when it is out of bounds
+  - `buildNesSystemPrompt(options?: { autoImport?: boolean }): string`
+  - `buildNesUserPrompt(input: NesPromptInput): string`
+  - `type NesPromptInput = NesRequest & { autoImport: boolean }`
+
+**Where the `originalText` check happens.** The backend never sees the file's full text — it only has the prefix and the suffix — so it **cannot** verify that `originalText` matches the range. The backend validates structure and paths; the **renderer** validates content, against the live model, in Task 9 (before offering) and again in Task 11 (before applying).
+
+- [ ] **Step 1: Write the failing schema test**
+
+Create `src/shared/code-completion/code-completion-types.test.ts`. Cover exactly these cases:
+
+```ts
+describe('validateNesEditPlan', () => {
+  it('keeps a well-formed insert', ...)
+  it('drops an edit whose path is not in the context', ...)
+  it('drops a delete that carries new text', ...)
+  it('drops an insert that carries original text', ...)
+  it('drops a replace that carries neither text', ...)
+  it('truncates a plan with more than five edits', ...)
+  it('returns an empty plan when the payload is not JSON', ...)
+})
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/shared/code-completion/code-completion-types.test.ts --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the schema and the validator**
+
+Create `src/shared/code-completion/code-completion-types.ts`:
+
+```ts
+import { z } from 'zod'
+
+export const NES_MAX_EDITS = 5
+
+export const NesEditKind = z.enum(['insert', 'replace', 'delete'])
+
+export const NesEditRange = z.object({
+  startLine: z.number().int().positive(),
+  startColumn: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  endColumn: z.number().int().positive()
+})
+
+export const NesEdit = z.object({
+  id: z.string().min(1),
+  path: z.string().min(1),
+  kind: NesEditKind,
+  range: NesEditRange,
+  originalText: z.string(),
+  text: z.string(),
+  label: z.string()
+})
+
+export const NesEditPlan = z.object({ edits: z.array(NesEdit).max(NES_MAX_EDITS) })
+
+export type NesEditKind = z.infer<typeof NesEditKind>
+export type NesEditRange = z.infer<typeof NesEditRange>
+export type NesEdit = z.infer<typeof NesEdit>
+export type NesEditPlan = z.infer<typeof NesEditPlan>
+```
+
+`validateNesEditPlan` parses the payload with `NesEditPlan.safeParse`. A parse failure returns `{ edits: [] }` — a malformed answer means "no suggestion", never an error the user sees.
+
+For each parsed edit, keep it only when all of these hold:
+
+- `allowedPaths` includes `edit.path`
+- `kind === 'insert'` implies `originalText === ''`
+- `kind === 'delete'` implies `text === ''`
+- `kind === 'replace'` implies both texts are non-empty
+
+`sliceRange(text, range)` returns the text a range covers: 1-based line and column, column counted in UTF-16 code units, lines split on `\n`, null when the range is out of bounds.
+
+- [ ] **Step 4: Write the prompt test**
+
+Create `src/shared/code-completion/code-completion-prompt.test.ts`:
+
+```ts
+describe('buildNesUserPrompt', () => {
+  it('marks the cursor with a sentinel that cannot appear in source', ...)
+  it('separates each file with a ###PATH: header', ...)
+  it('includes the related files after the current one', ...)
+  it('lists the recently accepted edits', ...)
+})
+```
+
+Pin the exact sentinel and the exact header in the assertions, e.g. the cursor marker is `<<<CURSOR>>>` and each file header is `###PATH: <path>` on its own line.
+
+- [ ] **Step 5: Run the test to verify it fails**
+
+Run: `pnpm test src/shared/code-completion/code-completion-prompt.test.ts --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 6: Write the prompt builder**
+
+Create `src/shared/code-completion/code-completion-prompt.ts`:
+
+```ts
+export const NES_CURSOR_MARKER = '<<<CURSOR>>>'
+export const NES_PATH_HEADER_PREFIX = '###PATH: '
+
+export function buildNesSystemPrompt(): string
+export function buildNesUserPrompt(input: NesPromptInput): string
+```
+
+The system prompt states, in this order: the response is a single JSON object `{"edits":[…]}` with no prose and no markdown fence; each edit carries `id`, `path`, `kind`, `range`, `originalText`, `text`, `label`; at most five edits; at most two edits per file; `range` is 1-based with columns in UTF-16 code units; **the range's end must be the cursor position** so the suggestion applies where the user is typing; `originalText` must be the exact text the range currently covers; `label` is a short human-readable intent; and the model must return `{"edits":[]}` when it has nothing to propose.
+
+When `autoImport` is true the system prompt adds one sentence: when the new code needs a module that is not imported, propose an `insert` edit at the top of the file that adds the import. When it is false, the sentence is absent — the switch changes the prompt, not the filter.
+
+The user prompt is:
+
+```
+Current file: <relativePath>
+Language: <languageId>
+
+###PATH: <filePath>
+<prefix><NES_CURSOR_MARKER><suffix>
+
+###PATH: <related path>
+<content>
+
+Recently accepted edits:
+- <path>: <label>
+```
+
+The current file comes first; related files follow in the order given; recent edits come last.
+
+- [ ] **Step 7: Run both test files**
+
+Run: `pnpm test src/shared/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/shared/code-completion
+git commit -m "feat(code-completion): the edit plan contract and its prompt"
+```
+
+---
+
+### Task 2: The three HTTP backends
+
+**Files:**
+
+- Create: `src/main/code-completion/completion-backend.ts`
+- Create: `src/main/code-completion/completion-http.ts`
+- Create: `src/main/code-completion/anthropic-messages-backend.ts`
+- Create: `src/main/code-completion/openai-chat-backend.ts`
+- Create: `src/main/code-completion/openai-fim-backend.ts`
+- Create: `src/main/code-completion/completion-backends.test.ts`
+
+**Interfaces:**
+
+- Consumes: `NesEditPlan`, `validateNesEditPlan`, `NesBackendId`, `NesRequest` — all from `src/shared/code-completion/code-completion-types.ts` (Task 1).
+- Produces:
+  - `type NesBackend = { id: NesBackendId; planCapable: boolean; plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> }`
+  - `type NesBackendResult = { plan: NesEditPlan | null; usage: CompletionUsage }` — the usage is filled in by Task 14; until then it is all zeros
+  - `type CompletionUsage = { inputTokens: number; outputTokens: number; cacheReadTokens: number }`
+  - `createAnthropicMessagesBackend(config): NesBackend`
+  - `createOpenAiChatBackend(config): NesBackend`
+  - `createOpenAiFimBackend(config): NesBackend`
+  - `type NesBackendConfig = { baseUrl: string; model: string; apiKey: string; maxTokens: number }`
+
+- [ ] **Step 1: Write the failing backend test**
+
+Create `src/main/code-completion/completion-backends.test.ts`. Stub the network at the seam the backends use — the backends must call an injected `fetch` so the test never touches the network:
+
+```ts
+describe('completion backends', () => {
+  it('reads an Anthropic stream and returns the validated plan', ...)
+  it('reads an OpenAI chat stream and returns the validated plan', ...)
+  it('reads an OpenAI FIM stream and returns only the cursor edit', ...)
+  it('returns null when the endpoint answers 401', ...)
+  it('returns null when the stream ends mid-object', ...)
+  it('returns null when the endpoint answers 429 with a retry-after', ...)
+})
+```
+
+The FIM case is the interesting one: the FIM backend has `planCapable === false` and returns a plan with at most one edit, whose `path` is the current file and whose range is the cursor.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/main/code-completion/completion-backends.test.ts --maxWorkers=2`
+Expected: FAIL — the modules do not exist.
+
+- [ ] **Step 3: Write the shared stream reader**
+
+Create `src/main/code-completion/completion-http.ts`:
+
+```ts
+export type CompletionHttpRequest = {
+  url: string
+  headers: Record<string, string>
+  body: unknown
+  signal: AbortSignal
+  fetchImpl?: typeof fetch
+}
+
+export type CompletionHttpResult =
+  | { ok: true; text: string }
+  | { ok: false; reason: 'http_error' | 'stream_error' | 'aborted' }
+
+export async function postCompletionJson(
+  request: CompletionHttpRequest
+): Promise<CompletionHttpResult>
+```
+
+It posts with `getMainHttpClient().fetch` unless `fetchImpl` is injected, reads the body as a stream with `response.body.getReader()`, and accumulates the SSE `data:` payloads into one text buffer, stripping the `data: ` prefix and ignoring `[DONE]`. A non-2xx response returns `{ ok: false, reason: 'http_error' }` — the status code itself is not part of the result, because no caller may show it to the user.
+
+- [ ] **Step 4: Write the three backends**
+
+Create `src/main/code-completion/completion-backend.ts` with the `NesBackend` type. `NesBackendId` and `NesRequest` come from `src/shared/code-completion/code-completion-types.ts` — do not redeclare them here.
+
+Create `src/main/code-completion/anthropic-messages-backend.ts`:
+
+```ts
+export function createAnthropicMessagesBackend(config: NesBackendConfig): NesBackend
+```
+
+Posts to `${config.baseUrl}/v1/messages` with `{ model, max_tokens, system, messages: [{ role: 'user', content }], stream: true }` and the headers `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`. The streamed text is the concatenation of the `content_block_delta` `text` fields.
+
+Create `src/main/code-completion/openai-chat-backend.ts`:
+
+```ts
+export function createOpenAiChatBackend(config: NesBackendConfig): NesBackend
+```
+
+Posts to `${config.baseUrl}/chat/completions` with `{ model, max_tokens, messages: [{ role: 'system', content }, { role: 'user', content }], stream: true }` and the headers `authorization: Bearer <key>`, `content-type: application/json`. The streamed text is the concatenation of `choices[0].delta.content`.
+
+Create `src/main/code-completion/openai-fim-backend.ts`:
+
+```ts
+export function createOpenAiFimBackend(config: NesBackendConfig): NesBackend
+```
+
+Posts to `${config.baseUrl}/completions` with `{ model, max_tokens, prompt, stream: true }` where `prompt` is the prefix, a cursor sentinel, and the suffix. The streamed text is the concatenation of `choices[0].text`. This backend has `planCapable: false`; it returns one edit whose `path` is the current file and whose range is the cursor, and it never asks for multi-location edits.
+
+All three backends finish the same way: parse the accumulated text as JSON, run it through `validateNesEditPlan` with the request's file paths, and return `null` on any failure.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `pnpm test src/main/code-completion/completion-backends.test.ts --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/main/code-completion
+git commit -m "feat(code-completion): the Anthropic, OpenAI chat and FIM backends"
+```
+
+---
+
+### Task 3: The completion service and its cache
+
+**Files:**
+
+- Create: `src/main/code-completion/completion-cache.ts`
+- Create: `src/main/code-completion/completion-service.ts`
+- Create: `src/main/code-completion/completion-cache.test.ts`
+- Create: `src/main/code-completion/completion-service.test.ts`
+
+**Interfaces:**
+
+- Consumes: `NesBackend`, `NesRequest` (Task 2); `NesEditPlan` (Task 1).
+- Produces:
+  - `type CompletionCache = { get(key: string): NesEditPlan | null; set(key: string, plan: NesEditPlan): void; clear(): void }`
+  - `createCompletionCache(options?: { ttlMs?: number; maxPerFile?: number }): CompletionCache`
+  - `completionCacheKey(input: { filePath: string; prefix: string; suffix: string; relatedPaths: readonly string[] }): string`
+  - `type CompletionService = { plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> }`
+  - `createCompletionService(options: { resolveBackend: () => NesBackend | null; cache: CompletionCache; now?: () => number }): CompletionService`
+
+- [ ] **Step 1: Write the failing cache test**
+
+Create `src/main/code-completion/completion-cache.test.ts`:
+
+```ts
+describe('completion cache', () => {
+  it('returns a cached plan within the ttl', ...)
+  it('expires a cached plan after the ttl', ...)
+  it('keeps at most ten plans per file and evicts the least recently used', ...)
+  it('keys a plan by the cursor context so a moved cursor misses', ...)
+})
+```
+
+The ttl is 30 000 ms and the per-file cap is 10 — the values the spec fixes.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/main/code-completion/completion-cache.test.ts --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the cache**
+
+Create `src/main/code-completion/completion-cache.ts`. The cache holds `{ plan, storedAt, lastUsedAt }` per key. `get` returns the plan when `now - storedAt < ttlMs` and refreshes `lastUsedAt`; otherwise it deletes the entry and returns null. `set` stores and, when the file has more than `maxPerFile` entries, evicts the one with the smallest `lastUsedAt`.
+
+`completionCacheKey` hashes the file path, the prefix, the suffix, and the sorted related paths into one string. A moved cursor changes the prefix and suffix, so it misses.
+
+- [ ] **Step 4: Write the failing service test**
+
+Create `src/main/code-completion/completion-service.test.ts`:
+
+```ts
+describe('completion service', () => {
+  it('asks the backend once and serves the second identical request from the cache', ...)
+  it('returns null when no backend is configured', ...)
+  it('does not cache a failure', ...)
+  it('gives up after the request timeout', ...)
+  it('runs at most four requests at once', ...)
+})
+```
+
+- [ ] **Step 5: Run the test to verify it fails**
+
+Run: `pnpm test src/main/code-completion/completion-service.test.ts --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 6: Write the service**
+
+Create `src/main/code-completion/completion-service.ts`. The service:
+
+1. resolves the backend through `resolveBackend()`; when it returns null it answers `null` without calling anything
+2. looks the cache up by `completionCacheKey(input)`; a hit is returned immediately
+3. otherwise calls `backend.plan(input, signal)` under an 8 000 ms timeout and a global concurrency cap of four (a queue that lets a fifth caller wait)
+4. caches a **successful** plan and returns it; a failure returns `null` and caches nothing
+
+- [ ] **Step 7: Run both test files**
+
+Run: `pnpm test src/main/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/main/code-completion
+git commit -m "feat(code-completion): the completion service and its cache"
+```
+
+---
+
+### Task 4: The completion settings
+
+**Files:**
+
+- Create: `src/shared/code-completion/code-completion-settings.ts`
+- Modify: `src/shared/global-settings-base.ts` (intersect the new module in)
+- Modify: `src/shared/default-global-settings.ts` (add the default block)
+- Modify: `src/shared/rpc-contract/client-settings-params.ts` (add the field to the `.strict()` `SettingsUpdate` schema)
+- Create: `src/shared/code-completion/code-completion-settings.test.ts`
+
+**Interfaces:**
+
+- Consumes: `NesBackendId` from `src/shared/code-completion/code-completion-types.ts` (Task 1).
+- Produces:
+  - `type CodeCompletionSettings = { enabled: boolean; protocol: NesBackendId; baseUrl: string; model: string; triggerDelayMs: number; autoImport: boolean; enabledExtensions: string[] }`
+  - `getDefaultCodeCompletionSettings(): CodeCompletionSettings`
+  - `normalizeCodeCompletionSettings(value: unknown): CodeCompletionSettings`
+  - `GlobalSettings['codeCompletion']` — optional, so an existing profile needs no migration
+
+- [ ] **Step 1: Write the failing settings test**
+
+Create `src/shared/code-completion/code-completion-settings.test.ts`:
+
+```ts
+describe('code completion settings', () => {
+  it('defaults to enabled with no endpoint configured', ...)
+  it('normalizes an unknown protocol back to the default', ...)
+  it('normalizes a negative trigger delay to the default', ...)
+  it('keeps a per-extension list', ...)
+})
+```
+
+The defaults are: `enabled: true`, `protocol: 'anthropic-messages'`, `baseUrl: ''`, `model: ''`, `triggerDelayMs: 500`, `autoImport: true`, `enabledExtensions: ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'go', 'rs', 'java', 'rb', 'php', 'cs', 'swift', 'kt', 'scala', 'c', 'h', 'cpp', 'hpp', 'vue', 'svelte']`.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/shared/code-completion/code-completion-settings.test.ts --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the settings module**
+
+Create `src/shared/code-completion/code-completion-settings.ts` exporting the type, `getDefaultCodeCompletionSettings()` and `normalizeCodeCompletionSettings(value)`. `normalizeCodeCompletionSettings` reads an unknown value defensively: a non-object becomes the defaults; each field falls back to its default when it is the wrong type; `triggerDelayMs` is clamped to 0…5000.
+
+- [ ] **Step 4: Wire the settings into the global type and the defaults**
+
+In `src/shared/global-settings-base.ts`, intersect the new module into `GlobalSettingsBase`:
+
+```ts
+export type GlobalSettingsBase = ... &
+  CodeCompletionSettingsHolder
+```
+
+where `src/shared/code-completion/code-completion-settings.ts` also exports
+
+```ts
+export type CodeCompletionSettingsHolder = {
+  /** Optional so an existing profile needs no migration. */
+  codeCompletion?: CodeCompletionSettings
+}
+```
+
+In `src/shared/default-global-settings.ts`, add `codeCompletion: getDefaultCodeCompletionSettings()` to the object `buildDefaultSettings` returns.
+
+In `src/shared/rpc-contract/client-settings-params.ts`, add to the `SettingsUpdate` object:
+
+```ts
+    codeCompletion: z.unknown().transform((v) => normalizeCodeCompletionSettings(v)).optional(),
+```
+
+The `.strict()` schema rejects unknown keys, so this line is what lets the renderer save the block.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `pnpm test src/shared/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 6: Typecheck**
+
+Run: `pnpm tc`
+Expected: no errors.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/shared/code-completion src/shared/global-settings-base.ts src/shared/default-global-settings.ts src/shared/rpc-contract/client-settings-params.ts
+git commit -m "feat(code-completion): the completion settings block"
+```
+
+---
+
+### Task 5: The encrypted key store and its preload surface
+
+**Files:**
+
+- Create: `src/main/code-completion/code-completion-api-key-store.ts`
+- Create: `src/main/ipc/code-completion-credentials.ts`
+- Create: `src/preload/api/code-completion-api.ts`
+- Create: `src/preload/api/code-completion-bridge.ts`
+- Modify: `src/preload/api-types.ts` (register the API type)
+- Modify: `src/preload/index.ts` (expose the bridge)
+- Modify: `src/main/ipc/register-core-handlers/register-core-handlers.ts` (register the handlers)
+- Create: `src/main/code-completion/code-completion-api-key-store.test.ts`
+
+**Interfaces:**
+
+- Consumes: `createEncryptedApiKeyFileStore` (`src/main/credentials/encrypted-api-key-file-store.ts`), the minimax credential pattern (`src/main/minimax/minimax-credential-commands.ts`).
+- Produces:
+  - `hasCodeCompletionApiKey(): boolean`, `readCodeCompletionApiKey(): string | null`, `saveCodeCompletionApiKey(key: string): void`, `clearCodeCompletionApiKey(): void`
+  - `type CodeCompletionCredentialsApi = { getStatus: () => Promise<CodeCompletionCredentialsStatus>; saveApiKey: (key: string) => Promise<CodeCompletionCredentialsStatus>; clearApiKey: () => Promise<CodeCompletionCredentialsStatus> }` exposed as `window.api.codeCompletion`
+  - `type CodeCompletionCredentialsStatus = { configured: boolean; protection: SecretAtRestProtection | null }`
+
+- [ ] **Step 1: Write the failing store test**
+
+Create `src/main/code-completion/code-completion-api-key-store.test.ts`:
+
+```ts
+describe('code completion api key store', () => {
+  it('reports no key before one is saved', ...)
+  it('saves and reads a key back', ...)
+  it('rejects an empty key', ...)
+  it('clears a saved key', ...)
+})
+```
+
+The test must point the store at a temporary home. Read how `src/main/minimax/` tests isolate the store, or how `createEncryptedApiKeyFileStore` resolves its path (`join(homedir(), '.orca', fileName)`), and follow the same isolation.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/main/code-completion/code-completion-api-key-store.test.ts --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the store**
+
+Create `src/main/code-completion/code-completion-api-key-store.ts` following `src/main/minimax/minimax-api-key-store.ts` exactly:
+
+```ts
+import { createEncryptedApiKeyFileStore } from '../credentials/encrypted-api-key-file-store'
+
+const store = createEncryptedApiKeyFileStore({
+  fileName: 'code-completion-api-key.enc',
+  envelopePrefix: 'orca-code-completion-api-key:v1:',
+  providerLabel: 'Code completion',
+  logScope: 'code-completion'
+})
+
+export const hasCodeCompletionApiKey = store.has
+export const readCodeCompletionApiKey = store.read
+export const saveCodeCompletionApiKey = store.save
+export const clearCodeCompletionApiKey = store.clear
+export const codeCompletionApiKeyEnvelopeFile = store.envelopeFile
+```
+
+- [ ] **Step 4: Write the preload surface**
+
+Create `src/preload/api/code-completion-api.ts`:
+
+```ts
+export type CodeCompletionCredentialsApi = {
+  getStatus: () => Promise<CodeCompletionCredentialsStatus>
+  saveApiKey: (key: string) => Promise<CodeCompletionCredentialsStatus>
+  clearApiKey: () => Promise<CodeCompletionCredentialsStatus>
+}
+```
+
+Create `src/preload/api/code-completion-bridge.ts`:
+
+```ts
+import { ipcRenderer } from 'electron'
+import type { PreloadApi } from '../api-types'
+
+export const codeCompletionApi = {
+  getStatus: (): Promise<CodeCompletionCredentialsStatus> =>
+    ipcRenderer.invoke('codeCompletion:getCredentialStatus'),
+  saveApiKey: (key: string): Promise<CodeCompletionCredentialsStatus> =>
+    ipcRenderer.invoke('codeCompletion:saveApiKey', key),
+  clearApiKey: (): Promise<CodeCompletionCredentialsStatus> =>
+    ipcRenderer.invoke('codeCompletion:clearApiKey')
+} satisfies PreloadApi['codeCompletion']
+```
+
+Register `codeCompletion: CodeCompletionCredentialsApi` in `src/preload/api-types.ts` and `codeCompletion: codeCompletionApi` in `src/preload/index.ts`.
+
+Create `src/main/ipc/code-completion-credentials.ts`:
+
+```ts
+export function registerCodeCompletionCredentialHandlers(): void {
+  ipcMain.handle('codeCompletion:getCredentialStatus', () => getCodeCompletionCredentialStatus())
+  ipcMain.handle('codeCompletion:saveApiKey', (_event, key: unknown) =>
+    saveCodeCompletionApiKeyCredential(key)
+  )
+  ipcMain.handle('codeCompletion:clearApiKey', () => clearCodeCompletionApiKeyCredential())
+}
+```
+
+The save handler validates `typeof key === 'string'` before storing — IPC arguments are untrusted. Register `registerCodeCompletionCredentialHandlers()` in `src/main/ipc/register-core-handlers/register-core-handlers.ts` alongside the minimax credential handlers.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `pnpm test src/main/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 6: Typecheck**
+
+Run: `pnpm tc:node && pnpm tc:web`
+Expected: no errors.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/main/code-completion src/main/ipc/code-completion-credentials.ts src/main/ipc/register-core-handlers src/preload
+git commit -m "feat(code-completion): store the completion API key outside the settings"
+```
+
+---
+
+### Task 6: The RPC method family
+
+**Files:**
+
+- Create: `src/shared/rpc-contract/code-completion-params.ts`
+- Create: `src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts`
+- Modify: `src/main/runtime/rpc/methods/rpc-method-registry.ts` (import and spread)
+- Regenerate: `src/shared/rpc-contract/rpc-params-catalog.generated.ts`
+- Create: `src/main/runtime/rpc/methods/code-completion/code-completion-methods.test.ts`
+
+**Interfaces:**
+
+- Consumes: `createCompletionService` (Task 3), `getClientSettings` / `updateClientSettings` (the runtime's settings controller), `readCodeCompletionApiKey` (Task 5), `NesBackendId` (Task 2), `NesRequest` (Task 2).
+- Produces: the RPC method `codeCompletion.plan`, callable as `callRuntimeRpc(target, 'codeCompletion.plan', params)`.
+
+- [ ] **Step 1: Write the params schema**
+
+Create `src/shared/rpc-contract/code-completion-params.ts`:
+
+```ts
+import { z } from 'zod'
+import { NesBackendId } from '../code-completion/code-completion-types'
+
+export const CodeCompletionRelatedFile = z.object({
+  path: z.string().min(1),
+  content: z.string()
+})
+
+export const CodeCompletionRecentEdit = z.object({
+  path: z.string().min(1),
+  label: z.string()
+})
+
+export const CodeCompletionPlan = z.object({
+  filePath: z.string().min(1),
+  relativePath: z.string(),
+  languageId: z.string(),
+  prefix: z.string(),
+  suffix: z.string(),
+  relatedFiles: z.array(CodeCompletionRelatedFile).max(8).default([]),
+  recentEdits: z.array(CodeCompletionRecentEdit).max(10).default([])
+})
+
+export const CodeCompletionPlanResult = z.object({
+  plan: z.unknown().nullable()
+})
+```
+
+- [ ] **Step 2: Write the failing method test**
+
+Create `src/main/runtime/rpc/methods/code-completion/code-completion-methods.test.ts`:
+
+```ts
+describe('codeCompletion.plan', () => {
+  it('returns a plan from the completion service', ...)
+  it('returns null when the feature is disabled', ...)
+  it('returns null when no endpoint is configured', ...)
+  it('returns null when no API key is stored', ...)
+  it('never returns the API key to the caller', ...)
+})
+```
+
+The last case is the one that matters: assert that the serialized response contains neither the key nor the base URL's credentials.
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `pnpm test src/main/runtime/rpc/methods/code-completion --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 4: Write the method family**
+
+Create `src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts`:
+
+```ts
+import { defineMethod } from '../../../core'
+import { CodeCompletionPlan } from '../../../../../shared/rpc-contract/code-completion-params'
+import { createCompletionService } from '../../../../code-completion/completion-service'
+import { createAnthropicMessagesBackend } from '../../../../code-completion/anthropic-messages-backend'
+import { createOpenAiChatBackend } from '../../../../code-completion/openai-chat-backend'
+import { createOpenAiFimBackend } from '../../../../code-completion/openai-fim-backend'
+import { readCodeCompletionApiKey } from '../../../../code-completion/code-completion-api-key-store'
+
+export const CODE_COMPLETION_METHODS = [
+  defineMethod({
+    name: 'codeCompletion.plan',
+    permission: 'workspace',
+    params: CodeCompletionPlan,
+    handler: async (params, { runtime, signal }) => {
+      const settings = runtime.getClientSettings().codeCompletion
+      if (!settings?.enabled) {
+        return { plan: null }
+      }
+      const apiKey = readCodeCompletionApiKey()
+      if (!apiKey || !settings.baseUrl || !settings.model) {
+        return { plan: null }
+      }
+      const service = createCompletionService({
+        resolveBackend: () =>
+          createBackend(settings.protocol, {
+            baseUrl: settings.baseUrl,
+            model: settings.model,
+            apiKey,
+            maxTokens: 2000
+          })
+      })
+      const result = await service.plan(
+        {
+          filePath: params.filePath,
+          relativePath: params.relativePath,
+          languageId: params.languageId,
+          prefix: params.prefix,
+          suffix: params.suffix,
+          relatedFiles: params.relatedFiles,
+          recentEdits: params.recentEdits
+        },
+        signal ?? new AbortController().signal
+      )
+      return { plan: result.plan }
+    }
+  })
+]
+```
+
+`createBackend` maps the protocol id to the three backend factories. The service instance is created per call so the cache lives only as long as the request — Task 7 moves the cache to a module-level instance so it survives between calls.
+
+- [ ] **Step 5: Register the family**
+
+In `src/main/runtime/rpc/methods/rpc-method-registry.ts`, import `CODE_COMPLETION_METHODS` and spread it into `ALL_RPC_METHODS`.
+
+- [ ] **Step 6: Regenerate the params catalog**
+
+Run: `pnpm generate:rpc-params-catalog`
+Expected: `src/shared/rpc-contract/rpc-params-catalog.generated.ts` now carries a `codeCompletion.plan` entry.
+
+- [ ] **Step 7: Run the test to verify it passes**
+
+Run: `pnpm test src/main/runtime/rpc/methods/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 8: Typecheck**
+
+Run: `pnpm tc:node`
+Expected: no errors — the params-catalog parity gate runs here.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/shared/rpc-contract src/main/runtime/rpc
+git commit -m "feat(code-completion): the codeCompletion.plan RPC method"
+```
+
+---
+
+### Task 7: The renderer client and the context builder
+
+**Files:**
+
+- Create: `src/renderer/src/components/editor/code-completion/nes-runtime-client.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-context-builder.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-context-builder.test.ts`
+
+**Interfaces:**
+
+- Consumes: `callRuntimeRpc` (`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`), `NesRequest` (Task 2), the edit-plan contract (Task 1).
+- Produces:
+  - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal }): Promise<NesEditPlan | null>`
+  - `buildNesContext(model: editor.ITextModel, position: editor.IPosition, options): NesContextInput`
+  - `type NesContextInput = { prefix: string; suffix: string; filePath: string; relativePath: string; languageId: string }`
+
+- [ ] **Step 1: Write the failing context test**
+
+Create `src/renderer/src/components/editor/code-completion/nes-context-builder.test.ts`:
+
+```ts
+describe('buildNesContext', () => {
+  it('puts the cursor between the prefix and the suffix', ...)
+  it('keeps the prefix within its budget and the suffix whole', ...)
+  it('reads the file path and the language from the model', ...)
+})
+```
+
+The budgets are 4000 tokens for the prefix and 1000 for the suffix. Approximate a token as four characters; the test asserts the prefix is truncated to at most 16 000 characters and that the suffix is never truncated while it fits in 4 000 characters.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the context builder**
+
+Create `src/renderer/src/components/editor/code-completion/nes-context-builder.ts`:
+
+```ts
+export const NES_PREFIX_TOKEN_BUDGET = 4000
+export const NES_SUFFIX_TOKEN_BUDGET = 1000
+export const NES_CHARS_PER_TOKEN = 4
+
+export function buildNesContext(
+  model: editor.ITextModel,
+  position: editor.IPosition,
+  options: { filePath: string; relativePath: string }
+): NesContextInput
+```
+
+The prefix is the text before the cursor, trimmed from the front to the character budget; the suffix is the text after it, trimmed from the back to its budget. The suffix is trimmed from the back, not the front, because the text right after the cursor matters most.
+
+- [ ] **Step 4: Write the runtime client**
+
+Create `src/renderer/src/components/editor/code-completion/nes-runtime-client.ts`:
+
+```ts
+export async function requestNesPlan(
+  input: NesRequest,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {}
+): Promise<NesEditPlan | null>
+```
+
+It calls `callRuntimeRpc<{ plan: unknown }>({ kind: 'local' }, 'codeCompletion.plan', input, { signal: options.signal, timeoutMs: options.timeoutMs ?? 12_000 })` and validates the response with `NesEditPlan.safeParse`, returning null when the payload does not parse.
+
+The completion talks to the **local** runtime even when the file lives on a remote host: the buffer is already in the renderer, and the endpoint is the user's own.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/renderer/src/components/editor/code-completion
+git commit -m "feat(code-completion): the renderer client and context builder"
+```
+
+---
+
+### Task 8: The plan store and the location markers
+
+**Files:**
+
+- Create: `src/renderer/src/components/editor/code-completion/nes-plan-store.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-location-markers.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-plan-store.test.ts`
+
+**Interfaces:**
+
+- Consumes: `NesEdit`, `NesEditPlan` (Task 1).
+- Produces:
+  - `type NesPlanStore = { set(plan: NesEditPlan, filePath: string): void; get(filePath: string): NesEditPlan | null; editAt(filePath: string, position: { lineNumber: number; column: number }): NesEdit | null; remove(filePath: string): void; clear(): void }`
+  - `createNesPlanStore(): NesPlanStore`
+  - `nesPlanStore: NesPlanStore` — the module-level singleton the provider and the hook share. The provider is registered globally (Task 9) but the plan belongs to the open editor, so both sides must reach the same store.
+  - `nesEditMatchesPosition(edit: NesEdit, position: { lineNumber: number; column: number }): boolean`
+  - `type NesLocationMarker = { edit: NesEdit; lineNumber: number }`
+  - `nesLocationMarkers(plan: NesEditPlan, filePath: string, cursor: { lineNumber: number; column: number }): NesLocationMarker[]`
+
+- [ ] **Step 1: Write the failing store test**
+
+Create `src/renderer/src/components/editor/code-completion/nes-plan-store.test.ts`:
+
+```ts
+describe('nes plan store', () => {
+  it('finds the edit whose range ends at the cursor', ...)
+  it('finds nothing when the cursor moved past the edit', ...)
+  it('finds nothing when the cursor moved before the edit', ...)
+  it('marks every other edit of the plan in the file', ...)
+  it('does not mark an edit of another file', ...)
+})
+```
+
+`nesEditMatchesPosition` is the rule the spec fixes: **an edit matches the cursor when the cursor sits at the edit's range end**; an `insert` has `start === end`, so the cursor must be exactly there.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the store and the marker selection**
+
+Create `src/renderer/src/components/editor/code-completion/nes-plan-store.ts` with the types above. The store keeps one plan per file path. `editAt` returns the edit of that file whose range end equals the position.
+
+Create `src/renderer/src/components/editor/code-completion/nes-location-markers.ts` with `nesLocationMarkers(plan, filePath, cursor)`: the edits of `filePath` whose range end is **not** the cursor position, each with the line of its range start.
+
+- [ ] **Step 4: Write the marker decoration**
+
+In the same file, add:
+
+```ts
+export function createNesMarkerDecorations(
+  editorInstance: editor.IStandaloneCodeEditor,
+  markers: readonly NesLocationMarker[]
+): editor.IEditorDecorationsCollection
+```
+
+Each marker becomes a decoration on its line with `glyphMarginClassName: 'nes-location-marker'` and a `glyphMarginHoverMessage` carrying the edit's `label` and `kind`.
+
+The gutter decoration must be created with `editorInstance.createDecorationsCollection`, and the collection must be cleared and disposed when the editor is disposed.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/renderer/src/components/editor/code-completion
+git commit -m "feat(code-completion): the plan store and the location markers"
+```
+
+---
+
+### Task 9: The Monaco inline provider
+
+**Files:**
+
+- Create: `src/renderer/src/components/editor/code-completion/nes-inline-provider.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-inline-provider.test.ts`
+- Modify: `src/renderer/src/assets/main.css` (the `nes-location-marker` and ghost-text classes)
+
+**Interfaces:**
+
+- Consumes: `NesPlanStore` (Task 8), `NesEdit` (Task 1).
+- Produces:
+  - `ensureNesInlineCompletionsProvider(monaco: MonacoApi): void` — the module-level singleton
+  - `nesInlineCompletionForEdit(edit: NesEdit, model: editor.ITextModel): monaco.languages.InlineCompletion | null`
+  - `fireNesInlineCompletionsChanged(): void` — asks Monaco to re-query the provider. The provider registers `onDidChangeInlineCompletions` on this emitter; Task 10 calls the function when a new plan lands, so the suggestion appears without the user moving the cursor.
+
+- [ ] **Step 1: Write the failing provider test**
+
+Create `src/renderer/src/components/editor/code-completion/nes-inline-provider.test.ts`:
+
+```ts
+describe('nes inline completion', () => {
+  it('turns an insert edit into an inline completion at the cursor', ...)
+  it('turns a replace edit into an inline completion over the replaced range', ...)
+  it('returns null for a delete edit', ...)
+  it('rejects an edit whose range no longer matches the model', ...)
+})
+```
+
+The last case is the "the user typed while the request was in flight" case from Review Focus: the provider re-checks the model's current text against the edit's `originalText` before it offers the suggestion.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the provider**
+
+Create `src/renderer/src/components/editor/code-completion/nes-inline-provider.ts`:
+
+```ts
+import type { OnMount } from '@monaco-editor/react'
+import type { IDisposable, editor } from 'monaco-editor'
+import type { NesEdit } from '@shared/code-completion/code-completion-types'
+import { nesEditMatchesPosition } from './nes-plan-store'
+
+type MonacoApi = Parameters<OnMount>[1]
+
+let provider: IDisposable | null = null
+let providerMonaco: MonacoApi = null
+const changeEmitter = new monaco.EventEmitter<void>() // created lazily against the live Monaco
+```
+
+Because the emitter needs the live Monaco namespace, create it inside `ensureNesInlineCompletionsProvider` and keep it in a module-level variable.
+
+`ensureNesInlineCompletionsProvider(monaco)` re-registers the provider when the Monaco instance changed, following `ensureMarkdownDocCompletionProvider` exactly.
+
+The provider:
+
+```ts
+monaco.languages.registerInlineCompletionsProvider('*', {
+  provideInlineCompletions(model, position) {
+    const filePath = nesFilePathForModel(model)
+    if (!filePath) {
+      return null
+    }
+    const edit = nesPlanStore.editAt(filePath, {
+      lineNumber: position.lineNumber,
+      column: position.column
+    })
+    if (!edit) {
+      return null
+    }
+    const completion = nesInlineCompletionForEdit(edit, model)
+    return completion ? { items: [completion] } : null
+  },
+  onDidChangeInlineCompletions: nesInlineCompletionsChanged.event
+})
+```
+
+`nesFilePathForModel(model)` maps the model back to the file path it shows. Orca keys its editor models by URI (`toEditorModelUri(filePath, modelOwnerKey)` in `src/renderer/src/components/editor/model-lifetime/identity/editor-model-uri.ts`); read the path from that URI rather than inventing a second mapping.
+
+`nesInlineCompletionForEdit` maps an edit to Monaco's shape:
+
+```ts
+{
+  insertText: edit.text,
+  range: {
+    startLineNumber: edit.range.startLine,
+    startColumn: edit.range.startColumn,
+    endLineNumber: edit.range.endLine,
+    endColumn: edit.range.endColumn
+  }
+}
+```
+
+A `delete` edit has no `insertText` and yields null — deleting is a plan-level action, not a suggestion the user accepts with Tab.
+
+- [ ] **Step 4: Add the CSS**
+
+In `src/renderer/src/assets/main.css`, add a `.nes-location-marker` class (a small glyph in the gutter) and a `.nes-ghost-text` class used by the preview overlay of Task 10. Follow the token rules in `docs/STYLEGUIDE.md` — reuse the existing border and foreground tokens rather than hardcoding hex values, and add the rule to both `:root` and `.dark` if it defines colours.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/renderer/src/components/editor/code-completion src/renderer/src/assets/main.css
+git commit -m "feat(code-completion): the Monaco inline completion provider"
+```
+
+---
+
+### Task 10: The trigger, the keybindings and the interception
+
+**Files:**
+
+- Create: `src/renderer/src/components/editor/code-completion/use-monaco-nes.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-key-routing.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-key-routing.test.ts`
+- Modify: `src/shared/keybindings/types.ts` (add the action ids)
+- Modify: `src/shared/keybindings/definitions-core-3.ts` (add the definitions)
+- Modify: `src/renderer/src/components/editor/editor-shortcuts.ts` (add the installers)
+- Modify: `src/renderer/src/components/editor/monaco-editor-input-bindings.ts` (install and dispose them)
+- Modify: `src/renderer/src/components/editor/MonacoEditor.tsx` (mount the hook)
+- Modify: `src/renderer/src/components/editor/use-monaco-editor-mount.ts` (register the inline provider)
+
+**Interfaces:**
+
+- Consumes: `requestNesPlan` (Task 7), `NesPlanStore` (Task 8), `ensureNesInlineCompletionsProvider` (Task 9).
+- Produces:
+  - `type NesTabDecision = 'accept-suggestion' | 'jump-to-next-location' | 'pass-through'`
+  - `decideNesTabAction(input: { hasInlineSuggestion: boolean; hasOtherLocations: boolean }): NesTabDecision` — the pure routing rule
+  - `useMonacoNextEditSuggestions(params): void` — the hook that owns the trigger and the plan state
+  - two new keybinding ids: `editor.acceptAiSuggestion` and `editor.nextAiSuggestion`
+
+- [ ] **Step 1: Write the failing routing test**
+
+Create `src/renderer/src/components/editor/code-completion/nes-key-routing.test.ts`:
+
+```ts
+describe('decideNesTabAction', () => {
+  it('accepts the suggestion when one is showing', ...)
+  it('jumps to the next location when the plan has more', ...)
+  it('passes the key through when there is nothing to do', ...)
+})
+```
+
+`pass-through` is the Review Focus case: Tab must still reach the TypeScript suggest widget.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the routing rule**
+
+Create `src/renderer/src/components/editor/code-completion/nes-key-routing.ts`:
+
+```ts
+export type NesTabDecision = 'accept-suggestion' | 'jump-to-next-location' | 'pass-through'
+
+export function decideNesTabAction(input: {
+  hasInlineSuggestion: boolean
+  hasOtherLocations: boolean
+}): NesTabDecision {
+  if (input.hasInlineSuggestion) {
+    return 'accept-suggestion'
+  }
+  if (input.hasOtherLocations) {
+    return 'jump-to-next-location'
+  }
+  return 'pass-through'
+}
+```
+
+- [ ] **Step 4: Add the keybinding definitions**
+
+In `src/shared/keybindings/types.ts`, add to the `KeybindingActionId` union:
+
+```ts
+  | 'editor.acceptAiSuggestion'
+  | 'editor.nextAiSuggestion'
+```
+
+In `src/shared/keybindings/definitions-core-3.ts`, add two definitions in the editor group:
+
+```ts
+  {
+    id: 'editor.acceptAiSuggestion',
+    title: 'Accept AI Suggestion',
+    group: 'Editors',
+    scope: 'editor',
+    searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'accept', 'tab'],
+    defaultBindings: platformBindings(['Tab'])
+  },
+  {
+    id: 'editor.nextAiSuggestion',
+    title: 'Go to Next AI Suggestion',
+    group: 'Editors',
+    scope: 'editor',
+    searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'next', 'jump'],
+    defaultBindings: platformBindings(['Mod+Tab'])
+  },
+```
+
+`Tab` is a bare key, so the definition needs `allowBareKeybindings: true`.
+
+- [ ] **Step 5: Write the installers**
+
+In `src/renderer/src/components/editor/editor-shortcuts.ts`, add:
+
+```ts
+export function installEditorAcceptAiSuggestionShortcut(
+  target: HTMLElement,
+  decide: () => NesTabDecision,
+  onAccept: () => void,
+  onJump: () => void
+): () => void
+```
+
+It listens in the capture phase, calls `decide()`, and for `accept-suggestion` runs Monaco's `editor.action.inlineSuggest.commit` before consuming the key; for `jump-to-next-location` it moves the cursor to the next marked location; for `pass-through` it does **not** call `preventDefault()`, so the key reaches the suggest widget.
+
+Add a second installer for the preview modifier:
+
+```ts
+export function installEditorAiSuggestionPreviewShortcut(
+  target: HTMLElement,
+  onPreview: (active: boolean) => void
+): () => void
+```
+
+It watches `Alt` keydown and keyup (ignoring `event.repeat`) and reports the held state.
+
+- [ ] **Step 6: Write the hook**
+
+Create `src/renderer/src/components/editor/code-completion/use-monaco-nes.ts`:
+
+```ts
+export function useMonacoNextEditSuggestions(params: {
+  filePath: string | undefined
+  relativePath: string | undefined
+  languageId: string
+  enabled: boolean
+  triggerDelayMs: number
+}): void
+```
+
+The hook:
+
+- subscribes to the editor's `onDidChangeModelContent` and `onDidChangeCursorPosition`
+- debounces both by `triggerDelayMs`
+- on a tick it builds the context (Task 7), asks for the plan (Task 7), stores it (Task 8) and fires the `onDidChangeInlineCompletions` event so Monaco re-queries the provider
+- cancels the in-flight request when the user types again
+- skips the whole cycle when the file's extension is not in the enabled list, when the feature is off, or when the editor is read-only
+
+- [ ] **Step 7: Wire the hook and the installers**
+
+In `src/renderer/src/components/editor/MonacoEditor.tsx`, call `useMonacoNextEditSuggestions(...)` with the file's path, relative path and language.
+
+In `src/renderer/src/components/editor/monaco-editor-input-bindings.ts`, install the two new shortcuts next to the existing ones and add their cleanup functions to `disposeInputBindings`.
+
+In `src/renderer/src/components/editor/use-monaco-editor-mount.ts`, call `ensureNesInlineCompletionsProvider(monaco)` next to `ensureMarkdownDocCompletionProvider(monaco)`.
+
+- [ ] **Step 8: Run the tests**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion src/shared/keybindings --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/renderer/src/components/editor src/shared/keybindings
+git commit -m "feat(code-completion): the suggestion trigger and the Tab routing"
+```
+
+---
+
+### Task 11: Applying an accepted edit and the preview
+
+**Files:**
+
+- Create: `src/renderer/src/components/editor/code-completion/nes-edit-application.ts`
+- Create: `src/renderer/src/components/editor/code-completion/nes-edit-application.test.ts`
+
+**Interfaces:**
+
+- Consumes: `NesEdit` (Task 1), `sliceRange` (Task 1).
+- Produces:
+  - `applyNesEdit(model: editor.ITextModel, editorInstance: editor.IStandaloneCodeEditor, edit: NesEdit): boolean` — true when the edit was applied
+  - `previewNesEdit(model, editorInstance, edit): () => void` — returns the undo function for the preview overlay
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/renderer/src/components/editor/code-completion/nes-edit-application.test.ts`:
+
+```ts
+describe('applyNesEdit', () => {
+  it('inserts the text at the cursor', ...)
+  it('replaces the range with the new text', ...)
+  it('deletes the range', ...)
+  it('refuses an edit whose original text no longer matches', ...)
+  it('leaves the model untouched when it refuses', ...)
+})
+```
+
+The fourth case is Review Focus item 2: the file changed under the plan, so the edit must not be applied.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the application**
+
+Create `src/renderer/src/components/editor/code-completion/nes-edit-application.ts`:
+
+```ts
+export function applyNesEdit(
+  model: editor.ITextModel,
+  editorInstance: editor.IStandaloneCodeEditor,
+  edit: NesEdit
+): boolean
+```
+
+It reads the model's current text, and for a `replace` or a `delete` it checks that the slice the range covers still equals `edit.originalText`; when it does not, the function returns false and changes nothing. Otherwise it pushes one edit operation:
+
+```ts
+editorInstance.pushUndoStop()
+model.pushEditOperations([], [{ range, text: edit.kind === 'delete' ? '' : edit.text }], () => null)
+editorInstance.pushUndoStop()
+```
+
+and returns true.
+
+The write goes straight into the model. The model's change event then reaches `use-monaco-content-sync-bridge.ts`, which turns it into `onContentChange` → draft → dirty → autosave. **Do not** call `onContentChange` yourself and **do not** wrap the write in `beginProgrammaticContentSync` — either would break the save path.
+
+- [ ] **Step 4: Write the inline preview**
+
+`previewNesEdit(model, editorInstance, edit)` shows the edit's new text over the edited range using a decoration with Monaco's injected text (`options.after.content`), and returns a function that clears the decoration. The preview must not touch the model's real content — it is a decoration only, so releasing it restores the original code exactly.
+
+If Monaco 0.55's injected text cannot carry a multi-line string, fall back to rendering the preview as a `ghost text` decoration on the first line only and say so in the settings UI rather than half-applying the change.
+
+- [ ] **Step 5: Write the diff preview**
+
+The spec asks for a diff per change type, not just the inline overlay. Reuse the repo's diff surface — `src/renderer/src/components/editor/EditorDiffFileSurface.tsx` opens a Monaco diff editor for a file.
+
+Create `src/renderer/src/components/editor/code-completion/nes-diff-preview.ts`:
+
+```ts
+export type NesDiffPreviewInput = {
+  filePath: string
+  originalText: string
+  proposedText: string
+  kind: NesEditKind
+}
+
+export function buildNesProposedText(originalText: string, edit: NesEdit): string
+```
+
+`buildNesProposedText` applies the edit to the file's text and returns the result. `buildNesDiffPreviewInput` builds the pair the diff surface needs.
+
+Colour the three change types with the diff editor's existing tokens rather than new ones: an insert is a green addition, a replace is a modified line, a delete is a red removal. Monaco's diff editor already distinguishes modified and removed lines; an inserted line appears as an addition because it exists only on the proposed side.
+
+- [ ] **Step 6: Run the test to verify it passes**
+
+Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/renderer/src/components/editor/code-completion
+git commit -m "feat(code-completion): apply an accepted edit and preview it"
+```
+
+---
+
+### Task 12: The settings UI
+
+**Files:**
+
+- Create: `src/renderer/src/components/settings/editor/CodeCompletionSection.tsx`
+- Modify: `src/renderer/src/components/settings/editor/GeneralEditorSettingsSection.tsx` (render the section)
+
+**Interfaces:**
+
+- Consumes: `GlobalSettings['codeCompletion']` (Task 4), `window.api.codeCompletion` (Task 5).
+- Produces: the settings UI. No new exported symbols beyond the component.
+
+- [ ] **Step 1: Write the component**
+
+Create `src/renderer/src/components/settings/editor/CodeCompletionSection.tsx` following `EditorWordWrapSetting.tsx` exactly: `SearchableSetting` with a `GENERAL_SETTING_ANCHORS` id, `useTranslate()` for every string, and `SettingsSwitchRow` / `SettingsSegmentedControl` from `../form-controls/SettingsFormControls`.
+
+The section offers:
+
+- the master switch
+- the protocol (Anthropic Messages / OpenAI Chat / OpenAI FIM)
+- the base URL and the model, as text inputs
+- the API key, as a password input that saves through `window.api.codeCompletion.saveApiKey` and never reads the stored key back — show "configured" from `getStatus()` instead
+- the trigger delay
+- the auto-import switch
+- the per-extension list
+
+Every string goes through `useTranslate()` with an `auto.` key and an English default, matching the convention in `EditorWordWrapSetting.tsx`.
+
+- [ ] **Step 2: Render the section**
+
+In `src/renderer/src/components/settings/editor/GeneralEditorSettingsSection.tsx`, render `<CodeCompletionSection settings={settings} updateSettings={updateSettings} />` inside the editor group.
+
+- [ ] **Step 3: Typecheck**
+
+Run: `pnpm tc:web`
+Expected: no errors.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/renderer/src/components/settings/editor
+git commit -m "feat(code-completion): the completion settings section"
+```
+
+---
+
+### Task 13: The end-to-end proof
+
+**Files:**
+
+- Modify: `src/renderer/src/components/editor/monaco-e2e-probe.ts` (add a full-text accessor)
+- Create: `tests/e2e/next-edit-suggestion.spec.ts`
+
+**Interfaces:**
+
+- Consumes: everything above.
+- Produces: `window.__monacoEditorE2E?.value(): string` — the probe currently exposes only `valueLength` and `valueTail`, and the test needs the whole buffer.
+
+- [ ] **Step 1: Add the probe accessor**
+
+In `src/renderer/src/components/editor/monaco-e2e-probe.ts`, add a `value(): string` method to the `MonacoE2EProbe` type and return the model's full text. The probe is only installed when `import.meta.env.MODE === 'e2e'`, so the accessor never ships.
+
+- [ ] **Step 2: Write the E2E spec**
+
+Create `tests/e2e/next-edit-suggestion.spec.ts`. Follow `tests/e2e/editor-model-host-isolation.spec.ts`: open a workspace file through `window.__store.getState().openFile(...)`, click `.monaco-editor`, and type with `page.keyboard`.
+
+**The spec must not depend on a real model endpoint.** `window.api` is a context-bridge object and cannot be monkey-patched from the page, so stub the _endpoint_, not the RPC:
+
+1. Start a local HTTP server on `127.0.0.1` in the test process that answers `POST /v1/messages` with a fixed Anthropic-style SSE stream whose text is a single edit plan JSON.
+2. Point the app at it: `await orcaPage.evaluate((baseUrl) => window.__store?.getState().updateSettings({ codeCompletion: { enabled: true, protocol: 'anthropic-messages', baseUrl, model: 'e2e-model', triggerDelayMs: 0, autoImport: false, enabledExtensions: ['ts'] } }), baseUrl)`.
+3. Store a key: `await orcaPage.evaluate(() => window.api.codeCompletion.saveApiKey('e2e-test-key'))`.
+
+The mock's plan must place its edit exactly at the cursor the test creates, so the spec types `const x = ` at the end of the file and the plan answers an `insert` whose range ends at that column.
+
+Then:
+
+1. type `const x = ` in the editor
+2. wait for the suggestion to appear (the ghost text is in the DOM as an `.inline-completion-text-to-replace` / `.ghost-text` element — assert on whatever Monaco 0.55 renders, and record the exact selector in the test)
+3. assert the buffer still holds only what was typed — the suggestion is a ghost, not an edit
+4. press `Tab`
+5. assert the buffer now holds the typed text **and** the suggested text
+6. in a second case, plan an edit at another line and press `Tab` with no suggestion showing; assert the cursor moved to that line
+
+**The key file lives in the developer's real home** (`~/.orca/code-completion-api-key.enc` — `homedir()` is not sandboxed by the E2E app). The spec must clear the key in an `afterAll` hook (`window.api.codeCompletion.clearApiKey()`), and the test must not overwrite a key the developer already had — read `getStatus()` first and skip the save when one is already configured.
+
+- [ ] **Step 3: Build in E2E mode and run the spec**
+
+Run: `ORCA_BACKGROUND_LAUNCH=1 pnpm run test:e2e -- next-edit-suggestion`
+Expected: PASS.
+
+The E2E build must be `--mode e2e`; a plain build omits `window.__store` and the probe and the spec will time out.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/renderer/src/components/editor/monaco-e2e-probe.ts tests/e2e/next-edit-suggestion.spec.ts
+git commit -m "test(code-completion): prove a suggestion appears and Tab accepts it"
+```
+
+---
+
+### Task 14: Recording the completion usage
+
+**Files:**
+
+- Create: `src/main/code-completion/completion-usage.ts`
+- Create: `src/main/code-completion/completion-usage.test.ts`
+- Modify: `src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts` (report the usage)
+
+**Interfaces:**
+
+- Consumes: `NesBackend` (Task 2) — the backend must report what it spent.
+- Produces:
+  - `type CompletionUsage = { inputTokens: number; outputTokens: number; cacheReadTokens: number }`
+  - `recordCompletionUsage(entry: { model: string; usage: CompletionUsage; at: number }): void`
+  - `readCompletionUsageToday(now?: number): CompletionUsage`
+  - `NesBackend.plan` returns the plan **and** the usage — change its shape to `Promise<{ plan: NesEditPlan | null; usage: CompletionUsage }>`
+
+**Why this cannot reuse the existing usage pipeline.** The usage scanner reads a provider's transcript files and attributes each session to a worktree (`src/main/usage/worktree-attribution.ts`). A completion request has no transcript and belongs to no worktree, so the scanner cannot see it. The spec calls for a new path.
+
+**Why this stays small.** The full usage-provider lifecycle (`UsageProviderStoreLifecycle`, a scan worker, the stats-UI breakdowns) is built for providers whose sessions live on disk. The completion has neither. This task records a running total in a small JSON file in the runtime's userData path and exposes it through the existing RPC method family — enough to answer "how much did the completions cost" without rebuilding the usage service.
+
+- [ ] **Step 1: Write the failing usage test**
+
+Create `src/main/code-completion/completion-usage.test.ts`:
+
+```ts
+describe('completion usage', () => {
+  it('adds up the tokens of several completions', ...)
+  it('reports nothing before the first completion', ...)
+  it('keeps the total across a restart', ...)
+})
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/main/code-completion/completion-usage.test.ts --maxWorkers=2`
+Expected: FAIL — the module does not exist.
+
+- [ ] **Step 3: Write the recorder**
+
+Create `src/main/code-completion/completion-usage.ts`. It keeps `{ inputTokens, outputTokens, cacheReadTokens }` per day, persists to `<userDataPath>/orca-code-completion-usage.json` through `writeSecureFile` (the same helper the key store uses), and reads the total back.
+
+- [ ] **Step 4: Report the usage from the backends**
+
+Each backend reads the token counts from its own stream — Anthropic reports them in `message_delta`'s `usage`, the OpenAI protocols in the final chunk's `usage` — and returns them beside the plan. A stream that reports no usage contributes zeros.
+
+Update `createCompletionService` to pass the usage through, and update the RPC handler to call `recordCompletionUsage` after a successful plan.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `pnpm test src/main/code-completion --maxWorkers=2`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/main/code-completion src/main/runtime/rpc/methods/code-completion
+git commit -m "feat(code-completion): record what the completions spent"
+```
+
+---
+
+## Follow-ups this plan deliberately leaves out
+
+- **A model catalogue for the FIM endpoint.** `qodercli --list-models` exists, but its output format is not documented, so the plan does not guess it. The FIM backend takes the model name from the settings.
+- **Model discovery for the completion endpoint.** There is no list of models behind a user-supplied base URL.
+- **A second, faster channel** for the cursor edit (the spec's risk 2). The plan builds one channel; a second one needs real latency numbers first.
+- **The completion usage in the stats screen.** Task 14 records the totals but does not build the stats-UI breakdowns; that needs the full usage-provider lifecycle, which is worth doing only once the feature has users.
+- **Per-host completion settings.** `GlobalSettings` supports per-host overrides, but the completion talks to the user's own endpoint from the local runtime, so one set of settings serves every host.

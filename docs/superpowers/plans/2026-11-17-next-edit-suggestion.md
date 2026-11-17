@@ -361,7 +361,7 @@ git commit -m "feat(code-completion): the Anthropic, OpenAI chat and FIM backend
   - `type CompletionCache = { get(key: string): NesEditPlan | null; set(key: string, plan: NesEditPlan): void; clear(): void }`
   - `createCompletionCache(options?: { ttlMs?: number; maxPerFile?: number; now?: () => number }): CompletionCache`
   - `completionCache: CompletionCache` — the **module-level singleton**. The service takes it when the caller injects none; a cache that lives only as long as the request is not a cache.
-  - `completionCacheKey(input: { filePath: string; prefix: string; suffix: string; prefixStartLine: number; relatedPaths: readonly string[] }): string`
+  - `completionCacheKey(input: { filePath: string; prefix: string; suffix: string; prefixStartLine: number; relatedFiles: readonly { path: string; content: string }[] }): string`
   - `type CompletionService = { plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> }`
   - `createCompletionService(options: { resolveBackend: () => NesBackend | null; cache?: CompletionCache; now?: () => number }): CompletionService`
 
@@ -389,7 +389,7 @@ Expected: FAIL — the module does not exist.
 
 Create `src/main/code-completion/completion-cache.ts`. The cache holds `{ plan, storedAt, lastUsedAt }` per key. `get` returns the plan when `now - storedAt < ttlMs` and refreshes `lastUsedAt`; otherwise it deletes the entry and returns null. `set` stores and, when the file has more than `maxPerFile` entries, evicts the one with the smallest `lastUsedAt`.
 
-`completionCacheKey` hashes the file path, the prefix, the suffix, `prefixStartLine` and the sorted related paths into one string. A moved cursor changes the prefix and suffix, so it misses. `prefixStartLine` is in the key because the plan's line numbers are absolute after the conversion (the spec's §5.5): the same text at a different offset is a different answer, and an edit above the prefix window changes the offset without changing the text.
+`completionCacheKey` hashes the file path, the prefix, the suffix, `prefixStartLine` and the related files' **paths and shown content** into one string. A moved cursor changes the prefix and suffix, so it misses. `prefixStartLine` is in the key because the plan's line numbers are absolute after the conversion (the spec's §5.5): the same text at a different offset is a different answer, and an edit above the prefix window changes the offset without changing the text. The related files' content is in the key because the model saw that content — a changed related file can change the answer — and because identical content implies an identical start line, which covers their offset too.
 
 - [ ] **Step 4: Write the failing service test**
 

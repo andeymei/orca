@@ -1181,7 +1181,14 @@ describe('nes plan store', () => {
   it('lists the edits of another file that a plan mentions', ...)
   it('does not list an edit of a file the plan never named', ...)
 })
+
+describe('nes location markers', () => {
+  it('leaves out the edit whose range ends at the cursor', ...)
+  it('marks an edit at another line with the line it starts on', ...)
+})
 ```
+
+The second block is not optional: `nesLocationMarkers` is the selection rule the spec's second layer rests on, and the cursor edit must not also become a gutter marker — the cursor edit is the _suggestion_, and a marker on it would draw the user to the line they are already on.
 
 `nesEditMatchesPosition` is the rule the spec fixes: **an edit matches the cursor when the cursor sits at the edit's range end**; an `insert` has `start === end`, so the cursor must be exactly there.
 
@@ -1209,7 +1216,7 @@ export function createNesMarkerDecorations(
 
 Each marker becomes a decoration on its line with `glyphMarginClassName: 'nes-location-marker'` and a `glyphMarginHoverMessage` carrying the edit's `label` and `kind`.
 
-The gutter decoration must be created with `editorInstance.createDecorationsCollection`, and the collection must be cleared and disposed when the editor is disposed.
+The gutter decoration must be created with `editorInstance.createDecorationsCollection`. **Disposing the collection is Task 10's job, not this task's**: the hook (Task 10) owns the editor's lifetime, creates the collection, refreshes it on each tick and disposes it when the editor goes away. This task provides the function that creates it and the collection type; it does not wire the lifecycle.
 
 - [ ] **Step 5: Run the test to verify it passes**
 

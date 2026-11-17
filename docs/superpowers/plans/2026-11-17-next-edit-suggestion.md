@@ -670,7 +670,9 @@ import { NesBackendId } from '../code-completion/code-completion-types'
 
 export const CodeCompletionRelatedFile = z.object({
   path: z.string().min(1),
-  content: z.string()
+  content: z.string(),
+  /** The file line the shown content starts at, 1-based. */
+  startLine: z.number().int().positive()
 })
 
 export const CodeCompletionRecentEdit = z.object({
@@ -684,6 +686,11 @@ export const CodeCompletionPlan = z.object({
   languageId: z.string(),
   prefix: z.string(),
   suffix: z.string(),
+  /** The file line the shown prefix starts at, 1-based. */
+  prefixStartLine: z.number().int().positive(),
+  /** The cursor's absolute position in the file, 1-based. */
+  cursorLine: z.number().int().positive(),
+  cursorColumn: z.number().int().positive(),
   relatedFiles: z.array(CodeCompletionRelatedFile).max(8).default([]),
   recentEdits: z.array(CodeCompletionRecentEdit).max(10).default([])
 })
@@ -758,6 +765,9 @@ export const CODE_COMPLETION_METHODS = [
           languageId: params.languageId,
           prefix: params.prefix,
           suffix: params.suffix,
+          prefixStartLine: params.prefixStartLine,
+          cursorLine: params.cursorLine,
+          cursorColumn: params.cursorColumn,
           relatedFiles: params.relatedFiles,
           recentEdits: params.recentEdits
         },

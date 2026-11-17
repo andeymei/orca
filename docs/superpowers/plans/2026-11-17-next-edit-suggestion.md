@@ -982,13 +982,14 @@ Create `src/renderer/src/components/editor/code-completion/nes-related-files.ts`
 ```ts
 export const NES_RELATED_FILE_MAX = 8
 export const NES_RELATED_FILE_TOKEN_BUDGET = 1000
-export const NES_CHARS_PER_TOKEN = 4
 
 export function parseRelativeImports(fileText: string, filePath: string): string[]
 export async function collectNesRelatedFiles(
   input: NesRelatedFilesInput
-): Promise<{ path: string; content: string }[]>
+): Promise<{ path: string; content: string; startLine: number }[]>
 ```
+
+`NES_CHARS_PER_TOKEN` lives in `nes-context-builder.ts` and is **imported** here — one definition of "how many characters a token is", so the two budgets cannot drift apart. Every returned file carries `startLine: 1`, because a related file is always shown from its first line.
 
 Two sources, in this order:
 

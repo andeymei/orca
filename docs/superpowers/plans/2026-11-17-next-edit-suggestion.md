@@ -449,9 +449,12 @@ git commit -m "feat(code-completion): the completion service and its cache"
 **Files:**
 
 - Create: `src/shared/code-completion/code-completion-settings.ts`
+- Modify: `src/shared/code-completion/code-completion-types.ts` (derive `NesBackendId` from a runtime list)
 - Modify: `src/shared/global-settings-base.ts` (intersect the new module in)
 - Modify: `src/shared/default-global-settings.ts` (add the default block)
 - Modify: `src/shared/rpc-contract/client-settings-params.ts` (add the field to the `.strict()` `SettingsUpdate` schema)
+- Modify: `src/main/persistence/applying-settings/settings-update.ts` (normalize the block at the store boundary)
+- Test: `src/main/persistence/applying-settings/settings-update*.test.ts` (the existing family in that directory)
 - Create: `src/shared/code-completion/code-completion-settings.test.ts`
 
 **Interfaces:**
@@ -513,7 +516,30 @@ In `src/shared/rpc-contract/client-settings-params.ts`, add to the `SettingsUpda
     codeCompletion: z.unknown().transform((v) => normalizeCodeCompletionSettings(v)).optional(),
 ```
 
-The `.strict()` schema rejects unknown keys, so this line is what lets the renderer save the block.
+The `.strict()` schema rejects unknown keys, so this line is what lets a **runtime RPC** client save the block.
+
+**The desktop renderer's write path does not go through that schema.** The renderer saves through the preload's `settings:set` IPC, which reaches `store.updateSettings` with the values as they were — so the block would persist verbatim, and a later consumer reading `settings.codeCompletion.enabled` could get a string. The repository's convention is to normalize a nested settings block at the **store boundary**, where every writer is covered (the renderer's IPC, the runtime RPC, the CLI, plugin hosts). Add it there, next to the other nested blocks:
+
+```ts
+if ('codeCompletion' in sanitizedUpdates) {
+  sanitizedUpdates.codeCompletion = normalizeCodeCompletionSettings(sanitizedUpdates.codeCompletion)
+}
+```
+
+in `src/main/persistence/applying-settings/settings-update.ts` (beside the `prBotAuthorOverrides` block), and cover it in that directory's existing test family.
+
+**The protocol list must be the source of truth, not a copy of it.** In `src/shared/code-completion/code-completion-types.ts`, make the runtime list the origin:
+
+```ts
+export const NES_BACKEND_IDS = [
+  'anthropic-messages',
+  'openai-chat',
+  'openai-completions-fim'
+] as const
+export type NesBackendId = (typeof NES_BACKEND_IDS)[number]
+```
+
+and have the settings module import that list instead of declaring its own. A `satisfies readonly NesBackendId[]` check proves the list is a subset of the union, not the other way round — so a fourth protocol added to the union would be missing from the list, and the runtime check would fall back to the default protocol instead of failing to compile.
 
 - [ ] **Step 5: Run the test to verify it passes**
 

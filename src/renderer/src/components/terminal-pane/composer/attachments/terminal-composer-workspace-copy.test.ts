@@ -207,4 +207,69 @@ describe('terminal composer workspace copy', () => {
   it('drops into a Windows workspace without mixing separators', () => {
     expect(terminalComposerDropDir('C:\\ws')).toBe('C:\\ws\\.orca\\drops')
   })
+
+  it('copies to the local host when the runtime owner is blank', async () => {
+    importMock.mockResolvedValue({
+      results: [
+        {
+          sourcePath: '/tmp/a.txt',
+          status: 'imported',
+          destPath: '/ws/.orca/drops/a.txt',
+          kind: 'file',
+          renamed: false
+        }
+      ]
+    })
+
+    await copyTerminalComposerAttachmentsToWorkspace({
+      ...localRequest,
+      runtimeEnvironmentId: '  '
+    })
+
+    expect(importMock).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { kind: 'local' } }),
+      ['/tmp/a.txt'],
+      '/ws/.orca/drops',
+      expect.anything()
+    )
+    expect(writeFile).toHaveBeenCalledWith({
+      filePath: '/ws/.orca/drops/.gitignore',
+      content: '*\n'
+    })
+  })
+
+  it('writes the staging ignore file when a runtime owner falls back to a local copy', async () => {
+    importMock.mockResolvedValue({
+      results: [
+        {
+          sourcePath: '/tmp/a.txt',
+          status: 'imported',
+          destPath: '/ws/.orca/drops/a.txt',
+          kind: 'file',
+          renamed: false
+        }
+      ]
+    })
+
+    await copyTerminalComposerAttachmentsToWorkspace({
+      ...localRequest,
+      worktreeId: '',
+      runtimeEnvironmentId: 'env-1'
+    })
+
+    expect(writeFile).toHaveBeenCalledWith({
+      filePath: '/ws/.orca/drops/.gitignore',
+      content: '*\n'
+    })
+  })
+
+  it('copies nothing without a staging round trip when there is no source', async () => {
+    const result = await copyTerminalComposerAttachmentsToWorkspace({
+      ...localRequest,
+      sourcePaths: []
+    })
+
+    expect(importMock).not.toHaveBeenCalled()
+    expect(result).toEqual({ copied: [], skipped: [], failed: [] })
+  })
 })

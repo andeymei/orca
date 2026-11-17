@@ -19,7 +19,10 @@ export type TerminalComposerWorkspaceCopyRequest = {
   expectedExecutionHostId?: 'local' | `ssh:${string}`
   expectedSshTargetId?: string
   expectedSshConnectionGeneration?: number
-  /** Throws when the host changed under the copy; the caller turns it into a retry notice. */
+  /**
+   * Throws when the host changed under the copy; the caller turns it into a retry notice.
+   * The runtime branch enforces it; the local branch ignores it, so the send layer must re-check.
+   */
   assertCurrent?: () => void
 }
 
@@ -37,6 +40,10 @@ export function terminalComposerDropDir(workspacePath: string): string {
 export async function copyTerminalComposerAttachmentsToWorkspace(
   request: TerminalComposerWorkspaceCopyRequest
 ): Promise<TerminalComposerWorkspaceCopyResult> {
+  // An empty drop must not cost a staging round trip on a runtime host.
+  if (request.sourcePaths.length === 0) {
+    return { copied: [], skipped: [], failed: [] }
+  }
   const destDir = terminalComposerDropDir(request.workspacePath)
   // The copy target and the ignore file must agree on the host, so normalize the owner once.
   const runtimeEnvironmentId = request.runtimeEnvironmentId?.trim() || null
@@ -49,6 +56,9 @@ export async function copyTerminalComposerAttachmentsToWorkspace(
     expectedSshConnectionGeneration: request.expectedSshConnectionGeneration,
     connectionId: request.connectionId ?? undefined
   }
+  // The importer copies locally unless a runtime environment owns the worktree; the ignore file follows the copy.
+  const copiesLocally =
+    context.target.kind !== 'environment' || !context.worktreeId || !context.worktreePath
   const { results } = await importExternalPathsToRuntime(
     context,
     [...request.sourcePaths],
@@ -73,7 +83,7 @@ export async function copyTerminalComposerAttachmentsToWorkspace(
     }
   }
 
-  if (copied.length > 0 && !runtimeEnvironmentId) {
+  if (copied.length > 0 && copiesLocally) {
     await ignoreDropStaging(destDir)
   }
   return { copied, skipped, failed }

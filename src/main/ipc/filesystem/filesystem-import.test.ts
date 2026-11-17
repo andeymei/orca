@@ -299,6 +299,70 @@ describe('fs:importExternalPaths', () => {
     ).rejects.toThrow('Access denied')
   })
 
+  it('creates the destination directory the caller asked for', async () => {
+    const sourcePath = '/tmp/dropped/logo.png'
+    const dropDir = path.resolve('/workspace/repo/.orca/drops')
+    mockSourceFile(sourcePath)
+    let destinationExists = false
+    mkdirMock.mockImplementation(async (p: string) => {
+      if (p === dropDir) {
+        destinationExists = true
+      }
+    })
+    openMock.mockImplementation(async (_p: string, flags: unknown) => {
+      if (flags === 'wx') {
+        // The copy opens files without creating parents; a missing directory fails the copy.
+        if (!destinationExists) {
+          throw enoent()
+        }
+        const written: Buffer[] = []
+        return {
+          createWriteStream: () =>
+            new Writable({
+              write(chunk, _encoding, callback) {
+                written.push(Buffer.from(chunk))
+                callback()
+              }
+            }),
+          close: vi.fn().mockResolvedValue(undefined),
+          written
+        }
+      }
+      return {
+        stat: vi.fn().mockResolvedValue({
+          size: 12,
+          ino: 1,
+          dev: 1,
+          mtimeMs: 1700000000000,
+          isFile: () => true
+        }),
+        createReadStream: () => Readable.from([Buffer.from('file-content')]),
+        close: vi.fn().mockResolvedValue(undefined)
+      }
+    })
+
+    const result = (await handlers.get('fs:importExternalPaths')!(null, {
+      sourcePaths: [sourcePath],
+      destDir: dropDir,
+      ensureDir: true
+    })) as { results: { status: string; reason?: string }[] }
+
+    expect(mkdirMock).toHaveBeenCalledWith(dropDir, { recursive: true })
+    expect(result.results[0]).toMatchObject({ status: 'imported' })
+  })
+
+  it('leaves the destination directory alone when the caller did not ask for it', async () => {
+    const sourcePath = '/tmp/dropped/logo.png'
+    mockSourceFile(sourcePath)
+
+    await handlers.get('fs:importExternalPaths')!(null, {
+      sourcePaths: [sourcePath],
+      destDir: path.resolve('/workspace/repo/src')
+    })
+
+    expect(mkdirMock).not.toHaveBeenCalled()
+  })
+
   it('stages runtime upload directories whose child names start with dotdot characters', async () => {
     const sourcePath = '/tmp/dropped/project'
     const resolvedPath = path.resolve(sourcePath)

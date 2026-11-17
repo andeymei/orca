@@ -359,10 +359,11 @@ git commit -m "feat(code-completion): the Anthropic, OpenAI chat and FIM backend
 - Consumes: `NesBackend`, `NesRequest` (Task 2); `NesEditPlan` (Task 1).
 - Produces:
   - `type CompletionCache = { get(key: string): NesEditPlan | null; set(key: string, plan: NesEditPlan): void; clear(): void }`
-  - `createCompletionCache(options?: { ttlMs?: number; maxPerFile?: number }): CompletionCache`
-  - `completionCacheKey(input: { filePath: string; prefix: string; suffix: string; relatedPaths: readonly string[] }): string`
+  - `createCompletionCache(options?: { ttlMs?: number; maxPerFile?: number; now?: () => number }): CompletionCache`
+  - `completionCache: CompletionCache` — the **module-level singleton**. The service takes it when the caller injects none; a cache that lives only as long as the request is not a cache.
+  - `completionCacheKey(input: { filePath: string; prefix: string; suffix: string; prefixStartLine: number; relatedPaths: readonly string[] }): string`
   - `type CompletionService = { plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> }`
-  - `createCompletionService(options: { resolveBackend: () => NesBackend | null; cache: CompletionCache; now?: () => number }): CompletionService`
+  - `createCompletionService(options: { resolveBackend: () => NesBackend | null; cache?: CompletionCache; now?: () => number }): CompletionService`
 
 - [ ] **Step 1: Write the failing cache test**
 
@@ -388,7 +389,7 @@ Expected: FAIL — the module does not exist.
 
 Create `src/main/code-completion/completion-cache.ts`. The cache holds `{ plan, storedAt, lastUsedAt }` per key. `get` returns the plan when `now - storedAt < ttlMs` and refreshes `lastUsedAt`; otherwise it deletes the entry and returns null. `set` stores and, when the file has more than `maxPerFile` entries, evicts the one with the smallest `lastUsedAt`.
 
-`completionCacheKey` hashes the file path, the prefix, the suffix, and the sorted related paths into one string. A moved cursor changes the prefix and suffix, so it misses.
+`completionCacheKey` hashes the file path, the prefix, the suffix, `prefixStartLine` and the sorted related paths into one string. A moved cursor changes the prefix and suffix, so it misses. `prefixStartLine` is in the key because the plan's line numbers are absolute after the conversion (the spec's §5.5): the same text at a different offset is a different answer, and an edit above the prefix window changes the offset without changing the text.
 
 - [ ] **Step 4: Write the failing service test**
 
@@ -417,6 +418,8 @@ Create `src/main/code-completion/completion-service.ts`. The service:
 2. looks the cache up by `completionCacheKey(input)`; a hit is returned immediately
 3. otherwise calls `backend.plan(input, signal)` under an 8 000 ms timeout and a global concurrency cap of four (a queue that lets a fifth caller wait)
 4. caches a **successful** plan and returns it; a failure returns `null` and caches nothing
+
+A failure is silent to the user — that is the spec's rule — but it is **not** silent to the log: an endpoint 401, a 429 and a truncated stream are indistinguishable after the fact if nothing is written down. Log the failure with `console.error` (the repo's convention in `src/main`), leaving the abort and timeout paths out: the user typed, and that is not an error.
 
 **An abort is not a failure to cache.** The backend distinguishes an aborted request from an endpoint error, and the service must not cache "nothing to propose" for an abort: the user kept typing, so the answer would be stale the moment it arrived. Check `signal.aborted` before caching.
 
@@ -783,7 +786,7 @@ export const CODE_COMPLETION_METHODS = [
 ]
 ```
 
-`createBackend` maps the protocol id to the three backend factories. The service instance is created per call so the cache lives only as long as the request — Task 7 moves the cache to a module-level instance so it survives between calls.
+`createBackend` maps the protocol id to the three backend factories. The **cache** is a module-level singleton (`completionCache` in `src/main/code-completion/completion-cache.ts`) that the service takes when the caller injects none — a cache that lives only as long as the request is not a cache. The service itself is still created per call, because the backend it resolves depends on the settings at that moment.
 
 - [ ] **Step 5: Register the family**
 

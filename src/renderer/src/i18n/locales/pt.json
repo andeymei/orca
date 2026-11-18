@@ -23641,6 +23641,7 @@
       "terminalExpandPane": "Expandir / recolher painel",
       "chatFind": "Localizar no chat",
       "terminalToggleNativeChat": "Alternar entre a interface de chat e o terminal",
+      "terminalToggleComposer": "Alternar o compositor do terminal",
       "terminalClosePane": "Fechar painel ativo",
       "terminalSplitRight": "Dividir terminal para a direita",
       "terminalSplitDown": "Dividir terminal para baixo",

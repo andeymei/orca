@@ -23091,6 +23091,7 @@
       "terminalExpandPane": "Agrandir / réduire le volet",
       "chatFind": "Rechercher dans le chat",
       "terminalToggleNativeChat": "Basculer entre l'interface de chat et le terminal",
+      "terminalToggleComposer": "Basculer le composeur du terminal",
       "terminalClosePane": "Fermer le volet actif",
       "terminalSplitRight": "Scinder le terminal vers la droite",
       "terminalSplitDown": "Scinder le terminal vers le bas",

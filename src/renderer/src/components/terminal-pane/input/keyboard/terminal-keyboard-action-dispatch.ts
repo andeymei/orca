@@ -36,6 +36,8 @@ type ActionDispatchContext = {
   managerRef: React.RefObject<PaneManager | null>
   getKeyboardSplitTelemetrySource: () => 'contextual_tour' | 'keyboard'
   armNativeOnlyShortcut: (event: KeyboardEvent) => void
+  /** Opens or closes the composer of the pane the shortcut fired in. */
+  toggleComposer: (leafId: string) => void
 }
 
 export function dispatchTerminalShortcutAction(
@@ -65,7 +67,8 @@ export function dispatchTerminalShortcutAction(
     paneCwdRef,
     managerRef,
     getKeyboardSplitTelemetrySource,
-    armNativeOnlyShortcut
+    armNativeOnlyShortcut,
+    toggleComposer
   } = context
 
   if (action.type === 'selectAll') {
@@ -205,6 +208,15 @@ export function dispatchTerminalShortcutAction(
     const pane = manager.getActivePane() ?? manager.getPanes()[0]
     if (pane) {
       onRequestClosePane(pane.id)
+    }
+    return
+  }
+  if (action.type === 'toggleComposer') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      toggleComposer(pane.leafId)
     }
     return
   }

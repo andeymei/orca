@@ -22399,6 +22399,7 @@
       "terminalExpandPane": "ペインを展開 / 折りたたむ",
       "chatFind": "チャット内を検索",
       "terminalToggleNativeChat": "チャット UI とターミナルを切り替え",
+      "terminalToggleComposer": "ターミナルコンポーザーを切り替え",
       "terminalClosePane": "アクティブなペインを閉じる",
       "terminalSplitRight": "ターミナルを右に分割",
       "terminalSplitDown": "ターミナルを下に分割",

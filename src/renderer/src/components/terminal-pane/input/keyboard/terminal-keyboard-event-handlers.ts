@@ -27,26 +27,13 @@ import { isInsideNativeChatCover } from '../../chat/native-chat-covered-pane'
 const MAX_OBSERVED_ENTER_KEYDOWNS_PER_CODE = 8
 
 type Runtime = ReturnType<typeof createTerminalKeyboardRuntime>
-type EventContext = KeyboardHandlersDeps & {
-  isMac: boolean
-  isWindows: boolean
-  shortcutPlatform: KeybindingPlatform
-  resolveShortcutEvent: Runtime['resolveShortcutEvent']
-  createCapturedInputSender: Runtime['createCapturedInputSender']
-  reconcileHeldImeEnterModifiers: Runtime['reconcileHeldImeEnterModifiers']
-  getImeEnterModifier: Runtime['getImeEnterModifier']
-  getModifiedEnterChord: Runtime['getModifiedEnterChord']
-  getKeyboardSplitTelemetrySource: () => 'contextual_tour' | 'keyboard'
-  nativeOnlyShortcutTracker: Runtime['nativeOnlyShortcutTracker']
-  optionKeyLocations: Runtime['optionKeyLocations']
-  optionKittyReleases: Runtime['optionKittyReleases']
-  heldImeEnterModifiers: Runtime['heldImeEnterModifiers']
-  terminalImeEnterModifierKeydowns: Runtime['terminalImeEnterModifierKeydowns']
-  deferredNewlineSender: Runtime['deferredNewlineSender']
-  deferredChordSender: Runtime['deferredChordSender']
-  modifiedEnterChordOwner: Runtime['modifiedEnterChordOwner']
-  observedEnterKeydownTimeStamps: Runtime['observedEnterKeydownTimeStamps']
-}
+type EventContext = KeyboardHandlersDeps &
+  Runtime & {
+    isMac: boolean
+    isWindows: boolean
+    shortcutPlatform: KeybindingPlatform
+    getKeyboardSplitTelemetrySource: () => 'contextual_tour' | 'keyboard'
+  }
 
 export function createTerminalKeyboardEventHandlers(context: EventContext) {
   const {
@@ -79,6 +66,7 @@ export function createTerminalKeyboardEventHandlers(context: EventContext) {
     keybindings,
     terminalShortcutPolicy,
     resolveShortcutEvent,
+    toggleComposer,
     createCapturedInputSender,
     reconcileHeldImeEnterModifiers,
     getModifiedEnterChord,
@@ -311,6 +299,7 @@ export function createTerminalKeyboardEventHandlers(context: EventContext) {
       paneCwdRef,
       managerRef,
       getKeyboardSplitTelemetrySource,
+      toggleComposer,
       armNativeOnlyShortcut: (event) => nativeOnlyShortcutTracker.armKeyDown(event)
     })
   }

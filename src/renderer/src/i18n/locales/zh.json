@@ -22803,6 +22803,7 @@
       "terminalExpandPane": "展开/折叠窗格",
       "chatFind": "在聊天中查找",
       "terminalToggleNativeChat": "在聊天界面和终端之间切换",
+      "terminalToggleComposer": "切换终端输入框",
       "terminalClosePane": "关闭当前窗格",
       "terminalSplitRight": "向右拆分终端",
       "terminalSplitDown": "向下拆分终端",

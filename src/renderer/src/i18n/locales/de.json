@@ -22856,6 +22856,7 @@
       "terminalExpandPane": "Bereich vergrößern / verkleinern",
       "chatFind": "Im Chat suchen",
       "terminalToggleNativeChat": "Zwischen Chat-Oberfläche und Terminal wechseln",
+      "terminalToggleComposer": "Terminal-Composer umschalten",
       "terminalClosePane": "Aktiven Bereich schließen",
       "terminalSplitRight": "Terminal nach rechts teilen",
       "terminalSplitDown": "Terminal nach unten teilen",

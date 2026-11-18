@@ -24347,6 +24347,7 @@
       "terminalExpandPane": "Expand / collapse pane",
       "chatFind": "Find in chat",
       "terminalToggleNativeChat": "Switch between Chat UI and terminal",
+      "terminalToggleComposer": "Toggle the terminal composer",
       "terminalClosePane": "Close active pane",
       "terminalSplitRight": "Split terminal right",
       "terminalSplitDown": "Split terminal down",

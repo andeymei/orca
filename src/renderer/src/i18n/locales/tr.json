@@ -22669,6 +22669,7 @@
       "terminalExpandPane": "Bölmeyi genişlet / daralt",
       "chatFind": "Sohbette bul",
       "terminalToggleNativeChat": "Sohbet arayüzü ile terminal arasında geçiş yap",
+      "terminalToggleComposer": "Terminal kompozitörünü aç/kapat",
       "terminalClosePane": "Etkin bölmeyi kapat",
       "terminalSplitRight": "Terminali sağa böl",
       "terminalSplitDown": "Terminali aşağı böl",

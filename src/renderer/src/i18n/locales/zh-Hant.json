@@ -22376,6 +22376,7 @@
       "terminalExpandPane": "展開／收合窗格",
       "chatFind": "在聊天中尋找",
       "terminalToggleNativeChat": "在聊天介面與終端機之間切換",
+      "terminalToggleComposer": "切換終端機輸入框",
       "terminalClosePane": "關閉作用中的窗格",
       "terminalSplitRight": "向右分割終端機",
       "terminalSplitDown": "向下分割終端機",

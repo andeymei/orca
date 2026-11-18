@@ -23421,6 +23421,7 @@
       "terminalSplitRight": "Разделить терминал справа",
       "terminalSwitchInputSource": "Переключить источник ввода / язык (системная команда)",
       "terminalToggleNativeChat": "Переключиться между чатом и терминалом",
+      "terminalToggleComposer": "Переключить композер терминала",
       "voiceDictation": "Начать диктовку",
       "workspaceCreate": "Создать рабочее дерево",
       "workspaceRename": "Переименовать рабочее дерево",

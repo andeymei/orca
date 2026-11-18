@@ -22391,6 +22391,7 @@
       "terminalExpandPane": "창 확장/접기",
       "chatFind": "채팅에서 찾기",
       "terminalToggleNativeChat": "채팅 UI와 터미널 간 전환",
+      "terminalToggleComposer": "터미널 컴포저 전환",
       "terminalClosePane": "활성 창 닫기",
       "terminalSplitRight": "터미널 오른쪽으로 분할",
       "terminalSplitDown": "터미널 아래로 분할",

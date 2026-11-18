@@ -216,6 +216,10 @@ export function createTerminalKeyboardRuntime(options: RuntimeOptions) {
     }
     return !titleHasExplicitAgentIdentity(state.runtimePaneTitlesByTabId[tabId]?.[pane.id] ?? '')
   }
+  // The composer belongs to one pane; the leaf id is that pane's durable identity.
+  const toggleComposer = (leafId: string): void => {
+    useAppStore.getState().toggleTerminalComposer(makePaneKey(tabId, leafId))
+  }
   const resolveShortcutEvent = (
     event: Parameters<typeof resolveTerminalKeyboardShortcutAction>[0]
   ) =>
@@ -286,6 +290,7 @@ export function createTerminalKeyboardRuntime(options: RuntimeOptions) {
     getModifiedEnterChord,
     onModifierDown,
     resolveShortcutEvent,
+    toggleComposer,
     createCapturedInputSender
   }
 }

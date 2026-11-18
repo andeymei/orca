@@ -16,7 +16,9 @@ import { buildPaneForegroundAgentTabPrefixClearPatch } from '../slices/agent-sta
 
 export type RetiredTerminalTabSweepActions = Pick<
   AppState,
-  'dropAgentStatusByTabPrefix' | 'clearPaneForegroundAgentByTabPrefix'
+  | 'dropAgentStatusByTabPrefix'
+  | 'clearPaneForegroundAgentByTabPrefix'
+  | 'clearTerminalComposerStateForTab'
 >
 
 /** Narrow state lets non-store callers supply their own view. */
@@ -34,6 +36,8 @@ export function sweepRetiredTerminalTabState(
   // Worktree scope sweeps Pi’s completed missing-tab rows while preserving active pre-render children.
   actions.dropAgentStatusByTabPrefix(tabId, worktreeId ? { worktreeId } : undefined)
   actions.clearPaneForegroundAgentByTabPrefix(tabId)
+  // The tab's panes go with it; their composer drafts and open flags must not outlive them.
+  actions.clearTerminalComposerStateForTab(tabId)
   forgetAgentHibernationTabOutput(tabId)
   forgetNativeChatPromptDismissalsForTab(tabId)
   forgetForegroundTerminalTabs([tabId])

@@ -114,7 +114,8 @@ export async function preparePendingSplitClose(
     setCacheTimerStartedAt: vi.fn(),
     dropAgentStatus: vi.fn(),
     retireAgentPaneAuthority: vi.fn(),
-    suppressPtyExit: vi.fn()
+    suppressPtyExit: vi.fn(),
+    clearTerminalComposerPane: vi.fn()
   }) as unknown as AppState
   // Only main’s layout commands may close panes in this build; the transport refuses uncommanded calls.
   const { layoutApplyTestTransport: main } =

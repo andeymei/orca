@@ -29,6 +29,20 @@ export function createMiniMaxCredentialsApi(): NonNullable<
   }
 }
 
+export function createCodeCompletionCredentialsApi(): PreloadApi['codeCompletion'] {
+  // The completion key lives in the desktop host's keyring, so this bridge stores nothing
+  // and has no protection to claim either way.
+  const notConfigured = { configured: false, protection: null }
+  const unsupportedError = new Error(
+    'Code completion API keys can only be changed in the desktop app.'
+  )
+  return {
+    getStatus: () => Promise.resolve(notConfigured),
+    saveApiKey: () => Promise.reject(unsupportedError),
+    clearApiKey: () => Promise.resolve(notConfigured)
+  }
+}
+
 export function createZcodePlanCredentialsApi(): PreloadApi['zcodePlanCredentials'] {
   const status = {
     detailsUnavailable: true,

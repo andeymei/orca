@@ -8,7 +8,8 @@ import {
   createGrokAccountsApi,
   createZcodePlanCredentialsApi,
   createOpenCodeGoCredentialsApi,
-  createMiniMaxCredentialsApi
+  createMiniMaxCredentialsApi,
+  createCodeCompletionCredentialsApi
 } from './preload-api/web-agent-accounts-api'
 import { createWebAgentStatusApi } from './preload-api/web-agent-status-api'
 import { createWebAiVaultApi } from './preload-api/web-ai-vault-api'
@@ -128,6 +129,7 @@ function createWebPreloadApi(): Omit<Partial<PreloadApi>, 'settings' | 'plugins'
     opencodeGoCredentials: createOpenCodeGoCredentialsApi(),
     minimaxCredentials: createMiniMaxCredentialsApi(),
     zcodePlanCredentials: createZcodePlanCredentialsApi(),
+    codeCompletion: createCodeCompletionCredentialsApi(),
     grokAccounts: createGrokAccountsApi(),
     cursorAccounts: createCursorAccountsApi(),
     codexAccounts: createCodexAccountsApi(),

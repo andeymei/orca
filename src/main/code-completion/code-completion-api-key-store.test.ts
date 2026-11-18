@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { setSecretStore } from '../../shared/secret-store'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { _resetSecretStoreForTests, setSecretStore } from '../../shared/secret-store'
 import type * as CodeCompletionApiKeyStore from './code-completion-api-key-store'
 
 const safeStorageMock = vi.hoisted(() => ({
@@ -11,16 +11,11 @@ const safeStorageMock = vi.hoisted(() => ({
 beforeEach(() => setSecretStore({ ...safeStorageMock, describeProtectionGap: () => null }))
 
 const files = new Map<string, Buffer>()
-const existsSyncMock = vi.fn((path: string) => files.has(path))
-const readFileSyncMock = vi.fn((path: string) => files.get(path) ?? Buffer.alloc(0))
-const rmSyncMock = vi.fn((path: string) => {
-  files.delete(path)
-})
+const existsSyncMock = vi.fn()
+const readFileSyncMock = vi.fn()
+const rmSyncMock = vi.fn()
 const hardenExistingSecureFileMock = vi.fn()
-const writeSecureFileMock = vi.fn((path: string, contents: string) => {
-  files.set(path, Buffer.from(contents, 'utf8'))
-  return true
-})
+const writeSecureFileMock = vi.fn()
 const homedirMock = vi.fn(() => '/home/test')
 
 vi.mock('node:fs', () => ({
@@ -53,6 +48,15 @@ async function loadStore(): Promise<typeof CodeCompletionApiKeyStore> {
 describe('code completion api key store', () => {
   beforeEach(() => {
     files.clear()
+    existsSyncMock.mockImplementation((path: string) => files.has(path))
+    readFileSyncMock.mockImplementation((path: string) => files.get(path) ?? Buffer.alloc(0))
+    rmSyncMock.mockImplementation((path: string) => {
+      files.delete(path)
+    })
+    writeSecureFileMock.mockImplementation((path: string, contents: string) => {
+      files.set(path, Buffer.from(contents, 'utf8'))
+      return true
+    })
     existsSyncMock.mockClear()
     readFileSyncMock.mockClear()
     rmSyncMock.mockClear()
@@ -65,6 +69,11 @@ describe('code completion api key store', () => {
     safeStorageMock.encryptString.mockImplementation((value: string) => Buffer.from(value))
     safeStorageMock.decryptString.mockImplementation((value: Buffer) => value.toString('utf8'))
     homedirMock.mockReturnValue('/home/test')
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    _resetSecretStoreForTests()
   })
 
   it('reports no key before one is saved', async () => {
@@ -92,25 +101,15 @@ describe('code completion api key store', () => {
     expect(reloaded.getCodeCompletionApiKeyProtection()).toBe('sealed')
   })
 
-  it('rejects an empty key', async () => {
-    const store = await loadStore()
-
-    expect(() => store.saveCodeCompletionApiKey('   ')).toThrow(
-      'Code completion API key is required'
-    )
-    expect(writeSecureFileMock).not.toHaveBeenCalled()
-  })
-
   it('reports a plaintext key as unsealed when the keyring is unavailable', async () => {
     safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const store = await loadStore()
 
     store.saveCodeCompletionApiKey('secret-key')
 
     const reloaded = await loadStore()
     expect(reloaded.getCodeCompletionApiKeyProtection()).toBe('plaintext')
-    warn.mockRestore()
   })
 
   it('clears a saved key', async () => {

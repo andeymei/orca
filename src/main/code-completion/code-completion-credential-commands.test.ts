@@ -5,7 +5,7 @@ import {
   saveCodeCompletionApiKeyCredential
 } from './code-completion-credential-commands'
 
-const { storeState, storeMocks } = vi.hoisted(() => {
+const { storeState, storeMocks, savedCredentialUnreadableMock } = vi.hoisted(() => {
   const state = { saved: false, protection: null as 'sealed' | 'plaintext' | null }
   return {
     storeState: state,
@@ -25,30 +25,42 @@ const { storeState, storeMocks } = vi.hoisted(() => {
         path: '/home/test/.orca/code-completion-api-key.enc',
         envelopePrefix: 'orca-code-completion-api-key:v1:'
       }))
-    }
+    },
+    savedCredentialUnreadableMock: vi.fn(
+      () => undefined as 'sealed-elsewhere' | 'unreadable' | undefined
+    )
   }
 })
 
 vi.mock('./code-completion-api-key-store', () => storeMocks)
+vi.mock('../credentials/saved-credential-readability', () => ({
+  savedCredentialUnreadable: savedCredentialUnreadableMock
+}))
 
 describe('code completion credential commands', () => {
   beforeEach(() => {
     storeState.saved = false
     storeState.protection = null
+    savedCredentialUnreadableMock.mockReset()
+    savedCredentialUnreadableMock.mockReturnValue(undefined)
     for (const mock of Object.values(storeMocks)) {
       mock.mockClear()
     }
   })
 
   it('reports no key when none is saved', () => {
-    expect(getCodeCompletionCredentialStatus()).toEqual({ configured: false, protection: null })
+    expect(getCodeCompletionCredentialStatus()).toEqual({
+      configured: false,
+      protection: null,
+      unreadable: undefined
+    })
   })
 
   it('reports the key as configured after a save', () => {
     const status = saveCodeCompletionApiKeyCredential('secret-key')
 
     expect(storeMocks.saveCodeCompletionApiKey).toHaveBeenCalledWith('secret-key')
-    expect(status).toEqual({ configured: true, protection: 'sealed' })
+    expect(status).toEqual({ configured: true, protection: 'sealed', unreadable: undefined })
   })
 
   it('rejects a key that is not a string', () => {
@@ -62,12 +74,34 @@ describe('code completion credential commands', () => {
     expect(storeMocks.saveCodeCompletionApiKey).not.toHaveBeenCalled()
   })
 
+  it('accepts a key pasted with a trailing newline', () => {
+    const status = saveCodeCompletionApiKeyCredential('secret-key\n')
+
+    expect(storeMocks.saveCodeCompletionApiKey).toHaveBeenCalledWith('secret-key')
+    expect(status).toEqual({ configured: true, protection: 'sealed', unreadable: undefined })
+  })
+
+  it('reports a saved key that this host cannot read', () => {
+    storeState.saved = true
+    savedCredentialUnreadableMock.mockReturnValue('sealed-elsewhere')
+
+    expect(getCodeCompletionCredentialStatus()).toEqual({
+      configured: true,
+      protection: null,
+      unreadable: 'sealed-elsewhere'
+    })
+    expect(savedCredentialUnreadableMock).toHaveBeenCalledWith({
+      path: '/home/test/.orca/code-completion-api-key.enc',
+      envelopePrefix: 'orca-code-completion-api-key:v1:'
+    })
+  })
+
   it('clears the key', () => {
     saveCodeCompletionApiKeyCredential('secret-key')
 
     const status = clearCodeCompletionApiKeyCredential()
 
     expect(storeMocks.clearCodeCompletionApiKey).toHaveBeenCalled()
-    expect(status).toEqual({ configured: false, protection: null })
+    expect(status).toEqual({ configured: false, protection: null, unreadable: undefined })
   })
 })

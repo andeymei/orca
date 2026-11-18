@@ -1,5 +1,5 @@
 import type { AgentStatusEntry } from '../../../../../shared/agent-status/contracts/agent-status-types'
-import type { TerminalAgent } from '../../../../../shared/agent-status/identity/terminal-agent'
+import type { TuiAgent } from '../../../../../shared/agent-launch/catalog/tui-agent'
 import { isTuiAgent } from '../../../../../shared/agent-launch/catalog/tui-agent-config'
 
 /**
@@ -10,7 +10,7 @@ import { isTuiAgent } from '../../../../../shared/agent-launch/catalog/tui-agent
 export function resolvePaneForegroundAgentType(
   foregroundAgent: unknown,
   entry: AgentStatusEntry | undefined
-): TerminalAgent | null {
+): TuiAgent | null {
   // Rehydrated rows describe a previous process, not this pane's current foreground.
   return isTuiAgent(foregroundAgent)
     ? foregroundAgent

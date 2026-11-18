@@ -1215,10 +1215,17 @@ Then take the files whose matches include the symbol's definition — the file t
 
 The repo already has the policy: `shouldIncludeQuickOpenPath(path)` in
 `src/shared/quick-open/quick-open-filter.ts` walks the path's segments and rejects the
-hidden-directory blocklist plus `node_modules`. **Use it; do not write a second list.** Normalize
-the path with the cross-platform helper first — the predicate splits on `/` and the search's
-absolute path is native — and apply it to the **search results** only, not to the import-driven
-files: a relative import points at a file the author wrote, a search result is a guess.
+hidden-directory blocklist plus `node_modules`. **Use it; do not write a second list.** Apply it to
+the **search results** only, not to the import-driven files: a relative import points at a file the
+author wrote, a search result is a guess.
+
+**Apply it to the result's root-relative path, not to its absolute path.** The predicate is a
+segment blocklist, and every other caller in the repo hands it a path relative to the search root.
+Handed an absolute path, an ancestor directory named `.cache`, `.git`, `.npm` or `.gvfs` takes the
+whole result set with it — a workspace under `~/.cache/<repo>` silently loses every symbol-derived
+related file. Normalize the separators first (`normalizeRelativePath` from
+`src/shared/cross-platform-path.ts`): the predicate splits on `/`, and the relative path can be
+Windows-style.
 
 **The search's cap counts matches, not files.** `SearchOptions.maxResults` caps the total number of
 matches, so a file with ten occurrences of the symbol consumes ten of the cap — and the symbol's own

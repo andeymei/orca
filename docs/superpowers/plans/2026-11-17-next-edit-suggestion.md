@@ -1235,11 +1235,14 @@ git commit -m "feat(code-completion): the renderer client, the context and the r
 - Create: `src/renderer/src/components/editor/code-completion/nes-plan-store.ts`
 - Create: `src/renderer/src/components/editor/code-completion/nes-location-markers.ts`
 - Create: `src/renderer/src/components/editor/code-completion/nes-plan-store.test.ts`
+- Modify: `src/shared/code-completion/code-completion-types.ts` (add the predicate below)
+- Test: `src/shared/code-completion/code-completion-types.test.ts` (the predicate's own cases)
 
 **Interfaces:**
 
 - Consumes: `NesEdit`, `NesEditPlan` (Task 1).
 - Produces:
+  - `nesEditExtendsCoveredText(edit: NesEdit): boolean` — **in `src/shared/code-completion/code-completion-types.ts`**, beside the module-private `isApplicableNesEdit`. It answers "does this edit only append to the text its range covers?" and is `edit.text.length > edit.originalText.length && edit.text.startsWith(edit.originalText)`.
   - `type NesPlanStore = { bindModel(modelKey: string, filePath: string): void; setPlan(filePath: string, plan: NesEditPlan): void; getPlan(filePath: string): NesEditPlan | null; editAt(modelKey: string, position: { lineNumber: number; column: number }): NesEdit | null; editsForPath(filePath: string): NesEdit[]; remove(filePath: string): void; clear(): void }`
   - `createNesPlanStore(): NesPlanStore`
   - `nesPlanStore: NesPlanStore` — the module-level singleton the provider and the hook share. The provider is registered globally (Task 9) but the plan belongs to the open editor, so both sides must reach the same store.
@@ -1267,11 +1270,33 @@ describe('nes plan store', () => {
 
 describe('nes location markers', () => {
   it('leaves out the edit whose range ends at the cursor', ...)
+  it('keeps the marker for a cursor edit that only rewrites', ...)
   it('marks an edit at another line with the line it starts on', ...)
 })
 ```
 
+The predicate's own cases go in the shared module's test file, `src/shared/code-completion/code-completion-types.test.ts`:
+
+```ts
+describe('nesEditExtendsCoveredText', () => {
+  it('accepts an insert, whose covered text is empty', ...)
+  it('accepts a replace that only appends to the covered text', ...)
+  it('refuses a replace that rewrites the covered text', ...)
+  it('refuses a replace that shortens the covered text', ...)
+  it('refuses a delete', ...)
+  it('refuses an edit that changes nothing', ...)
+})
+```
+
 The second block is not optional: `nesLocationMarkers` is the selection rule the spec's second layer rests on, and the cursor edit must not also become a gutter marker — the cursor edit is the _suggestion_, and a marker on it would draw the user to the line they are already on.
+
+**But only the cursor edit that is actually the suggestion leaves no marker.** An edit that ends at the cursor and cannot be shown as an inline suggestion was never shown to the user at all, so the marker is what makes it reachable — the second layer doing the first layer's job. `nesEditExtendsCoveredText` is the test for "can this be shown inline", so the rule is: **an edit leaves the marker list when its range ends at the cursor _and_ it extends the covered text.**
+
+**Why the predicate lives in the shared contract module.** Three places need the same answer — this
+marker rule, the provider's offer decision (Task 9) and the Tab routing (Task 10) — and they must
+agree. If the provider refuses an edit the marker list still excludes, the edit is unreachable; if
+the routing accepts an edit the provider refused, Tab rewrites the user's code with no preview. One
+exported predicate, imported by all three, is what keeps them from drifting apart.
 
 `nesEditMatchesPosition` is the rule the spec fixes: **an edit matches the cursor when the cursor sits at the edit's range end**; an `insert` has `start === end`, so the cursor must be exactly there.
 
@@ -1297,7 +1322,7 @@ Expected: FAIL — the module does not exist.
 
 Create `src/renderer/src/components/editor/code-completion/nes-plan-store.ts` with the types above. The store keeps two maps: `modelKey → filePath` (the bindings the hook makes) and `filePath → plan` (the plans that arrived). `editAt(modelKey, position)` resolves the model to its file, then returns that file's edit whose range end equals the position. `editsForPath(filePath)` returns every edit any stored plan makes in that file — that is how a file the user is _not_ in still shows its marker.
 
-Create `src/renderer/src/components/editor/code-completion/nes-location-markers.ts` with `nesLocationMarkers(edits, cursor)`: the given edits whose range end is **not** the cursor position, each with the line of its range start.
+Create `src/renderer/src/components/editor/code-completion/nes-location-markers.ts` with `nesLocationMarkers(edits, cursor)`: the given edits whose range end is **not** the cursor position **or** that do not extend the covered text (per `nesEditExtendsCoveredText`), each with the line of its range start. The predicate itself goes in the shared contract module, not here — add it and its cases before writing the marker rule.
 
 - [ ] **Step 4: Write the marker decoration**
 
@@ -1346,7 +1371,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/renderer/src/components/editor/code-completion
+git add src/renderer/src/components/editor/code-completion src/shared/code-completion
 git commit -m "feat(code-completion): the plan store and the location markers"
 ```
 
@@ -1362,7 +1387,7 @@ git commit -m "feat(code-completion): the plan store and the location markers"
 
 **Interfaces:**
 
-- Consumes: `NesPlanStore` (Task 8), `NesEdit` (Task 1).
+- Consumes: `NesPlanStore` (Task 8), `NesEdit` (Task 1), `nesEditExtendsCoveredText` (Task 8).
 - Produces:
   - `ensureNesInlineCompletionsProvider(monaco: MonacoApi): void` — the module-level singleton
   - `nesInlineCompletionForEdit(edit: NesEdit, model: editor.ITextModel): monaco.languages.InlineCompletion | null`
@@ -1375,16 +1400,29 @@ Create `src/renderer/src/components/editor/code-completion/nes-inline-provider.t
 ```ts
 describe('nes inline completion', () => {
   it('turns an insert edit into an inline completion at the cursor', ...)
-  it('turns a replace edit into an inline completion over the replaced range', ...)
+  it('turns a multi-line insert into one inline completion', ...)
+  it('turns a replace that extends the covered text into an inline completion', ...)
+  it('returns null for a replace that rewrites the covered text', ...)
   it('returns null for a delete edit', ...)
   it('rejects an edit whose range no longer matches the model', ...)
   it('returns null for a replace edit that starts on an earlier line', ...)
 })
 ```
 
-The last case is Monaco's own constraint: an inline completion's range must begin on the cursor's line, so a `replace` that starts higher is never displayable and must not be offered.
+The "rewrites the covered text" case is Monaco's own constraint, and it decides what this provider may
+offer at all: **the classic ghost-text path can only show an insertion.** A rewrite renders as
+nothing at all, so offering it would put the user in front of an invisible suggestion — and since
+the accept path is ours (Task 10 calls `applyNesEdit`), Tab would then rewrite their code with no
+preview. The rule is `nesEditExtendsCoveredText` (Task 8): the offered text must strictly extend
+the text the range covers.
 
-The last case is the "the user typed while the request was in flight" case from Review Focus: the provider re-checks the model's current text against the edit's `originalText` before it offers the suggestion.
+The "starts on an earlier line" case is Monaco's other constraint: an inline completion's range must
+begin on the cursor's line, so a `replace` that starts higher is never displayable and must not be
+offered.
+
+The "range no longer matches the model" case is the "the user typed while the request was in flight"
+case from Review Focus: the provider re-checks the model's current text against the edit's
+`originalText` before it offers the suggestion.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1459,9 +1497,44 @@ The provider asks the store by **model key**, not by file path: the model URI's 
 }
 ```
 
-A `delete` edit has no `insertText` and yields null — deleting is a plan-level action, not a suggestion the user accepts with Tab.
+**The range is mapped verbatim — there is no off-by-one to correct.** The NES range's end column is
+exclusive ("it covers the text up to but not including its end") and Monaco's is too: its end column
+points one _past_ the last covered character. Probed against a real `PieceTreeTextBuffer`,
+`Range(1,1,1,2)` covers `"c"` and `Range(1,1,1,14)` covers the whole 13-character line
+`"const x = abc"` — the same columns `sliceRange` slices. Do not "fix" this by adding or removing
+one.
 
-**An edit whose range does not start on the cursor's line yields null.** Monaco's `InlineCompletion.range` "must begin and end on the same line", and `inlineCompletionIsVisible` refuses any suggestion whose `range.startLineNumber` is not the cursor's line — so a multi-line range would be silently _never displayed_. Such an edit is not lost: it still gets a gutter marker (Task 10) and the user can jump to it. **Reject, do not clamp** — clamping the range to the cursor's line would change which text the suggestion overwrites.
+**The range is used as it is, and the cursor's line must match it.** Monaco's `InlineCompletion.range`
+"must begin and end on the same line", and `inlineCompletionIsVisible` refuses any suggestion whose
+`range.startLineNumber` is not the cursor's line — so a multi-line range would be silently _never
+displayed_. Such an edit is not lost: it still gets a gutter marker (Task 8) and the user can jump to
+it. **Reject, do not clamp** — clamping the range to the cursor's line would change which text the
+suggestion overwrites. For an NES cursor edit the range _ends_ at the cursor, so "starts on the
+cursor's line" and "is a single line" are the same condition.
+
+**Three facts about Monaco 0.55's ghost text, all verified against the installed package.**
+
+- **A multi-line `insertText` is fine, and it is the feature's core.** `computeGhostText` refuses a
+  multi-line _range_, not a multi-line _text_: an insert of three lines at the cursor produces the
+  whole three-line ghost text, which Monaco renders with the first line inline and the rest below the
+  cursor line. One `InlineCompletion` carries the whole block.
+- **The classic path can only show an insertion.** It renders the diff between the model's text in
+  the range and the offered text, and it bails as soon as a diff change removes anything
+  (`if (c.originalLength > 0) return undefined`). So the offered text must **strictly extend** the
+  covered text — this is `nesEditExtendsCoveredText` (Task 8), and it is what the provider checks
+  before offering anything.
+- **A replace that extends the covered text shows only the appended part.** Monaco strips the common
+  prefix itself, so the ghost text is the delta (`"abc"` → `"abcdef"` renders `"def"` at the end of
+  the range). The result the user sees matches what `applyNesEdit` writes, so the preview stays
+  faithful.
+
+**The delete case is already covered by the predicate.** A `delete` has empty `text` and non-empty
+`originalText`, so it does not extend the covered text and never reaches the mapping. Deleting is a
+plan-level action, not a suggestion the user accepts with Tab.
+
+**The predicate and the model check are both required.** `nesEditExtendsCoveredText` says the edit
+_could_ be shown; the model's current text must still match `edit.originalText` before it _is_
+shown.
 
 - [ ] **Step 4: Add the CSS**
 
@@ -1504,7 +1577,7 @@ git commit -m "feat(code-completion): the Monaco inline completion provider"
 - Consumes: `requestNesPlan` (Task 7), `NesPlanStore` (Task 8), `ensureNesInlineCompletionsProvider` (Task 9).
 - Produces:
   - `type NesTabDecision = 'accept-suggestion' | 'jump-to-next-location' | 'pass-through'`
-  - `decideNesTabAction(input: { hasInlineSuggestion: boolean; hasOtherLocations: boolean }): NesTabDecision` — the pure routing rule. `hasInlineSuggestion` is **our own state**, not Monaco's: it is true when `nesPlanStore.editAt(modelKey, cursor)` returns an edit whose `originalText` still matches the live model — the same check the provider (Task 9) makes. Monaco exposes no public query for whether _its_ inline widget is showing; `editor.action.inlineSuggest.commit`'s `isSupported()` is the closest, but it answers for whichever provider owns the widget.
+  - `decideNesTabAction(input: { hasInlineSuggestion: boolean; hasOtherLocations: boolean }): NesTabDecision` — the pure routing rule. `hasInlineSuggestion` is **our own state**, not Monaco's: it is true when `nesPlanStore.editAt(modelKey, cursor)` returns an edit that passes **both** checks the provider (Task 9) makes — `nesEditExtendsCoveredText(edit)` (Task 8) and the live-model `originalText` check. One question, one answer: the predicate decides whether the edit _could_ be shown as ghost text, the model check decides whether it _is_ still valid, and Tab must not accept an edit the provider would never render — the user would watch their code change with no preview of it. Monaco exposes no public query for whether _its_ inline widget is showing; `editor.action.inlineSuggest.commit`'s `isSupported()` is the closest, but it answers for whichever provider owns the widget.
   - `useMonacoNextEditSuggestions(params): void` — the hook that owns the trigger and the plan state
   - two new keybinding ids: `editor.acceptAiSuggestion` and `editor.nextAiSuggestion`
 

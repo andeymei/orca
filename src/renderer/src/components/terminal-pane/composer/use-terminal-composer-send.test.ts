@@ -2,7 +2,10 @@
 import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_TUI_CLEAR_INPUT_MAX } from '../../../../../shared/agent-launch/startup/agent-tui-input-clear'
-import { NATIVE_CHAT_SUBMIT_DELAY_MS } from '../../../../../shared/native-chat/input/native-chat-answer-stepping'
+import {
+  NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS,
+  NATIVE_CHAT_SUBMIT_DELAY_MS
+} from '../../../../../shared/native-chat/input/native-chat-answer-stepping'
 import {
   buildNativeChatPasteBytes,
   NATIVE_CHAT_SUBMIT
@@ -32,6 +35,8 @@ describe('terminal composer writes', () => {
     // The last image paste takes a space so the body does not merge into the chip.
     expect(writes[1].data).toBe(`${wrapTerminalBracketedPasteText('/ws/.orca/drops/shot.png')} `)
     expect(writes[2].data).toBe(buildNativeChatPasteBytes('look at this'))
+    // The chip is created asynchronously; the body waits for it.
+    expect(writes[2].delayBeforeMs).toBe(NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS)
     expect(writes[3].data).toBe(NATIVE_CHAT_SUBMIT)
     expect(writes[3].delayBeforeMs).toBe(NATIVE_CHAT_SUBMIT_DELAY_MS)
   })
@@ -54,8 +59,32 @@ describe('terminal composer writes', () => {
     expect(writes[1].data).toContain('@"/ws/.orca/drops/my shot.png"')
   })
 
+  it('gives each image its own paste, in pill order', () => {
+    const writes = buildTerminalComposerWrites({
+      body: 'two',
+      imagePaths: ['/ws/.orca/drops/a.png', '/ws/.orca/drops/b.png'],
+      agent: 'claude'
+    })
+    expect(writes[1].data).toBe(wrapTerminalBracketedPasteText('/ws/.orca/drops/a.png'))
+    expect(writes[2].data).toBe(`${wrapTerminalBracketedPasteText('/ws/.orca/drops/b.png')} `)
+  })
+
   it('writes Enter separately even with no attachments', () => {
     const writes = buildTerminalComposerWrites({ body: 'hello', imagePaths: [], agent: 'claude' })
+    expect(writes.map((w) => w.data)).toEqual([
+      AGENT_TUI_CLEAR_INPUT_MAX,
+      buildNativeChatPasteBytes('hello'),
+      NATIVE_CHAT_SUBMIT
+    ])
+  })
+
+  it('writes no body when there is only whitespace to send', () => {
+    const writes = buildTerminalComposerWrites({ body: '   ', imagePaths: [], agent: 'claude' })
+    expect(writes.map((w) => w.data)).toEqual([AGENT_TUI_CLEAR_INPUT_MAX, NATIVE_CHAT_SUBMIT])
+  })
+
+  it('clears the terminal input line even when no agent was detected', () => {
+    const writes = buildTerminalComposerWrites({ body: 'hello', imagePaths: [], agent: null })
     expect(writes.map((w) => w.data)).toEqual([
       AGENT_TUI_CLEAR_INPUT_MAX,
       buildNativeChatPasteBytes('hello'),
@@ -69,6 +98,7 @@ type HarnessOptions = {
   executionHostId?: () => string | null
   localSessionMetadata?: () => { cwd?: string; shellOverride?: string } | null
   withTransport?: boolean
+  withManager?: boolean
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -90,7 +120,7 @@ function createHarness(options: HarnessOptions = {}) {
   const paneTransports = new Map(
     options.withTransport === false ? [] : [[PANE_ID, transport]]
   ) as never
-  const managerRef = { current: manager }
+  const managerRef = { current: options.withManager === false ? null : manager }
   const paneTransportsRef = { current: paneTransports }
   const hook = renderHook(() => useTerminalComposerSend({ managerRef, paneTransportsRef }))
   return {
@@ -138,6 +168,13 @@ describe('terminal composer send', () => {
   it('refuses to write when the pane is no longer mounted', async () => {
     const harness = createHarness()
     harness.panes.length = 0
+
+    expect(await harness.send(REQUEST)).toEqual({ sent: false, reason: 'pane-changed' })
+    expect(harness.sendInput).not.toHaveBeenCalled()
+  })
+
+  it('refuses to write when the pane manager is gone', async () => {
+    const harness = createHarness({ withManager: false })
 
     expect(await harness.send(REQUEST)).toEqual({ sent: false, reason: 'pane-changed' })
     expect(harness.sendInput).not.toHaveBeenCalled()

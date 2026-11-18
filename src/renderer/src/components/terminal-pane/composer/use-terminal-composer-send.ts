@@ -3,7 +3,10 @@ import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import { AGENT_TUI_CLEAR_INPUT_MAX } from '../../../../../shared/agent-launch/startup/agent-tui-input-clear'
 import { agentImagePasteWrites } from '../../../../../shared/agent-image-paste'
 import { agentImagePastePath } from '../../../../../shared/agent-image-paste-path'
-import { NATIVE_CHAT_SUBMIT_DELAY_MS } from '../../../../../shared/native-chat/input/native-chat-answer-stepping'
+import {
+  NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS,
+  NATIVE_CHAT_SUBMIT_DELAY_MS
+} from '../../../../../shared/native-chat/input/native-chat-answer-stepping'
 import {
   buildNativeChatImagePasteBytes,
   buildNativeChatPasteBytes,
@@ -49,16 +52,27 @@ export function buildTerminalComposerWrites({
   imagePaths: readonly string[]
   agent: string | null
 }): TerminalComposerWrite[] {
-  const writes: TerminalComposerWrite[] = [{ data: AGENT_TUI_CLEAR_INPUT_MAX, delayBeforeMs: 0 }]
+  const writes: TerminalComposerWrite[] = []
+  // The clear empties the pending input line, agent or shell: without it the body would be
+  // appended to whatever the user had half-typed.
+  writes.push({ data: AGENT_TUI_CLEAR_INPUT_MAX, delayBeforeMs: 0 })
+  // A body of only whitespace is no body: native chat treats it as no text.
+  const hasText = body.trim().length > 0
   const framed = agentImagePasteWrites(
     agent,
     imagePaths.map((path) => buildNativeChatImagePasteBytes(agentImagePastePath(agent, path))),
-    body.length > 0
+    hasText
   )
   for (const data of framed) {
     writes.push({ data, delayBeforeMs: 0 })
   }
-  writes.push({ data: buildNativeChatPasteBytes(body), delayBeforeMs: 0 })
+  if (hasText) {
+    writes.push({
+      data: buildNativeChatPasteBytes(body),
+      // The chip is created asynchronously; the body waits for it to exist.
+      delayBeforeMs: imagePaths.length > 0 ? NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS : 0
+    })
+  }
   writes.push({ data: NATIVE_CHAT_SUBMIT, delayBeforeMs: NATIVE_CHAT_SUBMIT_DELAY_MS })
   return writes
 }

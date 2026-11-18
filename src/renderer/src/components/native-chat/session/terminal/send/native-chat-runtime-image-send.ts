@@ -3,7 +3,10 @@ import { agentImagePasteWrites } from '../../../../../../../shared/agent-image-p
 import { agentImagePastePath } from '../../../../../../../shared/agent-image-paste-path'
 import type { AgentType } from '../../../../../../../shared/agent-status/contracts/agent-status-types'
 import { sendRuntimePtyInput } from '@/runtime/hosted-terminals/input/runtime-terminal-input-send'
-import { NATIVE_CHAT_SUBMIT_DELAY_MS } from '../../../../../../../shared/native-chat/input/native-chat-answer-stepping'
+import {
+  NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS,
+  NATIVE_CHAT_SUBMIT_DELAY_MS
+} from '../../../../../../../shared/native-chat/input/native-chat-answer-stepping'
 import {
   buildNativeChatImagePasteBytes,
   buildNativeChatPasteBytes,
@@ -17,8 +20,6 @@ import {
   type NativeChatSendOptions
 } from './native-chat-input-clear'
 import { sendNativeChatMessage, type NativeChatSendHandle } from './native-chat-runtime-send'
-
-export const NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS = 300
 
 export function sendNativeChatMessageWithImageAttachments(
   agent: AgentType,

@@ -31,7 +31,7 @@
 - **命名**:不用 `helpers` / `utils` / `common` / `misc`;文件名按领域概念命名。
 - **注释**:只在代码不能自我描述时写,一行,说「为什么」不写「怎么做」。
 - **测试**:`pnpm test <path> --maxWorkers=2`。**绝不同时跑两个 vitest**(共享 transform 缓存会互相损坏)。
-- **DOM 测试环境**:`// @vitest-environment happy-dom` 放在**第一行**—— 仓库里 903 个文件这么写,只有 63 个放在别处。`render` 直接来自 `@testing-library/react`,没有 `renderWithProviders` 这类包装。
+- **DOM 测试环境**:`// @vitest-environment happy-dom` 放在**第一行**—— 仓库里 880 个文件这么写,只有 63 个放在别处。`render` 直接来自 `@testing-library/react`,没有 `renderWithProviders` 这类包装。
 - **截图 fixture** 用 `*.fixture.tsx`,放在组件旁边,由 glob 自动发现(没有手写清单);id 是「去掉 `components/` 前缀与 `.fixture.tsx` 后缀的路径」+ `:` + 导出名,例如 `terminal-pane/composer/TerminalComposerField:empty`。**单测用的 fixture 是另一种后缀** `*.test.fixture.ts(x)`。
 - **不加低价值测试**:只写「回退改动就会失败」的测试;不测 CSS 类、复制文案、DOM 结构、耗时。
 

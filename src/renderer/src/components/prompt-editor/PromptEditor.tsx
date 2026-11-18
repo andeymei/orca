@@ -147,6 +147,8 @@ export function PromptEditor({
     () =>
       editor
         ? {
+            // The facade is read long after the last render, so the getters keep it live:
+            // a snapshot property would hand the caller a stale body or a stale editability.
             get value() {
               return promptText(editor.state.doc)
             },

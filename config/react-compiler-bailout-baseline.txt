@@ -293,6 +293,7 @@
 2 src/renderer/src/components/plugins/state/use-plugin-marketplace-lifecycle.ts
 1 src/renderer/src/components/plugins/state/use-plugin-settings-writes.ts
 1 src/renderer/src/components/ports/WorkspacePortScanner.tsx
+5 src/renderer/src/components/prompt-editor/PromptEditor.tsx # get/set functions in an object expression and refs read during render; the facade's getters must stay live
 2 src/renderer/src/components/provider-accounts/AntigravityChatAuthForm.tsx
 1 src/renderer/src/components/pull-request-page/checks/tab.tsx
 2 src/renderer/src/components/pull-request-page/comments/composer.tsx

@@ -1,5 +1,4 @@
-import type { editor } from 'monaco-editor'
-import { ContentWidgetPositionPreference } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js'
+import { editor } from 'monaco-editor/esm/vs/editor/editor.api.js'
 import {
   sliceRange,
   type NesEdit
@@ -73,7 +72,7 @@ export function previewNesEdit(
     getDomNode: () => node,
     getPosition: () => ({
       position: { lineNumber: anchor.lineNumber, column: anchor.column },
-      preference: [ContentWidgetPositionPreference.BELOW]
+      preference: [editor.ContentWidgetPositionPreference.BELOW]
     })
   }
   editorInstance.addContentWidget(widget)

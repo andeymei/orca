@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
-import { ContentWidgetPositionPreference } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 import { applyNesEdit, previewNesEdit } from './nes-edit-application'
@@ -254,7 +253,7 @@ describe('previewNesEdit', () => {
     const position = widgets[0].getPosition()
     expect(position?.position?.lineNumber).toBe(1)
     expect(position?.position?.column).toBe(16)
-    expect(position?.preference).toEqual([ContentWidgetPositionPreference.BELOW])
+    expect(position?.preference).toEqual([monaco.editor.ContentWidgetPositionPreference.BELOW])
     expect(layoutCount()).toBe(1)
   })
 

@@ -1599,7 +1599,7 @@ where an exception is not a graceful "no suggestion".
 
 - [ ] **Step 4: Add the CSS**
 
-In `src/renderer/src/assets/main.css`, add a `.nes-location-marker` class (a small glyph in the gutter) and a `.nes-ghost-text` class used by the preview overlay of Task 10. Follow the token rules in `docs/STYLEGUIDE.md` — reuse the existing border and foreground tokens rather than hardcoding hex values.
+In `src/renderer/src/assets/main.css`, add a `.nes-location-marker` class (a small glyph in the gutter) and a `.nes-ghost-text` class used by the preview overlay of Task 11. Follow the token rules in `docs/STYLEGUIDE.md` — reuse the existing border and foreground tokens rather than hardcoding hex values.
 
 **Copy the house pattern for the glyph.** `src/renderer/src/assets/main.css` already styles the AI-instruction gutter glyphs (`.monaco-editor .ai-instruction-glyph--pending::before` and its two siblings) — the glyph is a `::before` pseudo-element with `content: ''`, a `mask-image` holding an inline SVG data URI, an explicit `width`/`height`, and a `background-color` drawn from a token.
 

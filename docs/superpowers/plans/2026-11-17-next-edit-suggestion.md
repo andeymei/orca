@@ -1446,6 +1446,7 @@ describe('nes inline completion', () => {
   it('returns null for a delete edit', ...)
   it('rejects an edit whose range no longer matches the model', ...)
   it('returns null for a replace edit that starts on an earlier line', ...)
+  it('returns null instead of throwing when the range names a line past the end of the file', ...)
 })
 ```
 

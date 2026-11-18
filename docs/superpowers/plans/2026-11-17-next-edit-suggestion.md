@@ -1905,11 +1905,20 @@ When the check fails the function returns false and changes nothing. Otherwise i
 
 ```ts
 editorInstance.pushUndoStop()
-model.pushEditOperations([], [{ range, text: edit.kind === 'delete' ? '' : edit.text }], () => null)
+model.pushEditOperations(
+  [],
+  [{ range, text: edit.kind === 'delete' ? null : edit.text }],
+  () => null
+)
 editorInstance.pushUndoStop()
 ```
 
 and returns true.
+
+**`null` is Monaco's delete spelling.** `ISingleEditOperation.text` is `string | null`, and the
+document says "This can be null to emulate a simple delete" — so the `delete` kind passes `null`,
+not `''`. The `cursorStateComputer` is required in monaco 0.55, and `() => null` is the right
+shape for it (`ICursorStateComputer` returns `Selection[] | null`).
 
 `applyNesEdit` is **on the accept path**: Task 10's shortcut calls it when the routing decision is `accept-suggestion`. It is not a helper for some later flow — the `originalText` check above is the guard that stops a stale plan from being applied to text that changed under it, so it has to sit on the path that actually writes. Task 9's provider check is the _first_ line of defence (it decides whether to offer the suggestion at all); this one is the second, at the moment of acceptance.
 

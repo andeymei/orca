@@ -23781,6 +23781,7 @@
     "sendHint": "zum Senden",
     "uploadFailed": "Die Datei konnte nicht angehängt werden",
     "hostChanged": "Der Host hat sich geändert, daher wurde die Nachricht nicht gesendet",
+    "hostChangedWhileAttaching": "Der Host hat sich geändert, daher wurde nichts angehängt. Versuchen Sie es erneut.",
     "disconnected": "Das Terminal hat die Verbindung getrennt, daher wurde die Nachricht nicht gesendet",
     "paneChanged": "Der Bereich hat sich geändert, daher wurde die Nachricht nicht gesendet",
     "writeRejected": "Der Host hat die Nachricht abgelehnt",

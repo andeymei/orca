@@ -15,6 +15,17 @@ vi.mock('./attachments/terminal-composer-attachment-intake', () => ({
   pasteTerminalComposerAttachments: vi.fn()
 }))
 
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({
+  toast: Object.assign(toastError, {
+    error: toastError,
+    loading: vi.fn(),
+    dismiss: vi.fn(),
+    success: vi.fn(),
+    message: vi.fn()
+  })
+}))
+
 const pasteIntake = vi.mocked(pasteTerminalComposerAttachments)
 const initialState = useAppStore.getInitialState()
 
@@ -22,6 +33,7 @@ const host = { workspacePath: '/workspace', worktreeId: 'worktree-1' }
 
 beforeEach(() => {
   useAppStore.setState(initialState, true)
+  toastError.mockClear()
   pasteIntake.mockResolvedValue({
     attachments: [
       {
@@ -147,7 +159,8 @@ describe('terminal composer field', () => {
     const { fieldRef } = setup({
       buildHost: () => ({
         workspacePath: '\\\\wsl.localhost\\Ubuntu\\workspace',
-        worktreeId: 'worktree-1'
+        worktreeId: 'worktree-1',
+        session: { cwd: '\\\\wsl.localhost\\Ubuntu\\workspace' }
       })
     })
     await act(async () => {
@@ -165,6 +178,33 @@ describe('terminal composer field', () => {
     })
     // A WSL agent cannot read the Windows spelling of its own file.
     expect(fieldRef.current?.value()).toContain('@/workspace/.orca/drops/notes.txt')
+  })
+
+  it('spells a file the way the WSL shell of the pane reads it', async () => {
+    // A local Windows worktree whose shell runs in WSL: the agent reads Linux paths, even
+    // though the workspace path is spelled for Windows.
+    const { fieldRef } = setup({
+      buildHost: () => ({
+        workspacePath: 'C:\\ws',
+        worktreeId: 'worktree-1',
+        session: { cwd: 'C:\\ws', shellOverride: 'wsl.exe' }
+      })
+    })
+    await act(async () => {
+      fieldRef.current?.landAttachments({
+        attachments: [
+          {
+            id: 'a1',
+            name: 'notes.txt',
+            workspacePath: 'C:\\ws\\.orca\\drops\\notes.txt',
+            isImage: false
+          }
+        ],
+        failed: []
+      })
+    })
+    // The agent in this pane lives in WSL, so the body names the file the way it reads it.
+    expect(fieldRef.current?.value()).toContain('@/mnt/c/ws/.orca/drops/notes.txt')
   })
 
   it('keeps the attachments that landed when one of them fails', async () => {
@@ -188,6 +228,21 @@ describe('terminal composer field', () => {
     expect(screen.getByText('The file is gone')).toBeVisible()
     // The re-add hint is visible, not only a hover title.
     expect(screen.getByText('Attach it again')).toBeVisible()
+  })
+
+  it('says so when the host moves under the paste', async () => {
+    pasteIntake.mockRejectedValue(new Error('Terminal upload host changed; retry the drop.'))
+    const { editor } = setup()
+    const file = new File([new Uint8Array([1])], 'notes.txt', { type: 'text/plain' })
+    await act(async () => {
+      fireEvent.paste(editor, {
+        clipboardData: { files: [file], items: [], getData: () => '' }
+      })
+    })
+    // The upload was refused, so the user is told the host moved instead of watching
+    // nothing happen.
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError.mock.calls[0]?.[0]).toContain('The host changed')
   })
 
   it('disables the send button while there is nothing to send', () => {

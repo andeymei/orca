@@ -16,7 +16,9 @@ import { buildTerminalComposerWrites, useTerminalComposerSend } from './use-term
 vi.mock('@/store/index', () => ({
   useAppStore: Object.assign(
     (selector: (state: Record<string, unknown>) => unknown) => selector({}),
-    { getState: () => ({}) }
+    // An SSH host with no connection state cannot be verified, which is what the send
+    // layer has to survive.
+    { getState: () => ({ sshConnectionStates: new Map() }) }
   )
 }))
 
@@ -183,6 +185,15 @@ describe('terminal composer send', () => {
   it('refuses to write when the host changed under the send', async () => {
     const executionHostId = vi.fn().mockReturnValueOnce('local').mockReturnValue('ssh:other')
     const harness = createHarness({ executionHostId })
+
+    expect(await harness.send(REQUEST)).toEqual({ sent: false, reason: 'host-changed' })
+    expect(harness.sendInput).not.toHaveBeenCalled()
+  })
+
+  it('refuses to write when the host cannot be verified', async () => {
+    // The SSH connection generation is gone, so the write cannot be proven to reach the
+    // host that owns this pane.
+    const harness = createHarness({ executionHostId: () => 'ssh:other' })
 
     expect(await harness.send(REQUEST)).toEqual({ sent: false, reason: 'host-changed' })
     expect(harness.sendInput).not.toHaveBeenCalled()

@@ -111,20 +111,11 @@ beforeEach(() => {
   useAppStore.setState({ terminalComposerOpenByPaneKey: { [PANE_KEY]: true } })
   vi.mocked(pasteTerminalComposerAttachments).mockResolvedValue({ attachments: [], failed: [] })
   toastError.mockClear()
+  vi.mocked(dropTerminalComposerAttachments).mockClear()
   fsApi.getPathForFile.mockReset().mockImplementation((file: File) => `/dropped/${file.name}`)
   fsApi.prepareDroppedPaths
     .mockReset()
     .mockImplementation(async ({ paths }: { paths: string[] }) => ({ paths, failures: [] }))
-  // The OS drop owner reads the file's path and asks the host to prepare it.
-  Object.defineProperty(window, 'api', {
-    configurable: true,
-    value: {
-      fs: {
-        getPathForFile: fsApi.getPathForFile,
-        prepareDroppedPaths: fsApi.prepareDroppedPaths
-      }
-    }
-  })
 })
 
 /** A trusted OS file drop; the owner ignores an untrusted one on purpose. */
@@ -208,6 +199,21 @@ describe('terminal composer overlay', () => {
       `${WORKTREE_PATH}/.orca/drops`
     )
   })
+})
+
+describe('a drop into the composer card', () => {
+  beforeEach(() => {
+    // The OS drop owner reads the file's path and asks the host to prepare it.
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: {
+        fs: {
+          getPathForFile: fsApi.getPathForFile,
+          prepareDroppedPaths: fsApi.prepareDroppedPaths
+        }
+      }
+    })
+  })
 
   it('says so when the host that owns the terminal cannot take the drop', async () => {
     // A runtime the client does not know, with no local cwd to fall back on: the drop has
@@ -241,7 +247,26 @@ describe('terminal composer overlay', () => {
     await settleDrop()
     // The hook said the paths did not resolve; that is the whole answer.
     expect(toastError).toHaveBeenCalledTimes(1)
-    expect(toastError.mock.calls[0]?.[0]).not.toContain('cannot be reached')
+    expect(toastError.mock.calls[0]?.[0]).toContain("couldn't read a path for the dropped files")
     expect(vi.mocked(dropTerminalComposerAttachments)).not.toHaveBeenCalled()
+  })
+
+  it('says so when the host moves under the upload', async () => {
+    vi.mocked(dropTerminalComposerAttachments).mockRejectedValue(
+      new Error('Terminal upload host changed; retry the drop.')
+    )
+    const { container } = createOverlay('/cwd')
+    const field = container.querySelector('[data-terminal-composer-editor="true"]')
+    if (!field) {
+      throw new Error('Expected the composer field')
+    }
+    await act(async () => {
+      field.dispatchEvent(osFileDrop([new File(['x'], 'notes.png', { type: 'image/png' })]))
+    })
+    await settleDrop()
+    // The upload was refused, so the user is told the host moved instead of watching
+    // nothing happen.
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError.mock.calls[0]?.[0]).toContain('The host changed')
   })
 })

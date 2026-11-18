@@ -23897,6 +23897,7 @@
     "sendHint": "发送",
     "uploadFailed": "附件添加失败",
     "hostChanged": "宿主已改变，消息没有发送",
+    "hostChangedWhileAttaching": "宿主已改变，因此没有添加附件。请重试。",
     "disconnected": "终端已断开，消息没有发送",
     "paneChanged": "面板已改变，消息没有发送",
     "writeRejected": "宿主拒绝了这批字节",

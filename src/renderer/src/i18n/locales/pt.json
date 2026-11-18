@@ -24853,6 +24853,7 @@
     "sendHint": "para enviar",
     "uploadFailed": "Não foi possível anexar o arquivo",
     "hostChanged": "O host mudou, então a mensagem não foi enviada",
+    "hostChangedWhileAttaching": "O host mudou, então nada foi anexado. Tente novamente.",
     "disconnected": "O terminal foi desconectado, então a mensagem não foi enviada",
     "paneChanged": "O painel mudou, então a mensagem não foi enviada",
     "writeRejected": "O host recusou a mensagem",

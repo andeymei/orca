@@ -23748,6 +23748,7 @@
     "sendHint": "ile gönder",
     "uploadFailed": "Dosya eklenemedi",
     "hostChanged": "Sunucu değişti, bu yüzden mesaj gönderilmedi",
+    "hostChangedWhileAttaching": "Sunucu değişti, bu yüzden hiçbir şey eklenmedi. Tekrar deneyin.",
     "disconnected": "Terminal bağlantısı kesildi, bu yüzden mesaj gönderilmedi",
     "paneChanged": "Panel değişti, bu yüzden mesaj gönderilmedi",
     "writeRejected": "Sunucu mesajı reddetti",

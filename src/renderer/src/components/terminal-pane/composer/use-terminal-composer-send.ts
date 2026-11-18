@@ -12,16 +12,14 @@ import {
   buildNativeChatPasteBytes,
   NATIVE_CHAT_SUBMIT
 } from '../../../../../shared/native-chat/input/native-chat-paste-bytes'
-import { isWslUncPath } from '../../../../../shared/wsl-paths'
-import { toLocalWslDropPath } from '../input/file-drop/terminal-drop-local-wsl'
 import {
   captureTerminalDropTarget,
   getCurrentTerminalDropTransport
 } from '../input/file-drop/terminal-drop-target'
 import { captureTerminalDropTransportOwner } from '../input/file-drop/terminal-drop-transport-owner'
-import { isWslShellOverride } from '../input/paste/terminal-paste-runtime'
 import { recordTerminalUserInputForLeaf } from '../input/terminal-input-activity'
 import type { PtyTransport } from '../pty-transport/pty-transport-types'
+import { terminalComposerAgentVisiblePath } from './terminal-composer-agent-path'
 
 export type TerminalComposerWrite = { data: string; delayBeforeMs: number }
 
@@ -112,7 +110,14 @@ export function useTerminalComposerSend({
       )
       // The upload path only enforces the host fence on its runtime branch, so the send
       // layer takes its own reading of the host and refuses the write when it moved.
-      const owner = captureTerminalDropTransportOwner(transport)
+      let owner: ReturnType<typeof captureTerminalDropTransportOwner> = null
+      try {
+        owner = captureTerminalDropTransportOwner(transport)
+      } catch {
+        // The SSH connection cannot be verified, so the write cannot be proven to reach
+        // the pane's host: nothing is written and the user is told why.
+        return { sent: false, reason: 'host-changed' }
+      }
       const writes = buildTerminalComposerWrites({
         body: request.body,
         imagePaths: request.imagePaths.map((path) => agentVisibleImagePath(transport, path)),
@@ -156,9 +161,7 @@ export function useTerminalComposerSend({
 
 /** The path an agent in this pane can open; a WSL agent reads Linux paths, not the Windows spelling. */
 function agentVisibleImagePath(transport: PtyTransport, path: string): string {
-  const session = transport.getLocalSessionMetadata?.()
-  const runsInWsl = isWslUncPath(session?.cwd ?? '') || isWslShellOverride(session?.shellOverride)
-  return runsInWsl ? toLocalWslDropPath(path) : path
+  return terminalComposerAgentVisiblePath(transport.getLocalSessionMetadata?.(), path)
 }
 
 function delay(ms: number): Promise<void> {

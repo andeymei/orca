@@ -24220,6 +24220,7 @@
     "sendHint": "para enviar",
     "uploadFailed": "No se pudo adjuntar el archivo",
     "hostChanged": "El host cambió, así que el mensaje no se envió",
+    "hostChangedWhileAttaching": "El host cambió, así que no se adjuntó nada. Inténtalo de nuevo.",
     "disconnected": "La terminal se desconectó, así que el mensaje no se envió",
     "paneChanged": "El panel cambió, así que el mensaje no se envió",
     "writeRejected": "El host rechazó el mensaje",

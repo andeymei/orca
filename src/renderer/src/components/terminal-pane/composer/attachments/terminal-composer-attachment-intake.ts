@@ -4,12 +4,15 @@ import type { TerminalComposerAttachment } from '@/store/slices/terminal-compose
 import { AGENT_SESSION_ATTACHMENT_MAX_BYTES } from '../../../../../../shared/agent-session/agent-session-attachments'
 import { isImageDropPath } from '../../../../../../shared/image-path-paste'
 import { createNonSecureContextUuid } from '../../../../../../shared/non-secure-context-uuid'
+import type { TerminalComposerAgentSession } from '../terminal-composer-agent-path'
 import { copyTerminalComposerAttachmentsToWorkspace } from './terminal-composer-workspace-copy'
 
 export type TerminalComposerIntakeHost = {
   /** The workspace root that owns the terminal. */
   workspacePath: string
   worktreeId: string
+  /** The pane's session, so a path can be spelled the way the agent in that pane reads it. */
+  session?: TerminalComposerAgentSession | null
   /** The runtime environment that owns the terminal, when it is a paired runtime. */
   runtimeEnvironmentId?: string | null
   /** The SSH target that owns the terminal, when it is a direct SSH host. */

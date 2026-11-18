@@ -24237,6 +24237,7 @@
     "sendHint": "pour envoyer",
     "uploadFailed": "Impossible de joindre le fichier",
     "hostChanged": "L’hôte a changé, le message n’a donc pas été envoyé",
+    "hostChangedWhileAttaching": "L’hôte a changé, rien n’a donc été joint. Réessayez.",
     "disconnected": "Le terminal s’est déconnecté, le message n’a donc pas été envoyé",
     "paneChanged": "Le panneau a changé, le message n’a donc pas été envoyé",
     "writeRejected": "L’hôte a refusé le message",

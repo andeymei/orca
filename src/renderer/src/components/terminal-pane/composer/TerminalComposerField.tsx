@@ -12,13 +12,11 @@ import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getScreenSubmitModifierLabel } from '@/lib/keyboard/screen-submit-shortcut'
-import { useTranslate, type Translate } from '@/i18n/use-translate'
+import { useTranslate } from '@/i18n/use-translate'
 import type { TerminalComposerAttachment } from '@/store/slices/terminal-composer/terminal-composer'
 import { clipboardEventPromptText } from '../../../../../shared/native-chat/input/native-chat-clipboard-event'
 import { isImageDropPath } from '../../../../../shared/image-path-paste'
 import { createNonSecureContextUuid } from '../../../../../shared/non-secure-context-uuid'
-import { isWslUncPath } from '../../../../../shared/wsl-paths'
-import { toLocalWslDropPath } from '../input/file-drop/terminal-drop-local-wsl'
 import {
   pasteTerminalComposerAttachments,
   type TerminalComposerIntakeHost,
@@ -28,7 +26,12 @@ import {
   attachmentReasonText,
   TerminalComposerAttachmentStatus
 } from './TerminalComposerAttachmentStatus'
+import { terminalComposerAgentVisiblePath } from './terminal-composer-agent-path'
 import { clipboardCarriesFiles, draftHasContent } from './terminal-composer-content'
+import {
+  runTerminalComposerIntake,
+  terminalComposerHostUnavailableMessage
+} from './terminal-composer-intake'
 import { readTerminalComposerDraft, useTerminalComposerState } from './use-terminal-composer-state'
 
 /** An attachment whose bytes landed; the others are still uploading or failed. */
@@ -55,22 +58,31 @@ export type TerminalComposerFieldProps = {
   onPasteCapture?: (event: React.ClipboardEvent) => void
 }
 
-/** The path the agent in this terminal reads: a WSL-hosted agent reads Linux paths. */
-function agentVisiblePath(
-  buildHost: () => TerminalComposerIntakeHost | null,
-  path: string
-): string {
-  const host = buildHost()
-  // A plain UNC path is not a WSL path, and toLocalWslDropPath would mangle it.
-  return host && isWslUncPath(host.workspacePath) ? toLocalWslDropPath(path) : path
-}
-
-/** The host that owns the terminal cannot be reached, so nothing can land on it. */
-export function terminalComposerHostUnavailableMessage(t: Translate): string {
-  return t(
-    'terminalComposer.hostUnavailable',
-    "This terminal's host cannot be reached, so nothing was attached."
-  )
+/**
+ * Inserts the pills of the attachments that landed, while the landing guard is held.
+ *
+ * The guard is released even when an insert throws, so the draft stays writable.
+ */
+function insertLandedAttachmentPills(args: {
+  editor: PromptEditorInput
+  landed: readonly LandedAttachment[]
+  buildHost: () => TerminalComposerIntakeHost | null
+  landingRef: React.RefObject<boolean>
+}): void {
+  try {
+    for (const attachment of args.landed) {
+      if (attachment.isImage) {
+        args.editor.insertImageReference?.(attachment.id, attachment.name)
+      } else {
+        // The pill carries the path the agent reads, so the body names the right file.
+        args.editor.insertFileReferences?.([
+          terminalComposerAgentVisiblePath(args.buildHost()?.session, attachment.workspacePath)
+        ])
+      }
+    }
+  } finally {
+    args.landingRef.current = false
+  }
 }
 
 export function TerminalComposerField({
@@ -112,18 +124,7 @@ export function TerminalComposerField({
       if (editor && landed.length > 0) {
         landingRef.current = true
         landingDocumentRef.current = null
-        try {
-          for (const attachment of landed) {
-            if (attachment.isImage) {
-              editor.insertImageReference?.(attachment.id, attachment.name)
-            } else {
-              // The pill carries the path the agent reads, so the body names the right file.
-              editor.insertFileReferences?.([agentVisiblePath(buildHost, attachment.workspacePath)])
-            }
-          }
-        } finally {
-          landingRef.current = false
-        }
+        insertLandedAttachmentPills({ editor, landed, buildHost, landingRef })
       }
       const document = landingDocumentRef.current ?? current.document
       landingDocumentRef.current = null
@@ -197,16 +198,16 @@ export function TerminalComposerField({
         toast.error(terminalComposerHostUnavailableMessage(t))
         return
       }
-      setUploading(true)
-      try {
-        const result = await pasteTerminalComposerAttachments(host, {
-          files: Array.from(clipboardData.files ?? []),
-          items: clipboardData.items ? Array.from(clipboardData.items) : undefined
-        })
-        landAttachments(result)
-      } finally {
-        setUploading(false)
-      }
+      await runTerminalComposerIntake({
+        intake: () =>
+          pasteTerminalComposerAttachments(host, {
+            files: Array.from(clipboardData.files ?? []),
+            items: clipboardData.items ? Array.from(clipboardData.items) : undefined
+          }),
+        land: landAttachments,
+        setUploading,
+        t
+      })
     },
     [buildHost, landAttachments, t]
   )

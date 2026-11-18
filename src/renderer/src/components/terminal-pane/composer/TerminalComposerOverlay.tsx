@@ -16,11 +16,11 @@ import {
   pickTerminalComposerAttachments,
   type TerminalComposerIntakeHost
 } from './attachments/terminal-composer-attachment-intake'
+import { TerminalComposerField, type TerminalComposerFieldHandle } from './TerminalComposerField'
 import {
-  TerminalComposerField,
-  terminalComposerHostUnavailableMessage,
-  type TerminalComposerFieldHandle
-} from './TerminalComposerField'
+  runTerminalComposerIntake,
+  terminalComposerHostUnavailableMessage
+} from './terminal-composer-intake'
 import {
   useTerminalComposerSend,
   type TerminalComposerSendResult
@@ -115,6 +115,8 @@ export function TerminalComposerOverlay({
     return {
       workspacePath,
       worktreeId,
+      // The pane's session says how the agent in it reads a path.
+      session: transport.getLocalSessionMetadata?.() ?? null,
       runtimeEnvironmentId: owner?.runtimeEnvironmentId ?? null,
       connectionId: owner?.connectionId ?? null,
       expectedExecutionHostId: owner?.expectedExecutionHostId,
@@ -164,12 +166,12 @@ export function TerminalComposerOverlay({
         toast.error(terminalComposerHostUnavailableMessage(t))
         return
       }
-      fieldRef.current?.setUploading(true)
-      try {
-        fieldRef.current?.landAttachments(await pickTerminalComposerAttachments(host))
-      } finally {
-        fieldRef.current?.setUploading(false)
-      }
+      await runTerminalComposerIntake({
+        intake: () => pickTerminalComposerAttachments(host),
+        land: (result) => fieldRef.current?.landAttachments(result),
+        setUploading: (uploading) => fieldRef.current?.setUploading(uploading),
+        t
+      })
     })()
   }, [buildIntakeHost, t])
 
@@ -186,12 +188,12 @@ export function TerminalComposerOverlay({
           toast.error(terminalComposerHostUnavailableMessage(t))
           return
         }
-        fieldRef.current?.setUploading(true)
-        try {
-          fieldRef.current?.landAttachments(await dropTerminalComposerAttachments(host, paths))
-        } finally {
-          fieldRef.current?.setUploading(false)
-        }
+        await runTerminalComposerIntake({
+          intake: () => dropTerminalComposerAttachments(host, paths),
+          land: (result) => fieldRef.current?.landAttachments(result),
+          setUploading: (uploading) => fieldRef.current?.setUploading(uploading),
+          t
+        })
       })()
     },
     [buildIntakeHost, t]

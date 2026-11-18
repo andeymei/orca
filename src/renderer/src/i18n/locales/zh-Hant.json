@@ -23455,6 +23455,7 @@
     "sendHint": "傳送",
     "uploadFailed": "附件新增失敗",
     "hostChanged": "主機已改變，訊息沒有傳送",
+    "hostChangedWhileAttaching": "主機已改變，因此沒有新增附件。請再試一次。",
     "disconnected": "終端機已中斷，訊息沒有傳送",
     "paneChanged": "面板已改變，訊息沒有傳送",
     "writeRejected": "主機拒絕了這批位元組",

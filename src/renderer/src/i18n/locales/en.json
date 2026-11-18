@@ -25375,6 +25375,7 @@
     "sendHint": "to send",
     "uploadFailed": "Could not attach the file",
     "hostChanged": "The host changed, so the message was not sent",
+    "hostChangedWhileAttaching": "The host changed, so nothing was attached. Try again.",
     "disconnected": "The terminal disconnected, so the message was not sent",
     "paneChanged": "The pane changed, so the message was not sent",
     "writeRejected": "The host refused the message",

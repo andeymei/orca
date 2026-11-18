@@ -2125,7 +2125,23 @@ The mock's plan must place its edit exactly at the cursor the test creates, so t
 Then:
 
 1. type `const x = ` in the editor
-2. wait for the suggestion to appear (the ghost text is in the DOM as an `.inline-completion-text-to-replace` / `.ghost-text` element — assert on whatever Monaco 0.55 renders, and record the exact selector in the test)
+2. wait for the suggestion to appear — **the selectors are known, do not guess them.** The brief's
+   `.inline-completion-text-to-replace` is an older Monaco class and does not exist in 0.55.1.
+   Measured against the installed package:
+
+   - **the inline suggestion at the cursor** — Monaco inserts it into the view line as an inline
+     decoration whose class is **`ghost-text-decoration`**
+     (`esm/vs/editor/contrib/inlineCompletions/browser/view/ghostText/ghostTextView.js:171`; the
+     "preview" variant is `ghost-text-decoration-preview`). The constant at line 48 is
+     `GHOST_TEXT_CLASS_NAME = 'ghost-text'`, used for the ghost text lines.
+   - **the multi-line part of the suggestion** — the widget below the cursor line, a
+     **`div.suggest-preview-text`** (`ghostTextView.js:427`).
+
+   So assert on `.monaco-editor .ghost-text-decoration` for the inline case, and add
+   `.monaco-editor .suggest-preview-text` for the multi-line case. Both are styled by
+   `ghostTextView.css`; the rules are scoped to `.monaco-editor`, so the selector needs that
+   prefix.
+
 3. assert the buffer still holds only what was typed — the suggestion is a ghost, not an edit
 4. press `Tab`
 5. assert the buffer now holds the typed text **and** the suggested text

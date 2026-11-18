@@ -1300,6 +1300,15 @@ Because the emitter needs the live Monaco namespace, create it inside `ensureNes
 
 `ensureNesInlineCompletionsProvider(monaco)` re-registers the provider when the Monaco instance changed, following `ensureMarkdownDocCompletionProvider` exactly.
 
+**What "exactly" means here is the singleton pattern only.** `ensureMarkdownDocCompletionProvider` (`src/renderer/src/components/editor/markdown-source-tools/monaco/monaco-markdown-doc-completions.ts`) registers a **suggest-widget** provider (`registerCompletionItemProvider`) for markdown, not an inline one — it is the repo's example of _module-level provider plus provider-instance check plus dispose-and-recreate_, which is what this task copies. There is no existing inline-completions provider in this repo to copy behaviour from.
+
+Two facts about Monaco 0.55 that make this work, both verified against the installed package:
+
+- **Inline suggestions are on by default.** `EditorOption.inlineSuggest` defaults to `{ enabled: true }` (`node_modules/monaco-editor/esm/vs/editor/common/config/editorOptions.js`), and the repo does not override it — so the provider is called and the ghost text renders without any configuration.
+- **`disposeInlineCompletions` is required.** The `InlineCompletionsProvider` interface declares it **without** a `?`, so an omitted method is a type error; `onDidChangeInlineCompletions` _is_ optional.
+
+`provideInlineCompletions` is called with `(model, position, context, token)`; the provider only needs the first two.
+
 The provider:
 
 ```ts

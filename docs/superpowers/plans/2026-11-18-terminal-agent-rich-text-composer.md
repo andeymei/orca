@@ -1406,7 +1406,14 @@ git commit -m "test(composer): the terminal composer writes a multi-line prompt 
 - Modify: `src/renderer/src/components/native-chat/composer/editor/NativeChatPromptEditor.tsx`
 - Modify: `src/renderer/src/components/native-chat/composer/editor/NativeChatFileReferencePill.tsx`
 - Modify: `src/renderer/src/components/native-chat/composer/editor/NativeChatImageReferencePill.tsx`
+- Modify: `src/renderer/src/components/native-chat/composer/editor/NativeChatSkillPill.tsx`
+- Modify: `src/renderer/src/components/native-chat/composer/editor/native-chat-composer-image-references.ts`(它 import 了 `withoutImageReferenceNodes`)
+- Modify: `src/renderer/src/components/native-chat/queue/editing/native-chat-queued-edit-draft.ts`(同上)
+- Delete: `src/renderer/src/components/native-chat/composer/editor/NativeChatPromptPill.tsx`(它与共用的 `PromptPill` 逐字等价)
+- Modify: `src/renderer/src/components/prompt-editor/prompt-editor-nodes.ts`
 - Test: `src/renderer/src/components/native-chat/composer/editor/NativeChatPromptEditor.test.tsx`(已有,必须仍然过)
+- Test: `src/renderer/src/components/native-chat/attachments/chips/native-chat-image-references.test.tsx`(已有,必须仍然过)
+- Test: `src/renderer/src/components/native-chat/attachments/intake/native-chat-composer-workspace-file-drop.test.tsx`(已有,必须仍然过)
 
 **Interfaces:**
 
@@ -1415,16 +1422,26 @@ git commit -m "test(composer): the terminal composer writes a multi-line prompt 
 
 **Notes:**
 
-- **本 task 的「切换」范围 = 节点定义 + pill 组件**,原生 chat **保留自己的 `NativeChatPromptEditor`**(它带草稿库、pasted-text scope、图片编号 provider、unkerned 装饰;共用的 `PromptEditor` 刻意不带这些)。共享的 `PromptEditor` 只有终端侧在用。依据:spec §4.2「原生 chat 保留自己的扩展、草稿库、图片编号 provider、pasted-text 解析」。
-- **节点类型名不变**(`nativeChatFileReference` / `nativeChatImageReference`),所以**已持久化的草稿不需要迁移**。
-- native chat 的 `promptLeafString` 保留自己的 `nativeChatAgentReference` 分支,其余委托给共用的 `promptLeafString`。
-- native chat 的文件 pill 要保留**pasted-text** 的 `saving` / `unsaved` 态:用 `PromptFileLabelContext` 注入一个 resolver,而不是把 pasted-text 逻辑搬进共用件。
-- native chat 的图片 pill 要保留**编号**(`Image #1`)与 `Image removed`:同样用 `PromptImageLabelContext` 注入 resolver。
+- **本 task 的「切换」范围 = 节点定义 + pill 的外壳 + 序列化规则**,原生 chat **保留自己的 `NativeChatPromptEditor`**(它带草稿库、pasted-text scope、图片编号 provider、unkerned 装饰;共用的 `PromptEditor` 刻意不带这些)。共享的 `PromptEditor` 只有终端侧在用。依据:spec §4.2「原生 chat 保留自己的扩展、草稿库、图片编号 provider、pasted-text 解析」+ §4.2 的第二步「把原生 chat 的 `fileReference` / `imageReference` 切到共用件,删掉旧的重复实现」。
+- **节点类型名不变**(`nativeChatFileReference` / `nativeChatImageReference`),所以**已持久化的草稿不需要迁移** —— IndexedDB 里存的就是这两个字符串(`native-chat-prompt-document-text.ts:10-11` 与共用件 `prompt-editor-nodes.ts:8-10` 同值)。
+- **原生 chat 保留自己的 pill 组件**(`NativeChatFileReferencePill` / `NativeChatImageReferencePill`):它们身上带着共用件**没有**的东西 —— 点击打开附件的按钮(`NativeChatTextAttachmentOpener`)、pasted-text 的 `saving` / `unsaved` 态、图片编号(`Image #1`)、以及 DOM 上的 `data-native-chat-file-reference` / `data-native-chat-image-reference`(仓库里**一堆测试在断言这两个属性**:`NativeChatPromptEditor.test.tsx:70`、`native-chat-image-references.test.tsx:85`、`native-chat-composer-workspace-file-drop.test.tsx:276`)。所以切换的是**节点定义**,不是节点视图。
+- **节点视图怎么换**:TipTap 的 `extend` 会把 config 盖在旧 config 上(`node_modules/@tiptap/core/dist/index.js:4931-4939`),所以原生 chat 可以从共用件的节点规格派生自己的一份:
+  ```ts
+  export const NativeChatFileReference = PromptFileReference.extend({
+    addNodeView: () => ReactNodeViewRenderer(NativeChatFileReferencePill)
+  })
+  ```
+  节点名、attrs、renderText、renderHTML 都跟共用件一致(只有 `renderHTML` 的 `data-*` 属性名不同 —— 那只影响复制出去的 HTML,DOM 上的属性来自节点视图)。
+- **pill 的外壳共用**:共用的 `PromptPill` 与 `NativeChatPromptPill` **逐字等价**(同一个 `Badge variant="promptPill"`、同一个 `data-selected`、同样的图标 + `truncate` 标签),所以原生 chat 的三个 pill(文件 / 图片 / skill)都改用 `PromptPill`,`NativeChatPromptPill.tsx` 删掉。共用件的 `PromptPillProps` 带 `data-${string}` 索引签名,原生 chat 的 `data-native-chat-*` 属性照样传得进去。
+- **`withoutImageReferenceNodes` 要多一个显式的空格规则参数**(Ruling I):`stripFollowingSpace?: boolean`,默认 `false` = **保留** chip 周围的空格(终端侧要的);**原生 chat 传 `true`** —— 它的规则是「每颗 chip 跟着一个空格」,去掉 chip 时那个空格也去掉。这是两边**真实**的插入约定差异,不是一个 bug,所以做成参数而不是两份实现。
+- native chat 的 `promptLeafString` 保留自己的 `nativeChatAgentReference` 分支,其余委托给共用的 `promptLeafString` —— 那个分支是原生 chat 专属的(`nativeChatAgentReference` 节点只有它有),其余规则(file / image / hardBreak)必须**只有一份**,否则 agent 收到的字面量会漂移(spec §4.2:「复制一份必然漂移」)。连带地,原生 chat 的 `promptText` / `promptLeafText` 保留本地那两行(它们要用本地那个 leaf 函数)。
 - native chat 的 `promptTextContent`(会切 pasted-text token 与图片引用)**保持原样**——那是 native chat 专属,终端侧用共用的纯文本版本。
 
-- [ ] **Step 1: Switch the imports**
+- [ ] **Step 1: Switch the nodes and the pill shell**
 
-把 native chat 的三个文件改成从 `@/components/prompt-editor/…` 导入节点与 pill,删掉重复的节点定义。
+把原生 chat 的三个文件改成从 `@/components/prompt-editor/…` 导入:节点用 `PromptFileReference.extend({ addNodeView: … })` / `PromptImageReference.extend({ addNodeView: … })` 派生(节点视图是原生 chat 自己的 pill,DOM 上的 `data-native-chat-*` 属性不受影响),pill 外壳统一用 `PromptPill`(`NativeChatPromptPill.tsx` 删除)。共用件的 `withoutImageReferenceNodes` 加上 `stripFollowingSpace?: boolean` 参数,原生 chat 的调用点传 `true`。
+
+`NativeChatPromptEditor.test.tsx` 里的 `[data-native-chat-file-reference]` 断言**不许改**:它们钉住的是原生 chat 的 DOM 契约,切换之后必须原样通过。
 
 - [ ] **Step 2: Run the native chat tests**
 

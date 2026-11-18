@@ -778,10 +778,11 @@ git commit -m "feat(composer): clear the agent input, then write the paths, the 
   export const PromptImageLabelContext: React.Context<PromptImageLabelResolver | null>
 
   // PromptEditor.tsx
-  export type PromptEditorInput = Pick<
-    HTMLTextAreaElement,
-    'value' | 'selectionStart' | 'selectionEnd' | 'disabled' | 'focus' | 'select' | 'setSelectionRange'
-  > & {
+  export type PromptEditorInput = {
+    /** The editor's text: file pills as their `@path` reference, image pills as their token. */
+    readonly value: string
+    readonly disabled: boolean
+    focus: () => void
     insertText?: (text: string) => void
     insertFileReferences?: (paths: readonly string[]) => void
     insertImageReference?: (attachmentId: string, name: string) => void
@@ -807,6 +808,7 @@ git commit -m "feat(composer): clear the agent input, then write the paths, the 
 - **不要**带 native chat 的草稿库、pasted-text scope、图片编号 provider、unkerned 装饰。
 - `handlePaste` 只插纯文本(与 native chat 一致)。
 - **facade 的 `value` 是 `promptText(editor.state.doc)`** —— 文件 pill 读成它的 `@path` token,图片 pill 读成它的 `[Image](orca-image:<id>)` token。**图片 token 会留在 `value` 里**:正文(发给 agent 的 body)去掉图片 token 是 **Task 7** 的事,它用 `splitImageReferences`(`src/shared/native-chat/native-chat-image-reference.ts`)把文本拆开、只留字符串部分拼回去。编辑器的 `value` 与「发给 agent 的正文」是两件事,不要在共用组件里替 Task 7 做这个决定。
+- **facade 只做终端侧真用到的成员**(`value` / `disabled` / `focus` / `insertText` / `insertFileReferences` / `insertImageReference` / `removeImageReferences`)。**不要**把原生 chat 的 `selectionStart` / `selectionEnd` / `select` / `setSelectionRange` 搬过来:终端侧一处都不用,而要正确实现它们,得把 `promptTextOffset` / `promptTextPosition` 两个纯函数从 native chat 的模块搬进共用件 —— 那是为一个没人用的需求铺子系统。原生 chat 的 `NativeChatPromptEditor` 自己留着那一份。
 - 节点类型名保持 Task 1 的 `nativeChatFileReference` / `nativeChatImageReference`,**Task 10 切换原生 chat 时不需要迁移草稿**。
 
 - [ ] **Step 1: Write the failing test**

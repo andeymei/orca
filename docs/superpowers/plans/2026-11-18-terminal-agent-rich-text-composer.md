@@ -1131,25 +1131,25 @@ git commit -m "feat(composer): the terminal composer's field and overlay"
 - Modify: `src/shared/keybindings/types.ts`
 - Modify: `src/shared/keybindings/definitions-core-4.ts`
 - Modify: `src/renderer/src/components/settings/shortcuts/keybinding-title-copy.ts`
+- Modify: `src/renderer/src/components/terminal-pane/input/keyboard/terminal-shortcut-policy.ts`
+- Modify: `src/renderer/src/components/terminal-pane/input/keyboard/terminal-keyboard-action-dispatch.ts`
+- Modify: `src/renderer/src/components/terminal-pane/input/keyboard/terminal-keyboard-hook.ts`
+- Modify: `src/renderer/src/components/terminal-pane/input/keyboard/terminal-keyboard-runtime.ts`
+- Modify: `src/renderer/src/components/terminal-pane/controller/use-terminal-pane-global-listeners.ts`
 - Modify: `src/renderer/src/components/terminal-pane/controller/TerminalPaneSurface.tsx`
 - Modify: `src/renderer/src/components/terminal-pane/layout/close/use-terminal-pane-close-actions.ts`
 - Modify: `src/renderer/src/store/slices/terminal-composer/terminal-composer.ts`
-- Create: `src/renderer/src/components/terminal-pane/composer/TerminalComposerShortcut.ts`
-- Create: `src/renderer/src/components/terminal-pane/composer/TerminalComposerShortcut.test.ts`
 - Create: `src/renderer/src/components/terminal-pane/composer/terminal-composer-agent.ts`
+- Create: `src/renderer/src/components/terminal-pane/input/keyboard/terminal-shortcut-policy.test.ts`
 
 **Interfaces:**
 
-- Consumes: `keybindingMatchesAction(actionId, e, platform, keybindings)` from `src/shared/keybindings/matching`
+- Consumes: `keybindingMatchesAction(actionId, e, platform, keybindings)` from `src/shared/keybindings/matching`;`resolveTerminalShortcutAction(...)` from `src/renderer/src/components/terminal-pane/input/keyboard/terminal-shortcut-policy.ts`
 - Produces:
 
   ```ts
-  // TerminalComposerShortcut.ts
-  export function matchesTerminalComposerToggleShortcut(
-    e: KeybindingInput,
-    platform: NodeJS.Platform,
-    keybindings?: KeybindingOverrides
-  ): boolean
+  // terminal-shortcut-policy.ts
+  export type TerminalShortcutAction = ... | { type: 'toggleComposer' }
 
   // terminal-composer.ts (slice)
   /** Drops one pane's draft and open flag. */
@@ -1160,25 +1160,34 @@ git commit -m "feat(composer): the terminal composer's field and overlay"
 
 - [ ] **Step 1: Write the failing test**
 
+`src/renderer/src/components/terminal-pane/input/keyboard/terminal-shortcut-policy.test.ts` —— 断言**解析结果**,不是库的行为:
+
 ```ts
-it('matches Mod+Shift+P and nothing else', () => {
-  expect(
-    matchesTerminalComposerToggleShortcut(
-      { key: 'P', code: 'KeyP', metaKey: true, shiftKey: true },
-      'darwin',
-      {}
-    )
-  ).toBe(true)
-  expect(
-    matchesTerminalComposerToggleShortcut({ key: 'P', code: 'KeyP', metaKey: true }, 'darwin', {})
-  ).toBe(false)
+import { resolveTerminalShortcutAction } from './terminal-shortcut-policy'
+import type { TerminalShortcutEvent } from './terminal-shortcut-policy'
+
+const event = (over: Partial<TerminalShortcutEvent> = {}): TerminalShortcutEvent => ({
+  key: 'P',
+  code: 'KeyP',
+  metaKey: true,
+  shiftKey: true,
+  ctrlKey: false,
+  altKey: false,
+  ...over
+})
+
+it('resolves Mod+Shift+P to the composer toggle and nothing else', () => {
+  expect(resolveTerminalShortcutAction(event(), true)).toEqual({ type: 'toggleComposer' })
+  expect(resolveTerminalShortcutAction(event({ shiftKey: false }), true)).toBeNull()
 })
 ```
 
+`resolveTerminalShortcutAction(event, isMac)` 的其余参数都有默认值,所以这个调用是完整的。
+
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm test src/renderer/src/components/terminal-pane/composer/TerminalComposerShortcut.test.ts --maxWorkers=2`
-Expected: FAIL — "Cannot find module './TerminalComposerShortcut'"
+Run: `pnpm test src/renderer/src/components/terminal-pane/input/keyboard/terminal-shortcut-policy.test.ts --maxWorkers=2`
+Expected: FAIL —— 还没有 `toggleComposer` 这个动作,`Mod+Shift+P` 解析不出东西(或解析成别的动作)。
 
 - [ ] **Step 3: Register the keybinding**
 
@@ -1195,11 +1204,16 @@ Expected: FAIL — "Cannot find module './TerminalComposerShortcut'"
   }
   ```
 - `src/renderer/src/components/settings/shortcuts/keybinding-title-copy.ts`:加一条 `'terminal.toggleComposer': () => translate('keybindings.title.terminalToggleComposer', 'Toggle the terminal composer')`。
-- `TerminalComposerShortcut.ts`:照 `native-chat-shortcut.ts` 的写法实现 `matchesTerminalComposerToggleShortcut`。
+  - 这一条**必须加**:`STATIC_TITLE_COPY` 是 `satisfies Record<StaticKeybindingActionId, () => string>`(`keybinding-title-copy.ts:157`),少一个 id 就**编译不过**。
+- **快捷键走终端面板已有的那条管线,不要新挂一条 `onKeyDown`。** 终端面板的按键不是 React 的 `onKeyDown`,而是 `window` 上的 capture 监听器(`src/renderer/src/components/terminal-pane/input/keyboard/terminal-keyboard-hook.ts:133`),而且**先过一道 scope 检查**(`keyboardEventBelongsToScope(e, keyboardScope)`,scope 就是 pane 的 container,`terminal-keyboard-event-handlers.ts:117`)。自己再挂一条 `onKeyDown` 的话,快捷键在**焦点根本不在终端里**的时候也会触发 —— 包括在 composer 自己的输入框里按 `Mod+Shift+P`,那会把刚展开的 composer 关掉。
+  - `terminal-shortcut-policy.ts`:`TerminalShortcutAction` 联合类型里加 `| { type: 'toggleComposer' }`;在 `resolveTerminalShortcutAction` 里用和其它动作一样的 `matches('terminal.toggleComposer')` 解析(注意**顺序**:它在 `terminal.switchInputSource` / `terminal.selectAll` / `terminal.copySelection` 之后,和 `terminal.search` 那一段一样放在 `if (!event.repeat)` 里)。
+  - `terminal-keyboard-action-dispatch.ts`:`ActionDispatchContext` 加 `toggleComposer: (paneId: number) => void`;处理 `action.type === 'toggleComposer'` —— `event.preventDefault()` + `event.stopImmediatePropagation()`,然后对**当前 pane**(`manager.getActivePane() ?? manager.getPanes()[0]`)调 `toggleComposer(pane.id)`。
+  - 回调的链路:`use-terminal-pane-global-listeners.ts` → `terminal-keyboard-hook.ts` → `terminal-keyboard-runtime.ts`(把回调放进 dispatch 的 context)。回调本身从 controller 来:`useAppStore.getState().toggleTerminalComposer(makePaneKey(tabId, leafId))`。
+  - **不要**动 `attachCustomKeyEventHandler` —— xterm 只有一个该槽位。
 
 - [ ] **Step 4: Mount the overlay**
 
-先加一个 agent 解析助手,规则与 `terminal-agent-paste-bracketing.ts` 一致(前景 agent 优先,其次是状态行里的 agentType,且跳过 `restoredUnconfirmed` 的行):
+先加一个 agent 解析助手,规则与 `src/renderer/src/components/terminal-pane/input/paste/terminal-agent-paste-bracketing.ts:53-57` 一致(前景 agent 优先,其次是状态行里的 agentType,且跳过 `restoredUnconfirmed` 的行;两者都要过 `isTuiAgent`):
 
 `src/renderer/src/components/terminal-pane/composer/terminal-composer-agent.ts`
 
@@ -1242,11 +1256,11 @@ export function resolveTerminalComposerAgentType(
   }
   ```
   **注意**:`activeAgentId` 虽名为 id,实际是 agent **类型**字符串(来自 `tabAgentTypeByLeaf`),可以用;但它不含「前景 vs 状态行」的取证规则,所以用上面的助手更准。
-- 在终端面板的 `onKeyDown` 路径上接快捷键:命中 `matchesTerminalComposerToggleShortcut` 时 `preventDefault()` 并 `toggleTerminalComposer(paneKey)`。**不要**动 `attachCustomKeyEventHandler` —— xterm 只有一个该槽位。
+- 快捷键的接线在**上面的 Step 3** 里(terminal-shortcut-policy + action-dispatch + hook/runtime/global-listeners 四层),不在 `TerminalPaneSurface.tsx` 里 —— 那里没有按键监听器。
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `pnpm test src/renderer/src/components/terminal-pane/composer/TerminalComposerShortcut.test.ts --maxWorkers=2`
+Run: `pnpm test src/renderer/src/components/terminal-pane/input/keyboard/terminal-shortcut-policy.test.ts --maxWorkers=2`
 Expected: PASS
 
 - [ ] **Step 6: Drop the composer's state with the pane**
@@ -1254,7 +1268,7 @@ Expected: PASS
 spec §4.4 说「pane 关闭时清掉草稿」。pane 的移除有**两条**路径,两条都要覆盖:
 
 1. **关掉一个兄弟 pane** → `use-terminal-pane-close-actions.ts` 的 `closePaneLocally`。在已有的 `dropAgentStatus(...)` / `setCacheTimerStartedAt(...)` 旁边加一句 `clearTerminalComposerPane(makePaneKey(tabId, leafId))`。
-2. **关掉整个 tab(含最后一个 pane)** → `closePaneLocally` 在只剩一个 pane 时会转去 `onCloseTab(reason)` 并**提前返回**,所以第 1 条覆盖不到。tab 关掉时清**这个 tab 的所有 pane**:给 slice 加 `clearTerminalComposerStateForTab(tabId)`,在 tab 的关闭路径上调它。`onCloseTab` 在两处被接线(`TerminalOverlaySlot.tsx` 与 `TerminalLegacyTerminalPanes.tsx`),两处都要调,或者找到一处能同时覆盖它们的接缝。
+2. **关掉整个 tab(含最后一个 pane)** → `closePaneLocally` 在只剩一个 pane 时会转去 `onCloseTab(reason)` 并**提前返回**,所以第 1 条覆盖不到。tab 关掉时清**这个 tab 的所有 pane**:给 slice 加 `clearTerminalComposerStateForTab(tabId)`,在 tab 的关闭路径上调它。`onCloseTab` 在两处被接线(`TerminalOverlaySlot.tsx:91-94` 与 `TerminalLegacyTerminalPanes.tsx:98`),两处最终都汇到 `closeTerminalTab`(`src/renderer/src/components/terminal/terminal-tab-actions.ts`)—— **在那里调一次**,比在两个接线点各调一次更稳。
 
 两个方法都要把**草稿和展开标记**一起清掉:只清草稿会留下一个 `false` 的展开标记挂在死掉的 pane 上,两条路径不对称。
 

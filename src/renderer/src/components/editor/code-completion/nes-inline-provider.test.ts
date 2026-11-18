@@ -129,7 +129,7 @@ describe('nes inline completion', () => {
     ).toBeNull()
   })
 
-  it('returns null instead of throwing when the range names a line past the end of the file', () => {
+  it('returns null when the range names a line past the end of the file', () => {
     const model = createModel('const a = 1\nconst b = 2')
 
     const replaced = nesInlineCompletionForEdit(

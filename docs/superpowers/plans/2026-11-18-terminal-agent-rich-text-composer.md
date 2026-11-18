@@ -20,7 +20,7 @@
 - **不实现富文本格式**(加粗/斜体/标题)。「富」= 多行 + 内联附件引用。
 - **附件一律落到 `<workspace>/.orca/drops/`**,该目录自带 `.gitignore`(`DROP_STAGING_GITIGNORE_CONTENT`),不污染 `git status`。
 - **附件必须落在拥有该终端的那台机器上**(本地 / SSH / WSL / 配对 runtime)。
-- **发送写序列固定为四步**:清 TUI 输入 → 每个图片路径一次独立 bracketed paste → 正文一次写 → **Enter 单独一次延迟写**(`\r`)。Enter 与 paste 同一次写会被 TUI 吞掉。逐字节对齐原生 chat(`native-chat-runtime-image-send.ts` 的 `sendNativeChatMessageWithImageAttachments`):图片与正文之间等 `NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS`(300ms,TUI 异步建 chip);只有空白的正文等于没有正文(不写正文,最后一张图片的 paste 也不带尾随空格);**清 TUI 那一步只在有 agent 时做**——那串字节清的是 agent 的输入行,普通 shell 里发过去等于抹掉用户敲了一半的命令。
+- **发送写序列固定为四步**:清 TUI 输入 → 每个图片路径一次独立 bracketed paste → 正文一次写 → **Enter 单独一次延迟写**(`\r`)。Enter 与 paste 同一次写会被 TUI 吞掉。逐字节对齐原生 chat(`native-chat-runtime-image-send.ts` 的 `sendNativeChatMessageWithImageAttachments`):图片与正文之间等 `NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS`(300ms,TUI 异步建 chip);只有空白的正文等于没有正文(不写正文,最后一张图片的 paste 也不带尾随空格)。**清输入那一步无条件做**(有 agent 也好,普通 shell 也好):spec §6 的理由是「用户在终端里可能已经敲了半句。不清的话我们的正文会接在旧草稿后面」,而 spec §8 说普通 shell 里正文是**当命令发**的 —— 不清就会把命令接在用户敲了一半的命令后面(`ls` + `echo hi` = `lsecho hi`),跑出一个谁也没写过的命令。丢掉那半行是更便宜的那个失败。
 - **图片路径形态由 `agentImagePastePath(agent, path)` 决定**:支持附件语义的 agent 给裸路径,其余给 `@"path"`。图片 pill **永远不进正文**。
 - **文件 pill 进正文的形式是 `@path`**,含空白或 `@` 时加引号(`formatNativeChatFileReference`)。
 - **快捷键**:`terminal.toggleComposer`,默认 `Mod+Shift+P`(darwin `⌘⇧P`,win/linux `Ctrl+Shift+P`)。
@@ -715,9 +715,10 @@ describe('terminal composer writes', () => {
     expect(writes.map((w) => w.data)).toEqual([AGENT_TUI_CLEAR_INPUT_MAX, NATIVE_CHAT_SUBMIT])
   })
 
-  it('does not clear the input line when no agent was detected', () => {
+  it('clears the terminal input line even when no agent was detected', () => {
     const writes = buildTerminalComposerWrites({ body: 'hello', imagePaths: [], agent: null })
     expect(writes.map((w) => w.data)).toEqual([
+      AGENT_TUI_CLEAR_INPUT_MAX,
       buildNativeChatPasteBytes('hello'),
       NATIVE_CHAT_SUBMIT
     ])
@@ -743,11 +744,9 @@ export function buildTerminalComposerWrites({
   agent: string | null
 }): TerminalComposerWrite[] {
   const writes: TerminalComposerWrite[] = []
-  // The clear empties the *agent's* input line; with no agent there is none, and the bytes
-  // would erase whatever the user had typed into a plain shell.
-  if (agent !== null) {
-    writes.push({ data: AGENT_TUI_CLEAR_INPUT_MAX, delayBeforeMs: 0 })
-  }
+  // The clear empties the pending input line — the agent's TUI line, or the shell's line when
+  // no agent runs. Without it the body would be concatenated onto whatever the user half-typed.
+  writes.push({ data: AGENT_TUI_CLEAR_INPUT_MAX, delayBeforeMs: 0 })
   // A body of only whitespace is no body: native chat treats it as no text.
   const hasText = body.trim().length > 0
   const framed = agentImagePasteWrites(
@@ -783,7 +782,7 @@ export function buildTerminalComposerWrites({
 - **写序列要与原生 chat 逐字节对齐。** 对照物是 `src/renderer/src/components/native-chat/session/terminal/send/native-chat-runtime-image-send.ts` 的 `sendNativeChatMessageWithImageAttachments`,它有三条本 task 原先漏掉的规则:
   1. **图片与正文之间要等 `NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS`(300ms)。** TUI 是异步把图片变成 chip 的,不等这一下,正文可能先落地,agent 收到的顺序就是反的。
   2. **正文按 trim 后的长度判断有没有文字。** 只有空白的正文等于没有正文:不写正文,最后一张图片的 paste 也不带尾随空格。
-  3. **清 TUI 输入那一步只在有 agent 时做。** 那串字节是「清空 **agent** 的输入行」,没有 agent 就没有 agent 输入行;在普通 shell 里发它等于抹掉用户敲了一半的命令。
+  3. **清输入那一步无条件做。** spec §6 的理由是「用户在终端里可能已经敲了半句。不清的话我们的正文会接在旧草稿后面」,spec §8 说普通 shell 里正文是**当命令发**的。不清就会把命令接在用户敲了一半的命令后面,跑出一个谁也没写过的命令;丢掉那半行是更便宜的那个失败。清的字节在 shell 里也有效(Ctrl+U / Ctrl+K 是 readline 与 zsh 的行编辑键)。
 - **`NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS` 挪到 `src/shared/native-chat/input/native-chat-answer-stepping.ts`**(和 `NATIVE_CHAT_SUBMIT_DELAY_MS` 放一起),`native-chat-runtime-image-send.ts` 改成从 shared 引。两个 300ms 各写一份必然会漂,而 composer 不能 import native chat 的发送模块。
 - **测试要钉住「每个图片路径一次独立的 bracketed paste」。** 这是本 task 最重要的载荷规则,只用一张图的话,「把两个路径并进一次 paste」的回归会照样通过。
 
@@ -808,6 +807,7 @@ git commit -m "feat(composer): clear the agent input, then write the paths, the 
 - Create: `src/renderer/src/components/prompt-editor/prompt-editor-labels.ts`
 - Create: `src/renderer/src/components/prompt-editor/PromptPill.tsx`
 - Create: `src/renderer/src/components/prompt-editor/PromptFileReferencePill.tsx`
+- Modify: `src/renderer/src/components/prompt-editor/prompt-editor-nodes.ts`(给两个节点挂 `addNodeView` —— Task 1 特意把这一步留到共用 pill 组件就绪之后)
 - Create: `src/renderer/src/components/prompt-editor/PromptImageReferencePill.tsx`
 - Create: `src/renderer/src/components/prompt-editor/PromptEditor.tsx`
 - Create: `src/renderer/src/components/prompt-editor/PromptEditor.test.tsx`
@@ -852,7 +852,7 @@ git commit -m "feat(composer): clear the agent input, then write the paths, the 
 
 **Notes:**
 
-- `PromptEditor` 的 TipTap 装配照抄 `NativeChatPromptEditor` 的 `useEditor` 配置:`StarterKit.configure({ blockquote:false, bold:false, bulletList:false, code:false, codeBlock:false, dropcursor:false, gapcursor:false, heading:false, horizontalRule:false, italic:false, link:false, listItem:false, orderedList:false, strike:false, underline:false, trailingNode:false })` + `HardBreak` + `Placeholder` + `PromptFileReference` + `PromptImageReference`。
+- `PromptEditor` 的 TipTap 装配照抄 `NativeChatPromptEditor` 的 `useEditor` 配置:`StarterKit.configure({ blockquote:false, bold:false, bulletList:false, code:false, codeBlock:false, dropcursor:false, gapcursor:false, heading:false, horizontalRule:false, italic:false, link:false, listItem:false, orderedList:false, strike:false, underline:false, trailingNode:false })` + `Placeholder` + `PromptFileReference` + `PromptImageReference`。**不要**再单独加 `HardBreak` —— StarterKit 已经带了它(`@tiptap/starter-kit` 依赖 `@tiptap/extension-hard-break`),再加一次会重复注册同名节点。
 - **不要**带 native chat 的草稿库、pasted-text scope、图片编号 provider、unkerned 装饰。
 - `handlePaste` 只插纯文本(与 native chat 一致)。
 - **facade 的 `value` 是 `promptText(editor.state.doc)`** —— 文件 pill 读成它的 `@path` token,图片 pill 读成它的 `[Image](orca-image:<id>)` token。**图片 token 会留在 `value` 里**:正文(发给 agent 的 body)去掉图片 token 是 **Task 7** 的事,它用 `splitImageReferences`(`src/shared/native-chat/native-chat-image-reference.ts`)把文本拆开、只留字符串部分拼回去。编辑器的 `value` 与「发给 agent 的正文」是两件事,不要在共用组件里替 Task 7 做这个决定。
@@ -1063,7 +1063,9 @@ Expected: FAIL — "Cannot find module './TerminalComposerField'"
 - [ ] **Step 4: Add the copy to every locale**
 
 在 `src/renderer/src/i18n/locales/` 的**每一个** `*.json` 里加同一组键(值按语言翻译,键名一致):
-`terminalComposer.attach` / `terminalComposer.send` / `terminalComposer.placeholder` / `terminalComposer.open` / `terminalComposer.enterHint` / `terminalComposer.sendHint` / `terminalComposer.uploadFailed` / `terminalComposer.hostChanged` / `terminalComposer.disconnected`。
+`terminalComposer.attach` / `terminalComposer.send` / `terminalComposer.placeholder` / `terminalComposer.open` / `terminalComposer.enterHint` / `terminalComposer.sendHint` / `terminalComposer.uploadFailed` / `terminalComposer.hostChanged` / `terminalComposer.disconnected` / `terminalComposer.paneChanged` / `terminalComposer.writeRejected`。
+
+**发送的四个 reason 码都要有文案**:`'host-changed'` → `hostChanged`,`'pty-disconnected'` → `disconnected`,`'pane-changed'` → `paneChanged`(pane 被换掉或关掉了,消息没发出去),`'write-rejected'` → `writeRejected`(宿主拒收了这批字节)。UI 层把码翻成句子,不要把码直接甩到 toast 上。
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -1320,12 +1322,13 @@ test('the terminal composer writes a multi-line prompt and then Enter', async ({
         .join('')
     )
     .toContain('\x1b[200~first line\rsecond line\x1b[201~')
+  // Enter must be a write of its own: joining the writes would match the CR inside the
+  // paste above and pass even when the submit was swallowed.
   await expect
     .poll(async () =>
       (await readTerminalPtyWriteEntries(electronApp))
         .filter((entry) => entry.id === ptyId)
         .map((entry) => entry.data)
-        .join('')
     )
     .toContain('\r')
 })

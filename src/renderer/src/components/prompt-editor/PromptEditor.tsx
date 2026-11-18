@@ -1,4 +1,5 @@
 import { EditorContent, useEditor, type JSONContent } from '@tiptap/react'
+import type { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Slice } from '@tiptap/pm/model'
@@ -28,6 +29,12 @@ export type PromptEditorProps = {
   initialDocument: JSONContent
   disabled: boolean
   placeholder: string
+  /**
+   * Runs before ProseMirror's own key handling; returning true stops it.
+   * Enter splits the paragraph on its own, so a consumer that wants Enter to mean
+   * something else has to claim the key here.
+   */
+  handleKeyDown?: (event: KeyboardEvent, editor: Editor) => boolean
   /** The editor owns the document, so it reports it; the text facade alone cannot carry pills. */
   onDocumentChange?: (document: JSONContent) => void
   onChange?: (input: PromptEditorInput) => void
@@ -40,6 +47,7 @@ export function PromptEditor({
   initialDocument,
   disabled,
   placeholder,
+  handleKeyDown,
   onDocumentChange,
   onChange,
   onSelect,
@@ -47,6 +55,10 @@ export function PromptEditor({
 }: PromptEditorProps): React.JSX.Element {
   const placeholderRef = useRef(placeholder)
   placeholderRef.current = placeholder
+  // The editor is created once, so the handler is read through a ref instead of a closure.
+  const handleKeyDownRef = useRef(handleKeyDown)
+  handleKeyDownRef.current = handleKeyDown
+  const editorRef = useRef<Editor | null>(null)
   const editor = useEditor(
     {
       extensions: [
@@ -98,6 +110,16 @@ export function PromptEditor({
           const content = view.state.schema.nodeFromJSON(promptTextContent(text))
           view.dispatch(view.state.tr.replaceSelection(new Slice(content.content, 1, 1)))
           return true
+        },
+        // ProseMirror splits the paragraph on Enter; a consumer that means something else by
+        // Enter has to claim the key before that happens.
+        handleKeyDown: (_view, event) => {
+          const handler = handleKeyDownRef.current
+          const currentEditor = editorRef.current
+          if (!handler || !currentEditor) {
+            return false
+          }
+          return handler(event, currentEditor)
         }
       },
       onUpdate: ({ editor: current }) => {
@@ -116,6 +138,10 @@ export function PromptEditor({
   )
 
   useLayoutEffect(() => editor?.setEditable(!disabled, false), [disabled, editor])
+  // The editor is created before the first paint, so the key handler can reach it right away.
+  useLayoutEffect(() => {
+    editorRef.current = editor ?? null
+  }, [editor])
 
   const input = useMemo<PromptEditorInput | null>(
     () =>

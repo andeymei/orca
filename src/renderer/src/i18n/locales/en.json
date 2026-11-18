@@ -25364,5 +25364,27 @@
       "read": "Usage could not be loaded. Try Refresh again.",
       "retry": "Refresh"
     }
+  },
+  "terminalComposer": {
+    "attach": "Add attachment",
+    "send": "Send",
+    "placeholder": "Message the agent",
+    "open": "Send a message to the agent",
+    "enterHint": "Enter for a new line",
+    "sendHint": "to send",
+    "uploadFailed": "Could not attach the file",
+    "hostChanged": "The host changed, so the message was not sent",
+    "disconnected": "The terminal disconnected, so the message was not sent",
+    "paneChanged": "The pane changed, so the message was not sent",
+    "writeRejected": "The host refused the message",
+    "sendFailed": "The message was not sent",
+    "uploading": "Uploading…",
+    "attachAgain": "Attach it again",
+    "dismissFailed": "Dismiss the failed attachment",
+    "reasonMissing": "The file is gone",
+    "reasonSymlink": "That path is a link, not a file",
+    "reasonPermissionDenied": "No permission to read the file",
+    "reasonUnsupported": "That kind of file cannot be attached",
+    "reasonNoLocalPath": "The pasted item has no file behind it"
   }
 }

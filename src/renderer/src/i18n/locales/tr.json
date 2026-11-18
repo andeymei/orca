@@ -23737,5 +23737,27 @@
       "dismiss": "Kapat",
       "cancelDownload": "İndirmeyi iptal et"
     }
+  },
+  "terminalComposer": {
+    "attach": "Ek ekle",
+    "send": "Gönder",
+    "placeholder": "Ajanına yaz",
+    "open": "Ajanına mesaj gönder",
+    "enterHint": "Enter yeni satır açar",
+    "sendHint": "ile gönder",
+    "uploadFailed": "Dosya eklenemedi",
+    "hostChanged": "Sunucu değişti, bu yüzden mesaj gönderilmedi",
+    "disconnected": "Terminal bağlantısı kesildi, bu yüzden mesaj gönderilmedi",
+    "paneChanged": "Panel değişti, bu yüzden mesaj gönderilmedi",
+    "writeRejected": "Sunucu mesajı reddetti",
+    "sendFailed": "Mesaj gönderilmedi",
+    "uploading": "Yükleniyor…",
+    "attachAgain": "Yeniden ekle",
+    "dismissFailed": "Başarısız eki kaldır",
+    "reasonMissing": "Dosya artık yok",
+    "reasonSymlink": "Bu yol bir dosya değil, bir bağlantı",
+    "reasonPermissionDenied": "Dosyayı okuma izni yok",
+    "reasonUnsupported": "Bu türdeki dosyalar eklenemez",
+    "reasonNoLocalPath": "Yapıştırılan öğenin arkasında dosya yok"
   }
 }

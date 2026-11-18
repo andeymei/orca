@@ -24226,5 +24226,27 @@
       "dismiss": "Ignorer",
       "cancelDownload": "Annuler le téléchargement"
     }
+  },
+  "terminalComposer": {
+    "attach": "Ajouter une pièce jointe",
+    "send": "Envoyer",
+    "placeholder": "Écrire à l’agent",
+    "open": "Envoyer un message à l’agent",
+    "enterHint": "Entrée pour une nouvelle ligne",
+    "sendHint": "pour envoyer",
+    "uploadFailed": "Impossible de joindre le fichier",
+    "hostChanged": "L’hôte a changé, le message n’a donc pas été envoyé",
+    "disconnected": "Le terminal s’est déconnecté, le message n’a donc pas été envoyé",
+    "paneChanged": "Le panneau a changé, le message n’a donc pas été envoyé",
+    "writeRejected": "L’hôte a refusé le message",
+    "sendFailed": "Le message n’a pas été envoyé",
+    "uploading": "Envoi en cours…",
+    "attachAgain": "Joindre à nouveau",
+    "dismissFailed": "Ignorer la pièce jointe en échec",
+    "reasonMissing": "Le fichier n’existe plus",
+    "reasonSymlink": "Ce chemin est un lien, pas un fichier",
+    "reasonPermissionDenied": "Pas de permission de lire le fichier",
+    "reasonUnsupported": "Ce type de fichier ne peut pas être joint",
+    "reasonNoLocalPath": "L’élément collé n’a aucun fichier derrière"
   }
 }

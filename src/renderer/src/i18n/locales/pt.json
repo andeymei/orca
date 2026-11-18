@@ -24842,5 +24842,27 @@
       "notGitRepository": "Não é um repositório Git válido",
       "importFailed": "Não foi possível importar o repositório"
     }
+  },
+  "terminalComposer": {
+    "attach": "Adicionar anexo",
+    "send": "Enviar",
+    "placeholder": "Escreva para o agente",
+    "open": "Enviar uma mensagem ao agente",
+    "enterHint": "Enter para uma nova linha",
+    "sendHint": "para enviar",
+    "uploadFailed": "Não foi possível anexar o arquivo",
+    "hostChanged": "O host mudou, então a mensagem não foi enviada",
+    "disconnected": "O terminal foi desconectado, então a mensagem não foi enviada",
+    "paneChanged": "O painel mudou, então a mensagem não foi enviada",
+    "writeRejected": "O host recusou a mensagem",
+    "sendFailed": "A mensagem não foi enviada",
+    "uploading": "Enviando…",
+    "attachAgain": "Anexar novamente",
+    "dismissFailed": "Dispensar o anexo que falhou",
+    "reasonMissing": "O arquivo não existe mais",
+    "reasonSymlink": "Esse caminho é um link, não um arquivo",
+    "reasonPermissionDenied": "Sem permissão para ler o arquivo",
+    "reasonUnsupported": "Esse tipo de arquivo não pode ser anexado",
+    "reasonNoLocalPath": "O item colado não tem nenhum arquivo por trás"
   }
 }

@@ -23770,5 +23770,27 @@
       "dismiss": "Schließen",
       "cancelDownload": "Download abbrechen"
     }
+  },
+  "terminalComposer": {
+    "attach": "Anhang hinzufügen",
+    "send": "Senden",
+    "placeholder": "Den Agenten anschreiben",
+    "open": "Eine Nachricht an den Agenten senden",
+    "enterHint": "Enter für eine neue Zeile",
+    "sendHint": "zum Senden",
+    "uploadFailed": "Die Datei konnte nicht angehängt werden",
+    "hostChanged": "Der Host hat sich geändert, daher wurde die Nachricht nicht gesendet",
+    "disconnected": "Das Terminal hat die Verbindung getrennt, daher wurde die Nachricht nicht gesendet",
+    "paneChanged": "Der Bereich hat sich geändert, daher wurde die Nachricht nicht gesendet",
+    "writeRejected": "Der Host hat die Nachricht abgelehnt",
+    "sendFailed": "Die Nachricht wurde nicht gesendet",
+    "uploading": "Wird hochgeladen…",
+    "attachAgain": "Erneut anhängen",
+    "dismissFailed": "Fehlgeschlagenen Anhang ausblenden",
+    "reasonMissing": "Die Datei ist nicht mehr da",
+    "reasonSymlink": "Dieser Pfad ist ein Verweis, keine Datei",
+    "reasonPermissionDenied": "Keine Berechtigung zum Lesen der Datei",
+    "reasonUnsupported": "Diese Art von Datei kann nicht angehängt werden",
+    "reasonNoLocalPath": "Hinter dem eingefügten Element steckt keine Datei"
   }
 }

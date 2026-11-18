@@ -23520,5 +23520,27 @@
       "dismiss": "閉じる",
       "cancelDownload": "ダウンロードをキャンセル"
     }
+  },
+  "terminalComposer": {
+    "attach": "添付ファイルを追加",
+    "send": "送信",
+    "placeholder": "Agent にメッセージを書く",
+    "open": "Agent にメッセージを送る",
+    "enterHint": "Enter で改行",
+    "sendHint": "で送信",
+    "uploadFailed": "ファイルを添付できませんでした",
+    "hostChanged": "ホストが変わったため、メッセージは送信されませんでした",
+    "disconnected": "ターミナルが切断されたため、メッセージは送信されませんでした",
+    "paneChanged": "ペインが変わったため、メッセージは送信されませんでした",
+    "writeRejected": "ホストがメッセージを受け付けませんでした",
+    "sendFailed": "メッセージは送信されませんでした",
+    "uploading": "アップロード中…",
+    "attachAgain": "もう一度添付",
+    "dismissFailed": "失敗した添付ファイルを閉じる",
+    "reasonMissing": "ファイルが見つかりません",
+    "reasonSymlink": "そのパスはファイルではなくリンクです",
+    "reasonPermissionDenied": "ファイルを読み取る権限がありません",
+    "reasonUnsupported": "この種類のファイルは添付できません",
+    "reasonNoLocalPath": "貼り付けた項目にファイルがありません"
   }
 }

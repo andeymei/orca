@@ -23886,5 +23886,27 @@
       "notGitRepository": "不是有效的 Git 仓库",
       "importFailed": "无法导入仓库"
     }
+  },
+  "terminalComposer": {
+    "attach": "添加附件",
+    "send": "发送",
+    "placeholder": "给智能体发消息",
+    "open": "给智能体发消息",
+    "enterHint": "回车换行",
+    "sendHint": "发送",
+    "uploadFailed": "附件添加失败",
+    "hostChanged": "宿主已改变，消息没有发送",
+    "disconnected": "终端已断开，消息没有发送",
+    "paneChanged": "面板已改变，消息没有发送",
+    "writeRejected": "宿主拒绝了这批字节",
+    "sendFailed": "消息没有发送",
+    "uploading": "上传中…",
+    "attachAgain": "重新添加",
+    "dismissFailed": "忽略添加失败的附件",
+    "reasonMissing": "文件不在了",
+    "reasonSymlink": "这个路径是链接，不是文件",
+    "reasonPermissionDenied": "没有权限读取这个文件",
+    "reasonUnsupported": "这种文件不能作为附件添加",
+    "reasonNoLocalPath": "粘贴的内容背后没有文件"
   }
 }

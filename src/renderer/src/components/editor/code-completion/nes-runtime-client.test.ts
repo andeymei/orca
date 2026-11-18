@@ -37,6 +37,7 @@ function answered(plan: unknown): unknown {
 
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  vi.mocked(console.error).mockClear()
 })
 
 describe('requestNesPlan', () => {
@@ -85,5 +86,34 @@ describe('requestNesPlan', () => {
     runtimeCall.mockReturnValue(new Promise(() => undefined))
 
     expect(await requestNesPlan(REQUEST, { timeoutMs: 5 })).toBeNull()
+  })
+
+  it('returns null without logging when the signal is already aborted', async () => {
+    const controller = new AbortController()
+    controller.abort()
+
+    expect(await requestNesPlan(REQUEST, { signal: controller.signal })).toBeNull()
+    expect(runtimeCall).not.toHaveBeenCalled()
+    expect(console.error).not.toHaveBeenCalled()
+  })
+
+  it('returns null without logging when the call is aborted mid-flight', async () => {
+    const controller = new AbortController()
+    runtimeCall.mockReturnValue(new Promise(() => undefined))
+
+    const request = requestNesPlan(REQUEST, { signal: controller.signal })
+    controller.abort()
+
+    expect(await request).toBeNull()
+    expect(console.error).not.toHaveBeenCalled()
+  })
+
+  it('logs a genuine failure with the name of the error only', async () => {
+    runtimeCall.mockRejectedValue(new Error('the key file cannot be read'))
+
+    expect(await requestNesPlan(REQUEST)).toBeNull()
+    expect(console.error).toHaveBeenCalledWith('[code-completion] The plan request failed.', {
+      error: 'Error'
+    })
   })
 })

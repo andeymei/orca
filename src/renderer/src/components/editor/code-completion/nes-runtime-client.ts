@@ -11,6 +11,10 @@ export async function requestNesPlan(
   input: NesRequest,
   options: { signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<NesEditPlan | null> {
+  // Why: a request the caller already gave up on is not a failure, and it never reaches the runtime.
+  if (options.signal?.aborted) {
+    return null
+  }
   const timeoutMs = options.timeoutMs ?? NES_REQUEST_TIMEOUT_MS
   try {
     const response = await settleBeforeDeadline(

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fsReadFile,
   fsSearch,
@@ -10,6 +10,14 @@ import {
   collectNesRelatedFiles,
   parseRelativeImports
 } from './nes-related-files'
+import { readRuntimeFileContent } from '@/runtime/files/reads/runtime-file-read-client'
+
+vi.mock('@/runtime/files/reads/runtime-file-read-client', async (importOriginal) => {
+  const actual = await importOriginal<{
+    readRuntimeFileContent: typeof readRuntimeFileContent
+  }>()
+  return { ...actual, readRuntimeFileContent: vi.fn(actual.readRuntimeFileContent) }
+})
 
 installRuntimeFileClientEnvironment()
 
@@ -83,6 +91,13 @@ describe('collectNesRelatedFiles', () => {
     expect(related.map((file) => file.path)).toEqual(['/repo/src/util.ts', '/repo/shared/thing.ts'])
     expect(related.map((file) => file.startLine)).toEqual([1, 1])
     expect(related[0].content).toBe('export const util = 1')
+    expect(vi.mocked(readRuntimeFileContent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filePath: '/repo/src/util.ts',
+        relativePath: 'src/util.ts',
+        worktreeId: 'wt-1'
+      })
+    )
   })
 
   it('keeps a package import out of the results', async () => {
@@ -123,6 +138,74 @@ describe('collectNesRelatedFiles', () => {
     expect(fsSearch).toHaveBeenCalledWith(
       expect.objectContaining({ query: 'helper', rootPath: WORKTREE_PATH })
     )
+  })
+
+  it('drops the vendored files from the search results', async () => {
+    contents.set('/repo/node_modules/react/index.js', 'export function useState() {}')
+    contents.set('/repo/src/hook.ts', 'export function useState() {}')
+    fsSearch.mockResolvedValue(
+      searchResult([
+        {
+          filePath: '/repo/node_modules/react/index.js',
+          relativePath: 'node_modules/react/index.js',
+          lineContent: 'export function useState() {}'
+        },
+        {
+          filePath: '/repo/src/hook.ts',
+          relativePath: 'src/hook.ts',
+          lineContent: 'export function useState() {}'
+        }
+      ])
+    )
+
+    const related = await collectNesRelatedFiles({
+      filePath: CURRENT_FILE,
+      fileText: '',
+      symbolAtCursor: 'useState',
+      files: filesContext()
+    })
+
+    expect(related.map((file) => file.path)).toEqual(['/repo/src/hook.ts'])
+  })
+
+  it('drops the vendored files from a windows path', async () => {
+    contents.set('C:\\repo\\node_modules\\react\\index.js', 'export function useState() {}')
+    contents.set('C:\\repo\\src\\hook.ts', 'export function useState() {}')
+    fsSearch.mockResolvedValue(
+      searchResult([
+        {
+          filePath: 'C:\\repo\\node_modules\\react\\index.js',
+          relativePath: 'node_modules\\react\\index.js',
+          lineContent: 'export function useState() {}'
+        },
+        {
+          filePath: 'C:\\repo\\src\\hook.ts',
+          relativePath: 'src\\hook.ts',
+          lineContent: 'export function useState() {}'
+        }
+      ])
+    )
+
+    const related = await collectNesRelatedFiles({
+      filePath: 'C:\\repo\\src\\app.ts',
+      fileText: '',
+      symbolAtCursor: 'useState',
+      files: filesContext({ worktreePath: 'C:\\repo' })
+    })
+
+    expect(related.map((file) => file.path)).toEqual(['C:\\repo\\src\\hook.ts'])
+  })
+
+  it('asks the search for enough matches to cover several files', async () => {
+    await collectNesRelatedFiles({
+      filePath: CURRENT_FILE,
+      fileText: '',
+      symbolAtCursor: 'helper',
+      files: filesContext()
+    })
+
+    // Why: the cap counts matches, so it must leave room for the files the ranking wants.
+    expect(fsSearch).toHaveBeenCalledWith(expect.objectContaining({ maxResults: 200 }))
   })
 
   it('never returns more than eight files', async () => {
@@ -185,7 +268,7 @@ describe('collectNesRelatedFiles', () => {
     expect(related).toEqual([])
   })
 
-  it('returns an empty list when there is no worktree', async () => {
+  it('still resolves the relative imports when there is no worktree, and does not search', async () => {
     const related = await collectNesRelatedFiles({
       filePath: CURRENT_FILE,
       fileText: "import './util'\n",
@@ -193,7 +276,7 @@ describe('collectNesRelatedFiles', () => {
       files: filesContext({ worktreePath: null })
     })
 
-    expect(related).toEqual([])
+    expect(related.map((file) => file.path)).toEqual(['/repo/src/util.ts'])
     expect(fsSearch).not.toHaveBeenCalled()
   })
 
@@ -222,5 +305,51 @@ describe('collectNesRelatedFiles', () => {
     clearNesRelatedFilesCache(CURRENT_FILE)
     await collectNesRelatedFiles(input)
     expect(fsSearch).toHaveBeenCalled()
+  })
+
+  it('keeps a separate cache entry for each host that holds the same path', async () => {
+    const input = {
+      filePath: CURRENT_FILE,
+      fileText: '',
+      symbolAtCursor: 'helper',
+      files: filesContext()
+    }
+    fsSearch.mockResolvedValue(
+      searchResult([
+        {
+          filePath: '/repo/src/helper.ts',
+          relativePath: 'src/helper.ts',
+          lineContent: 'export function helper() {}'
+        }
+      ])
+    )
+    await collectNesRelatedFiles(input)
+    fsSearch.mockClear()
+
+    await collectNesRelatedFiles({ ...input, files: filesContext({ connectionId: 'ssh-1' }) })
+    expect(fsSearch).toHaveBeenCalled()
+  })
+
+  it('hands out a copy of the cached files', async () => {
+    const input = {
+      filePath: CURRENT_FILE,
+      fileText: '',
+      symbolAtCursor: 'helper',
+      files: filesContext()
+    }
+    fsSearch.mockResolvedValue(
+      searchResult([
+        {
+          filePath: '/repo/src/helper.ts',
+          relativePath: 'src/helper.ts',
+          lineContent: 'export function helper() {}'
+        }
+      ])
+    )
+    const first = await collectNesRelatedFiles(input)
+    first.push({ path: '/repo/src/injected.ts', content: '', startLine: 1 })
+
+    const second = await collectNesRelatedFiles(input)
+    expect(second.map((file) => file.path)).toEqual(['/repo/src/helper.ts'])
   })
 })

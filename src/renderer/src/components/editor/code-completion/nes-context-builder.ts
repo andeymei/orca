@@ -77,11 +77,7 @@ function findPrefixStartLine(
   return startLine
 }
 
-/**
- * The text the model sees, cut at a line boundary: a line shown in part invites an edit at the
- * fragment's end, and an insert carries no original text to catch the mistake. A text with no line
- * break inside the budget is cut at the budget; the fragment keeps the columns of the text it starts at.
- */
+/** A line shown in part invites an edit at its end, so the cut lands between lines. */
 export function trimNesTextAtLineBoundary(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
     return text

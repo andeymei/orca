@@ -9,6 +9,7 @@ import {
   normalizeRuntimePathForComparison,
   resolveRuntimePath
 } from '../../../../../shared/cross-platform-path'
+import { shouldIncludeQuickOpenPath } from '../../../../../shared/quick-open/quick-open-filter'
 
 export const NES_RELATED_FILE_MAX = 8
 export const NES_RELATED_FILE_TOKEN_BUDGET = 1000
@@ -31,12 +32,15 @@ const MODULE_SPECIFIER_PATTERNS = [
 
 const RELATIVE_IMPORT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx']
 const RELATIVE_IMPORT_INDEX_FILES = ['/index.ts', '/index.tsx']
-const SYMBOL_SEARCH_MAX_RESULTS = 20
+// Why: the cap counts matches, not files, so it must leave room for the files the ranking wants.
+const SYMBOL_SEARCH_MAX_RESULTS = 200
 
-const relatedFilesCache = new Map<
-  string,
-  { symbolAtCursor: string | null; files: NesRelatedFile[] }
->()
+type NesRelatedFilesCacheEntry = {
+  symbolAtCursor: string | null
+  files: NesRelatedFile[]
+}
+
+const relatedFilesCache = new Map<string, Map<string, NesRelatedFilesCacheEntry>>()
 
 /** The relative specifiers of a file, resolved against the file's own directory. */
 export function parseRelativeImports(fileText: string, filePath: string): string[] {
@@ -60,17 +64,16 @@ export function parseRelativeImports(fileText: string, filePath: string): string
 export async function collectNesRelatedFiles(
   input: NesRelatedFilesInput
 ): Promise<NesRelatedFile[]> {
-  const worktreePath = input.files.worktreePath
-  // Why: a search without a root path would sweep the whole filesystem, and a read needs the worktree to address a remote file.
-  if (!worktreePath) {
-    return []
-  }
-  const cached = relatedFilesCache.get(input.filePath)
+  const byHost =
+    relatedFilesCache.get(input.filePath) ?? new Map<string, NesRelatedFilesCacheEntry>()
+  const hostKey = hostKeyOf(input.files)
+  const cached = byHost.get(hostKey)
   if (cached && cached.symbolAtCursor === input.symbolAtCursor) {
-    return cached.files
+    return [...cached.files]
   }
-  const files = await gatherRelatedFiles(input, worktreePath)
-  relatedFilesCache.set(input.filePath, { symbolAtCursor: input.symbolAtCursor, files })
+  const files = await gatherRelatedFiles(input)
+  byHost.set(hostKey, { symbolAtCursor: input.symbolAtCursor, files: [...files] })
+  relatedFilesCache.set(input.filePath, byHost)
   return files
 }
 
@@ -78,10 +81,14 @@ export function clearNesRelatedFilesCache(filePath: string): void {
   relatedFilesCache.delete(filePath)
 }
 
-async function gatherRelatedFiles(
-  input: NesRelatedFilesInput,
-  worktreePath: string
-): Promise<NesRelatedFile[]> {
+/** Two hosts can hold the same path, so a cached entry names the host it belongs to. */
+function hostKeyOf(files: RuntimeFileOperationArgs): string {
+  const connection = files.connectionId ?? ''
+  const environment = files.target.kind === 'environment' ? files.target.environmentId : ''
+  return `${connection}\0${environment}`
+}
+
+async function gatherRelatedFiles(input: NesRelatedFilesInput): Promise<NesRelatedFile[]> {
   const collected: NesRelatedFile[] = []
   const seen = new Set<string>()
   const currentPath = normalizeRuntimePathForComparison(input.filePath)
@@ -107,7 +114,7 @@ async function gatherRelatedFiles(
     }
   }
 
-  for (const path of await findSymbolFiles(input, worktreePath)) {
+  for (const path of await findSymbolFiles(input)) {
     if (collected.length >= NES_RELATED_FILE_MAX) {
       break
     }
@@ -165,12 +172,11 @@ async function readRelatedFile(
 }
 
 /** The files that mention the symbol at the cursor; the file that declares it comes first. */
-async function findSymbolFiles(
-  input: NesRelatedFilesInput,
-  worktreePath: string
-): Promise<string[]> {
+async function findSymbolFiles(input: NesRelatedFilesInput): Promise<string[]> {
   const symbol = input.symbolAtCursor
-  if (!symbol || !isPlainIdentifier(symbol)) {
+  const worktreePath = input.files.worktreePath
+  // Why: a search without a root path would sweep the whole filesystem.
+  if (!symbol || !isPlainIdentifier(symbol) || !worktreePath) {
     return []
   }
   try {
@@ -179,7 +185,10 @@ async function findSymbolFiles(
       rootPath: worktreePath,
       maxResults: SYMBOL_SEARCH_MAX_RESULTS
     })
-    return rankSymbolFiles(result.files, symbol).map((file) =>
+    const authored = result.files.filter((file) =>
+      shouldIncludeQuickOpenPath(normalizeRuntimePathForComparison(file.filePath))
+    )
+    return rankSymbolFiles(authored, symbol).map((file) =>
       isRuntimePathAbsolute(file.filePath)
         ? file.filePath
         : resolveRuntimePath(worktreePath, file.relativePath)

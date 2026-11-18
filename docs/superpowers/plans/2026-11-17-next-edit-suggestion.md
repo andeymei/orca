@@ -1758,9 +1758,20 @@ It watches `Alt` keydown and keyup (ignoring `event.repeat`) and reports the hel
 
 **The preview draws the edit at the cursor with our own overlay, not with Monaco's ghost text.** The
 hook previews the edit `nesPlanStore.editAt` returns, through `previewNesEdit` (Task 11), which
-draws the change with injected text. Monaco's ghost text is the _default_ view — it shows the
-suggestion as the user types — while the Alt overlay is the deliberate one: the user holds Alt to
-see the whole change laid over the code before accepting it.
+draws the change with a **Monaco content widget**. Monaco's ghost text is the _default_ view — it
+shows the suggestion as the user types — while the Alt overlay is the deliberate one: the user
+holds Alt to see the whole change laid over the code before accepting it.
+
+**Not injected text.** Monaco's `InjectedTextOptions.content` "Must be a single line", and the
+feature's core case is a multi-line insert, so the overlay is a content widget. Task 11 measures
+and implements that; this task only calls it.
+
+**The hook must release the preview when Alt comes _up_, not only when it goes down.** The
+release function is `previewNesEdit`'s return value, and the caller holds it for as long as the
+user holds Alt. If the editor is closed while Alt is still held, the widget goes with it —
+Monaco's `dispose()` clears the content widgets, and `removeContentWidget` on a disposed editor
+is a no-op — so the release call is safe either way, but the hook should not leave a dangling
+reference to a widget it has already released.
 
 **It can show any kind of edit, which is why it is worth having.** The contract now keeps only the
 edits the editor can draw (Task 1's validator), so a rewrite of the text the user just typed never

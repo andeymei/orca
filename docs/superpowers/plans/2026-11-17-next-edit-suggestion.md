@@ -973,10 +973,46 @@ The prompt tells the model to "propose an `insert` edit at the top of the file t
 
 **The import text must end with a line break.** The backend owns the import's insertion point, so it owns the text that goes with it. A model that answers `"import { z } from 'zod'"` with no trailing newline would otherwise be inserted at 1:1 and concatenated with the file's existing first line — `import { z } from 'zod'import React from 'react'`. The `originalText` guard cannot catch it: an insert's `originalText` is the empty string, which matches the empty range at 1:1. So the import branch appends a line break when the text does not end with one.
 
+**The cursor's line carries the marker, so its columns must be corrected.** The prompt is
+`${prefix}${NES_CURSOR_MARKER}${suffix}` — the marker sits **inline**, in the middle of the
+cursor's line. That line, as the model sees it, is
+
+```
+<the file's columns 1 … cursorColumn-1><<<CURSOR>>>><the file's columns cursorColumn …>
+```
+
+so every column **after** the cursor is shifted right by the marker's length (13 characters), while
+the columns before it are not. The model answers with the columns it counted, and the backend
+converts **lines only** — it leaves columns verbatim, because the prompt gives the cursor only as a
+marker and never as a number the backend could compare against.
+
+A model that treats the marker as text therefore answers a column 13 too far right. That is not a
+cosmetic error: the renderer finds the cursor's edit by matching the range's end against the
+cursor (`nesEditMatchesPosition`), so a column that is 13 out **means no suggestion is ever
+offered** — and if it does match, the accepted edit is spliced 13 characters away from where the
+user is typing.
+
+**So the backend corrects the columns on the cursor's line.** For the current file only, a column
+`P` on the cursor's line maps back to the file's column as:
+
+- `P < cursorColumn` → `P` (before the marker — unchanged)
+- `cursorColumn ≤ P < cursorColumn + NES_CURSOR_MARKER.length` → inside the marker; no valid answer
+  lands here, so the value is left as it is
+- `P ≥ cursorColumn + NES_CURSOR_MARKER.length` → `P - NES_CURSOR_MARKER.length` (after the marker)
+
+The rule is applied to a column **only when that column's own line is the cursor's line**, and only
+for the **current** file — a related file carries no marker, and every other line of the current
+file is shown whole. The correction therefore leaves a `replace` that ends _before_ the cursor
+alone, and fixes one that ends after it.
+
+`NES_CURSOR_MARKER` is already defined once in `src/shared/code-completion/code-completion-prompt.ts`
+and read by both sides; the backend imports it rather than hardcoding 13.
+
 Tests:
 
 - in `code-completion-prompt.test.ts`: the import sentence names the label prefix.
 - in `completion-backends.test.ts`: an import edit in a plan for a **trimmed** prefix lands on file line 1; a non-import insert at the same shown line keeps its translated position; and an import whose text has no trailing newline comes back **with** one, so it cannot be concatenated with the file's first line. Without these, the import silently lands mid-file or produces a broken first line.
+- in `completion-backends.test.ts`: an edit whose column on the cursor's line is past the marker comes back with the marker's length subtracted, and one whose column is before the cursor comes back unchanged; an edit in a **related** file comes back with its columns untouched. Without these, a model that counts the marker as text produces a suggestion the renderer can never match to the cursor.
 
 This task re-touches Task 1's and Task 2's files — the marker has to be defined once and read by both sides, and splitting it across two tasks would cost a context handover for three lines.
 

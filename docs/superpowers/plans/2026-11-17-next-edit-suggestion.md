@@ -1132,7 +1132,7 @@ describe('collectNesRelatedFiles', () => {
   it('adds the files that mention the symbol at the cursor', ...)
   it('never returns more than eight files', ...)
   it('gives every file at most a thousand tokens', ...)
-  it('returns an empty list when there is no worktree', ...)
+  it('still resolves the relative imports when there is no worktree, and does not search', ...)
 })
 ```
 
@@ -1160,7 +1160,9 @@ export async function collectNesRelatedFiles(
 Two sources, in this order:
 
 1. **The current file's relative imports.** `parseRelativeImports` pulls the module specifiers out of the import statements and keeps only the ones that start with `./` or `../` — a package import names a module the model already knows, not a file in this repository. Each relative specifier resolves against the current file's directory; the extension is tried as written, then with `.ts`, `.tsx`, `.js`, `.jsx` and `/index.ts`, `/index.tsx`.
-2. **The files that mention the symbol at the cursor.** `searchRuntimeFiles(context, options, signal?)` takes a `RuntimeFileOperationArgs` and a `SearchOptions` whose `rootPath` is **required**. When `symbolAtCursor` is a plain identifier, call `searchRuntimeFiles(input.files, { query: symbolAtCursor, rootPath: input.files.worktreePath ?? '', maxResults: 20 })` — but only when `input.files.worktreePath` is set. **A missing worktree path means no search at all**: `rootPath` is required, and searching with an empty root path would sweep the whole filesystem. When there is no worktree, the collector returns the empty list rather than searching. and take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
+2. **The files that mention the symbol at the cursor.** `searchRuntimeFiles(context, options, signal?)` takes a `RuntimeFileOperationArgs` and a `SearchOptions` whose `rootPath` is **required**. When `symbolAtCursor` is a plain identifier, call `searchRuntimeFiles(input.files, { query: symbolAtCursor, rootPath: input.files.worktreePath ?? '', maxResults: 20 })` — but only when `input.files.worktreePath` is set. **A missing worktree path means no search at all**: `rootPath` is required, and searching with an empty root path would sweep the whole filesystem. **A missing worktree path means no _search_, not no related files.** The guard belongs to the search, not to the collector: an import-driven read needs no root at all — the read takes an absolute `filePath` and an _optional_ `relativePath`, and `getRelativePathInsideWorktree` returning null means "no root-relative path", not "unreadable". So when there is no worktree path the collector still resolves the current file's **relative imports**; it just does not search. A **folder workspace** — a first-class case this repo calls out ("never assume a workspace is a git worktree") — has no worktree path, and its imports are perfectly readable.
+
+Then take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
 
 Each result is read through `readRuntimeFileContent`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
 

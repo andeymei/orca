@@ -959,6 +959,7 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - Create: `src/renderer/src/components/terminal-pane/composer/TerminalComposerOverlay.tsx`
 - Create: `src/renderer/src/components/terminal-pane/composer/TerminalComposerField.test.tsx`
 - Create: `src/renderer/src/components/terminal-pane/composer/TerminalComposerField.fixture.tsx`
+- Modify: `src/renderer/src/components/prompt-editor/PromptEditor.tsx`
 - Modify: `src/renderer/src/i18n/locales/*.json`
 
 **Interfaces:**
@@ -989,7 +990,7 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
     /** Claims dropped files; the drop lands on the terminal's own workspace. */
     onDrop?: (paths: readonly string[]) => void
   }
-  export const TerminalComposerField: React.FC<TerminalComposerFieldProps>
+  export function TerminalComposerField(props: TerminalComposerFieldProps): React.JSX.Element
 
   // TerminalComposerOverlay.tsx
   export type TerminalComposerOverlayProps = {
@@ -1010,11 +1011,16 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
     /** The tab's live transports, keyed by pane id. */
     paneTransportsRef: React.RefObject<Map<number, PtyTransport>>
   }
-  export const TerminalComposerOverlay: React.FC<TerminalComposerOverlayProps>
+  export function TerminalComposerOverlay(props: TerminalComposerOverlayProps): React.JSX.Element
   ```
 
 **Notes:**
 
+- **`PromptEditor` 要多一个 `handleKeyDown` 出口。** 共用的编辑器现在**没有** `editorProps.handleKeyDown`,`EditorContent` 上也**没有** prop spread(`PromptEditor.tsx:27-37` / `:179-185`)。Enter / Mod+Enter / Esc 的规则必须在 **PM 的按键处理之前**拦住(PM 自己的 Enter 是 `splitBlock`,先把段落拆了再补就晚了),所以这条规则得**进** `PromptEditor`:加一个可选 prop `handleKeyDown?: (event: KeyboardEvent, editor: Editor) => boolean`,由 `PromptEditor` 接到 `editorProps.handleKeyDown` 上**先**跑;终端字段把自己的规则(Enter → `editor.commands.setHardBreak()` 再 `return true`)传进去。**paste 不走这条路** —— `onPasteCapture` 挂在字段里 `PromptEditor` **外面**那层包裹元素上就行:React 的 capture 阶段先于编辑器自己的 paste 处理,而 TipTap 的 `handlePaste` 见到 `event.defaultPrevented` 会放行不插内容(共用件已经是这个形状)。
+- **`TerminalComposerDraft` 有两个同名类型。** store 那份在 `src/renderer/src/store/slices/terminal-composer/terminal-composer.ts:15`(`{ document, attachments }`);`src/shared/terminal/input/terminal-composer-draft.ts:20` 还有一份**同名但完全不同**的(`{ text, promptRow, cursorRow, endRow, promptGlyph }` —— 那是终端输入行的探测类型)。**按路径 import** store 那份。
+- **`window.api.shell.pickAttachments()` 返回 `string[]`,空数组 = 用户取消**(没有别的哨兵值,见 `src/preload/api/shell-api.ts:28`):取消就当无事发生,不要弹错误。
+- **提示行的 `⌘↵` 用 `ShortcutKeyCombo` + `renderKey`,别指望 `formatKeybinding`**:它把 `Enter` 格式化成字面量 `'Enter'`(`src/shared/keybindings/formatting.ts`),不产出 `↵`。`↵` 那个字形在 `ButtonKeyHint`(`src/renderer/src/components/ButtonKeyHint.tsx`)里,修饰键用 `getScreenSubmitModifierLabel()`(`src/renderer/src/lib/keyboard/screen-submit-shortcut.ts:32`)拿 `⌘` / `Ctrl`。
+- **`toLocalWslDropPath` 只吃 POSIX / Windows 盘符 / WSL UNC**:非 WSL 的 UNC(`\\server\share\x`)会被它算成 `/mnt/\/erver/share/x` 这种垃圾(`src/shared/cross-platform-path.ts:5` 把任何 `\\` 开头都当成 Windows 绝对路径)。拼写前先判一下。
 - **Enter 只换行。** 在 `PromptEditor` 的 `editorProps.handleKeyDown` 里:IME 组合中(`event.isComposing` 或 `event.keyCode === 229`)→ 放行;`Enter` 且无 `metaKey`/`ctrlKey` → `return true`(阻止默认),**不**插入换行? —— **要插入换行**:TipTap 的 `HardBreak` 默认只绑 `Shift+Enter` 与 `Mod-Enter`。所以这里要**手动** `editor.commands.setHardBreak()` 并返回 `true`,让 Enter 永远换行。
 - **`Mod+Enter` 发送**:`(event.metaKey || event.ctrlKey) && event.key === 'Enter'` → `event.preventDefault()`,调 `onSend()`。
 - **Esc 收起**:`event.key === 'Escape'` → `onDismiss()`。
@@ -1290,6 +1296,7 @@ git commit -m "feat(composer): mount the composer in the terminal pane and bind 
 - **用稳定的 `data-*` 选择器定位 composer**(`[data-terminal-composer-editor="true"]`),**不要**用 placeholder 文案——那会绑死语言。
 - **本机是中文 locale**:仓库既有 E2E 都硬编码英文标签,跑之前先 `defaults write com.github.Electron AppleLanguages -array en`(跑完可 `defaults delete com.github.Electron AppleLanguages` 还原)。composer 自己的断言不依赖它,但同一条 spec 里若有别的英文文案断言就会中招。
 - **这个间谍在每个 Electron 进程里是单例**,所以本 spec 必须 `test.describe.configure({ mode: 'serial' })`,或者用一个独一无二的 marker 字符串,避免与其它 spec 的字节串撞车。
+- **展开 composer 的快捷键在终端面板自己的按键路径上**(不是 window):想打开 composer,先照 `tests/e2e/terminal-attention.spec.ts:106` 的 `focusActiveXterm` 那样把焦点交给 `.xterm-helper-textarea`,再 `orcaPage.keyboard.press('Meta+Shift+P')`。往 `window` 上派发合成事件**不会**冒泡到终端容器的处理器。
 
 - [ ] **Step 1: Write the failing spec**
 
@@ -1323,22 +1330,21 @@ test('the terminal composer writes a multi-line prompt and then Enter', async ({
   )
   expect(ptyId).toBeTruthy()
 
-  // 展开 composer
-  await orcaPage.evaluate(() =>
-    window.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'P',
-        code: 'KeyP',
-        metaKey: true,
-        shiftKey: true,
-        bubbles: true
-      })
-    )
-  )
+  // 展开 composer:快捷键挂在终端面板自己的按键路径上,不是 window —— 往 window 派发不会
+  // 冒泡到终端容器的处理器。先按既有 E2E 的做法把焦点交给 xterm,再按 Mod+Shift+P。
+  await orcaPage.evaluate((targetTabId) => {
+    const pane = window.__paneManagers?.get(targetTabId)?.getActivePane?.()
+    pane?.terminal.focus()
+    pane?.container.querySelector<HTMLTextAreaElement>('.xterm-helper-textarea')?.focus()
+  }, tabId)
+  await orcaPage.keyboard.press('Meta+Shift+P')
   const editor = orcaPage.locator('[data-terminal-composer-editor="true"]')
   await expect(editor).toBeVisible()
 
-  await editor.fill('first line')
+  // Type it: `fill` sets the DOM text directly, which ProseMirror does not always read back
+  // into the document. Keystrokes are what the editor actually sees.
+  await editor.click()
+  await editor.type('first line')
   await editor.press('Enter')
   await editor.type('second line')
 
@@ -1352,9 +1358,10 @@ test('the terminal composer writes a multi-line prompt and then Enter', async ({
         .map((entry) => entry.data)
         .join('')
     )
-    .toContain('\x1b[200~first line\rsecond line\x1b[201~')
-  // Enter must be a write of its own: joining the writes would match the CR inside the
-  // paste above and pass even when the submit was swallowed.
+    .toContain('\x1b[200~first line\nsecond line\x1b[201~')
+  // The composer's Enter is a hard break: the body's newline serializes as a newline, not a
+  // carriage return. Enter must still be a write of its own: joining the writes would match a
+  // CR inside the paste above and pass even when the submit was swallowed.
   await expect
     .poll(async () =>
       (await readTerminalPtyWriteEntries(electronApp))

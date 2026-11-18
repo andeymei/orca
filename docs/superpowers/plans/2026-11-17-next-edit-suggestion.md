@@ -1750,12 +1750,16 @@ export function installEditorAiSuggestionPreviewShortcut(
 
 It watches `Alt` keydown and keyup (ignoring `event.repeat`) and reports the held state.
 
-**The preview shows the edit at the cursor — whether or not the ghost text could show it.** The hook
-previews the edit `nesPlanStore.editAt` returns, through `previewNesEdit` (Task 11), which draws the
-change with injected text and can show any kind of edit. That matters for the one edit the classic
-ghost-text path cannot render: a `replace` that rewrites the text the user just typed. It is not
-offered inline, so the Alt preview is the only way the user can see it before applying it, and its
-gutter marker (Task 8) is what tells the user it is there.
+**The preview draws the edit at the cursor with our own overlay, not with Monaco's ghost text.** The
+hook previews the edit `nesPlanStore.editAt` returns, through `previewNesEdit` (Task 11), which
+draws the change with injected text. Monaco's ghost text is the _default_ view — it shows the
+suggestion as the user types — while the Alt overlay is the deliberate one: the user holds Alt to
+see the whole change laid over the code before accepting it.
+
+**It can show any kind of edit, which is why it is worth having.** The contract now keeps only the
+edits the editor can draw (Task 1's validator), so a rewrite of the text the user just typed never
+reaches the renderer. But the overlay does not depend on that rule: if a plan reaches the renderer
+that the classic path cannot draw — an older cached plan, say — the overlay still shows it.
 
 - [ ] **Step 6: Write the hook**
 
@@ -1826,7 +1830,6 @@ git commit -m "feat(code-completion): the suggestion trigger and the Tab routing
 
 - Create: `src/renderer/src/components/editor/code-completion/nes-edit-application.ts`
 - Create: `src/renderer/src/components/editor/code-completion/nes-edit-application.test.ts`
-- Create: `src/renderer/src/components/editor/code-completion/nes-diff-preview.ts`
 
 **Interfaces:**
 
@@ -1892,41 +1895,43 @@ The write goes straight into the model. The model's change event then reaches `u
 
 If Monaco 0.55's injected text cannot carry a multi-line string, fall back to rendering the preview as a `ghost text` decoration on the first line only and say so in the settings UI rather than half-applying the change.
 
-- [ ] **Step 5: Write the diff preview**
+- [ ] **Step 5: The diff preview is deferred past this plan — do not build it**
 
-The spec asks for a diff per change type, not just the inline overlay. **Do not reuse `EditorDiffFileSurface.tsx`** — that is a _git_ diff surface: it takes an `activeFile`, a `GitDiffResult` and an `editBuffer`, and is rendered by the git-diff editor panel. There is no entry point that opens it with an arbitrary original/proposed pair. `DiffViewer` (`src/renderer/src/components/editor/diff/monaco-view/DiffViewer.tsx`) is not a drop-in either — it is the full diff panel, with the diff-comment and diff-navigation plumbing and a prop set that reaches into the app store. **Build the NES preview on `@monaco-editor/react`'s `DiffEditor` directly**, over two in-memory models: the current buffer's text and the proposed text. The repo already drives `DiffEditor` that way, so the pattern is known, and the NES preview stays a self-contained surface with no store dependency.
+The spec's §8.5 asks for a whole-file diff surface ("current file vs. the file with the edit
+applied"), coloured by change type. **This plan does not build it**, and this step is here so the
+implementer does not go looking for it.
 
-**Dispose the `DiffEditor` and both of its models when the preview closes.** This repo carries a
-patch for exactly this leak: `config/patches/monaco-editor@0.55.1.patch` backports monaco-editor
-0.56.0's fix for a diff editor whose gutter views stay registered on the global `MenuRegistry` and
-retain the whole editor. The patch is the reason the leak is survivable here, not the reason to
-ignore it — a preview opened and closed repeatedly must not pile up editors.
+**Why it is deferred.** The contract now keeps only the edits the editor can draw: a single-line
+range whose new text only adds to the text it covers (Task 1's validator). Every edit in a plan is
+therefore a small addition or extension — which Monaco's ghost text shows exactly, and which the
+Alt overlay (Step 4) shows in place. A whole-file diff of a one-line change is noise.
 
-**The patch does not touch the gutter the markers use.** It patches
-`browser/widget/diffEditor/utils/editorGutter.js` — the **diff editor's** gutter. The main editor's
-glyph margin is a different file (`browser/viewParts/glyphMargin/glyphMargin.js`) and is untouched,
-so the NES location markers (Task 8) are unaffected by it.
+And there is nowhere to put it. The surface itself — a panel, a modal, a host for the
+`DiffEditor` — is a design of its own, and nothing in the spec's interaction table or in this plan
+opens it. A surface with no entry point is dead code, and a module whose two exports nothing calls
+is dead code that the repo's own dead-code gate rejects.
 
-Create `src/renderer/src/components/editor/code-completion/nes-diff-preview.ts`:
+**What a later plan picks up.** The seam is small: the current buffer's text and the proposed text,
+over two in-memory models, on `@monaco-editor/react`'s `DiffEditor` — the pattern the repo already
+drives elsewhere. Two things worth knowing, recorded here so they are not rediscovered:
 
-```ts
-export type NesDiffPreviewInput = {
-  filePath: string
-  originalText: string
-  proposedText: string
-  kind: NesEditKind
-}
+- **Do not reuse `EditorDiffFileSurface.tsx`** — it is a _git_ diff surface: it takes an
+  `activeFile`, a `GitDiffResult` and an `editBuffer`, and is rendered by the git-diff editor panel.
+  There is no entry point that opens it with an arbitrary original/proposed pair. `DiffViewer`
+  (`src/renderer/src/components/editor/diff/monaco-view/DiffViewer.tsx`) is not a drop-in either —
+  it is the full diff panel, with the diff-comment and diff-navigation plumbing and a prop set that
+  reaches into the app store.
+- **Dispose the `DiffEditor` and both of its models when the preview closes.** This repo carries a
+  patch for exactly this leak: `config/patches/monaco-editor@0.55.1.patch` backports monaco-editor
+  0.56.0's fix for a diff editor whose gutter views stay registered on the global `MenuRegistry`
+  and retain the whole editor. The patch is the reason the leak is survivable here, not the reason
+  to ignore it — a preview opened and closed repeatedly must not pile up editors.
 
-export function buildNesProposedText(originalText: string, edit: NesEdit): string
-```
-
-`buildNesProposedText` applies the edit to the file's text and returns the result — it is the one place that decides what the proposed file looks like, so the inline preview (Step 4) and the diff preview (Step 5) cannot disagree. `buildNesDiffPreviewInput` builds the pair the diff surface needs.
-
-**Leave the user a contribution point here.** `buildNesProposedText` is the one function in the feature that turns an edit into text; how a `replace` that spans several lines is rendered — whether the whole replaced block is shown as removed-and-added, or only the lines that actually differ — is a judgement the implementer can reasonably make either way. Pick one, say which in a comment, and cover it with the test.
-
-**The proposed text uses the model's own line ending.** The backend appends a lone `\n` to the auto-import, because it cannot know the file's ending — the model only ever saw the trimmed window. The renderer _does_ know: `model.getEOL()` answers `\n` or `\r\n`. So `buildNesProposedText` normalises the line endings in the text it inserts to the model's, or a CRLF file ends up with one LF line in it.
-
-Colour the three change types with the diff editor's existing tokens rather than new ones: an insert is a green addition, a replace is a modified line, a delete is a red removal. Monaco's diff editor already distinguishes modified and removed lines; an inserted line appears as an addition because it exists only on the proposed side.
+  The patch does **not** touch the gutter the markers use: it patches
+  `browser/widget/diffEditor/utils/editorGutter.js` — the **diff editor's** gutter. The main
+  editor's glyph margin is a different file
+  (`browser/viewParts/glyphMargin/glyphMargin.js`) and is untouched, so the NES location markers
+  (Task 8) are unaffected by it.
 
 - [ ] **Step 6: Run the test to verify it passes**
 

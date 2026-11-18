@@ -981,7 +981,7 @@ cursor's line. That line, as the model sees it, is
 <the file's columns 1 … cursorColumn-1><<<CURSOR>>>><the file's columns cursorColumn …>
 ```
 
-so every column **after** the cursor is shifted right by the marker's length (13 characters), while
+so every column **after** the cursor is shifted right by the marker's length (12 characters), while
 the columns before it are not. The model answers with the columns it counted, and the backend
 converts **lines only** — it leaves columns verbatim, because the prompt gives the cursor only as a
 marker and never as a number the backend could compare against.
@@ -989,7 +989,7 @@ marker and never as a number the backend could compare against.
 A model that treats the marker as text therefore answers a column 13 too far right. That is not a
 cosmetic error: the renderer finds the cursor's edit by matching the range's end against the
 cursor (`nesEditMatchesPosition`), so a column that is 13 out **means no suggestion is ever
-offered** — and if it does match, the accepted edit is spliced 13 characters away from where the
+offered** — and if it does match, the accepted edit is spliced 12 characters away from where the
 user is typing.
 
 **So the backend corrects the columns on the cursor's line.** For the current file only, a column
@@ -1006,7 +1006,7 @@ file is shown whole. The correction therefore leaves a `replace` that ends _befo
 alone, and fixes one that ends after it.
 
 `NES_CURSOR_MARKER` is already defined once in `src/shared/code-completion/code-completion-prompt.ts`
-and read by both sides; the backend imports it rather than hardcoding 13.
+and read by both sides; the backend imports it rather than hardcoding 12.
 
 Tests:
 

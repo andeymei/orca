@@ -3,6 +3,9 @@ import { captureDirectSshMutationExpectation } from '@/runtime/hosts/ssh/ssh-mut
 import { useAppStore } from '@/store/index'
 import type { PtyTransport } from '../../pty-transport/pty-transport-types'
 
+/** The fence's own error: the host moved under the upload. */
+export const TERMINAL_DROP_HOST_CHANGED_MESSAGE = 'Terminal upload host changed; retry the drop.'
+
 export function captureTerminalDropTransportOwner(
   transport: Pick<PtyTransport, 'getExecutionHostId' | 'getRuntimeEnvironmentId'>
 ) {
@@ -33,7 +36,7 @@ export function captureTerminalDropTransportOwner(
         'expectedSshConnectionGeneration' in expectation &&
         current.expectedSshConnectionGeneration !== expectation.expectedSshConnectionGeneration)
     ) {
-      throw new Error('Terminal upload host changed; retry the drop.')
+      throw new Error(TERMINAL_DROP_HOST_CHANGED_MESSAGE)
     }
   }
   return {

@@ -111,7 +111,10 @@ beforeEach(() => {
   useAppStore.setState({ terminalComposerOpenByPaneKey: { [PANE_KEY]: true } })
   vi.mocked(pasteTerminalComposerAttachments).mockResolvedValue({ attachments: [], failed: [] })
   toastError.mockClear()
+  // The drop mock's implementation is reset too, so a test that rejects it does not
+  // hand the rejection to the next one.
   vi.mocked(dropTerminalComposerAttachments).mockClear()
+  vi.mocked(dropTerminalComposerAttachments).mockResolvedValue({ attachments: [], failed: [] })
   fsApi.getPathForFile.mockReset().mockImplementation((file: File) => `/dropped/${file.name}`)
   fsApi.prepareDroppedPaths
     .mockReset()
@@ -307,5 +310,26 @@ describe('a drop into the composer card', () => {
     // nothing happen.
     expect(toastError).toHaveBeenCalledTimes(1)
     expect(toastError.mock.calls[0]?.[0]).toContain('The host changed')
+  })
+
+  it('does not blame the host for an upload that failed for another reason', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(dropTerminalComposerAttachments).mockRejectedValue(new Error('the disk is full'))
+    const { container } = createOverlay('/cwd')
+    const field = container.querySelector('[data-terminal-composer-editor="true"]')
+    if (!field) {
+      throw new Error('Expected the composer field')
+    }
+    await act(async () => {
+      field.dispatchEvent(osFileDrop([new File(['x'], 'notes.png', { type: 'image/png' })]))
+    })
+    await settleDrop()
+    // The host did not move, so the user is not told that it did.
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError.mock.calls[0]?.[0]).not.toContain('The host changed')
+    expect(toastError.mock.calls[0]?.[0]).toContain('Could not attach the file')
+    // The cause stays visible to whoever debugs it.
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 })

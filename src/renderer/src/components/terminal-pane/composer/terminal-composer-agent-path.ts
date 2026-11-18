@@ -13,7 +13,8 @@ export type TerminalComposerAgentSession = {
  *
  * A WSL agent reads Linux paths, not the Windows spelling of the same file, so the
  * rule asks about the pane's session rather than about how the workspace path
- * happens to be spelled.
+ * happens to be spelled. The two spellings can now only ever disagree in the
+ * direction of "not converted": a session-less transport keeps the Windows path.
  */
 export function terminalComposerAgentVisiblePath(
   session: TerminalComposerAgentSession | null | undefined,

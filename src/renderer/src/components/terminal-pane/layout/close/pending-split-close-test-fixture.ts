@@ -14,9 +14,8 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
 const store = vi.hoisted((): { current: AppState | null } => ({ current: null }))
 vi.mock('../../../../store/index', () => ({ useAppStore: { getState: () => store.current } }))
-// The pane surface's tree reaches React contexts at module scope (the prompt editor's
-// label contexts), so the mock has to create real ones: a context a consumer can hold and
-// `useContext` can read. Only the hooks these tests drive without a component are stubbed.
+// The pane surface's tree reaches React contexts at module scope, so the mock creates real
+// ones; a consumer may not be rendered under them, because the hooks a render needs are absent.
 vi.mock('react', () => ({
   createContext: (defaultValue: unknown) => ({
     _currentValue: defaultValue,

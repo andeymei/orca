@@ -18,8 +18,7 @@ export const PromptFileReference = Node.create({
   addNodeView: () => ReactNodeViewRenderer(PromptFileReferencePill),
   addAttributes: () => ({ token: { default: '' }, path: { default: '' } }),
   renderText: ({ node }) => node.attrs.token,
-  // The serialized HTML carries the shared attribute names; native chat's own DOM
-  // attributes (`data-native-chat-*`) come from its node view, not from here.
+  // The serialized HTML carries the shared attribute names; native chat's DOM attributes come from its node view.
   renderHTML: ({ node }) => ['span', { 'data-prompt-file-reference': node.attrs.path }]
 })
 
@@ -32,8 +31,7 @@ export const PromptImageReference = Node.create({
   addNodeView: () => ReactNodeViewRenderer(PromptImageReferencePill),
   addAttributes: () => ({ attachmentId: { default: '' }, name: { default: '' } }),
   renderText: ({ node }) => imageReferenceToken(node.attrs.attachmentId),
-  // The serialized HTML carries the shared attribute names; native chat's own DOM
-  // attributes (`data-native-chat-*`) come from its node view, not from here.
+  // The serialized HTML carries the shared attribute names; native chat's DOM attributes come from its node view.
   renderHTML: ({ node }) => ['span', { 'data-prompt-image-reference': node.attrs.attachmentId }]
 })
 

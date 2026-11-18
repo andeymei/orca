@@ -1,5 +1,10 @@
 import { toast } from 'sonner'
 import type { Translate } from '@/i18n/use-translate'
+import {
+  RUNTIME_IMPORT_CONNECTION_CHANGED_MESSAGE,
+  RUNTIME_IMPORT_PAIRING_CHANGED_MESSAGE
+} from '@/runtime/files/mutations/runtime-file-mutation-rpc'
+import { TERMINAL_DROP_HOST_CHANGED_MESSAGE } from '../input/file-drop/terminal-drop-transport-owner'
 import type { TerminalComposerIntakeResult } from './attachments/terminal-composer-attachment-intake'
 
 /** The host that owns the terminal cannot be reached, so nothing can land on it. */
@@ -18,12 +23,22 @@ export function terminalComposerHostChangedWhileAttachingMessage(t: Translate): 
   )
 }
 
+/** Whether the rejection is the host fence's own: the host moved under the upload. */
+function isHostChangedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : ''
+  return (
+    message === TERMINAL_DROP_HOST_CHANGED_MESSAGE ||
+    message === RUNTIME_IMPORT_PAIRING_CHANGED_MESSAGE ||
+    message === RUNTIME_IMPORT_CONNECTION_CHANGED_MESSAGE
+  )
+}
+
 /**
  * Runs one attachment intake and lands what it brought.
  *
- * The host fence throws on purpose when the host moved under the upload, so the
- * rejection has to become an answer: the composer never refuses silently, and the
- * draft stays as it was so the user can try again.
+ * The host fence throws on purpose when the host moved under the upload, so that
+ * rejection becomes an answer. Anything else is not the host's fault: the cause is
+ * logged and the user is told the attachment failed.
  */
 export async function runTerminalComposerIntake(args: {
   intake: () => Promise<TerminalComposerIntakeResult>
@@ -34,8 +49,13 @@ export async function runTerminalComposerIntake(args: {
   args.setUploading(true)
   try {
     args.land(await args.intake())
-  } catch {
-    toast.error(terminalComposerHostChangedWhileAttachingMessage(args.t))
+  } catch (error) {
+    if (isHostChangedError(error)) {
+      toast.error(terminalComposerHostChangedWhileAttachingMessage(args.t))
+    } else {
+      console.error('[terminal-composer] the attachment failed', error)
+      toast.error(args.t('terminalComposer.uploadFailed', 'Could not attach the file'))
+    }
   } finally {
     args.setUploading(false)
   }

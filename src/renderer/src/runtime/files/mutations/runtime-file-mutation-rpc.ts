@@ -119,6 +119,11 @@ export async function callRuntimeFileMutation<TResult>(
   })
 }
 
+/** The fence's own errors: the runtime the pane is bound to moved under the import. */
+export const RUNTIME_IMPORT_PAIRING_CHANGED_MESSAGE = 'Runtime pairing changed; retry the import.'
+export const RUNTIME_IMPORT_CONNECTION_CHANGED_MESSAGE =
+  'Runtime connection changed; retry the import.'
+
 export function createRuntimeImportSessionGuard(
   environmentId: string,
   expectedEnvironmentPairingRevision: number | undefined,
@@ -127,14 +132,14 @@ export function createRuntimeImportSessionGuard(
 ): () => void {
   return () => {
     if (getRuntimeEnvironmentRevision(environmentId) !== expectedEnvironmentPairingRevision) {
-      throw new Error('Runtime pairing changed; retry the import.')
+      throw new Error(RUNTIME_IMPORT_PAIRING_CHANGED_MESSAGE)
     }
     // Why: a replacement runtime keeps the pairing but invalidates its predecessor's capability proof.
     if (
       getRuntimeEnvironmentConnectionGeneration(environmentId) !==
       expectedEnvironmentConnectionGeneration
     ) {
-      throw new Error('Runtime connection changed; retry the import.')
+      throw new Error(RUNTIME_IMPORT_CONNECTION_CHANGED_MESSAGE)
     }
     assertCallerCurrent?.()
   }

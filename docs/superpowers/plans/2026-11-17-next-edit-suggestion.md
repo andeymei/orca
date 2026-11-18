@@ -1446,7 +1446,7 @@ describe('nes inline completion', () => {
   it('returns null for a delete edit', ...)
   it('rejects an edit whose range no longer matches the model', ...)
   it('returns null for a replace edit that starts on an earlier line', ...)
-  it('returns null instead of throwing when the range names a line past the end of the file', ...)
+  it('returns null when the range names a line past the end of the file', ...)
 })
 ```
 
@@ -1484,12 +1484,12 @@ type MonacoApi = Parameters<OnMount>[1]
 
 let provider: monaco.IDisposable | null = null
 let providerMonaco: MonacoApi = null
-let changeEmitter: monaco.EventEmitter<void> | null = null
+let changeEmitter: monaco.Emitter<void> | null = null
 ```
 
 **The Monaco types come from the namespace import.** `import type * as monaco from 'monaco-editor'` is a
 type-only import — it costs nothing at runtime — and it carries every type the module needs:
-`monaco.IDisposable`, `monaco.EventEmitter<void>`, `monaco.editor.ITextModel` and
+`monaco.IDisposable`, `monaco.Emitter<void>`, `monaco.editor.ITextModel` and
 `monaco.languages.InlineCompletion`. The module needs no **value** import of `monaco-editor`: the
 live namespace arrives as the `monaco` argument of `ensureNesInlineCompletionsProvider`, and that is
 what the emitter is built from.
@@ -1590,13 +1590,14 @@ plan-level action, not a suggestion the user accepts with Tab.
 _could_ be shown; the model's current text must still match `edit.originalText` before it _is_
 shown.
 
-**Validate the range before reading the model.** `model.getValueInRange` **throws** when the range
-names a line past the end of the file — probed against the installed package, a range on line 5 of a
-two-line file raises `TypeError: Cannot read properties of null (reading 'node')`. A plan can name a
-line that no longer exists: the user deleted lines while the request was in flight. Call
-`model.validateRange(range)` first — it clamps the range into the model's bounds — and read the
-validated range. The provider must not throw: it runs inside Monaco's inline-completion machinery,
-where an exception is not a graceful "no suggestion".
+**Validate the range before reading the model, and check that it did not move.** The model does not
+throw on an out-of-range request — it validates internally — but it _clamps_, and a clamped range
+silently names a different place than the plan did. For an **insert** that is the worst case: the
+clamped position covers `''`, an insert's `originalText` is `''`, the two match, and the provider
+would offer a suggestion at a line the file no longer has. So the provider calls
+`model.validateRange(range)` and **rejects the edit when the validated range is not the edit's own
+range** — every field of it. The range it then hands to Monaco is always in bounds and always the
+one the plan named.
 
 - [ ] **Step 4: Add the CSS**
 

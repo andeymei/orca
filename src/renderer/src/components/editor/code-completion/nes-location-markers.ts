@@ -14,8 +14,7 @@ export type NesLocationMarker = {
 /**
  * The edits that get a gutter marker. The cursor edit leaves the list when it extends the covered
  * text, because that one is the suggestion itself and a marker would draw the user to the line
- * they are already on. A cursor edit that only rewrites the covered text is never offered inline,
- * so it keeps its marker — that marker is the only way to reach it.
+ * they are already on.
  */
 export function nesLocationMarkers(
   edits: readonly NesEdit[],

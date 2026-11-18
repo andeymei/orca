@@ -110,6 +110,8 @@ function isApplicableNesEdit(edit: NesEdit, allowedPaths: ReadonlySet<string>): 
   if (edit.kind === 'insert') {
     return edit.originalText === ''
   }
+  // Why: the validator already drops the edits the editor cannot draw, and a delete is one of
+  // them, so this branch is unreachable today; the kind stays in the schema for a later version.
   if (edit.kind === 'delete') {
     return edit.text === ''
   }

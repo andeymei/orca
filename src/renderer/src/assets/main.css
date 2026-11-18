@@ -2809,6 +2809,34 @@ html.native-shell .app-layout {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Cpath d='M3,8.4l3.3,3.3L13,5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
+/* Why a shape: the glyph margin is a few pixels wide, so the marker is a chevron that reads at
+   that size and needs no colour of its own. */
+.monaco-editor .nes-location-marker::before {
+  content: '';
+  display: block;
+  width: 9px;
+  height: 9px;
+  background-color: var(--muted-foreground);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Cpath d='M3,6 L8,11 L13,6' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0,0,16,16'%3E%3Cpath d='M3,6 L8,11 L13,6' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* Why: the preview shows text the buffer does not hold yet, so it recedes like Monaco's own
+   ghost text and is set off from the code by a hairline. */
+.nes-ghost-text {
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+  color: var(--muted-foreground);
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
 /* Compact Monaco tooltip wrappers overlap find buttons, causing mouseleave/dispose/mouseover flicker.
    Disable hit-testing only on context-view chains containing compact hovers; preserve menus and interactive markdown. */
 .context-view:has(> .workbench-hover-container > .workbench-hover.compact),

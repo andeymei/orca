@@ -35,7 +35,8 @@ export function ensureNesInlineCompletionsProvider(monaco: MonacoApi): void {
       return completion ? { items: [completion] } : null
     },
     onDidChangeInlineCompletions: emitter.event,
-    // Why: the interface has no optional member here — an omitted method is a type error.
+    // Why: Monaco declares disposeInlineCompletions without a `?`, and this repo's Monaco API type
+    // is `any`, so nothing would catch its absence — it has to be written by hand.
     disposeInlineCompletions() {}
   })
 }

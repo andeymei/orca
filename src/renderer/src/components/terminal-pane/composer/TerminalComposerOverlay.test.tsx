@@ -199,6 +199,45 @@ describe('terminal composer overlay', () => {
       `${WORKTREE_PATH}/.orca/drops`
     )
   })
+
+  it('sends the body without the space a removed image pill left behind', async () => {
+    useAppStore.setState({
+      terminalComposerDraftByPaneKey: {
+        [PANE_KEY]: {
+          document: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  { type: 'text', text: 'look at ' },
+                  {
+                    type: 'nativeChatImageReference',
+                    attrs: { attachmentId: 'a1', name: 'shot.png' }
+                  },
+                  { type: 'text', text: ' please' }
+                ]
+              }
+            ]
+          },
+          attachments: [
+            { id: 'a1', name: 'shot.png', workspacePath: '/ws/.orca/drops/shot.png', isImage: true }
+          ]
+        }
+      }
+    })
+    const { container, sendInput } = createOverlay()
+    const editor = within(container).getByRole('textbox')
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: 'Enter', metaKey: true })
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    const written = sendInput.mock.calls.map((call) => call[0])
+    // The pill's own space went with the pill, the way native chat's rule drops it.
+    expect(written).toContain('look at please')
+  })
 })
 
 describe('a drop into the composer card', () => {

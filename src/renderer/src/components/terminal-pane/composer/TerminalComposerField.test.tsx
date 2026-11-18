@@ -245,6 +245,33 @@ describe('terminal composer field', () => {
     expect(toastError.mock.calls[0]?.[0]).toContain('The host changed')
   })
 
+  it('cannot send while an upload is still running', async () => {
+    useAppStore.setState({
+      terminalComposerDraftByPaneKey: {
+        'tab1:leaf1': {
+          document: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hello' }] }]
+          },
+          attachments: []
+        }
+      }
+    })
+    // The upload never lands, so the file is still on its way to the host.
+    pasteIntake.mockImplementation(() => new Promise(() => {}))
+    const { editor, onSend } = setup()
+    const file = new File([new Uint8Array([1])], 'notes.txt', { type: 'text/plain' })
+    await act(async () => {
+      fireEvent.paste(editor, {
+        clipboardData: { files: [file], items: [], getData: () => '' }
+      })
+    })
+    // Sending now would drop the file from the message.
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    fireEvent.keyDown(editor, { key: 'Enter', metaKey: true })
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
   it('disables the send button while there is nothing to send', () => {
     setup()
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()

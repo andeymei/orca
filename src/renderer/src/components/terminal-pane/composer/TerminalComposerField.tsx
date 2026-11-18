@@ -181,14 +181,17 @@ export function TerminalComposerField({
       }
       if (event.metaKey || event.ctrlKey) {
         event.preventDefault()
-        onSend()
+        // An upload in flight would be dropped from the message, so the send waits for it.
+        if (!uploading) {
+          onSend()
+        }
         return true
       }
       // Enter always breaks the line; the agent is sent with Mod+Enter.
       editor.commands.setHardBreak()
       return true
     },
-    [onDismiss, onSend]
+    [onDismiss, onSend, uploading]
   )
 
   const pasteFiles = useCallback(
@@ -303,7 +306,7 @@ export function TerminalComposerField({
         <Button
           type="button"
           size="sm"
-          disabled={disabled || !draftHasContent(draft.document)}
+          disabled={disabled || uploading || !draftHasContent(draft.document)}
           onClick={onSend}
         >
           {t('terminalComposer.send', 'Send')}

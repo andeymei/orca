@@ -6,7 +6,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useTranslate, type Translate } from '@/i18n/use-translate'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import { useAppStore } from '@/store'
-import { splitImageReferences } from '../../../../../shared/native-chat/native-chat-image-reference'
+import {
+  splitImageReferences,
+  withoutImageReference
+} from '../../../../../shared/native-chat/native-chat-image-reference'
 import { focusTerminalTabSurface } from '../input/focus/focus-terminal-tab-surface'
 import { captureTerminalDropTransportOwner } from '../input/file-drop/terminal-drop-transport-owner'
 import { resolveTerminalDropWorktreePath } from '../input/file-drop/terminal-drop-worktree-path'
@@ -135,9 +138,13 @@ export function TerminalComposerOverlay({
   const handleSend = useCallback(() => {
     const value = fieldRef.current?.value() ?? ''
     const parts = splitImageReferences(value)
-    // The image pills travel as their own writes, so the body keeps only the text.
-    const body = parts.filter((part): part is string => typeof part === 'string').join('')
     const imageIds = parts.flatMap((part) => (typeof part === 'string' ? [] : [part.attachmentId]))
+    // The image pills travel as their own writes, so the body keeps only the text. A pill
+    // takes the space that followed it, the way native chat's rule drops it.
+    const body = imageIds.reduce(
+      (text, attachmentId) => withoutImageReference(text, attachmentId),
+      value
+    )
     // The pill order is the order the images travel in; the attachment list is not.
     const draft = readTerminalComposerDraft(paneKey)
     const imagePaths = imageIds.flatMap((attachmentId) => {
@@ -205,8 +212,10 @@ export function TerminalComposerOverlay({
   })
 
   if (!open) {
+    // The composer's layers sit above the terminal, below the native chat cover that owns
+    // the pane while it is open.
     return (
-      <div className="absolute right-3 bottom-3 z-10">
+      <div className="absolute right-3 bottom-3 z-[5]">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -232,7 +241,7 @@ export function TerminalComposerOverlay({
   return (
     <div
       ref={attachDropOwner}
-      className="absolute inset-x-0 bottom-0 z-10 rounded-lg border border-border bg-popover p-2 shadow-lg"
+      className="absolute inset-x-0 bottom-0 z-[5] rounded-lg border border-border bg-popover p-2 shadow-lg"
     >
       <TerminalComposerField
         key={fieldKey}

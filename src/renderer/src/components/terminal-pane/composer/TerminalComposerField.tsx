@@ -4,7 +4,14 @@ import type { JSONContent } from '@tiptap/react'
 import { CornerDownLeft, FileX, Hourglass, Paperclip, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PromptEditor, type PromptEditorInput } from '@/components/prompt-editor/PromptEditor'
-import { PromptImageLabelContext } from '@/components/prompt-editor/prompt-editor-labels'
+import {
+  PromptImageLabelContext,
+  type PromptImageLabel
+} from '@/components/prompt-editor/prompt-editor-labels'
+import {
+  FILE_REFERENCE_NODE,
+  IMAGE_REFERENCE_NODE
+} from '@/components/prompt-editor/prompt-editor-nodes'
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { Button } from '@/components/ui/button'
@@ -12,12 +19,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { getScreenSubmitModifierLabel } from '@/lib/keyboard/screen-submit-shortcut'
 import { useTranslate, type Translate } from '@/i18n/use-translate'
 import type { TerminalComposerAttachment } from '@/store/slices/terminal-composer/terminal-composer'
+import { clipboardEventPromptText } from '../../../../../shared/native-chat/input/native-chat-clipboard-event'
 import { isImageDropPath } from '../../../../../shared/image-path-paste'
 import { createNonSecureContextUuid } from '../../../../../shared/non-secure-context-uuid'
 import { isWslUncPath } from '../../../../../shared/wsl-paths'
 import { toLocalWslDropPath } from '../input/file-drop/terminal-drop-local-wsl'
 import {
-  dropTerminalComposerAttachments,
   pasteTerminalComposerAttachments,
   type TerminalComposerIntakeHost,
   type TerminalComposerIntakeResult
@@ -42,12 +49,12 @@ export type TerminalComposerFieldProps = {
   onSend: () => void
   onAttach: () => void
   onDismiss: () => void
-  /** The host that owns this terminal; the intake needs it to land attachments on the right machine. */
-  host: TerminalComposerIntakeHost
+  /** Builds the host that owns this terminal; the intake needs it to land attachments on the right machine. */
+  buildHost: () => TerminalComposerIntakeHost | null
   /** Claims a paste that carries images or files; plain text falls through to the editor. */
   onPasteCapture?: (event: React.ClipboardEvent) => void
-  /** Claims dropped files; the drop lands on the terminal's own workspace. */
-  onDrop?: (paths: readonly string[]) => void
+  /** Lands dropped files; the parent owns the intake. */
+  onDrop: (paths: readonly string[]) => void
 }
 
 /** The paths a drop carries; a browser file without one is not a file the host can read. */
@@ -71,16 +78,20 @@ export function terminalComposerDroppedPaths(event: React.DragEvent): string[] {
   return paths
 }
 
-/** The path the agent in this terminal reads: a WSL-hosted agent reads Linux paths. */
-function agentVisiblePath(host: TerminalComposerIntakeHost, path: string): string {
-  // A plain UNC path is not a WSL path, and toLocalWslDropPath would mangle it.
-  return isWslUncPath(host.workspacePath) ? toLocalWslDropPath(path) : path
+/** Whether a drag carries files; a text drag belongs to the editor. */
+export function dragCarriesFiles(dataTransfer: DataTransfer | null): boolean {
+  const types = dataTransfer?.types
+  return types ? Array.from(types).includes('Files') : false
 }
 
-function isLandedAttachment(
-  attachment: TerminalComposerAttachment
-): attachment is LandedAttachment {
-  return attachment.workspacePath !== null
+/** The path the agent in this terminal reads: a WSL-hosted agent reads Linux paths. */
+function agentVisiblePath(
+  buildHost: () => TerminalComposerIntakeHost | null,
+  path: string
+): string {
+  const host = buildHost()
+  // A plain UNC path is not a WSL path, and toLocalWslDropPath would mangle it.
+  return host && isWslUncPath(host.workspacePath) ? toLocalWslDropPath(path) : path
 }
 
 function clipboardCarriesFiles(clipboardData: DataTransfer | null): boolean {
@@ -94,9 +105,23 @@ function clipboardCarriesFiles(clipboardData: DataTransfer | null): boolean {
   return items ? Array.from(items).some((item) => item.kind === 'file') : false
 }
 
-function dragCarriesFiles(dataTransfer: DataTransfer | null): boolean {
-  const types = dataTransfer?.types
-  return types ? Array.from(types).includes('Files') : false
+/** Whether the draft carries something to send: text, a file pill or an image pill. */
+function draftHasContent(document: JSONContent): boolean {
+  if (document.type === FILE_REFERENCE_NODE || document.type === IMAGE_REFERENCE_NODE) {
+    return true
+  }
+  if (document.type === 'text') {
+    return (document.text ?? '').trim().length > 0
+  }
+  return (document.content ?? []).some(draftHasContent)
+}
+
+/** The host that owns the terminal cannot be reached, so nothing can land on it. */
+export function terminalComposerHostUnavailableMessage(t: Translate): string {
+  return t(
+    'terminalComposer.hostUnavailable',
+    "This terminal's host cannot be reached, so nothing was attached."
+  )
 }
 
 /** The intake reports machine codes for some failures and a sentence for others. */
@@ -124,7 +149,7 @@ export function TerminalComposerField({
   onSend,
   onAttach,
   onDismiss,
-  host,
+  buildHost,
   onPasteCapture,
   onDrop,
   ref
@@ -148,9 +173,12 @@ export function TerminalComposerField({
         name: failure.name,
         workspacePath: null,
         isImage: isImageDropPath(failure.name),
-        failed: true
+        failed: true,
+        reason: failure.reason
       }))
-      const landed = result.attachments.filter(isLandedAttachment)
+      const landed = result.attachments.filter(
+        (attachment): attachment is LandedAttachment => attachment.workspacePath !== null
+      )
       const attachments = [...current.attachments, ...landed, ...failedAttachments]
       if (editor && landed.length > 0) {
         landingRef.current = true
@@ -161,7 +189,7 @@ export function TerminalComposerField({
               editor.insertImageReference?.(attachment.id, attachment.name)
             } else {
               // The pill carries the path the agent reads, so the body names the right file.
-              editor.insertFileReferences?.([agentVisiblePath(host, attachment.workspacePath)])
+              editor.insertFileReferences?.([agentVisiblePath(buildHost, attachment.workspacePath)])
             }
           }
         } finally {
@@ -178,7 +206,7 @@ export function TerminalComposerField({
         })
       }
     },
-    [host, paneKey, saveDraft, t]
+    [buildHost, paneKey, saveDraft, t]
   )
 
   useImperativeHandle(
@@ -235,6 +263,11 @@ export function TerminalComposerField({
 
   const pasteFiles = useCallback(
     async (clipboardData: DataTransfer) => {
+      const host = buildHost()
+      if (!host) {
+        toast.error(terminalComposerHostUnavailableMessage(t))
+        return
+      }
       setUploading(true)
       try {
         const result = await pasteTerminalComposerAttachments(host, {
@@ -246,7 +279,7 @@ export function TerminalComposerField({
         setUploading(false)
       }
     },
-    [host, landAttachments]
+    [buildHost, landAttachments, t]
   )
 
   const capturePaste = useCallback(
@@ -259,38 +292,30 @@ export function TerminalComposerField({
         // Plain text belongs to the editor.
         return
       }
-      // The event is claimed: the editor would paste the image as binary text.
+      // The event is claimed: the editor's own paste handler must not run.
       event.preventDefault()
+      // The text half is the body, so the field inserts it.
+      const text = clipboardEventPromptText(event, true)
+      if (text) {
+        editorRef.current?.insertText?.(text)
+      }
       void pasteFiles(event.clipboardData)
     },
     [onPasteCapture, pasteFiles]
   )
 
-  const dropFiles = useCallback(
-    async (paths: readonly string[]) => {
-      setUploading(true)
-      try {
-        landAttachments(await dropTerminalComposerAttachments(host, paths))
-      } finally {
-        setUploading(false)
-      }
-    },
-    [host, landAttachments]
-  )
-
   const handleDrop = useCallback(
     (event: React.DragEvent) => {
+      if (!dragCarriesFiles(event.dataTransfer)) {
+        // A text drag belongs to the editor.
+        return
+      }
       event.preventDefault()
       // The card is a drop target too; the file lands once.
       event.stopPropagation()
-      const paths = terminalComposerDroppedPaths(event)
-      if (onDrop) {
-        onDrop(paths)
-        return
-      }
-      void dropFiles(paths)
+      onDrop(terminalComposerDroppedPaths(event))
     },
-    [dropFiles, onDrop]
+    [onDrop]
   )
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
@@ -302,7 +327,7 @@ export function TerminalComposerField({
   }, [])
 
   const resolveImageLabel = useCallback(
-    (attachmentId: string) => {
+    (attachmentId: string): PromptImageLabel | null => {
       const attachment = draft.attachments.find((candidate) => candidate.id === attachmentId)
       if (!attachment) {
         return null
@@ -336,26 +361,30 @@ export function TerminalComposerField({
               {t('terminalComposer.uploading', 'Uploading…')}
             </span>
           ) : null}
-          {failedAttachments.map((attachment) => (
-            <span
-              key={attachment.id}
-              className="inline-flex max-w-56 items-center gap-1 rounded-md border border-dashed border-border px-1.5 py-0.5 text-xs text-muted-foreground"
-            >
-              <FileX className="size-3 shrink-0" />
-              <span className="truncate">{attachment.name}</span>
-              <span className="shrink-0">
-                {t('terminalComposer.attachAgain', 'Attach it again')}
-              </span>
-              <button
-                type="button"
-                aria-label={t('terminalComposer.dismissFailed', 'Dismiss the failed attachment')}
-                className="shrink-0 rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
-                onClick={() => removeFailedAttachment(attachment.id)}
+          {failedAttachments.map((attachment) => {
+            const reason = attachmentReasonText(attachment.reason ?? '', t)
+            return (
+              <span
+                key={attachment.id}
+                title={[reason, t('terminalComposer.attachAgain', 'Attach it again')]
+                  .filter(Boolean)
+                  .join(' — ')}
+                className="inline-flex max-w-72 items-center gap-1 rounded-md border border-dashed border-border px-1.5 py-0.5 text-xs text-muted-foreground"
               >
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
+                <FileX className="size-3 shrink-0" />
+                <span className="truncate">{attachment.name}</span>
+                {reason ? <span className="truncate">{reason}</span> : null}
+                <button
+                  type="button"
+                  aria-label={t('terminalComposer.dismissFailed', 'Dismiss the failed attachment')}
+                  className="shrink-0 rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => removeFailedAttachment(attachment.id)}
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            )
+          })}
         </div>
       ) : null}
       <div
@@ -397,7 +426,12 @@ export function TerminalComposerField({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button type="button" size="sm" disabled={disabled} onClick={onSend}>
+        <Button
+          type="button"
+          size="sm"
+          disabled={disabled || !draftHasContent(draft.document)}
+          onClick={onSend}
+        >
           {t('terminalComposer.send', 'Send')}
         </Button>
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">

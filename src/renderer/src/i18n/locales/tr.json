@@ -23751,6 +23751,7 @@
     "paneChanged": "Panel değişti, bu yüzden mesaj gönderilmedi",
     "writeRejected": "Sunucu mesajı reddetti",
     "sendFailed": "Mesaj gönderilmedi",
+    "hostUnavailable": "Bu terminalin sunucusuna ulaşılamadı, bu yüzden hiçbir şey eklenmedi.",
     "uploading": "Yükleniyor…",
     "attachAgain": "Yeniden ekle",
     "dismissFailed": "Başarısız eki kaldır",

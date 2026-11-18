@@ -23534,6 +23534,7 @@
     "paneChanged": "ペインが変わったため、メッセージは送信されませんでした",
     "writeRejected": "ホストがメッセージを受け付けませんでした",
     "sendFailed": "メッセージは送信されませんでした",
+    "hostUnavailable": "このターミナルのホストに到達できないため、添付されませんでした。",
     "uploading": "アップロード中…",
     "attachAgain": "もう一度添付",
     "dismissFailed": "失敗した添付ファイルを閉じる",

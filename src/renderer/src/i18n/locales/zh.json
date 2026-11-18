@@ -23900,6 +23900,7 @@
     "paneChanged": "面板已改变，消息没有发送",
     "writeRejected": "宿主拒绝了这批字节",
     "sendFailed": "消息没有发送",
+    "hostUnavailable": "无法连接此终端所在的主机，因此没有添加附件。",
     "uploading": "上传中…",
     "attachAgain": "重新添加",
     "dismissFailed": "忽略添加失败的附件",

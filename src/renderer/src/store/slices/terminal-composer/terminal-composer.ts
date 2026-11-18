@@ -10,6 +10,8 @@ export type TerminalComposerAttachment = {
   isImage: boolean
   /** The upload did not land; the user must attach it again. */
   failed?: boolean
+  /** Why the upload did not land; the chip says it in words. */
+  reason?: string
 }
 
 export type TerminalComposerDraft = {

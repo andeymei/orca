@@ -69,7 +69,7 @@ export async function pasteTerminalComposerAttachments(
     }
     failed.push({ name: file.name, reason: TERMINAL_COMPOSER_NO_LOCAL_PATH_REASON })
   }
-  // The text half of the paste is the prompt body; the editor's own paste handler owns it.
+  // The text half of the paste is the prompt body; the composer field inserts it.
   return landAttachments(host, sourcePaths, failed)
 }
 

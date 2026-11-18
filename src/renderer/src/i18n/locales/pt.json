@@ -24856,6 +24856,7 @@
     "paneChanged": "O painel mudou, então a mensagem não foi enviada",
     "writeRejected": "O host recusou a mensagem",
     "sendFailed": "A mensagem não foi enviada",
+    "hostUnavailable": "Não foi possível alcançar o host deste terminal, então nada foi anexado.",
     "uploading": "Enviando…",
     "attachAgain": "Anexar novamente",
     "dismissFailed": "Dispensar o anexo que falhou",

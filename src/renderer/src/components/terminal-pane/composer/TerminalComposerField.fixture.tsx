@@ -14,10 +14,11 @@ function Composer(): React.JSX.Element {
       <TerminalComposerField
         paneKey={paneKey}
         disabled={false}
-        host={host}
+        buildHost={() => host}
         onSend={() => {}}
         onAttach={() => {}}
         onDismiss={() => {}}
+        onDrop={() => {}}
       />
     </div>
   )

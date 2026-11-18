@@ -23784,6 +23784,7 @@
     "paneChanged": "Der Bereich hat sich geändert, daher wurde die Nachricht nicht gesendet",
     "writeRejected": "Der Host hat die Nachricht abgelehnt",
     "sendFailed": "Die Nachricht wurde nicht gesendet",
+    "hostUnavailable": "Der Host dieses Terminals ist nicht erreichbar, daher wurde nichts angehängt.",
     "uploading": "Wird hochgeladen…",
     "attachAgain": "Erneut anhängen",
     "dismissFailed": "Fehlgeschlagenen Anhang ausblenden",

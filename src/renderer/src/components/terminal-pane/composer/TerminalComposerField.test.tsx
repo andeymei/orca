@@ -4,46 +4,69 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
+import { pasteTerminalComposerAttachments } from './attachments/terminal-composer-attachment-intake'
 import {
   TerminalComposerField,
   type TerminalComposerFieldHandle,
   type TerminalComposerFieldProps
 } from './TerminalComposerField'
 
+vi.mock('./attachments/terminal-composer-attachment-intake', () => ({
+  pasteTerminalComposerAttachments: vi.fn()
+}))
+
+const pasteIntake = vi.mocked(pasteTerminalComposerAttachments)
 const initialState = useAppStore.getInitialState()
+
+const host = { workspacePath: '/workspace', worktreeId: 'worktree-1' }
 
 beforeEach(() => {
   useAppStore.setState(initialState, true)
+  pasteIntake.mockResolvedValue({
+    attachments: [
+      {
+        id: 'a1',
+        name: 'notes.txt',
+        workspacePath: '/workspace/.orca/drops/notes.txt',
+        isImage: false
+      }
+    ],
+    failed: []
+  })
 })
 
 afterEach(cleanup)
-
-const host = { workspacePath: '/workspace', worktreeId: 'worktree-1' }
 
 function setup(overrides: Partial<TerminalComposerFieldProps> = {}) {
   const onSend = vi.fn()
   const onAttach = vi.fn()
   const onDismiss = vi.fn()
+  const onDrop = vi.fn()
+  const fieldRef = createRef<TerminalComposerFieldHandle>()
   const view = render(
     <TerminalComposerField
+      ref={fieldRef}
       paneKey="tab1:leaf1"
       disabled={false}
       onSend={onSend}
       onAttach={onAttach}
       onDismiss={onDismiss}
-      host={host}
+      buildHost={() => host}
+      onDrop={onDrop}
       {...overrides}
     />
   )
   const editor = within(view.container).getByRole('textbox')
-  return { ...view, editor, onSend, onAttach, onDismiss }
+  return { ...view, editor, fieldRef, onSend, onAttach, onDismiss, onDrop }
 }
 
 describe('terminal composer field', () => {
   it('turns Enter into a line break and never sends', () => {
-    const { editor, onSend } = setup()
+    const { editor, fieldRef, onSend } = setup()
     fireEvent.keyDown(editor, { key: 'Enter' })
     expect(onSend).not.toHaveBeenCalled()
+    // The line broke instead.
+    expect(fieldRef.current?.value()).toBe('\n')
   })
 
   it('sends on Mod+Enter', () => {
@@ -70,16 +93,29 @@ describe('terminal composer field', () => {
     expect(onAttach).toHaveBeenCalledOnce()
   })
 
-  it('claims a paste that carries a file', async () => {
-    const { editor } = setup()
+  it('lands the file of a paste and keeps the text of the paste', async () => {
+    const { editor, fieldRef } = setup()
     const file = new File([new Uint8Array([1])], 'notes.txt', { type: 'text/plain' })
     await act(async () => {
       fireEvent.paste(editor, {
-        clipboardData: { files: [file], items: [], getData: () => 'pasted text' }
+        clipboardData: { files: [file], items: [], getData: () => 'look at this' }
       })
     })
-    // The paste is claimed, so the editor inserted no text of its own.
-    expect(editor.textContent).toBe('')
+    // The text half is the body; the file half is an attachment.
+    expect(fieldRef.current?.value()).toContain('look at this')
+    expect(fieldRef.current?.value()).toContain('@/workspace/.orca/drops/notes.txt')
+  })
+
+  it('leaves out the text that only labels the copied files', async () => {
+    const { editor, fieldRef } = setup()
+    const file = new File([new Uint8Array([1])], 'notes.txt', { type: 'text/plain' })
+    await act(async () => {
+      fireEvent.paste(editor, {
+        clipboardData: { files: [file], items: [], getData: () => 'notes.txt' }
+      })
+    })
+    // The file's own name labels the file; it is not body text.
+    expect(fieldRef.current?.value()).toBe('@/workspace/.orca/drops/notes.txt ')
   })
 
   it('lets a plain-text paste reach the editor', () => {
@@ -91,18 +127,7 @@ describe('terminal composer field', () => {
   })
 
   it('names a file the way the agent reads it', async () => {
-    const fieldRef = createRef<TerminalComposerFieldHandle>()
-    render(
-      <TerminalComposerField
-        ref={fieldRef}
-        paneKey="tab1:leaf1"
-        disabled={false}
-        onSend={vi.fn()}
-        onAttach={vi.fn()}
-        onDismiss={vi.fn()}
-        host={{ workspacePath: '/workspace', worktreeId: 'worktree-1' }}
-      />
-    )
+    const { fieldRef } = setup()
     await act(async () => {
       fieldRef.current?.landAttachments({
         attachments: [
@@ -121,18 +146,12 @@ describe('terminal composer field', () => {
   })
 
   it('spells a WSL file the way the WSL agent reads it', async () => {
-    const fieldRef = createRef<TerminalComposerFieldHandle>()
-    render(
-      <TerminalComposerField
-        ref={fieldRef}
-        paneKey="tab1:leaf1"
-        disabled={false}
-        onSend={vi.fn()}
-        onAttach={vi.fn()}
-        onDismiss={vi.fn()}
-        host={{ workspacePath: '\\\\wsl.localhost\\Ubuntu\\workspace', worktreeId: 'worktree-1' }}
-      />
-    )
+    const { fieldRef } = setup({
+      buildHost: () => ({
+        workspacePath: '\\\\wsl.localhost\\Ubuntu\\workspace',
+        worktreeId: 'worktree-1'
+      })
+    })
     await act(async () => {
       fieldRef.current?.landAttachments({
         attachments: [
@@ -151,18 +170,7 @@ describe('terminal composer field', () => {
   })
 
   it('keeps the attachments that landed when one of them fails', async () => {
-    const fieldRef = createRef<TerminalComposerFieldHandle>()
-    render(
-      <TerminalComposerField
-        ref={fieldRef}
-        paneKey="tab1:leaf1"
-        disabled={false}
-        onSend={vi.fn()}
-        onAttach={vi.fn()}
-        onDismiss={vi.fn()}
-        host={host}
-      />
-    )
+    const { fieldRef } = setup()
     await act(async () => {
       fieldRef.current?.landAttachments({
         attachments: [
@@ -176,9 +184,38 @@ describe('terminal composer field', () => {
         failed: [{ name: 'gone.txt', reason: 'missing' }]
       })
     })
-    // The file that landed stays in the body; the one that failed is marked.
+    // The file that landed stays in the body; the one that failed says why.
     expect(fieldRef.current?.value()).toContain('@/workspace/.orca/drops/notes.txt')
     expect(screen.getByText('gone.txt')).toBeVisible()
-    expect(screen.getByText('Attach it again')).toBeVisible()
+    expect(screen.getByText('The file is gone')).toBeVisible()
+  })
+
+  it('disables the send button while there is nothing to send', () => {
+    setup()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+  })
+
+  it('enables the send button for a message that carries only a file', () => {
+    useAppStore.setState({
+      terminalComposerDraftByPaneKey: {
+        'tab1:leaf1': {
+          document: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  { type: 'nativeChatFileReference', attrs: { token: '@/a.txt', path: '/a.txt' } }
+                ]
+              }
+            ]
+          },
+          attachments: []
+        }
+      }
+    })
+    setup()
+    // A message that names a file is worth sending.
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
   })
 })

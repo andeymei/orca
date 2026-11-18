@@ -23526,6 +23526,7 @@
     "paneChanged": "패인이 바뀌어 메시지를 보내지 못했습니다",
     "writeRejected": "호스트가 메시지를 거부했습니다",
     "sendFailed": "메시지를 보내지 못했습니다",
+    "hostUnavailable": "이 터미널의 호스트에 연결할 수 없어 아무것도 첨부되지 않았습니다.",
     "uploading": "업로드 중…",
     "attachAgain": "다시 첨부",
     "dismissFailed": "첨부 실패한 파일 닫기",

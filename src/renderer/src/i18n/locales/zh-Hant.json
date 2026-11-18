@@ -23458,6 +23458,7 @@
     "paneChanged": "面板已改變，訊息沒有傳送",
     "writeRejected": "主機拒絕了這批位元組",
     "sendFailed": "訊息沒有傳送",
+    "hostUnavailable": "無法連線至此終端機所在的主機，因此沒有新增附件。",
     "uploading": "上傳中…",
     "attachAgain": "重新附加",
     "dismissFailed": "忽略新增失敗的附件",

@@ -24223,6 +24223,7 @@
     "paneChanged": "El panel cambió, así que el mensaje no se envió",
     "writeRejected": "El host rechazó el mensaje",
     "sendFailed": "El mensaje no se envió",
+    "hostUnavailable": "No se puede acceder al host de esta terminal, así que no se adjuntó nada.",
     "uploading": "Subiendo…",
     "attachAgain": "Adjuntar de nuevo",
     "dismissFailed": "Descartar el adjunto fallido",

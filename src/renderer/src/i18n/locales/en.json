@@ -25378,6 +25378,7 @@
     "paneChanged": "The pane changed, so the message was not sent",
     "writeRejected": "The host refused the message",
     "sendFailed": "The message was not sent",
+    "hostUnavailable": "This terminal's host cannot be reached, so nothing was attached.",
     "uploading": "Uploading…",
     "attachAgain": "Attach it again",
     "dismissFailed": "Dismiss the failed attachment",

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { MessageSquarePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,8 @@ import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import { useAppStore } from '@/store'
 import { splitImageReferences } from '../../../../../shared/native-chat/native-chat-image-reference'
 import { focusTerminalTabSurface } from '../input/focus/focus-terminal-tab-surface'
+import { captureTerminalDropTransportOwner } from '../input/file-drop/terminal-drop-transport-owner'
+import { resolveTerminalDropWorktreePath } from '../input/file-drop/terminal-drop-worktree-path'
 import type { PtyTransport } from '../pty-transport/pty-transport-types'
 import {
   dropTerminalComposerAttachments,
@@ -15,8 +17,10 @@ import {
   type TerminalComposerIntakeHost
 } from './attachments/terminal-composer-attachment-intake'
 import {
+  dragCarriesFiles,
   TerminalComposerField,
   terminalComposerDroppedPaths,
+  terminalComposerHostUnavailableMessage,
   type TerminalComposerFieldHandle
 } from './TerminalComposerField'
 import {
@@ -30,13 +34,9 @@ export type TerminalComposerOverlayProps = {
   paneId: number
   leafId: string
   tabId: string
-  workspacePath: string
+  /** The pane's cwd; a folder workspace lands its drops here. */
+  cwd: string | undefined
   worktreeId: string
-  runtimeEnvironmentId?: string | null
-  connectionId?: string | null
-  expectedExecutionHostId?: 'local' | `ssh:${string}`
-  expectedSshTargetId?: string
-  expectedSshConnectionGeneration?: number
   agent: string | null
   /** The tab's pane manager; proves the pane is still mounted before a write. */
   managerRef: React.RefObject<PaneManager | null>
@@ -68,13 +68,8 @@ export function TerminalComposerOverlay({
   paneId,
   leafId,
   tabId,
-  workspacePath,
+  cwd,
   worktreeId,
-  runtimeEnvironmentId,
-  connectionId,
-  expectedExecutionHostId,
-  expectedSshTargetId,
-  expectedSshConnectionGeneration,
   agent,
   managerRef,
   paneTransportsRef
@@ -85,26 +80,50 @@ export function TerminalComposerOverlay({
   // The editor is seeded once, so a sent body needs a fresh field to start empty.
   const [fieldKey, setFieldKey] = useState(0)
   const { send } = useTerminalComposerSend({ managerRef, paneTransportsRef })
-  const host = useMemo<TerminalComposerIntakeHost>(
-    () => ({
+
+  /**
+   * The host that owns this terminal, read from the pane's transport at the moment the
+   * intake happens: the host may have moved since the pane was drawn.
+   */
+  const buildIntakeHost = useCallback((): TerminalComposerIntakeHost | null => {
+    const transport = paneTransportsRef.current.get(paneId)
+    if (!transport) {
+      return null
+    }
+    let owner
+    try {
+      owner = captureTerminalDropTransportOwner(transport)
+    } catch {
+      // The SSH connection is gone; nothing can land on it.
+      return null
+    }
+    const workspacePath = resolveTerminalDropWorktreePath(
+      worktreeId,
+      owner?.runtimeEnvironmentId ? undefined : cwd,
+      owner?.executionHostId,
+      owner?.runtimeEnvironmentId
+    )
+    if (!workspacePath) {
+      return null
+    }
+    // Only an SSH host names a target and a connection generation.
+    const expectedSshTargetId =
+      owner && 'expectedSshTargetId' in owner ? owner.expectedSshTargetId : undefined
+    const expectedSshConnectionGeneration =
+      owner && 'expectedSshConnectionGeneration' in owner
+        ? owner.expectedSshConnectionGeneration
+        : undefined
+    return {
       workspacePath,
       worktreeId,
-      runtimeEnvironmentId,
-      connectionId,
-      expectedExecutionHostId,
+      runtimeEnvironmentId: owner?.runtimeEnvironmentId ?? null,
+      connectionId: owner?.connectionId ?? null,
+      expectedExecutionHostId: owner?.expectedExecutionHostId,
       expectedSshTargetId,
-      expectedSshConnectionGeneration
-    }),
-    [
-      workspacePath,
-      worktreeId,
-      runtimeEnvironmentId,
-      connectionId,
-      expectedExecutionHostId,
-      expectedSshTargetId,
-      expectedSshConnectionGeneration
-    ]
-  )
+      expectedSshConnectionGeneration,
+      assertCurrent: owner?.assertCurrent
+    }
+  }, [cwd, paneId, paneTransportsRef, worktreeId])
 
   const dismiss = useCallback(() => {
     setOpen(false)
@@ -124,6 +143,10 @@ export function TerminalComposerOverlay({
       const attachment = draft.attachments.find((candidate) => candidate.id === attachmentId)
       return attachment?.workspacePath ? [attachment.workspacePath] : []
     })
+    if (body.trim().length === 0 && imagePaths.length === 0) {
+      // Nothing to say: no bytes at all, not even a cleared input line.
+      return
+    }
     void (async () => {
       const result = await send({ paneId, leafId, tabId, body, imagePaths, agent })
       if (!result.sent) {
@@ -137,15 +160,19 @@ export function TerminalComposerOverlay({
 
   const handleAttach = useCallback(() => {
     void (async () => {
+      const host = buildIntakeHost()
+      if (!host) {
+        toast.error(terminalComposerHostUnavailableMessage(t))
+        return
+      }
       fieldRef.current?.setUploading(true)
       try {
-        const result = await pickTerminalComposerAttachments(host)
-        fieldRef.current?.landAttachments(result)
+        fieldRef.current?.landAttachments(await pickTerminalComposerAttachments(host))
       } finally {
         fieldRef.current?.setUploading(false)
       }
     })()
-  }, [host])
+  }, [buildIntakeHost, t])
 
   const handleDropPaths = useCallback(
     (paths: readonly string[]) => {
@@ -153,6 +180,11 @@ export function TerminalComposerOverlay({
         return
       }
       void (async () => {
+        const host = buildIntakeHost()
+        if (!host) {
+          toast.error(terminalComposerHostUnavailableMessage(t))
+          return
+        }
         fieldRef.current?.setUploading(true)
         try {
           fieldRef.current?.landAttachments(await dropTerminalComposerAttachments(host, paths))
@@ -161,17 +193,28 @@ export function TerminalComposerOverlay({
         }
       })()
     },
-    [host]
+    [buildIntakeHost, t]
   )
 
   const handleDrop = useCallback(
     (event: React.DragEvent) => {
+      if (!dragCarriesFiles(event.dataTransfer)) {
+        // A text drag belongs to the editor.
+        return
+      }
       event.preventDefault()
       event.stopPropagation()
       handleDropPaths(terminalComposerDroppedPaths(event))
     },
     [handleDropPaths]
   )
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    if (!dragCarriesFiles(event.dataTransfer)) {
+      return
+    }
+    event.preventDefault()
+  }, [])
 
   if (!open) {
     return (
@@ -201,9 +244,7 @@ export function TerminalComposerOverlay({
   return (
     <div
       className="absolute inset-x-0 bottom-0 z-10 rounded-lg border border-border bg-popover p-2 shadow-lg"
-      onDragOver={(event) => {
-        event.preventDefault()
-      }}
+      onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
       <TerminalComposerField
@@ -213,7 +254,7 @@ export function TerminalComposerOverlay({
         // A pane without a live terminal is the send layer's business: it refuses the write
         // and says why.
         disabled={false}
-        host={host}
+        buildHost={buildIntakeHost}
         onSend={handleSend}
         onAttach={handleAttach}
         onDismiss={dismiss}

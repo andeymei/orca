@@ -1605,7 +1605,11 @@ export function applyNesEdit(
 ): boolean
 ```
 
-It reads the model's current text, and for a `replace` or a `delete` it checks that the slice the range covers still equals `edit.originalText`; when it does not, the function returns false and changes nothing. Otherwise it pushes one edit operation:
+It reads the model's current text and checks that the slice the range covers still equals `edit.originalText`, using `sliceRange` (Task 1). **A range that leaves the text is a mismatch, not a pass**: `sliceRange` returns `null` there, and `null` never equals the original text, so the edit is refused.
+
+The same check serves an `insert`: its range start equals its end, so `sliceRange` returns the empty string, and an insert's `originalText` is the empty string — they match, and the insert is applied. A `replace` or a `delete` carries real text, and the comparison is the guard against a plan that went stale while the user kept typing.
+
+When the check fails the function returns false and changes nothing. Otherwise it pushes one edit operation:
 
 ```ts
 editorInstance.pushUndoStop()

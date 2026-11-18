@@ -6,7 +6,10 @@ import {
 } from './code-completion-credential-commands'
 
 const { storeState, storeMocks, savedCredentialUnreadableMock } = vi.hoisted(() => {
-  const state = { saved: false, protection: null as 'sealed' | 'plaintext' | null }
+  const state: { saved: boolean; protection: 'sealed' | 'plaintext' | null } = {
+    saved: false,
+    protection: null
+  }
   return {
     storeState: state,
     storeMocks: {
@@ -27,7 +30,7 @@ const { storeState, storeMocks, savedCredentialUnreadableMock } = vi.hoisted(() 
       }))
     },
     savedCredentialUnreadableMock: vi.fn(
-      () => undefined as 'sealed-elsewhere' | 'unreadable' | undefined
+      (): 'sealed-elsewhere' | 'unreadable' | undefined => undefined
     )
   }
 })

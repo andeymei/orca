@@ -44,6 +44,7 @@ describe('updateSettings codeCompletion', () => {
   it('normalizes a malformed block instead of storing it as written', () => {
     const operations = makeOperations()
 
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the block is deliberately malformed, and repairing it is what this case is about.
     updateSettings(operations, {
       codeCompletion: { enabled: 'yes', triggerDelayMs: -100 }
     } as never)

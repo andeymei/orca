@@ -1645,9 +1645,19 @@ work changing. The numbering stays; the execution order is **9 → 11 → 10**.
   `applyNesEdit` and `previewNesEdit` (Task 11).
 - Produces:
   - `type NesTabDecision = 'accept-suggestion' | 'jump-to-next-location' | 'pass-through'`
-  - `decideNesTabAction(input: { hasInlineSuggestion: boolean; hasOtherLocations: boolean }): NesTabDecision` — the pure routing rule. `hasInlineSuggestion` is **our own state**, not Monaco's: it is true when `nesPlanStore.editAt(modelKey, cursor)` returns an edit that passes **both** checks the provider (Task 9) makes — `nesEditExtendsCoveredText(edit)` (Task 8) and the live-model `originalText` check. One question, one answer: the predicate decides whether the edit _could_ be shown as ghost text, the model check decides whether it _is_ still valid, and Tab must not accept an edit the provider would never render — the user would watch their code change with no preview of it. Monaco exposes no public query for whether _its_ inline widget is showing; `editor.action.inlineSuggest.commit`'s `isSupported()` is the closest, but it answers for whichever provider owns the widget.
-  - `useMonacoNextEditSuggestions(params): void` — the hook that owns the trigger and the plan state
-  - two new keybinding ids: `editor.acceptAiSuggestion` and `editor.nextAiSuggestion`
+  - `decideNesTabAction(input: { hasInlineSuggestion: boolean; hasOtherLocations: boolean }): NesTabDecision` — the pure routing rule. `hasInlineSuggestion` is **our own state**, not Monaco's. One question, one answer: **ask the provider's own predicate.** `nesInlineCompletionForEdit(edit, model)` (Task 9, exported) returns `null` for exactly the edits the provider refuses to render, so the hook computes it as:
+
+```ts
+const edit = nesPlanStore.editAt(modelKey, cursor)
+const hasInlineSuggestion = edit !== null && nesInlineCompletionForEdit(edit, model) !== null
+```
+
+**Do not re-implement the checks — the provider makes _four_, and two of them are easy to miss.** The edit's range must be on **one line** (Monaco renders a suggestion only when its range begins on the cursor's line), and the range must survive `model.validateRange` unchanged (a clamped range names a place the model no longer has). On top of those: the edit must **extend** the covered text (`nesEditExtendsCoveredText` — the classic ghost text renders an insertion only), and the live model must still hold the edit's `originalText`. A hook that checked only the last two would accept a multi-line-range edit the provider never rendered — the user would watch their code change with no preview of it.
+
+Reusing the predicate makes the two agree **by construction**: there is no second copy of the rules to drift. Monaco exposes no public query for whether _its_ inline widget is showing; `editor.action.inlineSuggest.commit`'s `isSupported()` is the closest, but it answers for whichever provider owns the widget.
+
+- `useMonacoNextEditSuggestions(params): void` — the hook that owns the trigger and the plan state
+- two new keybinding ids: `editor.acceptAiSuggestion` and `editor.nextAiSuggestion`
 
 - [ ] **Step 1: Write the failing routing test**
 

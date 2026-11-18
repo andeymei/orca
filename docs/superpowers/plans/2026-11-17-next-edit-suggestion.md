@@ -1477,7 +1477,9 @@ export function installEditorAcceptAiSuggestionShortcut(
 ): () => void
 ```
 
-It listens in the capture phase, calls `decide()`, and consumes the key for `accept-suggestion` and `jump-to-next-location`; for `pass-through` it does **not** call `preventDefault()`, so the key reaches the suggest widget.
+It follows the repo's installer pattern (`installEditorSaveShortcut` at the top of the same file): a capture-phase `keydown` listener on `target` that returns a dispose function. It calls `decide()`, and consumes the key for `accept-suggestion` and `jump-to-next-location`; for `pass-through` it does **not** call `preventDefault()`, so the key reaches the suggest widget. The event is matched through `editorShortcutMatches('editor.acceptAiSuggestion', event)` — the matcher every other editor shortcut uses, so the user's keybinding customisation applies. `decide()` is consulted only once the event matches that action; the second action (`editor.nextAiSuggestion`) routes to `jump-to-next-location` the same way.
+
+**Match the action, not the key.** A hardcoded `event.key === 'Tab'` would make the two `KeybindingDefinition` entries this task adds dead — the user could rebind _Accept AI Suggestion_ and nothing would happen.
 
 **The accept path is ours, not Monaco's.** On `accept-suggestion` the hook calls `applyNesEdit` (Task 11) — it does **not** run Monaco's `editor.action.inlineSuggest.commit`. The Global Constraints require an accepted suggestion to be one undoable step made with `pushUndoStop()` / `pushEditOperations` / `pushUndoStop()`, and Task 11's `originalText` guard must sit on the path that actually applies the edit. The hook hides the inline widget first (`editor.action.inlineSuggest.hide`) so Monaco's ghost text does not outlive the text we applied.
 

@@ -811,6 +811,7 @@ git commit -m "feat(composer): clear the agent input, then write the paths, the 
 - Create: `src/renderer/src/components/prompt-editor/PromptImageReferencePill.tsx`
 - Create: `src/renderer/src/components/prompt-editor/PromptEditor.tsx`
 - Create: `src/renderer/src/components/prompt-editor/PromptEditor.test.tsx`
+- Modify: `src/renderer/src/components/prompt-editor/prompt-editor-nodes.test.ts`(加 `// @vitest-environment happy-dom` —— 节点模块现在会 import 两个 React pill 组件,纯 node 环境下不再可靠)
 
 **Interfaces:**
 
@@ -890,10 +891,35 @@ it('inserts a file pill at the caret', () => {
   const inputRef = createRef<PromptEditorInput>()
   render(<PromptEditor inputRef={inputRef} ... />)
   act(() => inputRef.current!.focus())
+  act(() => inputRef.current!.insertText?.('hi '))
   act(() => inputRef.current!.insertFileReferences?.(['/tmp/a.txt']))
-  expect(inputRef.current!.value).toContain('@/tmp/a.txt')
+  // The pill lands where the caret is, not at the end of the document.
+  expect(inputRef.current!.value).toBe('hi @/tmp/a.txt ')
+})
+
+it('takes the image pill out, and the space that sat after it', () => {
+  const inputRef = createRef<PromptEditorInput>()
+  const onSelect = vi.fn()
+  render(
+    <PromptEditor
+      inputRef={inputRef}
+      onSelect={onSelect}
+      initialDocument={{ type: 'doc', content: [{ type: 'paragraph', content: [imageReferenceContent('a1', 'shot.png')] }] }}
+      disabled={false}
+      placeholder="Message"
+    />
+  )
+  act(() => inputRef.current!.focus())
+  onSelect.mockClear()
+  act(() => inputRef.current!.removeImageReferences?.('a1'))
+  // The chip is gone and the gap it left is gone with it.
+  expect(inputRef.current!.value).toBe('')
+  // The caret did not move: taking a chip out is not a selection change.
+  expect(onSelect).not.toHaveBeenCalled()
 })
 ```
+
+**undo 那一条(`addToHistory: false`)没有用例**:facade 不暴露 editor 实例,测不了 `undo()`,原生 chat 那边同样没有用例 —— 这一条靠实现保证,评审读代码确认。
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -906,7 +932,7 @@ Expected: FAIL — "Cannot find module './PromptEditor'"
 - `PromptPill.tsx`(共用 pill 外壳):照 `NativeChatPromptPill.tsx` 的结构写一个不依赖 native chat 的版本(icon + label + `selected` 态 + `data-*` 属性)。
 - `PromptFileReferencePill.tsx`:`NodeViewProps` → 读 `PromptFileLabelContext`;没有 resolver 时用默认(`basename(path)` + `getFileTypeIcon(path)`);`contentEditable={false}` 的 `NodeViewWrapper`。
 - `PromptImageReferencePill.tsx`:同上,读 `PromptImageLabelContext`;没有 resolver 时 label 为附件名、`missing` 为 true(显示 `ImageOff` 图标)。
-- `PromptEditor.tsx`:TipTap 装配 + facade。`insertFileReferences` / `insertImageReference` 用 `editor.commands.insertContent` 插入对应节点;`removeImageReferences` 用 `withoutImageReferenceNodes` 重写文档。
+- `PromptEditor.tsx`:TipTap 装配 + facade。`insertFileReferences` / `insertImageReference` 用 `editor.commands.insertContent` 插入对应节点;`removeImageReferences` **不要**用 `withoutImageReferenceNodes` 重写整个文档 —— `setContent` 会把光标甩到文末,而且这条 transaction 会进 undo 历史,Cmd+Z 能把一个附件已经没了的 pill 复活回来。照 `NativeChatPromptEditor.tsx:362-378` 的做法:一次 `doc.descendants` 找到该 attachmentId 的图片节点,连同它后面的一个空格一起 `tr.delete`(用 mapping 保证多个 chip 时位置不错位),`tr.docChanged` 时 `dispatch(tr.setMeta('addToHistory', false))`。**JSON 规则照旧归 `withoutImageReferenceNodes`**:存草稿、删 chip 之后把相邻的文本 run 合一,还是它的事;删除发生在 ProseMirror 文档上,两者不冲突。
 - `prompt-editor-nodes.ts`:给 `PromptFileReference` / `PromptImageReference` 加 `addNodeView: () => ReactNodeViewRenderer(Pill)`(原生 chat 就是这么挂的,见 `native-chat-prompt-document.ts:46,58`)。
 - **两个 pill 组件不要 import `prompt-editor-nodes.ts`** —— 节点模块要 import pill 才能挂 `addNodeView`,pill 再 import 节点模块就是一个环。pill 只读节点的属性(`attrs.path` / `attrs.token` / `attrs.attachmentId` / `attrs.name`),不需要节点名。
 

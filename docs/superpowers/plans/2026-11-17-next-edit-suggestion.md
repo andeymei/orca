@@ -1423,7 +1423,7 @@ git commit -m "feat(code-completion): the plan store and the location markers"
 - Consumes: `NesPlanStore` (Task 8), `NesEdit` (Task 1), `nesEditExtendsCoveredText` (Task 8).
 - Produces:
   - `ensureNesInlineCompletionsProvider(monaco: MonacoApi): void` — the module-level singleton
-  - `nesInlineCompletionForEdit(edit: NesEdit, model: editor.ITextModel): monaco.languages.InlineCompletion | null`
+  - `nesInlineCompletionForEdit(edit: NesEdit, model: monaco.editor.ITextModel): monaco.languages.InlineCompletion | null`
   - `fireNesInlineCompletionsChanged(): void` — asks Monaco to re-query the provider. The provider registers `onDidChangeInlineCompletions` on the module-level `changeEmitter`; Task 10 calls the function when a new plan lands, so the suggestion appears without the user moving the cursor.
 
 - [ ] **Step 1: Write the failing provider test**
@@ -1468,16 +1468,23 @@ Create `src/renderer/src/components/editor/code-completion/nes-inline-provider.t
 
 ```ts
 import type { OnMount } from '@monaco-editor/react'
-import type { IDisposable, editor } from 'monaco-editor'
+import type * as monaco from 'monaco-editor'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 import { nesEditMatchesPosition, nesPlanStore } from './nes-plan-store'
 
 type MonacoApi = Parameters<OnMount>[1]
 
-let provider: IDisposable | null = null
+let provider: monaco.IDisposable | null = null
 let providerMonaco: MonacoApi = null
 let changeEmitter: monaco.EventEmitter<void> | null = null
 ```
+
+**The Monaco types come from the namespace import.** `import type * as monaco from 'monaco-editor'` is a
+type-only import — it costs nothing at runtime — and it carries every type the module needs:
+`monaco.IDisposable`, `monaco.EventEmitter<void>`, `monaco.editor.ITextModel` and
+`monaco.languages.InlineCompletion`. The module needs no **value** import of `monaco-editor`: the
+live namespace arrives as the `monaco` argument of `ensureNesInlineCompletionsProvider`, and that is
+what the emitter is built from.
 
 Because the emitter needs the live Monaco namespace, create it inside `ensureNesInlineCompletionsProvider` and keep it in a module-level variable. `fireNesInlineCompletionsChanged()` is a no-op while `changeEmitter` is null.
 

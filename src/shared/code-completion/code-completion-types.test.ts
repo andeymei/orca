@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   NES_MAX_EDITS,
+  nesEditExtendsCoveredText,
   sliceRange,
   validateNesEditPlan,
   type NesEdit
@@ -201,6 +202,62 @@ describe('validateNesEditPlan', () => {
     const plan = validateNesEditPlan('not json at all', { allowedPaths: [FILE_PATH] })
 
     expect(plan).toEqual({ edits: [] })
+  })
+})
+
+describe('nesEditExtendsCoveredText', () => {
+  it('accepts an insert, whose covered text is empty', () => {
+    expect(nesEditExtendsCoveredText(buildEdit())).toBe(true)
+  })
+
+  it('accepts a replace that only appends to the covered text', () => {
+    const edit = buildEdit({
+      kind: 'replace',
+      originalText: 'const answer = 42',
+      text: 'const answer = 42 and the question'
+    })
+
+    expect(nesEditExtendsCoveredText(edit)).toBe(true)
+  })
+
+  it('refuses a replace that rewrites the covered text', () => {
+    const edit = buildEdit({
+      kind: 'replace',
+      originalText: 'const answer = 42',
+      text: 'const question = 42'
+    })
+
+    expect(nesEditExtendsCoveredText(edit)).toBe(false)
+  })
+
+  it('refuses a replace that shortens the covered text', () => {
+    const edit = buildEdit({
+      kind: 'replace',
+      originalText: 'const answer = 42',
+      text: 'const answer'
+    })
+
+    expect(nesEditExtendsCoveredText(edit)).toBe(false)
+  })
+
+  it('refuses a delete', () => {
+    const edit = buildEdit({
+      kind: 'delete',
+      originalText: 'const answer = 42',
+      text: ''
+    })
+
+    expect(nesEditExtendsCoveredText(edit)).toBe(false)
+  })
+
+  it('refuses an edit that changes nothing', () => {
+    const edit = buildEdit({
+      kind: 'replace',
+      originalText: 'const answer = 42',
+      text: 'const answer = 42'
+    })
+
+    expect(nesEditExtendsCoveredText(edit)).toBe(false)
   })
 })
 

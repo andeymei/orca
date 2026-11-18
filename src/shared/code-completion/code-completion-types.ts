@@ -112,6 +112,14 @@ function isApplicableNesEdit(edit: NesEdit, allowedPaths: ReadonlySet<string>): 
   return edit.originalText !== '' && edit.text !== ''
 }
 
+/**
+ * True when the edit only appends to the text its range covers, so it can be offered inline.
+ * The provider, the marker rule and the Tab routing all ask this, and they must agree.
+ */
+export function nesEditExtendsCoveredText(edit: NesEdit): boolean {
+  return edit.text.length > edit.originalText.length && edit.text.startsWith(edit.originalText)
+}
+
 /** The text a 1-based range covers, with the end column exclusive; null when the range leaves the text. */
 export function sliceRange(text: string, range: NesEditRange): string | null {
   const lines = text.split('\n')

@@ -17,12 +17,11 @@ import {
   type TerminalComposerIntakeHost
 } from './attachments/terminal-composer-attachment-intake'
 import {
-  dragCarriesFiles,
   TerminalComposerField,
-  terminalComposerDroppedPaths,
   terminalComposerHostUnavailableMessage,
   type TerminalComposerFieldHandle
 } from './TerminalComposerField'
+import { dragCarriesFiles, terminalComposerDroppedPaths } from './terminal-composer-content'
 import {
   useTerminalComposerSend,
   type TerminalComposerSendResult

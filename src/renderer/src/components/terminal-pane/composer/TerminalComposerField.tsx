@@ -1,19 +1,14 @@
 import { useCallback, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { JSONContent } from '@tiptap/react'
-import { CornerDownLeft, FileX, Hourglass, Paperclip, X } from 'lucide-react'
+import { CornerDownLeft, Paperclip } from 'lucide-react'
 import { toast } from 'sonner'
 import { PromptEditor, type PromptEditorInput } from '@/components/prompt-editor/PromptEditor'
 import {
   PromptImageLabelContext,
   type PromptImageLabel
 } from '@/components/prompt-editor/prompt-editor-labels'
-import {
-  FILE_REFERENCE_NODE,
-  IMAGE_REFERENCE_NODE
-} from '@/components/prompt-editor/prompt-editor-nodes'
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
-import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getScreenSubmitModifierLabel } from '@/lib/keyboard/screen-submit-shortcut'
@@ -29,6 +24,16 @@ import {
   type TerminalComposerIntakeHost,
   type TerminalComposerIntakeResult
 } from './attachments/terminal-composer-attachment-intake'
+import {
+  attachmentReasonText,
+  TerminalComposerAttachmentStatus
+} from './TerminalComposerAttachmentStatus'
+import {
+  clipboardCarriesFiles,
+  dragCarriesFiles,
+  draftHasContent,
+  terminalComposerDroppedPaths
+} from './terminal-composer-content'
 import { readTerminalComposerDraft, useTerminalComposerState } from './use-terminal-composer-state'
 
 /** An attachment whose bytes landed; the others are still uploading or failed. */
@@ -57,33 +62,6 @@ export type TerminalComposerFieldProps = {
   onDrop: (paths: readonly string[]) => void
 }
 
-/** The paths a drop carries; a browser file without one is not a file the host can read. */
-export function terminalComposerDroppedPaths(event: React.DragEvent): string[] {
-  const fs = window.api?.fs
-  const getPathForFile = fs && 'getPathForFile' in fs ? fs.getPathForFile : undefined
-  if (!getPathForFile) {
-    return []
-  }
-  const paths: string[] = []
-  for (const file of Array.from(event.dataTransfer?.files ?? [])) {
-    try {
-      const path = getPathForFile(file)
-      if (path) {
-        paths.push(path)
-      }
-    } catch {
-      // A virtual file has no local path.
-    }
-  }
-  return paths
-}
-
-/** Whether a drag carries files; a text drag belongs to the editor. */
-export function dragCarriesFiles(dataTransfer: DataTransfer | null): boolean {
-  const types = dataTransfer?.types
-  return types ? Array.from(types).includes('Files') : false
-}
-
 /** The path the agent in this terminal reads: a WSL-hosted agent reads Linux paths. */
 function agentVisiblePath(
   buildHost: () => TerminalComposerIntakeHost | null,
@@ -94,53 +72,12 @@ function agentVisiblePath(
   return host && isWslUncPath(host.workspacePath) ? toLocalWslDropPath(path) : path
 }
 
-function clipboardCarriesFiles(clipboardData: DataTransfer | null): boolean {
-  if (!clipboardData) {
-    return false
-  }
-  if (clipboardData.files && clipboardData.files.length > 0) {
-    return true
-  }
-  const items = clipboardData.items
-  return items ? Array.from(items).some((item) => item.kind === 'file') : false
-}
-
-/** Whether the draft carries something to send: text, a file pill or an image pill. */
-function draftHasContent(document: JSONContent): boolean {
-  if (document.type === FILE_REFERENCE_NODE || document.type === IMAGE_REFERENCE_NODE) {
-    return true
-  }
-  if (document.type === 'text') {
-    return (document.text ?? '').trim().length > 0
-  }
-  return (document.content ?? []).some(draftHasContent)
-}
-
 /** The host that owns the terminal cannot be reached, so nothing can land on it. */
 export function terminalComposerHostUnavailableMessage(t: Translate): string {
   return t(
     'terminalComposer.hostUnavailable',
     "This terminal's host cannot be reached, so nothing was attached."
   )
-}
-
-/** The intake reports machine codes for some failures and a sentence for others. */
-function attachmentReasonText(reason: string, t: Translate): string {
-  switch (reason) {
-    case 'missing':
-      return t('terminalComposer.reasonMissing', 'The file is gone')
-    case 'symlink':
-      return t('terminalComposer.reasonSymlink', 'That path is a link, not a file')
-    case 'permission-denied':
-      return t('terminalComposer.reasonPermissionDenied', 'No permission to read the file')
-    case 'unsupported':
-      return t('terminalComposer.reasonUnsupported', 'That kind of file cannot be attached')
-    case 'no-local-path':
-      return t('terminalComposer.reasonNoLocalPath', 'The pasted item has no file behind it')
-    default:
-      // A reason that is already a sentence is shown as it came.
-      return reason
-  }
 }
 
 export function TerminalComposerField({
@@ -337,8 +274,6 @@ export function TerminalComposerField({
     [draft.attachments]
   )
 
-  const failedAttachments = draft.attachments.filter((attachment) => attachment.failed === true)
-
   const removeFailedAttachment = useCallback(
     (attachmentId: string) => {
       const current = readTerminalComposerDraft(paneKey)
@@ -352,41 +287,11 @@ export function TerminalComposerField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      {uploading || failedAttachments.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {uploading ? (
-            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-xs text-muted-foreground">
-              <Hourglass className="size-3" />
-              <LoadingSpinner className="size-3" />
-              {t('terminalComposer.uploading', 'Uploading…')}
-            </span>
-          ) : null}
-          {failedAttachments.map((attachment) => {
-            const reason = attachmentReasonText(attachment.reason ?? '', t)
-            return (
-              <span
-                key={attachment.id}
-                title={[reason, t('terminalComposer.attachAgain', 'Attach it again')]
-                  .filter(Boolean)
-                  .join(' — ')}
-                className="inline-flex max-w-72 items-center gap-1 rounded-md border border-dashed border-border px-1.5 py-0.5 text-xs text-muted-foreground"
-              >
-                <FileX className="size-3 shrink-0" />
-                <span className="truncate">{attachment.name}</span>
-                {reason ? <span className="truncate">{reason}</span> : null}
-                <button
-                  type="button"
-                  aria-label={t('terminalComposer.dismissFailed', 'Dismiss the failed attachment')}
-                  className="shrink-0 rounded-sm p-0.5 hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => removeFailedAttachment(attachment.id)}
-                >
-                  <X className="size-3" />
-                </button>
-              </span>
-            )
-          })}
-        </div>
-      ) : null}
+      <TerminalComposerAttachmentStatus
+        uploading={uploading}
+        attachments={draft.attachments}
+        onDismiss={removeFailedAttachment}
+      />
       <div
         data-terminal-composer-editor="true"
         onPasteCapture={capturePaste}

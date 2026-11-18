@@ -188,6 +188,8 @@ describe('terminal composer field', () => {
     expect(fieldRef.current?.value()).toContain('@/workspace/.orca/drops/notes.txt')
     expect(screen.getByText('gone.txt')).toBeVisible()
     expect(screen.getByText('The file is gone')).toBeVisible()
+    // The re-add hint is visible, not only a hover title.
+    expect(screen.getByText('Attach it again')).toBeVisible()
   })
 
   it('disables the send button while there is nothing to send', () => {

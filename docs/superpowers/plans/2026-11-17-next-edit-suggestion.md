@@ -1689,7 +1689,7 @@ The section offers:
 - the master switch
 - the protocol (Anthropic Messages / OpenAI Chat / OpenAI FIM)
 - the base URL and the model, as text inputs
-- the API key, as a password input that saves through `window.api.codeCompletion.saveApiKey` and never reads the stored key back — show "configured" from `getStatus()` instead
+- the API key, as a password input that saves through `window.api.codeCompletion.saveApiKey` and never reads the stored key back — show "configured" from `getStatus()` instead. **Clear the input once the save succeeds**, so the key does not linger in the DOM: the renderer holds it only as the value the user typed.
 - the trigger delay
 - the auto-import switch
 - the per-extension list
@@ -1705,7 +1705,7 @@ Every string goes through `useTranslate()` with an `auto.` key and an English de
 - `unreadable: 'unreadable'` — the saved file cannot be read; the section says the key should be re-entered.
 - `protection: 'plaintext'` — the key is stored unencrypted on this machine; the section warns about that.
 
-The status is polled, so the section re-reads it rather than caching it.
+The status is polled, so the section re-reads it rather than caching it — but on an **interval, not on every render**: the `unreadable` probe reads the envelope file from disk on every call, and a settings screen re-renders often.
 
 - [ ] **Step 2: Write the failing section test**
 
@@ -1723,7 +1723,7 @@ Expected: no errors.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/renderer/src/components/settings/editor
+git add src/renderer/src/components/settings/editor src/renderer/src/components/settings/general/general-setting-anchors.ts
 git commit -m "feat(code-completion): the completion settings section"
 ```
 

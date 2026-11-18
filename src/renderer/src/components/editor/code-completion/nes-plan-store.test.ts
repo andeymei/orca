@@ -137,6 +137,17 @@ describe('nes plan store', () => {
     ).toBeNull()
   })
 
+  it('forgets a model that was unbound', () => {
+    const store = createNesPlanStore()
+    store.bindModel(APP_MODEL_KEY, APP_PATH)
+    store.setPlan(APP_PATH, { edits: [makeEdit()] })
+
+    store.unbindModel(APP_MODEL_KEY)
+
+    expect(store.editAt(APP_MODEL_KEY, { lineNumber: 10, column: 12 })).toBeNull()
+    expect(store.getPlan(APP_PATH)).toEqual({ edits: [makeEdit()] })
+  })
+
   it('drops the plan of a file it removes', () => {
     const store = createNesPlanStore()
     store.bindModel(APP_MODEL_KEY, APP_PATH)

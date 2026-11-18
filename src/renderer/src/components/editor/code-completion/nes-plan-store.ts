@@ -9,6 +9,8 @@ export type NesCursorPosition = { lineNumber: number; column: number }
 export type NesPlanStore = {
   /** Binds a Monaco model to the file it shows, so a model key can be resolved to a path. */
   bindModel(modelKey: string, filePath: string): void
+  /** Drops the binding of a model that is gone; the plan of the file it showed stays. */
+  unbindModel(modelKey: string): void
   setPlan(filePath: string, plan: NesEditPlan): void
   getPlan(filePath: string): NesEditPlan | null
   /** The edit of the bound file whose range ends at the cursor, if there is one. */
@@ -30,6 +32,10 @@ export function createNesPlanStore(): NesPlanStore {
   return {
     bindModel(modelKey: string, filePath: string): void {
       modelPaths.set(modelKey, filePath)
+    },
+    unbindModel(modelKey: string): void {
+      // Why: the plan belongs to the file, so a second editor on it still wants it.
+      modelPaths.delete(modelKey)
     },
     setPlan(filePath: string, plan: NesEditPlan): void {
       plans.set(filePath, plan)

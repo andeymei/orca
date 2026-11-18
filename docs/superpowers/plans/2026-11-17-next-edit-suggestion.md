@@ -1683,6 +1683,13 @@ export function installEditorAiSuggestionPreviewShortcut(
 
 It watches `Alt` keydown and keyup (ignoring `event.repeat`) and reports the held state.
 
+**The preview shows the edit at the cursor — whether or not the ghost text could show it.** The hook
+previews the edit `nesPlanStore.editAt` returns, through `previewNesEdit` (Task 11), which draws the
+change with injected text and can show any kind of edit. That matters for the one edit the classic
+ghost-text path cannot render: a `replace` that rewrites the text the user just typed. It is not
+offered inline, so the Alt preview is the only way the user can see it before applying it, and its
+gutter marker (Task 8) is what tells the user it is there.
+
 - [ ] **Step 6: Write the hook**
 
 Create `src/renderer/src/components/editor/code-completion/use-monaco-nes.ts`:

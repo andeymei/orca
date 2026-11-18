@@ -861,10 +861,11 @@ describe('codeCompletion.plan', () => {
   it('returns null when no endpoint is configured', ...)
   it('returns null when no API key is stored', ...)
   it('never returns the API key to the caller', ...)
+  it('answers no plan when the saved key cannot be read', ...)
 })
 ```
 
-The last case is the one that matters: assert that the serialized response contains neither the key nor the base URL's credentials.
+The last case is the one that matters: assert that the serialized response contains neither the key nor the base URL's credentials. The second-to-last is the inert-not-broken rule: a key file that cannot be read or decrypted — corrupt, or sealed by the other Orca app on this machine — must answer `{ plan: null }` rather than fail the call.
 
 - [ ] **Step 3: Run the test to verify it fails**
 
@@ -897,7 +898,14 @@ export const CODE_COMPLETION_METHODS = [
       if (!settings?.enabled) {
         return { plan: null }
       }
-      const apiKey = readCodeCompletionApiKey()
+      // Why: a key file that cannot be read or decrypted must make the feature *inert*,
+      // not broken. The credential status (Task 5) reports that state to the settings UI.
+      let apiKey: string | null = null
+      try {
+        apiKey = readCodeCompletionApiKey()
+      } catch {
+        return { plan: null }
+      }
       if (!apiKey || !settings.baseUrl || !settings.model) {
         return { plan: null }
       }

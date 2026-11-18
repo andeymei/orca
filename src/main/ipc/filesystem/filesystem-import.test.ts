@@ -341,14 +341,15 @@ describe('fs:importExternalPaths', () => {
       }
     })
 
-    const result = (await handlers.get('fs:importExternalPaths')!(null, {
-      sourcePaths: [sourcePath],
-      destDir: dropDir,
-      ensureDir: true
-    })) as { results: { status: string; reason?: string }[] }
+    await expect(
+      handlers.get('fs:importExternalPaths')!(null, {
+        sourcePaths: [sourcePath],
+        destDir: dropDir,
+        ensureDir: true
+      })
+    ).resolves.toMatchObject({ results: [{ status: 'imported' }] })
 
     expect(mkdirMock).toHaveBeenCalledWith(dropDir, { recursive: true })
-    expect(result.results[0]).toMatchObject({ status: 'imported' })
   })
 
   it('leaves the destination directory alone when the caller did not ask for it', async () => {

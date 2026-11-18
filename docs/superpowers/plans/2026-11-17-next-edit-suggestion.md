@@ -1008,6 +1008,20 @@ alone, and fixes one that ends after it.
 `NES_CURSOR_MARKER` is already defined once in `src/shared/code-completion/code-completion-prompt.ts`
 and read by both sides; the backend imports it rather than hardcoding 12.
 
+**The prompt states the convention, because the correction depends on it.** The correction is a
+blind subtraction: it assumes the model counts the marker as the characters it is. The system prompt
+must therefore say so — one line, interpolated from `NES_CURSOR_MARKER.length`, never a literal:
+
+> The cursor marker `<<<CURSOR>>>` occupies twelve columns of the content, so count those columns
+> when you answer; the cursor is at the marker.
+
+Without it the prompt is ambiguous about the one thing the backend's correction depends on. The
+correction never touches the **cursor edit's own column** — the cursor's column is `cursorColumn`,
+and the correction only fires at `cursorColumn + NES_CURSOR_MARKER.length` or beyond — so the
+correction makes the cursor edit correct under **both** readings of "where the cursor is": a model
+answering the marker's first column is left alone, and a model answering the column after the
+marker is corrected.
+
 Tests:
 
 - in `code-completion-prompt.test.ts`: the import sentence names the label prefix.
@@ -1163,6 +1177,21 @@ Two sources, in this order:
 2. **The files that mention the symbol at the cursor.** `searchRuntimeFiles(context, options, signal?)` takes a `RuntimeFileOperationArgs` and a `SearchOptions` whose `rootPath` is **required**. When `symbolAtCursor` is a plain identifier, call `searchRuntimeFiles(input.files, { query: symbolAtCursor, rootPath: input.files.worktreePath ?? '', maxResults: 20 })` — but only when `input.files.worktreePath` is set. **A missing worktree path means no search at all**: `rootPath` is required, and searching with an empty root path would sweep the whole filesystem. **A missing worktree path means no _search_, not no related files.** The guard belongs to the search, not to the collector: an import-driven read needs no root at all — the read takes an absolute `filePath` and an _optional_ `relativePath`, and `getRelativePathInsideWorktree` returning null means "no root-relative path", not "unreadable". So when there is no worktree path the collector still resolves the current file's **relative imports**; it just does not search. A **folder workspace** — a first-class case this repo calls out ("never assume a workspace is a git worktree") — has no worktree path, and its imports are perfectly readable.
 
 Then take the files whose matches include the symbol's definition — the file that declares it wins over the files that merely call it.
+
+**Drop the vendored and tool-generated paths from the search results.** The content search has **no product-level ignore list** — the only hard-coded exclusion is `--glob !.git`, and everything else depends on ripgrep's own ignore handling, which reads `.gitignore` **only when the search root is inside a git repository**. In a folder workspace — not a git repo — `node_modules` comes back, and a package that declares a symbol of the same name is ranked as a "definition" and read as a related file.
+
+The repo already has the policy: `shouldIncludeQuickOpenPath(path)` in
+`src/shared/quick-open/quick-open-filter.ts` walks the path's segments and rejects the
+hidden-directory blocklist plus `node_modules`. **Use it; do not write a second list.** Normalize
+the path with the cross-platform helper first — the predicate splits on `/` and the search's
+absolute path is native — and apply it to the **search results** only, not to the import-driven
+files: a relative import points at a file the author wrote, a search result is a guess.
+
+**The search's cap counts matches, not files.** `SearchOptions.maxResults` caps the total number of
+matches, so a file with ten occurrences of the symbol consumes ten of the cap — and the symbol's own
+**definition**, the one file the ranking wants most, is then never in the results. The cap is
+**200**: the search runs per file and is cached, so the cost is amortized, and the results are
+capped at `NES_RELATED_FILE_MAX` (8) afterwards anyway.
 
 Each result is read through `readRuntimeFileContent`, truncated to `NES_RELATED_FILE_TOKEN_BUDGET` tokens from the front, and the list is capped at `NES_RELATED_FILE_MAX`. A file that cannot be read is dropped.
 

@@ -20,7 +20,7 @@
 - **不实现富文本格式**(加粗/斜体/标题)。「富」= 多行 + 内联附件引用。
 - **附件一律落到 `<workspace>/.orca/drops/`**,该目录自带 `.gitignore`(`DROP_STAGING_GITIGNORE_CONTENT`),不污染 `git status`。
 - **附件必须落在拥有该终端的那台机器上**(本地 / SSH / WSL / 配对 runtime)。
-- **发送写序列固定为四步**:清 TUI 输入 → 每个图片路径一次独立 bracketed paste → 正文一次写 → **Enter 单独一次延迟写**(`\r`)。Enter 与 paste 同一次写会被 TUI 吞掉。逐字节对齐原生 chat(`native-chat-runtime-image-send.ts` 的 `sendNativeChatMessageWithImageAttachments`):图片与正文之间等 `NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS`(300ms,TUI 异步建 chip);只有空白的正文等于没有正文(不写正文,最后一张图片的 paste 也不带尾随空格)。**清输入那一步无条件做**(有 agent 也好,普通 shell 也好):spec §6 的理由是「用户在终端里可能已经敲了半句。不清的话我们的正文会接在旧草稿后面」,而 spec §8 说普通 shell 里正文是**当命令发**的 —— 不清就会把命令接在用户敲了一半的命令后面(`ls` + `echo hi` = `lsecho hi`),跑出一个谁也没写过的命令。丢掉那半行是更便宜的那个失败。
+- **发送写序列固定为四步**:清 TUI 输入 → 每个图片路径一次独立 bracketed paste → 正文一次写 → **Enter 单独一次延迟写**(`\r`)。Enter 与 paste 同一次写会被 TUI 吞掉。逐字节对齐原生 chat(`native-chat-runtime-image-send.ts` 的 `sendNativeChatMessageWithImageAttachments`):图片与正文之间等 `NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS`(300ms,TUI 异步建 chip);只有空白的正文等于没有正文(不写正文,最后一张图片的 paste 也不带尾随空格)。**清输入那一步无条件做**(有 agent 也好,普通 shell 也好;**唯一的例外是空消息** —— 正文为空且没有附件时一个字节都不写,连清输入与 Enter 都不写):spec §6 的理由是「用户在终端里可能已经敲了半句。不清的话我们的正文会接在旧草稿后面」,而 spec §8 说普通 shell 里正文是**当命令发**的 —— 不清就会把命令接在用户敲了一半的命令后面(`ls` + `echo hi` = `lsecho hi`),跑出一个谁也没写过的命令。丢掉那半行是更便宜的那个失败。
 - **图片路径形态由 `agentImagePastePath(agent, path)` 决定**:支持附件语义的 agent 给裸路径,其余给 `@"path"`。图片 pill **永远不进正文**。
 - **文件 pill 进正文的形式是 `@path`**,含空白或 `@` 时加引号(`formatNativeChatFileReference`)。
 - **快捷键**:`terminal.toggleComposer`,默认 `Mod+Shift+P`(darwin `⌘⇧P`,win/linux `Ctrl+Shift+P`)。
@@ -979,6 +979,15 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
   }
 
   // TerminalComposerField.tsx
+  /** The seam between the field and the overlay: the editor lives in the field, the intake in the parent. */
+  export type TerminalComposerFieldHandle = {
+    /** The body as the editor reads it: file pills as their `@path`, image pills as their token. */
+    value: () => string
+    /** Lands what the intake returned: the pills go into the body, the records into the draft. */
+    landAttachments: (result: TerminalComposerIntakeResult) => void
+    /** Whether an upload is still on its way to the host that owns the terminal. */
+    setUploading: (uploading: boolean) => void
+  }
   export type TerminalComposerFieldProps = {
     paneKey: string
     disabled: boolean
@@ -992,7 +1001,9 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
     /** Lands dropped files; the parent owns the intake. */
     onDrop: (paths: readonly string[]) => void
   }
-  export function TerminalComposerField(props: TerminalComposerFieldProps): React.JSX.Element
+  export function TerminalComposerField(
+    props: TerminalComposerFieldProps & { ref?: React.Ref<TerminalComposerFieldHandle> }
+  ): React.JSX.Element
 
   // TerminalComposerOverlay.tsx
   export type TerminalComposerOverlayProps = {

@@ -136,16 +136,28 @@ describe('buildNesSystemPrompt', () => {
     expect(prompt).toContain(`occupies ${NES_CURSOR_MARKER.length} columns of the content`)
   })
 
-  it('states the ten rules in order', () => {
+  it('offers only the kinds the editor can show, and states the two rules they obey', () => {
+    const prompt = buildNesSystemPrompt()
+
+    expect(prompt).toContain('kind is insert or replace')
+    expect(prompt).not.toContain('delete')
+    expect(prompt).toContain('may only add to the text its range covers')
+    expect(prompt).toContain('a replace whose text begins with the originalText it replaces')
+    expect(prompt).toContain("An edit's range must be on one line")
+  })
+
+  it('states the twelve rules in order', () => {
     const statements = [
       'Reply with a single JSON object of the form {"edits":[…]}',
       'Every edit carries id, path, kind, range, originalText, text and label',
       'Propose at most 5 edits',
       'and at most 2 edits per file',
       'A range is 1-based, its columns count UTF-16 code units',
+      "An edit's range must be on one line",
       "Count each file's lines separately",
       'The edit at the cursor must end at the cursor position',
       'originalText must be the exact text the range currently covers',
+      'An edit may only add to the text its range covers',
       'label is a short human-readable intent',
       'When you have nothing to propose, answer {"edits":[]}'
     ]

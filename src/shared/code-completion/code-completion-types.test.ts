@@ -90,6 +90,61 @@ describe('validateNesEditPlan', () => {
     expect(plan.edits).toEqual([])
   })
 
+  it('drops a replace that rewrites the text it covers', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          buildEdit({
+            kind: 'replace',
+            originalText: 'const answer = 42',
+            text: 'const question = 42'
+          })
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    expect(plan.edits).toEqual([])
+  })
+
+  it('drops a replace that spans more than one line', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          buildEdit({
+            kind: 'replace',
+            originalText: 'const answer = 42',
+            text: 'const answer = 42 and the question',
+            range: { startLine: 3, startColumn: 1, endLine: 4, endColumn: 1 }
+          })
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    expect(plan.edits).toEqual([])
+  })
+
+  it('keeps a replace that only adds to the text it covers', () => {
+    const edit = buildEdit({
+      kind: 'replace',
+      originalText: 'const answer = 42',
+      text: 'const answer = 42 and the question'
+    })
+
+    const plan = validateNesEditPlan({ edits: [edit] }, { allowedPaths: [FILE_PATH] })
+
+    expect(plan.edits).toEqual([edit])
+  })
+
+  it('keeps a multi-line insert, whose range is a single line', () => {
+    const edit = buildEdit({ text: 'const a = 1\nconst b = 2\nconst c = 3\n' })
+
+    const plan = validateNesEditPlan({ edits: [edit] }, { allowedPaths: [FILE_PATH] })
+
+    expect(plan.edits).toEqual([edit])
+  })
+
   it('truncates a plan with more than five edits', () => {
     const paths = ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts', 'src/f.ts']
     const edits = paths.map((path, index) => buildEdit({ id: `e${index + 1}`, path }))

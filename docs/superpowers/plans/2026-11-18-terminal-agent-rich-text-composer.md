@@ -900,13 +900,15 @@ it('inserts a file pill at the caret', () => {
 Run: `pnpm test src/renderer/src/components/prompt-editor/PromptEditor.test.tsx --maxWorkers=2`
 Expected: FAIL — "Cannot find module './PromptEditor'"
 
-- [ ] **Step 3: Implement the four files**
+- [ ] **Step 3: Implement the five files and wire the node views**
 
 - `prompt-editor-labels.ts`:两个 `createContext<...>(null)` + 类型。
 - `PromptPill.tsx`(共用 pill 外壳):照 `NativeChatPromptPill.tsx` 的结构写一个不依赖 native chat 的版本(icon + label + `selected` 态 + `data-*` 属性)。
 - `PromptFileReferencePill.tsx`:`NodeViewProps` → 读 `PromptFileLabelContext`;没有 resolver 时用默认(`basename(path)` + `getFileTypeIcon(path)`);`contentEditable={false}` 的 `NodeViewWrapper`。
 - `PromptImageReferencePill.tsx`:同上,读 `PromptImageLabelContext`;没有 resolver 时 label 为附件名、`missing` 为 true(显示 `ImageOff` 图标)。
 - `PromptEditor.tsx`:TipTap 装配 + facade。`insertFileReferences` / `insertImageReference` 用 `editor.commands.insertContent` 插入对应节点;`removeImageReferences` 用 `withoutImageReferenceNodes` 重写文档。
+- `prompt-editor-nodes.ts`:给 `PromptFileReference` / `PromptImageReference` 加 `addNodeView: () => ReactNodeViewRenderer(Pill)`(原生 chat 就是这么挂的,见 `native-chat-prompt-document.ts:46,58`)。
+- **两个 pill 组件不要 import `prompt-editor-nodes.ts`** —— 节点模块要 import pill 才能挂 `addNodeView`,pill 再 import 节点模块就是一个环。pill 只读节点的属性(`attrs.path` / `attrs.token` / `attrs.attachmentId` / `attrs.name`),不需要节点名。
 
 - [ ] **Step 4: Run the test to verify it passes**
 

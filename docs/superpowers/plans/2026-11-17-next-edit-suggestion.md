@@ -1797,11 +1797,31 @@ The hook:
 - **discards a stale answer**: the request cannot be cancelled end to end (see below), so the hook keeps a generation counter and applies a plan only when the generation still matches the one the request was made under.
 - skips the whole cycle when the file's extension is not in the enabled list, when the feature is off, or when the editor is read-only
 
-**The key format is a silent-failure coupling — the two sides must use the same string.** The
+**The key format is a silent-failure coupling — and there is a trap in recomputing it.** The
 provider asks the store by `model.uri.toString()` (`nes-inline-provider.ts:27`), and the store
-takes an opaque string. If the hook binds with a different key — the file path, a hashed id, the
-model's `id` — the provider finds nothing and **no suggestion ever appears**, with no error
-anywhere. The store's key _is_ `model.uri.toString()`; use exactly that.
+takes an opaque string. If the hook binds with a different key, the provider finds nothing and
+**no suggestion ever appears**, with no error anywhere.
+
+**Take the key from the live model, never from the file path.** The hook's parameters do not
+include the model owner key, and the model's URI cannot be recomputed from the file path alone:
+
+- `toEditorModelUri(filePath, modelOwnerKey)` builds a **`vscode-remote://<owner-hash>/path`**
+  URI — the authority is a hash of the owner key (`editor-model-uri.ts`, `ownerAuthority`), and
+  the model is created with exactly that URI (`monaco.Uri.parse(toEditorModelUri(filePath,
+  modelOwnerKey))`).
+- `toEditorModelUri(filePath)` **without** an owner key builds a plain **`file:///path`** URI.
+
+Those are different strings. A hook that recomputed the URI from the path would bind a key the
+provider never asks for, and the feature would be inert with no error to show for it.
+
+**So: `editorInstance.getModel()?.uri.toString()` — read it off the model the provider will read
+it off.** The hook has the editor instance, and the editor's model is the one the provider sees.
+Bind that, and the two sides agree by construction.
+
+The editor is remounted per file (`<Editor key={modelUri}>` in `MonacoEditor.tsx`), so `onMount`
+runs again for each file and the binding follows the model. The hook's effect must depend on
+`editorInstance` and `filePath`, and it must **unbind the previous model** when either changes —
+otherwise the store keeps a stale binding for a model nobody is looking at any more.
 
 A test that pins this is worth having: bind the model, ask the provider for the edit at the
 cursor, and assert it is offered. Without it, a change to either side's key format breaks the

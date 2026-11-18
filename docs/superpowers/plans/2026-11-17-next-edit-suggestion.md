@@ -1032,7 +1032,7 @@ const result = await readRuntimeFileContent({
 
 - Produces:
   - `requestNesPlan(input: NesRequest, options?: { signal?: AbortSignal; timeoutMs?: number }): Promise<NesEditPlan | null>`
-  - `buildNesContext(model: editor.ITextModel, position: editor.IPosition, options): NesContextInput`
+  - `buildNesContext(model: editor.ITextModel, position: IPosition, options): NesContextInput`
   - `type NesContextInput = { prefix: string; suffix: string; filePath: string; relativePath: string; languageId: string; prefixStartLine: number; cursorLine: number; cursorColumn: number }`
   - `collectNesRelatedFiles(input: NesRelatedFilesInput): Promise<{ path: string; content: string; startLine: number }[]>`
   - `type NesRelatedFilesInput = { filePath: string; fileText: string; symbolAtCursor: string | null; files: RuntimeFileOperationArgs }`
@@ -1061,6 +1061,8 @@ Expected: FAIL — the module does not exist.
 
 Create `src/renderer/src/components/editor/code-completion/nes-context-builder.ts`:
 
+`IPosition` is imported from `'monaco-editor'` directly — `import type { IPosition } from 'monaco-editor'`, the way `src/renderer/src/components/editor/monaco-codebase-search.ts` does. It is **not** `editor.IPosition`: Monaco exports it at the module's top level.
+
 ```ts
 export const NES_PREFIX_TOKEN_BUDGET = 4000
 export const NES_SUFFIX_TOKEN_BUDGET = 1000
@@ -1068,7 +1070,7 @@ export const NES_CHARS_PER_TOKEN = 4
 
 export function buildNesContext(
   model: editor.ITextModel,
-  position: editor.IPosition,
+  position: IPosition,
   options: { filePath: string; relativePath: string }
 ): NesContextInput
 ```

@@ -1433,6 +1433,7 @@ git commit -m "test(composer): the terminal composer writes a multi-line prompt 
 - Modify: `src/renderer/src/components/native-chat/composer/editor/NativeChatFileReferencePill.tsx`
 - Modify: `src/renderer/src/components/native-chat/composer/editor/NativeChatImageReferencePill.tsx`
 - Modify: `src/renderer/src/components/native-chat/composer/editor/NativeChatSkillPill.tsx`
+- Modify: `src/renderer/src/components/native-chat/composer/editor/native-chat-agent-reference.tsx`(它也用 `NativeChatPromptPill`)
 - Modify: `src/renderer/src/components/native-chat/composer/editor/native-chat-composer-image-references.ts`(它 import 了 `withoutImageReferenceNodes`)
 - Modify: `src/renderer/src/components/native-chat/queue/editing/native-chat-queued-edit-draft.ts`(同上)
 - Delete: `src/renderer/src/components/native-chat/composer/editor/NativeChatPromptPill.tsx`(它与共用的 `PromptPill` 逐字等价)

@@ -1151,6 +1151,8 @@ git commit -m "feat(composer): the terminal composer's field and overlay"
 - Modify: `src/renderer/src/components/terminal-pane/controller/TerminalPaneSurface.tsx`
 - Modify: `src/renderer/src/components/terminal-pane/layout/close/use-terminal-pane-close-actions.ts`
 - Modify: `src/renderer/src/store/slices/terminal-composer/terminal-composer.ts`
+- Modify: `src/renderer/src/components/terminal-pane/input/paste/terminal-agent-paste-bracketing.ts`(与 composer 共用同一份 agent 取证规则)
+- Create: `src/renderer/src/components/terminal-pane/agent-status/pane-foreground-agent-type.ts`(spec §6 要求的那份共用实现)
 - Create: `src/renderer/src/components/terminal-pane/composer/terminal-composer-agent.ts`
 - Create: `src/renderer/src/components/terminal-pane/input/keyboard/terminal-shortcut-policy.test.ts`
 
@@ -1226,6 +1228,8 @@ Expected: FAIL —— 还没有 `toggleComposer` 这个动作,`Mod+Shift+P` 解�
 - [ ] **Step 4: Mount the overlay**
 
 先加一个 agent 解析助手,规则与 `src/renderer/src/components/terminal-pane/input/paste/terminal-agent-paste-bracketing.ts:53-57` 一致(前景 agent 优先,其次是状态行里的 agentType,且跳过 `restoredUnconfirmed` 的行;两者都要过 `isTuiAgent`):
+
+**但规则只写一份。** spec §6 明写「抽一个 `resolvePaneForegroundAgentType(...)` 供两处共用」—— paste 那侧与 composer 这侧共用同一个实现,不是各抄一份。这条规则决定 agent 类型,agent 类型决定 `agentImagePastePath(agent, path)`(图片载荷形态,全局约束里最重要的一条);两份拷贝一旦漂移,只有在真 agent 上才看得出来。所以另建一个中性模块(例如 `src/renderer/src/components/terminal-pane/agent-status/pane-foreground-agent-type.ts`)导出 `resolvePaneForegroundAgentType(foregroundAgent, entry)`,两侧都 import 它。
 
 `src/renderer/src/components/terminal-pane/composer/terminal-composer-agent.ts`
 

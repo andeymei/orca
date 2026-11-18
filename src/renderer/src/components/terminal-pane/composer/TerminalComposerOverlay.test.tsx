@@ -71,7 +71,7 @@ function makeWorktree(id: string, path: string): Worktree {
 }
 
 function createOverlay(cwd = '/workspace', executionHostId = 'local') {
-  const sendInput = vi.fn(() => true)
+  const sendInput = vi.fn((_data: string, _inputKind: string) => true)
   const pane = { id: PANE_ID, leafId: LEAF_ID }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fake answers only the pane queries the send layer makes.
   const manager = { getPanes: () => [pane] } as never

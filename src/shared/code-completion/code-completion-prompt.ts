@@ -24,6 +24,7 @@ export function buildNesSystemPrompt(options?: { autoImport?: boolean }): string
     'A range is 1-based, its columns count UTF-16 code units, and it covers the text up to but not including its end.',
     `Count each file's lines separately — the first line of a file's content, the line right after its \`${NES_PATH_MARKER}\` header, is line 1 of that file.`,
     `The cursor is marked with \`${NES_CURSOR_MARKER}\` in the file content.`,
+    `The cursor marker \`${NES_CURSOR_MARKER}\` occupies ${NES_CURSOR_MARKER.length} columns of the content, so count those columns when you answer; the cursor is at the marker.`,
     'The edit at the cursor must end at the cursor position, so the suggestion applies where the user is typing.',
     'originalText must be the exact text the range currently covers.',
     'label is a short human-readable intent.',

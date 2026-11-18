@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildNesSystemPrompt, buildNesUserPrompt } from './code-completion-prompt'
+import {
+  buildNesSystemPrompt,
+  buildNesUserPrompt,
+  NES_CURSOR_MARKER
+} from './code-completion-prompt'
 import { NES_IMPORT_LABEL_PREFIX, type NesPromptInput } from './code-completion-types'
 
 function buildPromptInput(overrides: Partial<NesPromptInput> = {}): NesPromptInput {
@@ -124,6 +128,12 @@ describe('buildNesSystemPrompt', () => {
 
     expect(prompt).toContain("Count each file's lines separately")
     expect(prompt).toContain('the line right after its `###PATH:` header, is line 1 of that file')
+  })
+
+  it('states that the cursor marker occupies columns of the content', () => {
+    const prompt = buildNesSystemPrompt()
+
+    expect(prompt).toContain(`occupies ${NES_CURSOR_MARKER.length} columns of the content`)
   })
 
   it('states the ten rules in order', () => {

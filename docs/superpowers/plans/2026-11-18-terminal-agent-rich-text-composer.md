@@ -259,6 +259,8 @@ git commit -m "feat(prompt-editor): the shared pill nodes and their text form"
     isImage: boolean
     /** The upload did not land; the user must attach it again. */
     failed?: boolean
+    /** Why the upload did not land; the chip says it in words. */
+    reason?: string
   }
   export type TerminalComposerDraft = {
     document: JSONContent
@@ -582,7 +584,7 @@ async function landAttachments(
   1. **遍历 `clipboardData.files` 的每一个文件**,按 `file.type.startsWith('image/')` 分成图片与非图片两类。
   2. **每个文件都按自己的本机路径当 source path**(`localPathForFile(file)`)。解析不出本机路径的(浏览器里复制的 blob 之类)**不许消失**:进 `failed`,reason 用导出的 `TERMINAL_COMPOSER_NO_LOCAL_PATH_REASON`。
   3. **剪贴板保存只顶一次,而且只顶给「没有本机路径的图片」**:`window.api.ui.saveClipboardImageAsTempFile()`(**不带** `connectionId` / `runtimeEnvironmentId`,即存到**本机**)拿到本机临时路径。**不要**把图片先存到目标宿主——上传通路的源路径按契约是客户端本机路径,已经在远端的临时路径它读不到。保存失败或返回 null 时,那一张图片按第 2 条进 `failed`。
-  4. `clipboardData.items` 里的 `text/plain` **不进附件** —— 它是正文文本,由编辑器自己的 paste handler 处理(见 Task 7)。本函数只负责附件。
+  4. `clipboardData.items` 里的 `text/plain` **不进附件** —— 它是正文文本,由 Task 7 的字段插进正文(编辑器自己的 paste handler 在这一步不会跑:事件被 preventDefault 了)。本函数只负责附件。
   5. 调 `landAttachments`。
 - `dropTerminalComposerAttachments`:`droppedPaths` → `landAttachments`。
 - `landAttachments`:调 `copyTerminalComposerAttachmentsToWorkspace`,把 `copied` 变成 `TerminalComposerAttachment[]`:
@@ -983,12 +985,12 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
     onSend: () => void
     onAttach: () => void
     onDismiss: () => void
-    /** The host that owns this terminal; the intake needs it to land attachments on the right machine. */
-    host: TerminalComposerIntakeHost
+    /** Builds the host that owns this terminal; the intake needs it to land attachments on the right machine. */
+    buildHost: () => TerminalComposerIntakeHost | null
     /** Claims a paste that carries images or files; plain text falls through to the editor. */
     onPasteCapture?: (event: React.ClipboardEvent) => void
-    /** Claims dropped files; the drop lands on the terminal's own workspace. */
-    onDrop?: (paths: readonly string[]) => void
+    /** Lands dropped files; the parent owns the intake. */
+    onDrop: (paths: readonly string[]) => void
   }
   export function TerminalComposerField(props: TerminalComposerFieldProps): React.JSX.Element
 
@@ -998,13 +1000,9 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
     paneId: number
     leafId: string
     tabId: string
-    workspacePath: string
+    /** The pane's cwd; a folder workspace lands its drops here. */
+    cwd: string | undefined
     worktreeId: string
-    runtimeEnvironmentId?: string | null
-    connectionId?: string | null
-    expectedExecutionHostId?: 'local' | `ssh:${string}`
-    expectedSshTargetId?: string
-    expectedSshConnectionGeneration?: number
     agent: string | null
     /** The tab's pane manager; proves the pane is still mounted before a write. */
     managerRef: React.RefObject<PaneManager | null>
@@ -1037,9 +1035,12 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - 提示行用 `<ShortcutKeyCombo />`;标签按平台显示 `⌘↵` / `Ctrl+↵`。
 - 工具条:Paperclip ghost icon button(`Tooltip`「添加附件」)+ 发送 primary button。
 - **三路来源的接线**(Task 4 的产出在这里落地,否则那一层无人使用):
-  - **粘贴**:编辑器容器的 **capture 阶段** `onPasteCapture`(与 `NativeChatComposerField.tsx:348` 同法)。剪贴板里有图片/文件 → 调 `pasteTerminalComposerAttachments(host, clipboardData)` 并 `preventDefault()` **独占**该事件(否则 ProseMirror 会把图片当二进制文本插进去);只有纯文本 → **不** preventDefault,让编辑器的 `handlePaste` 插纯文本。
+  - **粘贴**:编辑器容器的 **capture 阶段** `onPasteCapture`(与 `NativeChatComposerField.tsx:348` 同法)。剪贴板里有图片/文件 → 调 `pasteTerminalComposerAttachments(host, clipboardData)` 并 `preventDefault()`(否则 ProseMirror 会把图片当二进制文本插进去);只有纯文本 → **不** preventDefault,让编辑器的 `handlePaste` 插纯文本。**事件被独占,编辑器自己的 paste handler 就不会跑,所以正文那半边得自己插**:用 `clipboardEventPromptText(event, true)`(`src/shared/native-chat/input/native-chat-clipboard-event.ts:56`)取正文 —— 它只在正文**只是那些被复制文件的标签**时返回空(macOS Finder 的情形),真正的正文原样返回 —— 再经 facade 的 `insertText` 插进正文。**两样都不能丢**(计划的 Review Focus #2):图片进 pill,正文进正文。
   - **按钮**:Paperclip → `window.api.shell.pickAttachments()` → `pickTerminalComposerAttachments(host)`。
-  - **拖放**:覆盖层的 `onDragOver`(`preventDefault()` 让它成为合法 drop 目标)+ `onDrop` → `dropTerminalComposerAttachments(host, paths)`。
+  - **拖放**:覆盖层的 `onDragOver`(`preventDefault()` 让它成为合法 drop 目标)+ `onDrop` → `dropTerminalComposerAttachments(host, paths)`。**只有带文件的拖放才被接管**(拖放类型里有 `Files`);纯文本的拖放要留给 ProseMirror 自己处理,不然用户在 composer 里拖不动自己的文字。
+- **宿主与工作区路径由覆盖层自己从 pane 的 transport 解析**,照既有终端拖放链路(`terminal-native-file-drop-destination.ts:42-67`):`captureTerminalDropTransportOwner(transport)` 给出宿主事实(运行时环境 / SSH 目标 / 连接代次 / `assertCurrent`),`resolveTerminalDropWorktreePath(worktreeId, cwd, owner.executionHostId, owner.runtimeEnvironmentId)`(`terminal-drop-worktree-path.ts:12`)给出工作区根(spec §5.2 的规矩:folder workspace 走 `cwd` 兜底)。**传输的这些事实要在 intake 发生的那一刻读**,不是渲染时抓一份快照 —— 宿主在抓取与上传之间变了,快照就是过期的。解析不出来(没有 transport / 宿主已被换掉)就**不落附件**,并告诉用户为什么。挂载时**不用**传 `connectionId` / `expectedExecutionHostId` 那一串:transport 才是事实的来源。
+- **空发送什么也不写。** 正文为空且没有附件时不写任何字节(连清 TUI 输入与 Enter 都不写);发送按钮在这种状态下是 disabled 的。判据:文档里没有正文、也没有附件(pill 本身也算内容 —— 只有 `@path` 的消息是有意义的)。
+- **失败的附件要说自己的理由。** intake 回的 `failed[]` 是 `{ name, reason }`,reason 可能是机器码也可能是整句;草稿里的附件记录要带上 reason(可选字段),chip 上把它翻成人话(`reason` 认码、认不出来的按原文显示)。**不能只给第一个失败弹 toast**:第二个失败的理由不能凭空消失。
 - 覆盖层卡片:`absolute inset-x-0 bottom-0`,`rounded-lg`,`border`,`bg-popover`/`bg-card` token,`shadow-lg`;**不**改终端高度。
 - 焦点:展开时 `inputRef.current?.focus()`;收起时把焦点还给终端(`pane.terminal.focus()`)。
 - **稳定的定位钩子**:编辑器容器带 `data-terminal-composer-editor="true"`(与原生 chat 的 `data-native-chat-prompt-editor` 同法)。E2E 用它定位,**不要**用 placeholder 文案——那会绑死语言。
@@ -1240,9 +1241,8 @@ export function resolveTerminalComposerAgentType(
           paneId={activePane.id}
           leafId={activePane.leafId}
           tabId={tabId}
-          workspacePath={cwd ?? ''}
+          cwd={cwd}
           worktreeId={worktreeId}
-          runtimeEnvironmentId={activePaneRuntimeEnvironmentId ?? null}
           agent={resolveTerminalComposerAgentType(
             useAppStore.getState(),
             makePaneKey(tabId, activePane.leafId)
@@ -1256,6 +1256,7 @@ export function resolveTerminalComposerAgentType(
   }
   ```
   **注意**:`activeAgentId` 虽名为 id,实际是 agent **类型**字符串(来自 `tabAgentTypeByLeaf`),可以用;但它不含「前景 vs 状态行」的取证规则,所以用上面的助手更准。
+  **宿主那一串不用传**(`connectionId` / `expectedExecutionHostId` / `expectedSshTargetId` / `expectedSshConnectionGeneration`):覆盖层自己从 pane 的 transport 读(见 Task 7 的 Note),传了反而是第二份可能过期的事实。`workspacePath` 也不传 —— 它要由 `resolveTerminalDropWorktreePath` 在上传那一刻算出来(见 Task 7 的 Note),`cwd` 传过去只是 folder workspace 的兜底。
 - 快捷键的接线在**上面的 Step 3** 里(terminal-shortcut-policy + action-dispatch + hook/runtime/global-listeners 四层),不在 `TerminalPaneSurface.tsx` 里 —— 那里没有按键监听器。
 
 - [ ] **Step 5: Run the test to verify it passes**

@@ -1479,7 +1479,7 @@ git commit -m "test(composer): the terminal composer writes a multi-line prompt 
 - [ ] **Step 2: Run the native chat tests**
 
 Run: `pnpm test src/renderer/src/components/native-chat --maxWorkers=2`
-Expected: PASS(全部绿;任何红的都要先判断是不是**基线就红** —— 用 `git stash` 在 `origin/main` 上复跑同一条命令对比)
+Expected: PASS(全部绿;任何红的都要先判断是不是**基线就红** —— **不要用 `git stash`**(这个 checkout 的 stash 栈是与其它会话共享的):改用 `git checkout <基线commit> -- src/renderer/src/components/native-chat/ src/renderer/src/components/prompt-editor/` 把生产代码退回基线、复跑同一条命令、再 `git checkout HEAD -- src/` 恢复)
 
 - [ ] **Step 3: Typecheck**
 

@@ -28,12 +28,7 @@ import {
   attachmentReasonText,
   TerminalComposerAttachmentStatus
 } from './TerminalComposerAttachmentStatus'
-import {
-  clipboardCarriesFiles,
-  dragCarriesFiles,
-  draftHasContent,
-  terminalComposerDroppedPaths
-} from './terminal-composer-content'
+import { clipboardCarriesFiles, draftHasContent } from './terminal-composer-content'
 import { readTerminalComposerDraft, useTerminalComposerState } from './use-terminal-composer-state'
 
 /** An attachment whose bytes landed; the others are still uploading or failed. */
@@ -58,8 +53,6 @@ export type TerminalComposerFieldProps = {
   buildHost: () => TerminalComposerIntakeHost | null
   /** Claims a paste that carries images or files; plain text falls through to the editor. */
   onPasteCapture?: (event: React.ClipboardEvent) => void
-  /** Lands dropped files; the parent owns the intake. */
-  onDrop: (paths: readonly string[]) => void
 }
 
 /** The path the agent in this terminal reads: a WSL-hosted agent reads Linux paths. */
@@ -88,7 +81,6 @@ export function TerminalComposerField({
   onDismiss,
   buildHost,
   onPasteCapture,
-  onDrop,
   ref
 }: TerminalComposerFieldProps & {
   ref?: React.Ref<TerminalComposerFieldHandle>
@@ -241,28 +233,6 @@ export function TerminalComposerField({
     [onPasteCapture, pasteFiles]
   )
 
-  const handleDrop = useCallback(
-    (event: React.DragEvent) => {
-      if (!dragCarriesFiles(event.dataTransfer)) {
-        // A text drag belongs to the editor.
-        return
-      }
-      event.preventDefault()
-      // The card is a drop target too; the file lands once.
-      event.stopPropagation()
-      onDrop(terminalComposerDroppedPaths(event))
-    },
-    [onDrop]
-  )
-
-  const handleDragOver = useCallback((event: React.DragEvent) => {
-    if (!dragCarriesFiles(event.dataTransfer)) {
-      return
-    }
-    event.preventDefault()
-    event.stopPropagation()
-  }, [])
-
   const resolveImageLabel = useCallback(
     (attachmentId: string): PromptImageLabel | null => {
       const attachment = draft.attachments.find((candidate) => candidate.id === attachmentId)
@@ -295,8 +265,6 @@ export function TerminalComposerField({
       <div
         data-terminal-composer-editor="true"
         onPasteCapture={capturePaste}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
         className="max-h-40 min-h-12 overflow-y-auto scrollbar-sleek rounded-md border border-border/70 bg-background px-2 py-1.5"
       >
         <PromptImageLabelContext value={resolveImageLabel}>

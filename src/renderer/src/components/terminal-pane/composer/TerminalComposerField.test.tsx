@@ -41,7 +41,6 @@ function setup(overrides: Partial<TerminalComposerFieldProps> = {}) {
   const onSend = vi.fn()
   const onAttach = vi.fn()
   const onDismiss = vi.fn()
-  const onDrop = vi.fn()
   const fieldRef = createRef<TerminalComposerFieldHandle>()
   const view = render(
     <TerminalComposerField
@@ -52,12 +51,11 @@ function setup(overrides: Partial<TerminalComposerFieldProps> = {}) {
       onAttach={onAttach}
       onDismiss={onDismiss}
       buildHost={() => host}
-      onDrop={onDrop}
       {...overrides}
     />
   )
   const editor = within(view.container).getByRole('textbox')
-  return { ...view, editor, fieldRef, onSend, onAttach, onDismiss, onDrop }
+  return { ...view, editor, fieldRef, onSend, onAttach, onDismiss }
 }
 
 describe('terminal composer field', () => {

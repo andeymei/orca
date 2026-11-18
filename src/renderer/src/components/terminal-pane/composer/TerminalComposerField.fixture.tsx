@@ -18,7 +18,6 @@ function Composer(): React.JSX.Element {
         onSend={() => {}}
         onAttach={() => {}}
         onDismiss={() => {}}
-        onDrop={() => {}}
       />
     </div>
   )

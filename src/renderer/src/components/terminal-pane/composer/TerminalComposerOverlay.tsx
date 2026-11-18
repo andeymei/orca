@@ -21,11 +21,11 @@ import {
   terminalComposerHostUnavailableMessage,
   type TerminalComposerFieldHandle
 } from './TerminalComposerField'
-import { dragCarriesFiles, terminalComposerDroppedPaths } from './terminal-composer-content'
 import {
   useTerminalComposerSend,
   type TerminalComposerSendResult
 } from './use-terminal-composer-send'
+import { useTerminalComposerFileDrop } from './use-terminal-composer-file-drop'
 import { readTerminalComposerDraft, useTerminalComposerState } from './use-terminal-composer-state'
 
 export type TerminalComposerOverlayProps = {
@@ -195,25 +195,11 @@ export function TerminalComposerOverlay({
     [buildIntakeHost, t]
   )
 
-  const handleDrop = useCallback(
-    (event: React.DragEvent) => {
-      if (!dragCarriesFiles(event.dataTransfer)) {
-        // A text drag belongs to the editor.
-        return
-      }
-      event.preventDefault()
-      event.stopPropagation()
-      handleDropPaths(terminalComposerDroppedPaths(event))
-    },
-    [handleDropPaths]
-  )
-
-  const handleDragOver = useCallback((event: React.DragEvent) => {
-    if (!dragCarriesFiles(event.dataTransfer)) {
-      return
-    }
-    event.preventDefault()
-  }, [])
+  // The card owns the drop: the pane that hosts the composer claims OS drops first.
+  const attachDropOwner = useTerminalComposerFileDrop({
+    canAccept: () => Boolean(buildIntakeHost()),
+    onPaths: handleDropPaths
+  })
 
   if (!open) {
     return (
@@ -242,9 +228,8 @@ export function TerminalComposerOverlay({
 
   return (
     <div
+      ref={attachDropOwner}
       className="absolute inset-x-0 bottom-0 z-10 rounded-lg border border-border bg-popover p-2 shadow-lg"
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
     >
       <TerminalComposerField
         key={fieldKey}
@@ -257,7 +242,6 @@ export function TerminalComposerOverlay({
         onSend={handleSend}
         onAttach={handleAttach}
         onDismiss={dismiss}
-        onDrop={handleDropPaths}
       />
     </div>
   )

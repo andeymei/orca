@@ -814,7 +814,7 @@ Create `src/shared/rpc-contract/code-completion-params.ts`:
 
 ```ts
 import { z } from 'zod'
-import { NesBackendId } from '../code-completion/code-completion-types'
+import { NesEditPlan } from '../code-completion/code-completion-types'
 
 export const CodeCompletionRelatedFile = z.object({
   path: z.string().min(1),
@@ -844,11 +844,13 @@ export const CodeCompletionPlan = z.object({
 })
 
 export const CodeCompletionPlanResult = z.object({
-  plan: z.unknown().nullable()
+  plan: NesEditPlan.nullable()
 })
 ```
 
-`CodeCompletionPlanResult` is the method's declared result type — the handler's return value is typed with it, so it is not a dead export. The plan itself is validated by the renderer (Task 7), because only the renderer holds the file's text and can check the `originalText`.
+`CodeCompletionPlanResult` is the method's declared result type — the handler's return value is typed with it, so it is not a dead export. It is built on the real plan type, not on `z.unknown()`: a result type of `{ plan: unknown }` says nothing about what comes back. The backends already return a validated plan, so it parses.
+
+The renderer still re-validates (Task 7), because only the renderer holds the file's text and can check the `originalText` — a content check, not a structural one.
 
 - [ ] **Step 2: Write the failing method test**
 
@@ -967,12 +969,14 @@ In `src/main/runtime/rpc/methods/rpc-method-registry.ts`, import `CODE_COMPLETIO
 
 The prompt tells the model to "propose an `insert` edit at the top of the file that adds the import". But the model only ever sees the _shown_ content, and the prefix is trimmed from the front to fit the token budget — so the model's "top of the file" is the shown line 1, and the backend's relative-to-absolute translation (adding `prefixStartLine - 1`) would put the import at `prefixStartLine`: **in the middle of the file**. An import statement in the middle of a file body is broken code, and the model cannot fix it — it has no way to name the file's absolute line 1.
 
-**The edit must carry a marker.** Add `NES_IMPORT_LABEL_PREFIX = 'import: '` to `src/shared/code-completion/code-completion-types.ts` — one definition that the prompt and the backend both import, the way `NES_PATH_HEADER_PREFIX` and `NES_CURSOR_MARKER` work today. The prompt's import sentence ends with "…and give the edit the label `import: <what it imports>`". The backend's `translateNesEditLines` maps an insert whose label starts with the prefix to **file line 1, column 1** for the current file, whatever the prefix's offset.
+**The edit must carry a marker.** Add `NES_IMPORT_LABEL_PREFIX = 'import: '` to `src/shared/code-completion/code-completion-types.ts` — one definition that the prompt and the backend both import, the way `NES_PATH_HEADER_PREFIX` and `NES_CURSOR_MARKER` work today. The prompt's import sentence ends with "…and give the edit the label `import: <what it imports>`". The backend's `translateNesEditLines` maps an insert whose label starts with the prefix to **file line 1, column 1** for the current file, whatever the prefix's offset. The rule is **per file, not per current file**: a related file is shown from its own first line, so its import belongs at its own line 1.
+
+**The import text must end with a line break.** The backend owns the import's insertion point, so it owns the text that goes with it. A model that answers `"import { z } from 'zod'"` with no trailing newline would otherwise be inserted at 1:1 and concatenated with the file's existing first line — `import { z } from 'zod'import React from 'react'`. The `originalText` guard cannot catch it: an insert's `originalText` is the empty string, which matches the empty range at 1:1. So the import branch appends a line break when the text does not end with one.
 
 Tests:
 
 - in `code-completion-prompt.test.ts`: the import sentence names the label prefix.
-- in `completion-backends.test.ts`: an import edit in a plan for a **trimmed** prefix lands on file line 1; a non-import insert at the same shown line keeps its translated position. Without these, the import silently lands mid-file.
+- in `completion-backends.test.ts`: an import edit in a plan for a **trimmed** prefix lands on file line 1; a non-import insert at the same shown line keeps its translated position; and an import whose text has no trailing newline comes back **with** one, so it cannot be concatenated with the file's first line. Without these, the import silently lands mid-file or produces a broken first line.
 
 This task re-touches Task 1's and Task 2's files — the marker has to be defined once and read by both sides, and splitting it across two tasks would cost a context handover for three lines.
 

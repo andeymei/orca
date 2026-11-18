@@ -25,7 +25,14 @@ export const CODE_COMPLETION_METHODS = [
       if (!settings?.enabled) {
         return { plan: null }
       }
-      const apiKey = readCodeCompletionApiKey()
+      // Why: a key file that cannot be read or decrypted must make the feature *inert*,
+      // not broken. The credential status (Task 5) reports that state to the settings UI.
+      let apiKey: string | null = null
+      try {
+        apiKey = readCodeCompletionApiKey()
+      } catch {
+        return { plan: null }
+      }
       if (!apiKey || !settings.baseUrl || !settings.model) {
         return { plan: null }
       }

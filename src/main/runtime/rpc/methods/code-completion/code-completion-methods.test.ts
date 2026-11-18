@@ -7,12 +7,13 @@ import {
   getDefaultCodeCompletionSettings,
   type CodeCompletionSettings
 } from '../../../../../shared/code-completion/code-completion-settings'
+import { CodeCompletionPlanResult } from '../../../../../shared/rpc-contract/code-completion-params'
 import { CODE_COMPLETION_METHODS } from './code-completion-methods'
 
-const apiKey = vi.hoisted(() => ({ value: 'test-api-key' as string | null }))
+const apiKey = vi.hoisted(() => ({ read: (): string | null => 'test-api-key' }))
 
 vi.mock('../../../../code-completion/code-completion-api-key-store', () => ({
-  readCodeCompletionApiKey: () => apiKey.value
+  readCodeCompletionApiKey: () => apiKey.read()
 }))
 
 const FILE_PATH = '/repo/src/foo.ts'
@@ -90,7 +91,7 @@ function stubCompletionFetch(): ReturnType<typeof vi.fn> {
 describe('codeCompletion.plan', () => {
   beforeEach(() => {
     completionCache.clear()
-    apiKey.value = 'test-api-key'
+    apiKey.read = () => 'test-api-key'
   })
 
   afterEach(() => {
@@ -157,7 +158,24 @@ describe('codeCompletion.plan', () => {
   })
 
   it('returns null when no API key is stored', async () => {
-    apiKey.value = null
+    apiKey.read = () => null
+    const fetchMock = stubCompletionFetch()
+    const runtime = createRuntime({
+      enabled: true,
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    const response = await dispatchPlan(runtime, PLAN_PARAMS)
+
+    expect(response).toMatchObject({ ok: true, result: { plan: null } })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('answers no plan when the saved key cannot be read', async () => {
+    apiKey.read = () => {
+      throw new Error('Code completion API key could not be decrypted')
+    }
     const fetchMock = stubCompletionFetch()
     const runtime = createRuntime({
       enabled: true,
@@ -172,7 +190,7 @@ describe('codeCompletion.plan', () => {
   })
 
   it('never returns the API key to the caller', async () => {
-    apiKey.value = 'super-secret-api-key'
+    apiKey.read = () => 'super-secret-api-key'
     stubCompletionFetch()
     const runtime = createRuntime({
       enabled: true,
@@ -186,5 +204,13 @@ describe('codeCompletion.plan', () => {
     expect(serialized).not.toContain('super-secret-api-key')
     expect(serialized).not.toContain('user:pass')
     expect(response).toMatchObject({ ok: true, result: { plan: { edits: [{ id: 'e1' }] } } })
+  })
+})
+
+describe('the codeCompletion.plan result contract', () => {
+  it('accepts a plan and rejects a malformed one', () => {
+    expect(CodeCompletionPlanResult.safeParse({ plan: null }).success).toBe(true)
+    expect(CodeCompletionPlanResult.safeParse({ plan: { edits: [] } }).success).toBe(true)
+    expect(CodeCompletionPlanResult.safeParse({ plan: { edits: 'nope' } }).success).toBe(false)
   })
 })

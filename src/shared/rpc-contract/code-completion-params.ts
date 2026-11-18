@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { NesEditPlan } from '../code-completion/code-completion-types'
 
 export const CodeCompletionRelatedFile = z.object({
   path: z.string().min(1),
@@ -32,7 +33,7 @@ export type CodeCompletionRecentEdit = z.infer<typeof CodeCompletionRecentEdit>
 export type CodeCompletionPlan = z.infer<typeof CodeCompletionPlan>
 
 export const CodeCompletionPlanResult = z.object({
-  plan: z.unknown().nullable()
+  plan: NesEditPlan.nullable()
 })
 
 export type CodeCompletionPlanResult = z.infer<typeof CodeCompletionPlanResult>

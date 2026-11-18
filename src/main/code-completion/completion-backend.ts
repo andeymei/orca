@@ -80,10 +80,12 @@ export function nesStartLineFor(request: NesRequest, path: string): number {
 export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): NesEditPlan {
   return {
     edits: plan.edits.map((edit) => {
-      // Why: an import belongs at the top of the file, not at the top of the window the model saw.
+      // Why: an import belongs at the top of its own file — the rule is per file, not per current file.
       if (isNesImportEdit(edit)) {
         return {
           ...edit,
+          // The import lands on line 1, so it must not join the file's first line.
+          text: edit.text.endsWith('\n') ? edit.text : `${edit.text}\n`,
           range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }
         }
       }

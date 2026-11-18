@@ -340,11 +340,32 @@ describe('translateNesEditLines', () => {
       endLine: 1,
       endColumn: 1
     })
+    expect(translated.edits[0].text).toBe("import { z } from 'zod'\n")
     expect(translated.edits[1].range).toEqual({
       startLine: 40,
       startColumn: 1,
       endLine: 40,
       endColumn: 1
     })
+  })
+
+  it("ends an import with a line break so it cannot join the file's first line", () => {
+    const plan: NesEditPlan = {
+      edits: [
+        {
+          id: 'e1',
+          path: FILE_PATH,
+          kind: 'insert',
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+          originalText: '',
+          text: "import { z } from 'zod'",
+          label: 'import: zod'
+        }
+      ]
+    }
+
+    const translated = translateNesEditLines(plan, REQUEST)
+
+    expect(translated.edits[0].text).toBe("import { z } from 'zod'\n")
   })
 })

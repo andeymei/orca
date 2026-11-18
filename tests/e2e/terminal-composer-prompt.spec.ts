@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PNG } from 'pngjs'
 import type { Page } from '@stablyai/playwright-test'
+import { formatNativeChatFileReference } from '../../src/shared/agent-image-paste'
 import { test, expect } from './helpers/orca-app'
 import {
   clearTerminalPtyWriteLog,
@@ -159,25 +160,26 @@ test('a dropped attachment lands in the workspace and its path reaches the PTY',
           worktrees.find((worktree) => worktree.id === state?.activeWorktreeId)?.path ?? null
       }
     }, tabId)
-    expect(landed.workspaceRoot).toBeTruthy()
-    expect(landed.workspacePath).toBeTruthy()
+    // A drop that landed nowhere has no path to assert on.
+    if (!landed.workspaceRoot || !landed.workspacePath) {
+      throw new Error('The attachment did not land in the workspace')
+    }
+    const landedPath = landed.workspacePath
     // The copy lands in the workspace that owns the terminal, not in a temp directory.
-    expect(landed.workspacePath).toBe(
-      path.join(landed.workspaceRoot as string, '.orca', 'drops', fixtureName)
-    )
+    expect(landedPath).toBe(path.join(landed.workspaceRoot, '.orca', 'drops', fixtureName))
     // The bytes on disk are the fixture's bytes.
-    expect(existsSync(landed.workspacePath as string)).toBe(true)
-    expect(readFileSync(landed.workspacePath as string).equals(fixtureBytes)).toBe(true)
-    // The reference form quotes a path that carries whitespace or an `@`; this one carries
-    // neither, so the wire form is the plain `@path`.
-    expect(landed.workspacePath).not.toMatch(/[\s@]/)
+    expect(existsSync(landedPath)).toBe(true)
+    expect(readFileSync(landedPath).equals(fixtureBytes)).toBe(true)
 
     await clearTerminalPtyWriteLog(electronApp)
     await editor
       .locator('[data-prompt-editor="true"]')
       .press(isMac ? 'Meta+Enter' : 'Control+Enter')
 
-    // No agent runs in a plain shell, so the path travels as a file reference in its own frame.
+    // No agent runs in a plain shell, so the path travels as a file reference in its own
+    // frame. The quoting rule belongs to the shared formatter: a path that carries
+    // whitespace or an `@` is quoted, so the expected form is derived, not hard-coded.
+    const reference = formatNativeChatFileReference(landedPath)
     await expect
       .poll(async () =>
         (await readTerminalPtyWriteEntries(electronApp))
@@ -185,7 +187,7 @@ test('a dropped attachment lands in the workspace and its path reaches the PTY',
           .map((entry) => entry.data)
           .join('')
       )
-      .toContain(`\x1b[200~@${landed.workspacePath}\x1b[201~`)
+      .toContain(`\x1b[200~${reference}\x1b[201~`)
     // The submit is still a write of its own.
     await expect
       .poll(

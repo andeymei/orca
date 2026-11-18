@@ -4,8 +4,6 @@ import { createOsFileDropSequence, useOsFileDropOwner } from '@/hooks/use-os-fil
 import { getNativeFileDropRejectionMessage } from '@/lib/files/drop/native-file-drop-rejection-message'
 
 type TerminalComposerFileDropArgs = {
-  /** Whether the host that owns this terminal can still take the attachment. */
-  canAccept: () => boolean
   /** The paths the drop carried. */
   onPaths: (paths: readonly string[]) => void
 }
@@ -26,7 +24,9 @@ export function useTerminalComposerFileDrop(
   return useOsFileDropOwner(ownerRef, {
     consumer: 'agent',
     sequence,
-    canAccept: args.canAccept,
+    // The owner stops the drop before it asks, so a refusal here would swallow the file with
+    // nothing said. The card always claims; the composer reports what it could not host.
+    canAccept: () => true,
     onDrop: async (prepared) => {
       for (const failure of prepared.failures) {
         const message = getNativeFileDropRejectionMessage(failure)

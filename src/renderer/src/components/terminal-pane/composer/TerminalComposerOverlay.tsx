@@ -175,13 +175,14 @@ export function TerminalComposerOverlay({
 
   const handleDropPaths = useCallback(
     (paths: readonly string[]) => {
-      if (paths.length === 0) {
-        return
-      }
       void (async () => {
         const host = buildIntakeHost()
         if (!host) {
+          // The card claimed the drop, so the composer owes the user an answer.
           toast.error(terminalComposerHostUnavailableMessage(t))
+          return
+        }
+        if (paths.length === 0) {
           return
         }
         fieldRef.current?.setUploading(true)
@@ -197,7 +198,6 @@ export function TerminalComposerOverlay({
 
   // The card owns the drop: the pane that hosts the composer claims OS drops first.
   const attachDropOwner = useTerminalComposerFileDrop({
-    canAccept: () => Boolean(buildIntakeHost()),
     onPaths: handleDropPaths
   })
 

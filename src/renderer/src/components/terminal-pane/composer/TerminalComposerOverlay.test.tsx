@@ -5,13 +5,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { Worktree } from '../../../../../shared/worktree/types'
 import { joinRuntimeTerminalDropDir } from '../input/file-drop/terminal-drop-worktree-path'
-import { pasteTerminalComposerAttachments } from './attachments/terminal-composer-attachment-intake'
+import {
+  dropTerminalComposerAttachments,
+  pasteTerminalComposerAttachments
+} from './attachments/terminal-composer-attachment-intake'
 import { TerminalComposerOverlay } from './TerminalComposerOverlay'
 
 vi.mock('./attachments/terminal-composer-attachment-intake', () => ({
   pasteTerminalComposerAttachments: vi.fn(),
   pickTerminalComposerAttachments: vi.fn(),
   dropTerminalComposerAttachments: vi.fn()
+}))
+
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({
+  toast: Object.assign(toastError, {
+    error: toastError,
+    loading: vi.fn(),
+    dismiss: vi.fn(),
+    success: vi.fn(),
+    message: vi.fn()
+  })
 }))
 
 const PANE_ID = 1
@@ -44,7 +58,7 @@ function makeWorktree(id: string, path: string): Worktree {
   }
 }
 
-function createOverlay(cwd = '/workspace') {
+function createOverlay(cwd = '/workspace', executionHostId = 'local') {
   const sendInput = vi.fn(() => true)
   const pane = { id: PANE_ID, leafId: LEAF_ID }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fake answers only the pane queries the send layer makes.
@@ -54,7 +68,7 @@ function createOverlay(cwd = '/workspace') {
     sendInput,
     getPtyId: () => 'pty-1',
     isConnected: () => true,
-    getExecutionHostId: () => 'local',
+    getExecutionHostId: () => executionHostId,
     getRuntimeEnvironmentId: () => null,
     getLocalSessionMetadata: () => ({ cwd })
   } as never
@@ -84,7 +98,38 @@ beforeEach(() => {
   useAppStore.setState(initialState, true)
   useAppStore.setState({ terminalComposerOpenByPaneKey: { [PANE_KEY]: true } })
   vi.mocked(pasteTerminalComposerAttachments).mockResolvedValue({ attachments: [], failed: [] })
+  toastError.mockClear()
+  // The OS drop owner reads the file's path and asks the host to prepare it.
+  Object.defineProperty(window, 'api', {
+    configurable: true,
+    value: {
+      fs: {
+        getPathForFile: (file: File) => `/dropped/${file.name}`,
+        prepareDroppedPaths: async ({ paths }: { paths: string[] }) => ({
+          paths,
+          failures: []
+        })
+      }
+    }
+  })
 })
+
+/** A trusted OS file drop; the owner ignores an untrusted one on purpose. */
+function osFileDrop(files: File[]): Event {
+  const event = new Event('drop', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'isTrusted', { value: true })
+  Object.defineProperty(event, 'dataTransfer', { value: { files, types: ['Files'] } })
+  return event
+}
+
+/** The owner delivers on a promise chain; drain it before asserting. */
+async function settleDrop(): Promise<void> {
+  await act(async () => {
+    for (let index = 0; index < 10; index += 1) {
+      await Promise.resolve()
+    }
+  })
+}
 
 afterEach(() => {
   cleanup()
@@ -143,5 +188,23 @@ describe('terminal composer overlay', () => {
     expect(joinRuntimeTerminalDropDir(host?.workspacePath ?? '')).toBe(
       `${WORKTREE_PATH}/.orca/drops`
     )
+  })
+
+  it('says so when the host that owns the terminal cannot take the drop', async () => {
+    // A runtime the client does not know, with no local cwd to fall back on: the drop has
+    // nowhere to land.
+    const { container } = createOverlay('/cwd', 'runtime:missing-environment')
+    const field = container.querySelector('[data-terminal-composer-editor="true"]')
+    if (!field) {
+      throw new Error('Expected the composer field')
+    }
+    await act(async () => {
+      field.dispatchEvent(osFileDrop([new File(['x'], 'notes.png', { type: 'image/png' })]))
+    })
+    await settleDrop()
+    // The card claimed the drop, so the user was told it could not land: nothing vanished.
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError.mock.calls[0]?.[0]).toContain('cannot be reached')
+    expect(vi.mocked(dropTerminalComposerAttachments)).not.toHaveBeenCalled()
   })
 })

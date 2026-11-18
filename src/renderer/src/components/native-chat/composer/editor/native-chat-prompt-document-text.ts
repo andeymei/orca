@@ -1,14 +1,13 @@
 import type { JSONContent } from '@tiptap/react'
 import type { AgentJournalSkillRef } from '../../../../../../shared/agent-session/journal/agent-session-journal-types'
 import { agentReferenceToken } from '../../../../../../shared/orchestration/mailbox/orchestration-agent-reference'
-import {
-  imageReferenceToken,
-  splitImageReferences
-} from '../../../../../../shared/native-chat/native-chat-image-reference'
+import { splitImageReferences } from '../../../../../../shared/native-chat/native-chat-image-reference'
 import { NATIVE_CHAT_PASTED_TEXT_TOKEN } from '../../paste/native-chat-pasted-text-reference'
-
-export const IMAGE_REFERENCE_NODE = 'nativeChatImageReference'
-export const FILE_REFERENCE_NODE = 'nativeChatFileReference'
+import {
+  FILE_REFERENCE_NODE,
+  IMAGE_REFERENCE_NODE,
+  promptLeafString as sharedPromptLeafString
+} from '@/components/prompt-editor/prompt-editor-nodes'
 
 export function promptLeafString(
   type: string | undefined,
@@ -22,10 +21,7 @@ export function promptLeafString(
       hostKey: String(attrs?.hostKey)
     })
   }
-  if (type === IMAGE_REFERENCE_NODE) {
-    return imageReferenceToken(String(attrs?.attachmentId))
-  }
-  return type === 'hardBreak' ? '\n' : (text ?? String(attrs?.token ?? ''))
+  return sharedPromptLeafString(type, attrs, text)
 }
 
 /** All text-to-document paths must reconstruct image chips and pending-paste pills. */
@@ -96,30 +92,6 @@ export function seedPromptSkillReferences(
       return pieces
     })
   }
-}
-
-/** The document side of withoutImageReference: each chip goes with one space after it. */
-export function withoutImageReferenceNodes(
-  document: JSONContent,
-  attachmentId: string
-): JSONContent {
-  const isChip = (node: JSONContent | undefined): boolean =>
-    node?.type === IMAGE_REFERENCE_NODE && node.attrs?.attachmentId === attachmentId
-  return document.content
-    ? {
-        ...document,
-        content: document.content.flatMap((node, index, nodes) => {
-          if (isChip(node)) {
-            return []
-          }
-          if (isChip(nodes[index - 1]) && node.type === 'text' && node.text?.startsWith(' ')) {
-            const text = node.text.slice(1)
-            return text ? [{ ...node, text }] : []
-          }
-          return [withoutImageReferenceNodes(node, attachmentId)]
-        })
-      }
-    : document
 }
 
 /** Applies an appended text change without replacing existing picked nodes. */

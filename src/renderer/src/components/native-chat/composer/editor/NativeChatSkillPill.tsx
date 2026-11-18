@@ -1,6 +1,6 @@
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import { Package } from 'lucide-react'
-import { NativeChatPromptPill } from './NativeChatPromptPill'
+import { PromptPill } from '@/components/prompt-editor/PromptPill'
 
 function titleWords(name: string): string {
   return name
@@ -24,7 +24,7 @@ export function NativeChatSkillPill({ node, selected }: NodeViewProps): React.JS
   const token = String(node.attrs.token)
   return (
     <NodeViewWrapper as="span" className="inline" contentEditable={false}>
-      <NativeChatPromptPill
+      <PromptPill
         icon={Package}
         label={skillLabel(token)}
         selected={selected}

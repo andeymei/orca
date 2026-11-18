@@ -70,6 +70,44 @@ describe('prompt editor nodes', () => {
     })
   })
 
+  it('takes the space that followed an image pill with it', () => {
+    const document = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'look at ' },
+            { type: IMAGE_REFERENCE_NODE, attrs: { attachmentId: 'a1', name: 'shot.png' } },
+            { type: 'text', text: ' please' }
+          ]
+        }
+      ]
+    }
+    expect(withoutImageReferenceNodes(document, 'a1', true)).toEqual({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'look at please' }] }]
+    })
+    expect(
+      withoutImageReferenceNodes(
+        {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                { type: IMAGE_REFERENCE_NODE, attrs: { attachmentId: 'a1', name: 'shot.png' } },
+                { type: 'text', text: ' ' }
+              ]
+            }
+          ]
+        },
+        'a1',
+        true
+      )
+    ).toEqual({ type: 'doc', content: [{ type: 'paragraph', content: [] }] })
+  })
+
   it('finds an attachment reference anywhere in the document', () => {
     const document = {
       type: 'doc',

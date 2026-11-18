@@ -109,21 +109,39 @@ function joinTextRuns(nodes: JSONContent[]): JSONContent[] {
   return joined
 }
 
-/** The document side of removing an image chip; the text around it keeps its spaces. */
+/**
+ * The document side of removing an image chip; the text around it keeps its spaces.
+ * A caller whose chips carry a space after them asks for that space to go with the chip.
+ */
 export function withoutImageReferenceNodes(
   document: JSONContent,
-  attachmentId: string
+  attachmentId: string,
+  stripFollowingSpace = false
 ): JSONContent {
   const isChip = (node: JSONContent | undefined): boolean =>
     node?.type === IMAGE_REFERENCE_NODE && node.attrs?.attachmentId === attachmentId
-  return document.content
-    ? {
-        ...document,
-        content: joinTextRuns(
-          document.content.flatMap((node) =>
-            isChip(node) ? [] : [withoutImageReferenceNodes(node, attachmentId)]
-          )
-        )
-      }
-    : document
+  if (!document.content) {
+    return document
+  }
+  return {
+    ...document,
+    content: joinTextRuns(
+      document.content.flatMap((node, index, nodes) => {
+        if (isChip(node)) {
+          return []
+        }
+        // The space that followed the chip goes with it; an emptied text node goes entirely.
+        if (
+          stripFollowingSpace &&
+          isChip(nodes[index - 1]) &&
+          node.type === 'text' &&
+          node.text?.startsWith(' ')
+        ) {
+          const text = node.text.slice(1)
+          return text ? [{ ...node, text }] : []
+        }
+        return [withoutImageReferenceNodes(node, attachmentId, stripFollowingSpace)]
+      })
+    )
+  }
 }

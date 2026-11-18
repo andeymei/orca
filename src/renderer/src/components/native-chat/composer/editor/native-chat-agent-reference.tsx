@@ -6,7 +6,7 @@ import {
   type NodeViewProps
 } from '@tiptap/react'
 import { Users } from 'lucide-react'
-import { NativeChatPromptPill } from './NativeChatPromptPill'
+import { PromptPill } from '@/components/prompt-editor/PromptPill'
 import {
   agentReferenceToken,
   type OrchestrationAgentReference
@@ -21,7 +21,7 @@ function AgentReferencePill({ node, selected }: NodeViewProps): React.JSX.Elemen
       contentEditable={false}
       data-native-chat-agent-reference={node.attrs.address}
     >
-      <NativeChatPromptPill icon={Users} label={String(node.attrs.label)} selected={selected} />
+      <PromptPill icon={Users} label={String(node.attrs.label)} selected={selected} />
     </NodeViewWrapper>
   )
 }

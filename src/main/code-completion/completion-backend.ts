@@ -6,6 +6,7 @@ import {
   type NesEditPlan,
   type NesRequest
 } from '../../shared/code-completion/code-completion-types'
+import { NES_CURSOR_MARKER } from '../../shared/code-completion/code-completion-prompt'
 import {
   completionEndpointUrl,
   parseCompletionSseEvents,
@@ -78,6 +79,7 @@ export function nesStartLineFor(request: NesRequest, path: string): number {
 
 /** The plan with absolute line numbers; the model's line numbers count from what it saw. */
 export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): NesEditPlan {
+  const cursorLine = request.cursorLine - request.prefixStartLine + 1
   return {
     edits: plan.edits.map((edit) => {
       // Why: an import belongs at the top of its own file — the rule is per file, not per current file.
@@ -90,16 +92,33 @@ export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): N
         }
       }
       const offset = nesStartLineFor(request, edit.path) - 1
+      const currentFile = edit.path === request.filePath
       return {
         ...edit,
         range: {
           ...edit.range,
           startLine: edit.range.startLine + offset,
-          endLine: edit.range.endLine + offset
+          endLine: edit.range.endLine + offset,
+          startColumn:
+            currentFile && edit.range.startLine === cursorLine
+              ? nesColumnWithoutCursorMarker(edit.range.startColumn, request)
+              : edit.range.startColumn,
+          endColumn:
+            currentFile && edit.range.endLine === cursorLine
+              ? nesColumnWithoutCursorMarker(edit.range.endColumn, request)
+              : edit.range.endColumn
         }
       }
     })
   }
+}
+
+// Why: the model counts the cursor marker as text, so every column after it is too far right.
+function nesColumnWithoutCursorMarker(column: number, request: NesRequest): number {
+  if (column < request.cursorColumn + NES_CURSOR_MARKER.length) {
+    return column
+  }
+  return column - NES_CURSOR_MARKER.length
 }
 
 /** The edit that adds an import; its label carries the marker the prompt asked for. */

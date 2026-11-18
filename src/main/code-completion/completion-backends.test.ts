@@ -369,3 +369,91 @@ describe('translateNesEditLines', () => {
     expect(translated.edits[0].text).toBe("import { z } from 'zod'\n")
   })
 })
+
+describe("translateNesEditLines on the cursor's line", () => {
+  // The cursor sits mid-line, so the marker shifts only the columns after it.
+  const CURSOR_REQUEST: NesRequest = {
+    ...REQUEST,
+    prefix: 'const a = 1\nconst b = ',
+    suffix: 'const c = 2',
+    prefixStartLine: 40,
+    cursorLine: 41,
+    cursorColumn: 11
+  }
+
+  function insertOn(
+    path: string,
+    range: { startLine: number; startColumn: number; endLine: number; endColumn: number }
+  ): NesEditPlan {
+    return {
+      edits: [
+        {
+          id: 'e1',
+          path,
+          kind: 'insert',
+          range,
+          originalText: '',
+          text: 'const d = 4\n',
+          label: 'add the fourth constant'
+        }
+      ]
+    }
+  }
+
+  it("takes the marker out of a column past it on the cursor's line", () => {
+    const plan = insertOn(FILE_PATH, { startLine: 2, startColumn: 25, endLine: 2, endColumn: 25 })
+
+    const translated = translateNesEditLines(plan, CURSOR_REQUEST)
+
+    expect(translated.edits[0].range).toEqual({
+      startLine: 41,
+      startColumn: 13,
+      endLine: 41,
+      endColumn: 13
+    })
+  })
+
+  it("leaves a column before the cursor on the cursor's line alone", () => {
+    const plan = insertOn(FILE_PATH, { startLine: 2, startColumn: 5, endLine: 2, endColumn: 5 })
+
+    const translated = translateNesEditLines(plan, CURSOR_REQUEST)
+
+    expect(translated.edits[0].range).toEqual({
+      startLine: 41,
+      startColumn: 5,
+      endLine: 41,
+      endColumn: 5
+    })
+  })
+
+  it("leaves a related file's columns alone", () => {
+    const plan = insertOn(RELATED_FILE_PATH, {
+      startLine: 2,
+      startColumn: 25,
+      endLine: 2,
+      endColumn: 25
+    })
+
+    const translated = translateNesEditLines(plan, CURSOR_REQUEST)
+
+    expect(translated.edits[0].range).toEqual({
+      startLine: 6,
+      startColumn: 25,
+      endLine: 6,
+      endColumn: 25
+    })
+  })
+
+  it("leaves a line that is not the cursor's line alone", () => {
+    const plan = insertOn(FILE_PATH, { startLine: 1, startColumn: 25, endLine: 1, endColumn: 25 })
+
+    const translated = translateNesEditLines(plan, CURSOR_REQUEST)
+
+    expect(translated.edits[0].range).toEqual({
+      startLine: 40,
+      startColumn: 25,
+      endLine: 40,
+      endColumn: 25
+    })
+  })
+})

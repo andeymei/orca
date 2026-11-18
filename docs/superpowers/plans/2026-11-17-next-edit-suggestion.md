@@ -1958,6 +1958,17 @@ the original code exactly: nothing was written, so the undo stack is untouched a
 to undo. `previewNesEdit` returns the function that removes the widget from the editor — the
 caller holds it for as long as the user holds Alt.
 
+**The preview must not swallow the mouse.** The widget sits over the code, and the user must still
+be able to click and select the text under it while the preview is up — that is what they are
+holding Alt to check. So the widget's DOM node takes `pointer-events: none`, and the widget does
+**not** set `suppressMouseDown`. (The house pattern in `setup-contextual-copy.ts` sets
+`suppressMouseDown: true`, which is right for a hint that is not about the code under it; a preview
+is about the code under it, so it must let the mouse through.)
+
+If `pointer-events: none` on the node is not enough because Monaco puts the widget's own element
+between the node and the code, put the rule on the class instead — `.nes-ghost-text` is the
+preview's own class and Task 9 added it for exactly this.
+
 - [ ] **Step 5: The diff preview is deferred past this plan — do not build it**
 
 The spec's §8.5 asks for a whole-file diff surface ("current file vs. the file with the edit

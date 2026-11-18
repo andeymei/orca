@@ -1,7 +1,9 @@
-import { Node, type JSONContent } from '@tiptap/react'
+import { Node, ReactNodeViewRenderer, type JSONContent } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
 import { imageReferenceToken } from '../../../../shared/native-chat/native-chat-image-reference'
+import { PromptFileReferencePill } from './PromptFileReferencePill'
+import { PromptImageReferencePill } from './PromptImageReferencePill'
 
 /** Persisted in native chat's IndexedDB drafts; renaming orphans every saved pill. */
 export const FILE_REFERENCE_NODE = 'nativeChatFileReference'
@@ -13,6 +15,7 @@ export const PromptFileReference = Node.create({
   inline: true,
   atom: true,
   selectable: true,
+  addNodeView: () => ReactNodeViewRenderer(PromptFileReferencePill),
   addAttributes: () => ({ token: { default: '' }, path: { default: '' } }),
   renderText: ({ node }) => node.attrs.token,
   renderHTML: ({ node }) => ['span', { 'data-prompt-file-reference': node.attrs.path }]
@@ -24,6 +27,7 @@ export const PromptImageReference = Node.create({
   inline: true,
   atom: true,
   selectable: true,
+  addNodeView: () => ReactNodeViewRenderer(PromptImageReferencePill),
   addAttributes: () => ({ attachmentId: { default: '' }, name: { default: '' } }),
   renderText: ({ node }) => imageReferenceToken(node.attrs.attachmentId),
   renderHTML: ({ node }) => ['span', { 'data-prompt-image-reference': node.attrs.attachmentId }]

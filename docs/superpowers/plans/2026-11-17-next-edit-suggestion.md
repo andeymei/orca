@@ -1246,6 +1246,8 @@ git commit -m "feat(code-completion): the renderer client, the context and the r
   - `nesEditMatchesPosition(edit: NesEdit, position: { lineNumber: number; column: number }): boolean`
   - `type NesLocationMarker = { edit: NesEdit; lineNumber: number }`
   - `nesLocationMarkers(edits: readonly NesEdit[], cursor: { lineNumber: number; column: number }): NesLocationMarker[]`
+  - `nesMarkerDecorations(markers: readonly NesLocationMarker[]): editor.IModelDeltaDecoration[]` — the **pure** builder, so the decoration's shape is testable without a Monaco instance
+  - `createNesMarkerDecorations(editorInstance: editor.IStandaloneCodeEditor, markers: readonly NesLocationMarker[]): editor.IEditorDecorationsCollection` — creates the collection and sets the decorations
 
 **Why the store is keyed by model as well as by path.** The provider (Task 9) is registered globally and gets only a Monaco model. The model URI _does_ carry the path — `toEditorModelUri` builds it as `vscode-remote:<hashed-owner-authority>/<path>` — but its **authority is a hash of the owner key**, so the URI alone cannot say _which host's_ editor it is. Two editors on different hosts can show the same path with different URIs. The editor hook (Task 10) _does_ know the path — it is a prop of `MonacoEditor` — so the hook binds the model's URI string to the path, and the provider asks the store by model key.
 
@@ -1299,9 +1301,13 @@ Create `src/renderer/src/components/editor/code-completion/nes-location-markers.
 
 - [ ] **Step 4: Write the marker decoration**
 
-In the same file, add:
+In the same file, add two functions — the **pure** builder and the collection creator:
 
 ```ts
+export function nesMarkerDecorations(
+  markers: readonly NesLocationMarker[]
+): editor.IModelDeltaDecoration[]
+
 export function createNesMarkerDecorations(
   editorInstance: editor.IStandaloneCodeEditor,
   markers: readonly NesLocationMarker[]
@@ -1312,7 +1318,25 @@ Each marker becomes a decoration on its line with `glyphMarginClassName: 'nes-lo
 
 **Follow the house pattern for gutter glyphs.** `src/renderer/src/components/editor/ai-instructions/use-monaco-ai-instructions.ts` already draws one: the decoration's range is `new monaco.Range(lineNumber, 1, lineNumber, 1)`, its options carry `glyphMarginClassName`, `glyphMarginHoverMessage: { value }` and `isWholeLine: false`, and the collection is `editor.createDecorationsCollection()` refreshed with `collection.set(decorations)` and released with `collection.clear()`.
 
-The gutter decoration must be created with `editorInstance.createDecorationsCollection`. **Disposing the collection is Task 10's job, not this task's**: the hook (Task 10) owns the editor's lifetime, creates the collection, refreshes it on each tick and disposes it when the editor goes away. This task provides the function that creates it and the collection type; it does not wire the lifecycle.
+**The decoration's shape is built by a pure function, and the collection is separate.** The house
+pattern creates the collection **once** and refreshes it with `collection.set(decorations)` — so a
+function that created a new collection on every call would leak one per tick. Split the two:
+
+- `nesMarkerDecorations(markers)` returns the `editor.IModelDeltaDecoration[]` and nothing else. It
+  is **pure**, so the test file can pin the decoration's shape — the glyph class, the hover message,
+  the range — without a Monaco instance at all.
+- `createNesMarkerDecorations(editorInstance, markers)` creates the collection with
+  `editorInstance.createDecorationsCollection()` and sets the decorations from the builder.
+
+**The range may be a plain `IRange` object.** `IModelDeltaDecoration['range']` is an `IRange`, and a
+plain `{ startLineNumber, startColumn, endLineNumber, endColumn }` literal satisfies it — so this
+module needs no _value_ import of `monaco-editor` and stays a pure module. The house file uses
+`new monaco.Range(...)` because it needs the Monaco runtime anyway.
+
+**Disposing the collection is Task 10's job, not this task's**: the hook (Task 10) owns the editor's
+lifetime, creates the collection, refreshes it on each tick with
+`collection.set(nesMarkerDecorations(markers))` and disposes it when the editor goes away. This task
+provides the builder, the creator and the collection type; it does not wire the lifecycle.
 
 - [ ] **Step 5: Run the test to verify it passes**
 

@@ -1,8 +1,6 @@
 import type { AgentStatusEntry } from '../../../../../../shared/agent-status/contracts/agent-status-types'
-import {
-  isTuiAgent,
-  TUI_AGENT_CONFIG
-} from '../../../../../../shared/agent-launch/catalog/tui-agent-config'
+import { TUI_AGENT_CONFIG } from '../../../../../../shared/agent-launch/catalog/tui-agent-config'
+import { resolvePaneForegroundAgentType } from '../../agent-status/pane-foreground-agent-type'
 import { makePaneKey } from '../../../../../../shared/workspace-layout/stable-pane-id'
 import type { PaneForegroundAgentEntry } from '../../../../store/slices/agent-status/pane-foreground-agent'
 import type { TerminalPasteTextOptions } from './terminal-paste-model'
@@ -50,11 +48,7 @@ export function resolveProtectedMultilinePasteOptionsForAgentEvidence({
   entry: AgentStatusEntry | undefined
 }): TerminalPasteTextOptions | undefined {
   // Rehydrated rows describe a previous process, not this pane’s current foreground.
-  const agent = isTuiAgent(foregroundAgent)
-    ? foregroundAgent
-    : entry?.restoredUnconfirmed !== true && isTuiAgent(entry?.agentType)
-      ? entry.agentType
-      : null
+  const agent = resolvePaneForegroundAgentType(foregroundAgent, entry)
   // No OSC 133 leaves shellForeground stale; done/TTL also excludes idle live agents. False negatives submit drafts, while false positives only change paste encoding.
   const windowsInputRecordPasteNewline = agent
     ? TUI_AGENT_CONFIG[agent].windowsInputRecordPasteNewline

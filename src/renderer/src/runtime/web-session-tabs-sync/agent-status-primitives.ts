@@ -216,6 +216,8 @@ export function buildRetractedMirroredTabSweepPatch(
     recentlyRetiredAgentStatusPaneKeys: state.recentlyRetiredAgentStatusPaneKeys ?? {},
     retainedAgentsByPaneKey: state.retainedAgentsByPaneKey ?? {},
     retentionSuppressedPaneKeys: state.retentionSuppressedPaneKeys ?? {},
+    terminalComposerDraftByPaneKey: state.terminalComposerDraftByPaneKey ?? {},
+    terminalComposerOpenByPaneKey: state.terminalComposerOpenByPaneKey ?? {},
     sortEpoch: agentStatusPatch?.sortEpoch ?? state.sortEpoch,
     // Keep the sweep state consistent with the accepted host inventory.
     tabsByWorktree: nextTabsByWorktree,

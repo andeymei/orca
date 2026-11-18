@@ -19,4 +19,12 @@ describe('resolveTerminalShortcutAction', () => {
     expect(resolveTerminalShortcutAction(event(), true)).toEqual({ type: 'toggleComposer' })
     expect(resolveTerminalShortcutAction(event({ shiftKey: false }), true)).toBeNull()
   })
+
+  it('binds the same chord to Ctrl+Shift+P off darwin', () => {
+    const ctrlShiftP = event({ metaKey: false, ctrlKey: true })
+    expect(resolveTerminalShortcutAction(ctrlShiftP, false)).toEqual({ type: 'toggleComposer' })
+    expect(resolveTerminalShortcutAction(ctrlShiftP, false, 'false', 0, true)).toEqual({
+      type: 'toggleComposer'
+    })
+  })
 })

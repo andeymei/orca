@@ -214,6 +214,7 @@ export function dispatchTerminalShortcutAction(
   if (action.type === 'toggleComposer') {
     event.preventDefault()
     event.stopImmediatePropagation()
+    // Why: the house convention — every action here acts on the active pane, falling back to the first one.
     const pane = manager.getActivePane() ?? manager.getPanes()[0]
     if (pane) {
       toggleComposer(pane.leafId)

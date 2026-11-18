@@ -7,6 +7,7 @@ import { removeWorktreeVisitEntries } from '@/lib/workspace/activation/worktree-
 import { forgetAmbiguousOwnerWarnings } from '@/lib/workspace/ownership/ambiguous-owner-warning'
 import { omitRecordKeys } from './record-key-omission'
 import { removeWorktreeLayout } from '../../tabs/worktree-layout-lifecycle'
+import { removePaneKeysByTabPrefix } from '../../agent-status/agent-status-pane-keyed-records'
 import { omitSleepingAgentSessionsForWorktrees } from './sleeping-agent-session-omission'
 import {
   noticeRemovedUnsavedFiles,
@@ -45,6 +46,14 @@ export function applyRemoveWorktreeSuccessState(
     }
     const editorBufferKeepRequest = noticeRemovedUnsavedFiles(s, removedFileIds, confirmedDiscards)
     const omitByFileId = <T>(m: Record<string, T> | undefined) => omitRecordKeys(m, removedFileIds)
+    // Why: a removed worktree's tabs never reach closeTab, so their composer records would leak.
+    const dropComposerPaneKeys = <T>(m: Record<string, T> | undefined): Record<string, T> => {
+      let next = m ?? {}
+      for (const tabId of tabIds) {
+        next = removePaneKeysByTabPrefix(next, tabId)
+      }
+      return next
+    }
     const activeFileCleared = s.activeFileId
       ? s.openFiles.some((f) => f.id === s.activeFileId && f.worktreeId === worktreeId)
       : false
@@ -70,6 +79,8 @@ export function applyRemoveWorktreeSuccessState(
       // Why: closeTab deletes these per-tab maps but removeWorktree missed them, leaking a split pane's expand flags.
       expandedPaneByTabId: omitByTabId(s.expandedPaneByTabId),
       canExpandPaneByTabId: omitByTabId(s.canExpandPaneByTabId),
+      terminalComposerDraftByPaneKey: dropComposerPaneKeys(s.terminalComposerDraftByPaneKey),
+      terminalComposerOpenByPaneKey: dropComposerPaneKeys(s.terminalComposerOpenByPaneKey),
       deleteStateByWorktreeId: removeDeleteStatesForWorktreeIds(
         s.deleteStateByWorktreeId,
         new Set(worktreeIds)

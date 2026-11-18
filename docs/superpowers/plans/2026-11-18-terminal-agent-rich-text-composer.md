@@ -1406,9 +1406,10 @@ test('the terminal composer writes a multi-line prompt and then Enter', async ({
 
 - [ ] **Step 2: Run it**
 
-Run: `ORCA_BACKGROUND_LAUNCH=1 pnpm run test:e2e -- tests/e2e/terminal-composer-prompt.spec.ts`
+Run: `ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test --config tests/playwright.config.ts --project=electron-headless tests/e2e/terminal-composer-prompt.spec.ts`
 Expected: PASS —— Task 8 已经把覆盖层挂上去了,这一步是**证明**,不是红绿循环。红了就按 `systematic-debugging` 查,不要改断言迁就实现。
 
+**不要用 `pnpm run test:e2e -- <spec>`**:pnpm 把 `--` 原样传给 playwright,playwright 不拿它当分隔符,于是**整套 1042 个 spec 全跑**(实现者用 `--list` 验过:带 `--` 是 1042 条,不带是 1 条)。CI 用的就是上面那个形状(`.github/workflows/e2e.yml`)。
 **若 spec 超时等 `window.__store`**:那是 build 不是 `--mode e2e`。跑 `pnpm exec electron-vite build --mode e2e` 之后用 `SKIP_BUILD=1` 重跑,不要改 harness。
 
 - [ ] **Step 3: Make it pass**
@@ -1417,8 +1418,10 @@ Expected: PASS —— Task 8 已经把覆盖层挂上去了,这一步是**证明
 
 - [ ] **Step 4: Run the terminal e2e group**
 
-Run: `ORCA_BACKGROUND_LAUNCH=1 pnpm run test:e2e -- tests/e2e/terminal-composer-prompt.spec.ts tests/e2e/terminal-shortcuts.spec.ts tests/e2e/terminal-paste-ownership.spec.ts`
+Run: `ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test --config tests/playwright.config.ts --project=electron-headless --workers=1 tests/e2e/terminal-composer-prompt.spec.ts tests/e2e/terminal-shortcuts.spec.ts tests/e2e/terminal-paste-ownership.spec.ts`
 Expected: PASS
+
+**`--workers=1` 不是可选项**:`terminal-shortcuts.spec.ts:434` 会清空系统剪贴板(它测「没选中时 Cmd+C 不复制」),`terminal-paste-ownership.spec.ts` 靠剪贴板 payload 验证粘贴 —— 两个 Electron 实例各写各的 macOS 系统剪贴板,谁后写谁赢。并行跑时这两条 spec 随机红,而**不带上本任务的 spec 也一样红**(既有的 spec 对之间的竞争,不是本任务引入的)。串行跑全绿。
 
 - [ ] **Step 5: Commit**
 

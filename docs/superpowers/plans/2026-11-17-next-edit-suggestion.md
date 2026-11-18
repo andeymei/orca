@@ -1829,6 +1829,17 @@ If Monaco 0.55's injected text cannot carry a multi-line string, fall back to re
 
 The spec asks for a diff per change type, not just the inline overlay. **Do not reuse `EditorDiffFileSurface.tsx`** — that is a _git_ diff surface: it takes an `activeFile`, a `GitDiffResult` and an `editBuffer`, and is rendered by the git-diff editor panel. There is no entry point that opens it with an arbitrary original/proposed pair. `DiffViewer` (`src/renderer/src/components/editor/diff/monaco-view/DiffViewer.tsx`) is not a drop-in either — it is the full diff panel, with the diff-comment and diff-navigation plumbing and a prop set that reaches into the app store. **Build the NES preview on `@monaco-editor/react`'s `DiffEditor` directly**, over two in-memory models: the current buffer's text and the proposed text. The repo already drives `DiffEditor` that way, so the pattern is known, and the NES preview stays a self-contained surface with no store dependency.
 
+**Dispose the `DiffEditor` and both of its models when the preview closes.** This repo carries a
+patch for exactly this leak: `config/patches/monaco-editor@0.55.1.patch` backports monaco-editor
+0.56.0's fix for a diff editor whose gutter views stay registered on the global `MenuRegistry` and
+retain the whole editor. The patch is the reason the leak is survivable here, not the reason to
+ignore it — a preview opened and closed repeatedly must not pile up editors.
+
+**The patch does not touch the gutter the markers use.** It patches
+`browser/widget/diffEditor/utils/editorGutter.js` — the **diff editor's** gutter. The main editor's
+glyph margin is a different file (`browser/viewParts/glyphMargin/glyphMargin.js`) and is untouched,
+so the NES location markers (Task 8) are unaffected by it.
+
 Create `src/renderer/src/components/editor/code-completion/nes-diff-preview.ts`:
 
 ```ts

@@ -986,9 +986,9 @@ the columns before it are not. The model answers with the columns it counted, an
 converts **lines only** — it leaves columns verbatim, because the prompt gives the cursor only as a
 marker and never as a number the backend could compare against.
 
-A model that treats the marker as text therefore answers a column 13 too far right. That is not a
+A model that treats the marker as text therefore answers a column 12 too far right. That is not a
 cosmetic error: the renderer finds the cursor's edit by matching the range's end against the
-cursor (`nesEditMatchesPosition`), so a column that is 13 out **means no suggestion is ever
+cursor (`nesEditMatchesPosition`), so a column that is 12 out **means no suggestion is ever
 offered** — and if it does match, the accepted edit is spliced 12 characters away from where the
 user is typing.
 
@@ -1242,6 +1242,19 @@ The second block is not optional: `nesLocationMarkers` is the selection rule the
 
 `nesEditMatchesPosition` is the rule the spec fixes: **an edit matches the cursor when the cursor sits at the edit's range end**; an `insert` has `start === end`, so the cursor must be exactly there.
 
+**Two edits can match the same position.** The import edit's position is **synthetic** — the backend
+forces it to file line 1, column 1 (Task 6) — while the cursor edit's position is where the user is
+typing. When the user is typing at exactly 1:1, both sit at the same position and both match.
+
+**`editAt` returns the first matching edit in the plan's order.** No special case for the import:
+giving the import its own priority would make either the import or the code the user is typing
+unreachable, because `nesLocationMarkers` excludes every edit whose range end is the cursor
+position, so the loser of that priority would show no gutter marker and Tab could never reach it.
+
+The accepted consequence: in that degenerate case one of the two edits is unreachable. It is rare —
+the user typing at column 1 of line 1 — and inherent: an import and an insert at the same point are
+the same point.
+
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `pnpm test src/renderer/src/components/editor/code-completion --maxWorkers=2`
@@ -1265,6 +1278,8 @@ export function createNesMarkerDecorations(
 ```
 
 Each marker becomes a decoration on its line with `glyphMarginClassName: 'nes-location-marker'` and a `glyphMarginHoverMessage` carrying the edit's `label` and `kind`.
+
+**Follow the house pattern for gutter glyphs.** `src/renderer/src/components/editor/ai-instructions/use-monaco-ai-instructions.ts` already draws one: the decoration's range is `new monaco.Range(lineNumber, 1, lineNumber, 1)`, its options carry `glyphMarginClassName`, `glyphMarginHoverMessage: { value }` and `isWholeLine: false`, and the collection is `editor.createDecorationsCollection()` refreshed with `collection.set(decorations)` and released with `collection.clear()`.
 
 The gutter decoration must be created with `editorInstance.createDecorationsCollection`. **Disposing the collection is Task 10's job, not this task's**: the hook (Task 10) owns the editor's lifetime, creates the collection, refreshes it on each tick and disposes it when the editor goes away. This task provides the function that creates it and the collection type; it does not wire the lifecycle.
 
@@ -1395,7 +1410,11 @@ A `delete` edit has no `insertText` and yields null — deleting is a plan-level
 
 - [ ] **Step 4: Add the CSS**
 
-In `src/renderer/src/assets/main.css`, add a `.nes-location-marker` class (a small glyph in the gutter) and a `.nes-ghost-text` class used by the preview overlay of Task 10. Follow the token rules in `docs/STYLEGUIDE.md` — reuse the existing border and foreground tokens rather than hardcoding hex values, and add the rule to both `:root` and `.dark` if it defines colours.
+In `src/renderer/src/assets/main.css`, add a `.nes-location-marker` class (a small glyph in the gutter) and a `.nes-ghost-text` class used by the preview overlay of Task 10. Follow the token rules in `docs/STYLEGUIDE.md` — reuse the existing border and foreground tokens rather than hardcoding hex values.
+
+**Copy the house pattern for the glyph.** `src/renderer/src/assets/main.css` already styles the AI-instruction gutter glyphs (`.monaco-editor .ai-instruction-glyph--pending::before` and its two siblings) — the glyph is a `::before` pseudo-element with `content: ''`, a `mask-image` holding an inline SVG data URI, an explicit `width`/`height`, and a `background-color` drawn from a token.
+
+**Colour it with a token and no `.dark` rule is needed.** The house pattern uses `var(--muted-foreground)` and `var(--primary)`, which flip between the themes themselves, so a `.dark` override would be redundant. Add one only for a colour that is **not** an existing token. The house rules also carry a comment saying _why_ the states are told apart by shape rather than by colour: the glyph margin is a few pixels wide and `--primary` flips from near-black to near-white between themes.
 
 - [ ] **Step 5: Run the test to verify it passes**
 

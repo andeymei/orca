@@ -1322,6 +1322,7 @@ git commit -m "feat(composer): mount the composer in the terminal pane and bind 
 - `waitForSessionReady(orcaPage)` + `ensureTerminalVisible(orcaPage)` + `waitForActiveTerminalManager(orcaPage)` 打开一个终端 tab。
 - ptyId:`await orcaPage.evaluate((id) => window.__paneManagers?.get(id)?.getActivePane()?.container.dataset.ptyId, tabId)`。
 - **断言写入 PTY 的字节**用 main 进程的写间谍:`installTerminalPtyWriteSpy(electronApp)` / `clearTerminalPtyWriteLog(electronApp)` / `readTerminalPtyWriteEntries(electronApp)`(从 `./helpers/terminal-pty-write-spy` 导入)。
+- **正文那一笔里的换行是 `\r`,不是 `\n`**:composer 的草稿里 hard break 读成 `\n`(`promptText` 的 leaf 字符串),但 `buildNativeChatPasteBytes` 会走 `wrapTerminalBracketedPasteText`,那里 `normalizeTerminalPasteLineEndings` 把每个 `\r?\n` 换成 `\r`(与 xterm 自己的粘贴路径一致,否则 ConPTY 的 TUI 会把裸 LF 当提交)。所以框里是 `\x1b[200~first line\rsecond line\x1b[201~`。
 - **`window.__store` 只用来搭场景**(开 tab、切状态),断言一律走 DOM 或写间谍。
 - **用稳定的 `data-*` 选择器定位 composer**(`[data-terminal-composer-editor="true"]`),**不要**用 placeholder 文案——那会绑死语言。
 - **本机是中文 locale**:仓库既有 E2E 都硬编码英文标签,跑之前先 `defaults write com.github.Electron AppleLanguages -array en`(跑完可 `defaults delete com.github.Electron AppleLanguages` 还原)。composer 自己的断言不依赖它,但同一条 spec 里若有别的英文文案断言就会中招。
@@ -1388,24 +1389,25 @@ test('the terminal composer writes a multi-line prompt and then Enter', async ({
         .map((entry) => entry.data)
         .join('')
     )
-    .toContain('\x1b[200~first line\nsecond line\x1b[201~')
-  // The composer's Enter is a hard break: the body's newline serializes as a newline, not a
-  // carriage return. Enter must still be a write of its own: joining the writes would match a
-  // CR inside the paste above and pass even when the submit was swallowed.
+    .toContain('\x1b[200~first line\rsecond line\x1b[201~')
+  // The submit must be a write of its own, and its whole payload must be the CR: the framed
+  // body above carries a CR too (the frame normalizes line endings), so joining the writes
+  // would pass even when the submit was swallowed.
   await expect
-    .poll(async () =>
-      (await readTerminalPtyWriteEntries(electronApp))
-        .filter((entry) => entry.id === ptyId)
-        .map((entry) => entry.data)
+    .poll(
+      async () =>
+        (await readTerminalPtyWriteEntries(electronApp)).filter(
+          (entry) => entry.id === ptyId && entry.data === '\r'
+        ).length
     )
-    .toContain('\r')
+    .toBe(1)
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [ ] **Step 2: Run it**
 
 Run: `ORCA_BACKGROUND_LAUNCH=1 pnpm run test:e2e -- tests/e2e/terminal-composer-prompt.spec.ts`
-Expected: FAIL —— composer 的覆盖层还不存在(`getByRole('textbox')` 找不到)。
+Expected: PASS —— Task 8 已经把覆盖层挂上去了,这一步是**证明**,不是红绿循环。红了就按 `systematic-debugging` 查,不要改断言迁就实现。
 
 **若 spec 超时等 `window.__store`**:那是 build 不是 `--mode e2e`。跑 `pnpm exec electron-vite build --mode e2e` 之后用 `SKIP_BUILD=1` 重跑,不要改 harness。
 

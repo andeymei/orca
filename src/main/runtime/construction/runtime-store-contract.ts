@@ -205,6 +205,8 @@ export type RuntimeStore = {
     aiVaultSearch?: GlobalSettings['aiVaultSearch']
     sourceControlAi?: GlobalSettings['sourceControlAi']
     commitMessageAi?: GlobalSettings['commitMessageAi']
+    // Read by the completion RPC method; the paired-client projection omits the block on purpose.
+    codeCompletion?: GlobalSettings['codeCompletion']
   }
   // Unknown return lets mocks return void; runtime reads persisted settings on next access, never this return.
   updateSettings?: (

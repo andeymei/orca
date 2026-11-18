@@ -1,12 +1,16 @@
-import { NES_MAX_EDITS, NES_MAX_EDITS_PER_FILE, type NesPromptInput } from './code-completion-types'
+import {
+  NES_IMPORT_LABEL_PREFIX,
+  NES_MAX_EDITS,
+  NES_MAX_EDITS_PER_FILE,
+  type NesPromptInput
+} from './code-completion-types'
 
 export const NES_CURSOR_MARKER = '<<<CURSOR>>>'
 export const NES_PATH_HEADER_PREFIX = '###PATH: '
 
 const NES_PATH_MARKER = NES_PATH_HEADER_PREFIX.trimEnd()
 
-const AUTO_IMPORT_RULE =
-  'When the new code needs a module that is not imported, propose an `insert` edit at the top of the file that adds the import.'
+const AUTO_IMPORT_RULE = `When the new code needs a module that is not imported, propose an \`insert\` edit at the top of the file that adds the import, and give the edit the label \`${NES_IMPORT_LABEL_PREFIX}<what it imports>\`.`
 
 export function buildNesSystemPrompt(options?: { autoImport?: boolean }): string {
   const lines = [

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildNesSystemPrompt, buildNesUserPrompt } from './code-completion-prompt'
-import type { NesPromptInput } from './code-completion-types'
+import { NES_IMPORT_LABEL_PREFIX, type NesPromptInput } from './code-completion-types'
 
 function buildPromptInput(overrides: Partial<NesPromptInput> = {}): NesPromptInput {
   return {
@@ -98,6 +98,12 @@ describe('buildNesSystemPrompt', () => {
     const prompt = buildNesSystemPrompt({ autoImport: true })
 
     expect(prompt).toContain('adds the import')
+  })
+
+  it('names the label the import edit must carry', () => {
+    const prompt = buildNesSystemPrompt({ autoImport: true })
+
+    expect(prompt).toContain(`label \`${NES_IMPORT_LABEL_PREFIX}<what it imports>\``)
   })
 
   it('leaves the import rule out when auto import is off', () => {

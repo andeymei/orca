@@ -1,6 +1,8 @@
 import {
+  NES_IMPORT_LABEL_PREFIX,
   validateNesEditPlan,
   type NesBackendId,
+  type NesEdit,
   type NesEditPlan,
   type NesRequest
 } from '../../shared/code-completion/code-completion-types'
@@ -78,6 +80,13 @@ export function nesStartLineFor(request: NesRequest, path: string): number {
 export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): NesEditPlan {
   return {
     edits: plan.edits.map((edit) => {
+      // Why: an import belongs at the top of the file, not at the top of the window the model saw.
+      if (isNesImportEdit(edit)) {
+        return {
+          ...edit,
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }
+        }
+      }
       const offset = nesStartLineFor(request, edit.path) - 1
       return {
         ...edit,
@@ -89,6 +98,11 @@ export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): N
       }
     })
   }
+}
+
+/** The edit that adds an import; its label carries the marker the prompt asked for. */
+function isNesImportEdit(edit: NesEdit): boolean {
+  return edit.kind === 'insert' && edit.label.startsWith(NES_IMPORT_LABEL_PREFIX)
 }
 
 /** The plan a model answer carries, in the file's own line numbers. */

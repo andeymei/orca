@@ -183,6 +183,7 @@ import {
   SaveImageAsTempFile,
   StartImageUpload
 } from './clipboard-params'
+import { CodeCompletionPlan } from './code-completion-params'
 import { ComputerCapabilitiesParams, ComputerPermissionsStatusParams } from './computer-params'
 import {
   Click,
@@ -1014,6 +1015,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'clipboard.commitImageUpload': CommitImageUpload,
   'clipboard.saveImageAsTempFile': SaveImageAsTempFile,
   'clipboard.startImageUpload': StartImageUpload,
+  'codeCompletion.plan': CodeCompletionPlan,
   'computer.capabilities': ComputerCapabilitiesParams,
   'computer.click': Click,
   'computer.drag': DragOfComputerSchemasParams,

@@ -4,6 +4,9 @@ import { salvagingArray } from '../zod-salvage'
 export const NES_MAX_EDITS = 5
 export const NES_MAX_EDITS_PER_FILE = 2
 
+/** The label an import edit carries; the backend puts such an edit on the file's first line. */
+export const NES_IMPORT_LABEL_PREFIX = 'import: '
+
 export const NesEditKind = z.enum(['insert', 'replace', 'delete'])
 
 export const NesEditRange = z.object({

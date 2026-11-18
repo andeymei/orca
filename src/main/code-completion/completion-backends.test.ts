@@ -307,4 +307,44 @@ describe('translateNesEditLines', () => {
       endColumn: 1
     })
   })
+
+  it('puts an import on the first line of the file and leaves the other inserts where they were shown', () => {
+    const plan: NesEditPlan = {
+      edits: [
+        {
+          id: 'e1',
+          path: FILE_PATH,
+          kind: 'insert',
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+          originalText: '',
+          text: "import { z } from 'zod'\n",
+          label: 'import: zod'
+        },
+        {
+          id: 'e2',
+          path: FILE_PATH,
+          kind: 'insert',
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+          originalText: '',
+          text: 'const c = 3\n',
+          label: 'add the third constant'
+        }
+      ]
+    }
+
+    const translated = translateNesEditLines(plan, REQUEST)
+
+    expect(translated.edits[0].range).toEqual({
+      startLine: 1,
+      startColumn: 1,
+      endLine: 1,
+      endColumn: 1
+    })
+    expect(translated.edits[1].range).toEqual({
+      startLine: 40,
+      startColumn: 1,
+      endLine: 40,
+      endColumn: 1
+    })
+  })
 })

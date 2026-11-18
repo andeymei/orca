@@ -9,7 +9,7 @@ export type NesCursorPosition = { lineNumber: number; column: number }
 export type NesPlanStore = {
   /** Binds a Monaco model to the file it shows, so a model key can be resolved to a path. */
   bindModel(modelKey: string, filePath: string): void
-  /** Drops the binding of a model that is gone; the plan of the file it showed stays. */
+  /** Drops the binding of a model that is gone. */
   unbindModel(modelKey: string): void
   setPlan(filePath: string, plan: NesEditPlan): void
   getPlan(filePath: string): NesEditPlan | null

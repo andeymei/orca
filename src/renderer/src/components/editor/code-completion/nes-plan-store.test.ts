@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import type { editor } from 'monaco-editor'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 import { createNesPlanStore } from './nes-plan-store'
-import { nesLocationMarkers, nesMarkerDecorations } from './nes-location-markers'
+import {
+  createNesMarkerDecorations,
+  nesLocationMarkers,
+  nesMarkerDecorations
+} from './nes-location-markers'
 
 const APP_PATH = '/repo/src/app.ts'
 const OTHER_PATH = '/repo/src/other.ts'
@@ -248,5 +253,48 @@ describe('nes marker decorations', () => {
     expect(decoration?.options.glyphMarginHoverMessage).toEqual({
       value: 'replace: rename the constant'
     })
+  })
+
+  it('draws one glyph per line, the first marker on the line', () => {
+    const decorations = nesMarkerDecorations([
+      { edit: makeEdit({ id: 'import-edit', label: 'add the import' }), lineNumber: 1 },
+      { edit: makeEdit({ id: 'second-edit', label: 'rename the constant' }), lineNumber: 1 },
+      { edit: makeEdit({ id: 'other-edit' }), lineNumber: 10 }
+    ])
+
+    expect(decorations).toHaveLength(2)
+    expect(decorations[0]?.range.startLineNumber).toBe(1)
+    expect(decorations[0]?.options.glyphMarginHoverMessage).toEqual({
+      value: 'replace: add the import'
+    })
+    expect(decorations[1]?.range.startLineNumber).toBe(10)
+  })
+
+  it('sets the decorations on the collection it creates', () => {
+    const setCalls: editor.IModelDeltaDecoration[][] = []
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fake implements only the method the creator calls.
+    const fakeCollection = {
+      set: (decorations: editor.IModelDeltaDecoration[]): void => {
+        setCalls.push(decorations)
+      }
+    } as unknown as editor.IEditorDecorationsCollection
+    let createCallCount = 0
+    const fakeEditor = {
+      createDecorationsCollection: () => {
+        createCallCount += 1
+        return fakeCollection
+      }
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fake implements only the two methods the creator calls.
+    const editorInstance = fakeEditor as unknown as editor.IStandaloneCodeEditor
+
+    const collection = createNesMarkerDecorations(editorInstance, [
+      { edit: makeEdit(), lineNumber: 10 }
+    ])
+
+    expect(createCallCount).toBe(1)
+    expect(collection).toBe(fakeCollection)
+    expect(setCalls).toHaveLength(1)
+    expect(setCalls[0]?.[0]?.range.startLineNumber).toBe(10)
   })
 })

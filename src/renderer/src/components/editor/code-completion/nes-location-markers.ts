@@ -26,23 +26,36 @@ export function nesLocationMarkers(
     .map((edit) => ({ edit, lineNumber: edit.range.startLine }))
 }
 
-/** The gutter glyph of each marker, built without a Monaco instance so its shape can be pinned. */
+/**
+ * The gutter glyph of the first marker on each line, built without a Monaco instance so its shape
+ * can be pinned.
+ */
 export function nesMarkerDecorations(
   markers: readonly NesLocationMarker[]
 ): editor.IModelDeltaDecoration[] {
-  return markers.map((marker) => ({
-    range: {
-      startLineNumber: marker.lineNumber,
-      startColumn: 1,
-      endLineNumber: marker.lineNumber,
-      endColumn: 1
-    },
-    options: {
-      glyphMarginClassName: 'nes-location-marker',
-      glyphMarginHoverMessage: { value: `${marker.edit.kind}: ${marker.edit.label}` },
-      isWholeLine: false
+  const decorations: editor.IModelDeltaDecoration[] = []
+  const drawnLines = new Set<number>()
+  for (const marker of markers) {
+    // Why: the glyph margin draws one glyph per line, so a second marker's hover would be unreachable.
+    if (drawnLines.has(marker.lineNumber)) {
+      continue
     }
-  }))
+    drawnLines.add(marker.lineNumber)
+    decorations.push({
+      range: {
+        startLineNumber: marker.lineNumber,
+        startColumn: 1,
+        endLineNumber: marker.lineNumber,
+        endColumn: 1
+      },
+      options: {
+        glyphMarginClassName: 'nes-location-marker',
+        glyphMarginHoverMessage: { value: `${marker.edit.kind}: ${marker.edit.label}` },
+        isWholeLine: false
+      }
+    })
+  }
+  return decorations
 }
 
 /** The collection the editor hook refreshes on each tick; disposing it is the hook's job. */

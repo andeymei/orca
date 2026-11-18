@@ -758,6 +758,7 @@ git commit -m "feat(composer): clear the agent input, then write the paths, the 
 **Files:**
 
 - Create: `src/renderer/src/components/prompt-editor/prompt-editor-labels.ts`
+- Create: `src/renderer/src/components/prompt-editor/PromptPill.tsx`
 - Create: `src/renderer/src/components/prompt-editor/PromptFileReferencePill.tsx`
 - Create: `src/renderer/src/components/prompt-editor/PromptImageReferencePill.tsx`
 - Create: `src/renderer/src/components/prompt-editor/PromptEditor.tsx`
@@ -805,6 +806,7 @@ git commit -m "feat(composer): clear the agent input, then write the paths, the 
 - `PromptEditor` 的 TipTap 装配照抄 `NativeChatPromptEditor` 的 `useEditor` 配置:`StarterKit.configure({ blockquote:false, bold:false, bulletList:false, code:false, codeBlock:false, dropcursor:false, gapcursor:false, heading:false, horizontalRule:false, italic:false, link:false, listItem:false, orderedList:false, strike:false, underline:false, trailingNode:false })` + `HardBreak` + `Placeholder` + `PromptFileReference` + `PromptImageReference`。
 - **不要**带 native chat 的草稿库、pasted-text scope、图片编号 provider、unkerned 装饰。
 - `handlePaste` 只插纯文本(与 native chat 一致)。
+- **facade 的 `value` 是 `promptText(editor.state.doc)`** —— 文件 pill 读成它的 `@path` token,图片 pill 读成它的 `[Image](orca-image:<id>)` token。**图片 token 会留在 `value` 里**:正文(发给 agent 的 body)去掉图片 token 是 **Task 7** 的事,它用 `splitImageReferences`(`src/shared/native-chat/native-chat-image-reference.ts`)把文本拆开、只留字符串部分拼回去。编辑器的 `value` 与「发给 agent 的正文」是两件事,不要在共用组件里替 Task 7 做这个决定。
 - 节点类型名保持 Task 1 的 `nativeChatFileReference` / `nativeChatImageReference`,**Task 10 切换原生 chat 时不需要迁移草稿**。
 
 - [ ] **Step 1: Write the failing test**
@@ -943,6 +945,8 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - **失败的 `reason` 是机器码,不是给用户看的句子。** intake 回的 `reason` 形如 `missing` / `symlink` / `permission-denied` / `unsupported`,UI 要把它翻成用户能懂的话(「文件不在了」「没有权限」……),不要把码直接甩到 toast 或 pill 上。**但词表是混的**:拷贝自己的 `skipped` 原因是码,拷贝的 `failed` 原因是原始错误消息,intake 的体积超限原因是一句完整的话。UI 要**先认码、认不出来的按原文显示**,不能假设每条 reason 都能翻译。
 - **只有「没有本机路径」的粘贴图片会用临时文件名。** 一张粘贴进来的图片如果自己就有磁盘文件(比如从 Finder 复制的),它按自己的路径落地,pill 显示的就是用户自己的文件名;只有浏览器里复制出来的 blob 这种没有磁盘文件的,才会走剪贴板保存,那时 main 把它命名成 `orca-paste-<时间>-<uuid>.<扩展名>`。UI **不要**假设 pill 一定是临时文件名。
 - **正文里的图片 pill 在发送时被摘掉**,由 Task 5 的写序列负责;编辑器本身不知道 agent 的存在。
+- **正文(body)要去掉图片 token。** 编辑器的 `value` 里图片 pill 读成 `[Image](orca-image:<id>)`,直接当正文发出去会让 agent 收到一串机器 token。用 `splitImageReferences`(shared,`src/shared/native-chat/native-chat-image-reference.ts`)把正文拆开,**只把字符串部分拼回去**;图片本身走 Task 5 的独立路径写。
+- **正文里的 `@path` 文件引用要按目标主机改写拼写。** Task 5 只安全地改写了独立的图片路径列表;正文里的文件引用是 `@path` 形式的文本,WSL 宿主上的 agent 读不了 Windows 拼写。改写规则与 Task 5 的 `agentVisibleImagePath` 同源(`toLocalWslDropPath`)。
 - **写草稿时必须在写入时刻从 store 读当前草稿,不要用捕获的快照。** `setTerminalComposerDraft` 是**整份替换**(带 ProseMirror 文档)。附件的「上传中」状态是**那个还没 resolve 的 promise**,不是「`workspacePath` 为 null 的附件」——Task 4 的 intake 是先落地再返回,回来的每个 attachment 都**已经**带着落地路径。所以:在上传 resolve 之前不要写草稿;resolve 之后写,写之前读最新的 draft。
 - **失败的附件没有 id。** intake 的 `failed[]` 是 `{ name, reason }`,没有 id;要给它一个 pill,UI 得自己造一个 id。
 - 提示行用 `<ShortcutKeyCombo />`;标签按平台显示 `⌘↵` / `Ctrl+↵`。

@@ -1656,6 +1656,8 @@ export function buildNesProposedText(originalText: string, edit: NesEdit): strin
 
 **Leave the user a contribution point here.** `buildNesProposedText` is the one function in the feature that turns an edit into text; how a `replace` that spans several lines is rendered — whether the whole replaced block is shown as removed-and-added, or only the lines that actually differ — is a judgement the implementer can reasonably make either way. Pick one, say which in a comment, and cover it with the test.
 
+**The proposed text uses the model's own line ending.** The backend appends a lone `\n` to the auto-import, because it cannot know the file's ending — the model only ever saw the trimmed window. The renderer _does_ know: `model.getEOL()` answers `\n` or `\r\n`. So `buildNesProposedText` normalises the line endings in the text it inserts to the model's, or a CRLF file ends up with one LF line in it.
+
 Colour the three change types with the diff editor's existing tokens rather than new ones: an insert is a green addition, a replace is a modified line, a delete is a red removal. Monaco's diff editor already distinguishes modified and removed lines; an inserted line appears as an addition because it exists only on the proposed side.
 
 - [ ] **Step 6: Run the test to verify it passes**

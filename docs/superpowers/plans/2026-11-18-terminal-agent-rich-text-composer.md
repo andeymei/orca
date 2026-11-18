@@ -1001,6 +1001,7 @@ git commit -m "feat(prompt-editor): the shared editor and its attachment pills"
 - **正文里的 `@path` 文件引用要按目标主机改写拼写 —— 在插 pill 的时候改,不要在正文上做字符串手术。** Task 5 只安全地改写了独立的图片路径列表;正文里的文件引用是 `@path` 形式的文本,WSL 宿主上的 agent 读不了 Windows 拼写。`fileReferenceContent(path)` 的 token 是从 path 算出来的,所以只要插 pill 时传的就是 agent 看得见的路径(`toLocalWslDropPath`,与 Task 5 的 `agentVisibleImagePath` 同源、同样的 WSL 判据),正文里的 `@path` 自然是对的。store 里那份落地路径仍是 Windows 侧的原始路径。
 - **写草稿时必须在写入时刻从 store 读当前草稿,不要用捕获的快照。** `setTerminalComposerDraft` 是**整份替换**(带 ProseMirror 文档)。附件的「上传中」状态是**那个还没 resolve 的 promise**,不是「`workspacePath` 为 null 的附件」——Task 4 的 intake 是先落地再返回,回来的每个 attachment 都**已经**带着落地路径。所以:在上传 resolve 之前不要写草稿;resolve 之后写,写之前读最新的 draft。
 - **失败的附件没有 id。** intake 的 `failed[]` 是 `{ name, reason }`,没有 id;要给它一个 pill,UI 得自己造一个 id。
+- **收起时要把编辑器整个卸掉。** 共用的 `PromptEditor` 只在挂载时用 `initialDocument` 种一次文档,facade 里**没有 `setContent`**(Ruling U:终端侧没有别的理由要它)。所以「收起 → 再展开」要拿到最新草稿,靠的是**收起时把 `PromptEditor` 卸载、展开时重新挂载**,而不是往已挂载的编辑器里灌文档。覆盖层本身可以一直挂着,字段要跟着展开态挂载。
 - 提示行用 `<ShortcutKeyCombo />`;标签按平台显示 `⌘↵` / `Ctrl+↵`。
 - 工具条:Paperclip ghost icon button(`Tooltip`「添加附件」)+ 发送 primary button。
 - **三路来源的接线**(Task 4 的产出在这里落地,否则那一层无人使用):
@@ -1068,6 +1069,8 @@ Expected: FAIL — "Cannot find module './TerminalComposerField'"
 `terminalComposer.attach` / `terminalComposer.send` / `terminalComposer.placeholder` / `terminalComposer.open` / `terminalComposer.enterHint` / `terminalComposer.sendHint` / `terminalComposer.uploadFailed` / `terminalComposer.hostChanged` / `terminalComposer.disconnected` / `terminalComposer.paneChanged` / `terminalComposer.writeRejected`。
 
 **发送的四个 reason 码都要有文案**:`'host-changed'` → `hostChanged`,`'pty-disconnected'` → `disconnected`,`'pane-changed'` → `paneChanged`(pane 被换掉或关掉了,消息没发出去),`'write-rejected'` → `writeRejected`(宿主拒收了这批字节)。UI 层把码翻成句子,不要把码直接甩到 toast 上。
+
+加完跑 `pnpm verify:localization-catalogs` —— 仓库有门禁检查各语言文件的键是否一致。
 
 - [ ] **Step 5: Run the test to verify it passes**
 

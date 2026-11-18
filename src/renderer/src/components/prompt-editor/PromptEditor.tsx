@@ -9,8 +9,7 @@ import {
   fileReferenceContent,
   imageReferenceContent,
   promptText,
-  promptTextContent,
-  withoutImageReferenceNodes
+  promptTextContent
 } from './prompt-editor-nodes'
 
 export type PromptEditorInput = {
@@ -36,7 +35,7 @@ export type PromptEditorProps = {
   className?: string
 }
 
-export const PromptEditor: React.FC<PromptEditorProps> = ({
+export function PromptEditor({
   inputRef,
   initialDocument,
   disabled,
@@ -45,7 +44,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   onChange,
   onSelect,
   className
-}) => {
+}: PromptEditorProps): React.JSX.Element {
   const placeholderRef = useRef(placeholder)
   placeholderRef.current = placeholder
   const editor = useEditor(
@@ -135,6 +134,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                 editor.state.tr.replaceSelection(new Slice(content.content, 1, 1))
               )
             },
+            // A pill lands at the caret and leaves the selection alone; text replaces what is selected.
             insertFileReferences: (paths) => {
               editor.commands.insertContentAt(
                 editor.state.selection.from,
@@ -148,7 +148,22 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               ])
             },
             removeImageReferences: (attachmentId) => {
-              editor.commands.setContent(withoutImageReferenceNodes(editor.getJSON(), attachmentId))
+              const { tr } = editor.state
+              editor.state.doc.descendants((node, position) => {
+                if (
+                  node.type.name === PromptImageReference.name &&
+                  node.attrs.attachmentId === attachmentId
+                ) {
+                  // With the space inserted after it, so no gap is left where it sat.
+                  const from = tr.mapping.map(position)
+                  const to = from + node.nodeSize
+                  tr.delete(from, tr.doc.textBetween(to, to + 1) === ' ' ? to + 1 : to)
+                }
+              })
+              // Undo must not bring back a chip whose image is gone.
+              if (tr.docChanged) {
+                editor.view.dispatch(tr.setMeta('addToHistory', false))
+              }
             }
           }
         : null,

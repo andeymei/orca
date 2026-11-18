@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest'
 import { createRef, type RefObject } from 'react'
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { JSONContent } from '@tiptap/react'
 import { PromptEditor, type PromptEditorInput } from './PromptEditor'
 import { PromptImageLabelContext } from './prompt-editor-labels'
@@ -59,9 +59,44 @@ describe('prompt editor', () => {
     const { inputRef } = renderEditor()
     await act(async () => {
       inputRef.current!.focus()
+      inputRef.current!.insertText?.('hi ')
       inputRef.current!.insertFileReferences?.(['/tmp/a.txt'])
     })
-    expect(inputRef.current!.value).toContain('@/tmp/a.txt')
+    // The pill lands where the caret is, not at the end of the document.
+    expect(inputRef.current!.value).toBe('hi @/tmp/a.txt ')
+  })
+
+  it('takes the image pill out, and the space that sat after it', async () => {
+    const inputRef = createRef<PromptEditorInput>()
+    const onSelect = vi.fn()
+    render(
+      <PromptEditor
+        inputRef={inputRef}
+        onSelect={onSelect}
+        initialDocument={{
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [imageReferenceContent('a1', 'shot.png'), { type: 'text', text: ' ' }]
+            }
+          ]
+        }}
+        disabled={false}
+        placeholder="Message"
+      />
+    )
+    await act(async () => {
+      inputRef.current!.focus()
+    })
+    onSelect.mockClear()
+    await act(async () => {
+      inputRef.current!.removeImageReferences?.('a1')
+    })
+    // The chip is gone and the gap it left is gone with it.
+    expect(inputRef.current!.value).toBe('')
+    // The caret did not move: taking a chip out is not a selection change.
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('keeps an image pill in the text as the token the sender splits out', async () => {
@@ -70,18 +105,5 @@ describe('prompt editor', () => {
       inputRef.current!.insertImageReference?.('a1', 'shot.png')
     })
     expect(inputRef.current!.value).toContain('[Image](orca-image:a1)')
-  })
-
-  it('drops the image pill when its attachment goes', async () => {
-    const { inputRef } = renderEditor({
-      type: 'doc',
-      content: [{ type: 'paragraph', content: [imageReferenceContent('a1', 'shot.png')] }]
-    })
-    expect(await screen.findByText('shot.png')).toBeVisible()
-    await act(async () => {
-      inputRef.current!.removeImageReferences?.('a1')
-    })
-    expect(inputRef.current!.value).toBe('')
-    expect(screen.queryByText('shot.png')).toBeNull()
   })
 })

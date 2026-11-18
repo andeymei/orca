@@ -1477,7 +1477,7 @@ Create `src/renderer/src/components/editor/code-completion/nes-inline-provider.t
 import type { OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
-import { nesEditMatchesPosition, nesPlanStore } from './nes-plan-store'
+import { nesPlanStore } from './nes-plan-store'
 
 type MonacoApi = Parameters<OnMount>[1]
 

@@ -1797,6 +1797,16 @@ The hook:
 - **discards a stale answer**: the request cannot be cancelled end to end (see below), so the hook keeps a generation counter and applies a plan only when the generation still matches the one the request was made under.
 - skips the whole cycle when the file's extension is not in the enabled list, when the feature is off, or when the editor is read-only
 
+**The key format is a silent-failure coupling — the two sides must use the same string.** The
+provider asks the store by `model.uri.toString()` (`nes-inline-provider.ts:27`), and the store
+takes an opaque string. If the hook binds with a different key — the file path, a hashed id, the
+model's `id` — the provider finds nothing and **no suggestion ever appears**, with no error
+anywhere. The store's key _is_ `model.uri.toString()`; use exactly that.
+
+A test that pins this is worth having: bind the model, ask the provider for the edit at the
+cursor, and assert it is offered. Without it, a change to either side's key format breaks the
+feature silently, and the E2E spec in Task 13 is the only thing that would notice.
+
 The related files are collected from the **cached** list (Task 7). The hook never waits on a worktree search before asking for the plan: a stale related-file list is better than a slow suggestion.
 
 **The request cannot be cancelled end to end.** `callRuntimeRpc` forwards `signal` and `timeoutMs` only on the `environment` branch; on the `local` branch it calls `window.api.runtime.call({ method, params })`, and the `runtime:call` IPC dispatches with no signal — so the runtime's handler sees `ctx.signal === undefined` and the request runs to completion whatever the renderer does. Two consequences, and the plan is written around them:

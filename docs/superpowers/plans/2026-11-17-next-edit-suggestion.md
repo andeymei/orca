@@ -1622,6 +1622,10 @@ git commit -m "feat(code-completion): the Monaco inline completion provider"
 
 ### Task 10: The trigger, the keybindings and the interception
 
+**This task runs after Task 11.** The hook calls `applyNesEdit` and `previewNesEdit`, which Task
+11 produces, and Task 11 depends on nothing but Task 1 — so the two swap without either one's
+work changing. The numbering stays; the execution order is **9 → 11 → 10**.
+
 **Files:**
 
 - Create: `src/renderer/src/components/editor/code-completion/use-monaco-nes.ts`
@@ -1636,7 +1640,8 @@ git commit -m "feat(code-completion): the Monaco inline completion provider"
 
 **Interfaces:**
 
-- Consumes: `requestNesPlan` (Task 7), `NesPlanStore` (Task 8), `ensureNesInlineCompletionsProvider` (Task 9).
+- Consumes: `requestNesPlan` (Task 7), `NesPlanStore` (Task 8), `ensureNesInlineCompletionsProvider` (Task 9),
+  `applyNesEdit` and `previewNesEdit` (Task 11).
 - Produces:
   - `type NesTabDecision = 'accept-suggestion' | 'jump-to-next-location' | 'pass-through'`
   - `decideNesTabAction(input: { hasInlineSuggestion: boolean; hasOtherLocations: boolean }): NesTabDecision` — the pure routing rule. `hasInlineSuggestion` is **our own state**, not Monaco's: it is true when `nesPlanStore.editAt(modelKey, cursor)` returns an edit that passes **both** checks the provider (Task 9) makes — `nesEditExtendsCoveredText(edit)` (Task 8) and the live-model `originalText` check. One question, one answer: the predicate decides whether the edit _could_ be shown as ghost text, the model check decides whether it _is_ still valid, and Tab must not accept an edit the provider would never render — the user would watch their code change with no preview of it. Monaco exposes no public query for whether _its_ inline widget is showing; `editor.action.inlineSuggest.commit`'s `isSupported()` is the closest, but it answers for whichever provider owns the widget.
@@ -1850,9 +1855,29 @@ describe('applyNesEdit', () => {
   it('refuses an edit whose original text no longer matches', ...)
   it('leaves the model untouched when it refuses', ...)
 })
+
+describe('previewNesEdit', () => {
+  it('shows the new text without touching the model', ...)
+  it('removes the widget when the preview is released', ...)
+})
 ```
 
-The fourth case is Review Focus item 2: the file changed under the plan, so the edit must not be applied.
+The fourth `applyNesEdit` case is Review Focus item 2: the file changed under the plan, so the edit
+must not be applied.
+
+**Build the model and the editor the way the repo's editor tests do.** `monaco-content-sync.undo-history.test.ts`
+is the pattern: `// @vitest-environment happy-dom` at the top of the file, then
+
+```ts
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
+const model = monaco.editor.createModel(initialContent, 'plaintext')
+```
+
+**The editor instance for `previewNesEdit` can be a small fake.** The preview needs three things
+from the editor: `addContentWidget`, `removeContentWidget` and `layoutContentWidget`. A fake that
+records the widget it is given is enough for the test to read `widget.getDomNode().textContent`
+and to count the add and the remove. The model is a real one — `applyNesEdit` writes through it,
+and that is the behaviour under test.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1891,9 +1916,37 @@ The write goes straight into the model. The model's change event then reaches `u
 
 - [ ] **Step 4: Write the inline preview**
 
-`previewNesEdit(model, editorInstance, edit)` shows the edit's new text over the edited range using a decoration with Monaco's injected text (`options.after.content`), and returns a function that clears the decoration. The preview must not touch the model's real content — it is a decoration only, so releasing it restores the original code exactly.
+The Alt preview draws the edit's new text **with a Monaco content widget**, not with injected text.
 
-If Monaco 0.55's injected text cannot carry a multi-line string, fall back to rendering the preview as a `ghost text` decoration on the first line only and say so in the settings UI rather than half-applying the change.
+**Why not injected text — measured, not assumed.** Monaco's own API doc says so:
+`InjectedTextOptions.content` — "Sets the text to inject. **Must be a single line.**"
+(`node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts`). The feature's core case is a
+multi-line insert, and the whole point of the Alt preview is to see the whole change — so injected
+text cannot carry it. The spec left this open ("Monaco 的 injected text 或 decoration", with a
+⚠️ 待实测 note); this measurement is what settled it.
+
+**A content widget carries it, and the repo already has the pattern.**
+`src/renderer/src/components/editor/setup-contextual-copy.ts` builds an `editor.IContentWidget`:
+`allowEditorOverflow`, `suppressMouseDown`, `getId`, `getDomNode`, `getPosition`. It is added with
+`editorInstance.addContentWidget(...)`, re-laid-out with `editorInstance.layoutContentWidget(...)`,
+and removed with `editorInstance.removeContentWidget(...)` when the editor is disposed. Copy that
+shape.
+
+The widget's DOM node holds the proposed text — one element per line, so a multi-line edit shows
+as multiple lines — with the `.nes-ghost-text` class on it (Task 9 adds the class). The widget is
+anchored at the edit's **range end**, which is where the cursor is, and is placed **below** that
+line (`ContentWidgetPositionPreference.BELOW`), so the preview appears under the line the user is
+typing on.
+
+**The widget shows `edit.text` in full** — the text that will be there once the edit is accepted,
+not the delta. For the contract's edits the two differ only by the prefix the user can already
+see, and the full text is the one that is unambiguous for every kind, including a rewrite the
+validator would drop today.
+
+**The preview must not touch the model's real content.** It is a widget, so releasing it restores
+the original code exactly: nothing was written, so the undo stack is untouched and there is nothing
+to undo. `previewNesEdit` returns the function that removes the widget from the editor — the
+caller holds it for as long as the user holds Alt.
 
 - [ ] **Step 5: The diff preview is deferred past this plan — do not build it**
 

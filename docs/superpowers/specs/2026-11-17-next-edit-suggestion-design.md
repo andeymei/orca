@@ -344,16 +344,24 @@ Orca 拥有内容同步（`MonacoEditor.tsx:341` 用 `defaultValue` 是刻意的
 
 ### 8.4 ⌥ / Alt 预览
 
-按住 `⌥` / `Alt` 时，把该 edit 的新文本以叠加形式显示（Monaco 的 injected text 或
-decoration），松开还原。
+按住 `⌥` / `Alt` 时，把该 edit 的新文本以叠加形式显示（Monaco 的 content widget），松开还原。
 
-⚠️ **待实测**：Monaco 0.55 的 injected text 能否承载多行、是否会被当成真实内容、
-是否污染 undo 栈。
+✅ **已实测**（2026-11-18，针对 monaco-editor 0.55.1）：injected text 承载不了多行 ——
+`InjectedTextOptions.content` 的 API 文档写明 "Must be a single line"，而本特性的核心场景
+正是多行插入。所以叠加层改用 Monaco 的 content widget（`IContentWidget`）：它能承载多行，
+不写 model，因此不会被当成真实内容，也不会污染 undo 栈。仓库里已有同样的用法：
+`src/renderer/src/components/editor/setup-contextual-copy.ts`。
 
 ### 8.5 Diff 预览
 
 复用现成的 `EditorDiffFileSurface.tsx`（Monaco diff editor）打开「当前文件 vs 应用后的文件」。
 按变更类型着色：新增绿、修改黄、删除红。
+
+⏸ **本轮推迟**：实现计划把整文件 diff 推迟到 NES 主体之后（见
+`docs/superpowers/plans/2026-11-17-next-edit-suggestion.md` 的 Task 11 Step 5）。契约现在只
+保留编辑器能画出来的 edit（一行的 range，且新文本只增加它覆盖的文本），整文件 diff 对一行
+改动是噪声；而且这个界面没有入口，写出来就是死代码。接缝很小：当前 buffer 的文本 vs 应用
+后的文本，两个内存 model，`@monaco-editor/react` 的 `DiffEditor`。
 
 ## 9. 交互契约
 

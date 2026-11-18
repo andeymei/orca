@@ -80,6 +80,10 @@ describe('validateNesEditPlan', () => {
   it('drops a delete that carries new text', ...)
   it('drops an insert that carries original text', ...)
   it('drops a replace that carries neither text', ...)
+  it('drops a replace that rewrites the text it covers', ...)
+  it('drops a replace that spans more than one line', ...)
+  it('keeps a replace that only adds to the text it covers', ...)
+  it('keeps a multi-line insert, whose range is a single line', ...)
   it('truncates a plan with more than five edits', ...)
   it('returns an empty plan when the payload is not JSON', ...)
 })
@@ -137,6 +141,24 @@ For each parsed edit, keep it only when all of these hold:
 - `kind === 'insert'` implies `originalText === ''`
 - `kind === 'delete'` implies `text === ''`
 - `kind === 'replace'` implies both texts are non-empty
+- **the range is a single line** — `range.startLine === range.endLine`
+- **the new text only adds to the text the range covers** — `nesEditExtendsCoveredText(edit)`
+
+**The last two rules are what the editor can show.** Monaco's classic inline-completion path renders
+an insertion and nothing else: a rewrite, a shortening, a deletion and a multi-line range all render
+as _nothing_. The plan's interaction model — the anchor edit is a ghost text, `Tab` takes it, the
+other locations are gutter markers the user jumps to — holds only if every edit in the plan can be
+rendered as a ghost text once the cursor is on it. An edit that cannot be rendered is one the user
+can see and never apply.
+
+Both rules are computable from the edit alone, so they belong here, in the contract with the model,
+and not in the renderer. `nesEditExtendsCoveredText` lives in this module beside `isApplicableNesEdit`
+and is exported, because the provider (Task 9) and the Tab routing (Task 10) ask the same question
+as the defence against a plan that reached the renderer without passing the validator.
+
+**A multi-line insert is not dropped.** Its _range_ is empty at one point — a single line — while
+its _text_ may be many lines; that is the feature's headline case, and the ghost text renders the
+whole block.
 
 `sliceRange(text, range)` returns the text a range covers: 1-based line and column, column counted in UTF-16 code units, lines split on `\n`. It returns null when the range is out of bounds **or when a column is below one** — a zero start column would otherwise reach `slice(-1, …)` and answer with the line's last character, and a zero end column would drop the end line's last character.
 
@@ -151,9 +173,18 @@ describe('buildNesUserPrompt', () => {
   it('includes the related files after the current one', ...)
   it('lists the recently accepted edits', ...)
 })
+
+describe('buildNesSystemPrompt', () => {
+  it('states the rules the validator drops on', ...)
+})
 ```
 
 Pin the exact sentinel and the exact header in the assertions, e.g. the cursor marker is `<<<CURSOR>>>` and each file header is `###PATH: <path>` on its own line.
+
+**The system prompt's rules are the validator's rules.** Every rule the prompt states has a matching
+drop rule in `validateNesEditPlan`, and every drop rule is stated in the prompt — otherwise the
+model spends one of its five edits on an edit that is dropped. The two rules this feature adds are
+the **add-only** rule and the **one-line range** rule.
 
 - [ ] **Step 5: Run the test to verify it fails**
 
@@ -180,6 +211,8 @@ Two rules the prompt must state, because the validator silently drops anything t
 
 - **Reply with each path exactly as it appears after `###PATH:`.** The prompt shows the current file twice — once as `Current file: <relativePath>` and once as `###PATH: <absolute path>` — and the validator only keeps a path that is in `allowedPaths`, which holds the absolute forms. A model that answers with the relative path has its edit dropped.
 - **The edit at the cursor must end at the cursor position.** Not every edit: an import insert has no cursor, and a plan may carry both.
+- **An edit may only add to the text its range covers.** Propose an `insert`, or a `replace` whose `text` begins with the `originalText` it replaces. An edit that rewrites or removes what is already there is dropped — the editor can only show an addition.
+- **An edit's range must be on one line.** A range that spans lines is dropped: the editor's suggestion is drawn on one line at a time.
 - **Count each file's lines separately — the first line of a file's content, the line right after its `###PATH:` header, is line 1 of that file.** The shown text may start part-way through a file, and the backend converts your line numbers to the file's own. Counting must not run across the files in this prompt: each `###PATH:` block is numbered on its own.
 
 The user prompt is:

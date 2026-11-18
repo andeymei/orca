@@ -6,6 +6,7 @@ import type { RuntimeFileOperationArgs } from '@/runtime/files/runtime-file-clie
 import type { SearchFileResult } from '../../../../../shared/file-search/code-search-types'
 import {
   isRuntimePathAbsolute,
+  normalizeRelativePath,
   normalizeRuntimePathForComparison,
   resolveRuntimePath
 } from '../../../../../shared/cross-platform-path'
@@ -185,8 +186,9 @@ async function findSymbolFiles(input: NesRelatedFilesInput): Promise<string[]> {
       rootPath: worktreePath,
       maxResults: SYMBOL_SEARCH_MAX_RESULTS
     })
+    // Why: the blocklist matches path segments, so it must see the root-relative path; an absolute one carries the workspace's ancestors.
     const authored = result.files.filter((file) =>
-      shouldIncludeQuickOpenPath(normalizeRuntimePathForComparison(file.filePath))
+      shouldIncludeQuickOpenPath(normalizeRelativePath(file.relativePath))
     )
     return rankSymbolFiles(authored, symbol).map((file) =>
       isRuntimePathAbsolute(file.filePath)

@@ -23,6 +23,10 @@ installRuntimeFileClientEnvironment()
 
 const WORKTREE_PATH = '/repo'
 const CURRENT_FILE = '/repo/src/app.ts'
+const WINDOWS_WORKTREE_PATH = 'C:\\repo'
+const WINDOWS_FILE = 'C:\\repo\\src\\app.ts'
+const BLOCKED_ANCESTOR_WORKTREE_PATH = '/home/user/.cache/repo'
+const BLOCKED_ANCESTOR_FILE = '/home/user/.cache/repo/src/app.ts'
 
 const contents = new Map<string, string>([
   ['/repo/src/util.ts', 'export const util = 1'],
@@ -56,8 +60,11 @@ function searchResult(
 }
 
 beforeEach(() => {
-  clearNesRelatedFilesCache(CURRENT_FILE)
+  for (const filePath of [CURRENT_FILE, WINDOWS_FILE, BLOCKED_ANCESTOR_FILE]) {
+    clearNesRelatedFilesCache(filePath)
+  }
   binaryPaths.clear()
+  vi.mocked(readRuntimeFileContent).mockClear()
   fsReadFile.mockImplementation(async ({ filePath }: { filePath: string }) => {
     const content = contents.get(filePath)
     if (content === undefined) {
@@ -187,13 +194,39 @@ describe('collectNesRelatedFiles', () => {
     )
 
     const related = await collectNesRelatedFiles({
-      filePath: 'C:\\repo\\src\\app.ts',
+      filePath: WINDOWS_FILE,
       fileText: '',
       symbolAtCursor: 'useState',
-      files: filesContext({ worktreePath: 'C:\\repo' })
+      files: filesContext({ worktreePath: WINDOWS_WORKTREE_PATH })
     })
 
     expect(related.map((file) => file.path)).toEqual(['C:\\repo\\src\\hook.ts'])
+  })
+
+  it('keeps the search results when the workspace sits under a blocked ancestor', async () => {
+    contents.set(`${BLOCKED_ANCESTOR_WORKTREE_PATH}/src/helper.ts`, 'export function helper() {}')
+    fsSearch.mockResolvedValue(
+      searchResult([
+        {
+          filePath: `${BLOCKED_ANCESTOR_WORKTREE_PATH}/src/helper.ts`,
+          relativePath: 'src/helper.ts',
+          lineContent: 'export function helper() {}'
+        }
+      ])
+    )
+
+    const related = await collectNesRelatedFiles({
+      filePath: BLOCKED_ANCESTOR_FILE,
+      fileText: '',
+      symbolAtCursor: 'helper',
+      files: filesContext({ worktreePath: BLOCKED_ANCESTOR_WORKTREE_PATH })
+    })
+
+    expect(related.map((file) => file.path)).toEqual([
+      `${BLOCKED_ANCESTOR_WORKTREE_PATH}/src/helper.ts`
+    ])
+    // Why: the kept file is the only read of this case, so the count also pins the per-test mock history.
+    expect(vi.mocked(readRuntimeFileContent)).toHaveBeenCalledTimes(1)
   })
 
   it('asks the search for enough matches to cover several files', async () => {

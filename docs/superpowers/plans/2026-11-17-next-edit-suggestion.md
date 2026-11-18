@@ -1512,6 +1512,12 @@ it. **Reject, do not clamp** — clamping the range to the cursor's line would c
 suggestion overwrites. For an NES cursor edit the range _ends_ at the cursor, so "starts on the
 cursor's line" and "is a single line" are the same condition.
 
+**The single-line check needs no cursor.** `nesPlanStore.editAt` only returns an edit whose range end
+_is_ the cursor's position, so the cursor's line is the range's end line. "The range starts on the
+cursor's line" is therefore "the range is a single line", which is `edit.range.startLine ===
+edit.range.endLine` — no position argument is needed, and `nesInlineCompletionForEdit(edit, model)`
+keeps the signature the Interfaces block gives it.
+
 **Three facts about Monaco 0.55's ghost text, all verified against the installed package.**
 
 - **A multi-line `insertText` is fine, and it is the feature's core.** `computeGhostText` refuses a
@@ -1535,6 +1541,14 @@ plan-level action, not a suggestion the user accepts with Tab.
 **The predicate and the model check are both required.** `nesEditExtendsCoveredText` says the edit
 _could_ be shown; the model's current text must still match `edit.originalText` before it _is_
 shown.
+
+**Validate the range before reading the model.** `model.getValueInRange` **throws** when the range
+names a line past the end of the file — probed against the installed package, a range on line 5 of a
+two-line file raises `TypeError: Cannot read properties of null (reading 'node')`. A plan can name a
+line that no longer exists: the user deleted lines while the request was in flight. Call
+`model.validateRange(range)` first — it clamps the range into the model's bounds — and read the
+validated range. The provider must not throw: it runs inside Monaco's inline-completion machinery,
+where an exception is not a graceful "no suggestion".
 
 - [ ] **Step 4: Add the CSS**
 

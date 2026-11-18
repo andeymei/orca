@@ -1684,6 +1684,11 @@ It follows the repo's installer pattern (`installEditorSaveShortcut` at the top 
 
 **Match the action, not the key.** A hardcoded `event.key === 'Tab'` would make the two `KeybindingDefinition` entries this task adds dead — the user could rebind _Accept AI Suggestion_ and nothing would happen.
 
+**Ignore a repeated press.** `installEditorSaveShortcut` returns early on `event.repeat`, and the Tab
+installer must do the same: a held Tab key fires a stream of repeats, and the first one accepts the
+suggestion — the repeats must not accept again, and must not fall through to the suggest widget and
+insert whitespace either. Skip repeats before deciding anything.
+
 **The accept path is ours, not Monaco's.** On `accept-suggestion` the hook calls `applyNesEdit` (Task 11) — it does **not** run Monaco's `editor.action.inlineSuggest.commit`. The Global Constraints require an accepted suggestion to be one undoable step made with `pushUndoStop()` / `pushEditOperations` / `pushUndoStop()`, and Task 11's `originalText` guard must sit on the path that actually applies the edit. The hook hides the inline widget first (`editor.action.inlineSuggest.hide`) so Monaco's ghost text does not outlive the text we applied.
 
 Add a second installer for the preview modifier:

@@ -1766,12 +1766,13 @@ holds Alt to see the whole change laid over the code before accepting it.
 feature's core case is a multi-line insert, so the overlay is a content widget. Task 11 measures
 and implements that; this task only calls it.
 
-**The hook must release the preview when Alt comes _up_, not only when it goes down.** The
-release function is `previewNesEdit`'s return value, and the caller holds it for as long as the
-user holds Alt. If the editor is closed while Alt is still held, the widget goes with it —
-Monaco's `dispose()` clears the content widgets, and `removeContentWidget` on a disposed editor
-is a no-op — so the release call is safe either way, but the hook should not leave a dangling
-reference to a widget it has already released.
+**Release the preview on Alt's keyup, and on the editor's unmount.**
+The release function is `previewNesEdit`'s return value, and the caller holds it for as long as
+the user holds Alt: Alt keydown creates the preview, Alt keyup releases it. If the editor is
+closed while Alt is still held, the widget goes with it — Monaco's `dispose()` clears the content
+widgets, and `removeContentWidget` on a disposed editor is a no-op — so the release call is safe
+either way, but the hook should not leave a dangling reference to a widget it has already
+released.
 
 **It can show any kind of edit, which is why it is worth having.** The contract now keeps only the
 edits the editor can draw (Task 1's validator), so a rewrite of the text the user just typed never

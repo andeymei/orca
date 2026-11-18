@@ -20,7 +20,7 @@
 - **不实现富文本格式**(加粗/斜体/标题)。「富」= 多行 + 内联附件引用。
 - **附件一律落到 `<workspace>/.orca/drops/`**,该目录自带 `.gitignore`(`DROP_STAGING_GITIGNORE_CONTENT`),不污染 `git status`。
 - **附件必须落在拥有该终端的那台机器上**(本地 / SSH / WSL / 配对 runtime)。
-- **发送写序列固定为四步**:清 TUI 输入 → 每个图片路径一次独立 bracketed paste → 正文一次写 → **Enter 单独一次延迟写**(`\r`)。Enter 与 paste 同一次写会被 TUI 吞掉。
+- **发送写序列固定为四步**:清 TUI 输入 → 每个图片路径一次独立 bracketed paste → 正文一次写 → **Enter 单独一次延迟写**(`\r`)。Enter 与 paste 同一次写会被 TUI 吞掉。逐字节对齐原生 chat(`native-chat-runtime-image-send.ts` 的 `sendNativeChatMessageWithImageAttachments`):图片与正文之间等 `NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS`(300ms,TUI 异步建 chip);只有空白的正文等于没有正文(不写正文,最后一张图片的 paste 也不带尾随空格);**清 TUI 那一步只在有 agent 时做**——那串字节清的是 agent 的输入行,普通 shell 里发过去等于抹掉用户敲了一半的命令。
 - **图片路径形态由 `agentImagePastePath(agent, path)` 决定**:支持附件语义的 agent 给裸路径,其余给 `@"path"`。图片 pill **永远不进正文**。
 - **文件 pill 进正文的形式是 `@path`**,含空白或 `@` 时加引号(`formatNativeChatFileReference`)。
 - **快捷键**:`terminal.toggleComposer`,默认 `Mod+Shift+P`(darwin `⌘⇧P`,win/linux `Ctrl+Shift+P`)。
@@ -31,7 +31,7 @@
 - **命名**:不用 `helpers` / `utils` / `common` / `misc`;文件名按领域概念命名。
 - **注释**:只在代码不能自我描述时写,一行,说「为什么」不写「怎么做」。
 - **测试**:`pnpm test <path> --maxWorkers=2`。**绝不同时跑两个 vitest**(共享 transform 缓存会互相损坏)。
-- **DOM 测试环境**:`// @vitest-environment happy-dom` 放在**第二行**(第一个 import 之后)—— 仓库的既有写法。`render` 直接来自 `@testing-library/react`,没有 `renderWithProviders` 这类包装。
+- **DOM 测试环境**:`// @vitest-environment happy-dom` 放在**第一行**—— 仓库里 903 个文件这么写,只有 63 个放在别处。`render` 直接来自 `@testing-library/react`,没有 `renderWithProviders` 这类包装。
 - **截图 fixture** 用 `*.fixture.tsx`,放在组件旁边,由 glob 自动发现(没有手写清单);id 是「去掉 `components/` 前缀与 `.fixture.tsx` 后缀的路径」+ `:` + 导出名,例如 `terminal-pane/composer/TerminalComposerField:empty`。**单测用的 fixture 是另一种后缀** `*.test.fixture.ts(x)`。
 - **不加低价值测试**:只写「回退改动就会失败」的测试;不测 CSS 类、复制文案、DOM 结构、耗时。
 
@@ -615,6 +615,8 @@ git commit -m "feat(composer): one intake for picked, pasted and dropped attachm
 
 - Create: `src/renderer/src/components/terminal-pane/composer/use-terminal-composer-send.ts`
 - Create: `src/renderer/src/components/terminal-pane/composer/use-terminal-composer-send.test.ts`
+- Modify: `src/shared/native-chat/input/native-chat-answer-stepping.ts`(加图片落定的等待常量)
+- Modify: `src/renderer/src/components/native-chat/session/terminal/send/native-chat-runtime-image-send.ts`(改成从 shared 引那个常量)
 
 **Interfaces:**
 
@@ -622,6 +624,7 @@ git commit -m "feat(composer): one intake for picked, pasted and dropped attachm
   - `AGENT_TUI_CLEAR_INPUT_MAX` from `src/shared/agent-launch/startup/agent-tui-input-clear`
   - `buildNativeChatPasteBytes(text)`, `buildNativeChatImagePasteBytes(filePath)`, `NATIVE_CHAT_SUBMIT` from `src/shared/native-chat/input/native-chat-paste-bytes`
   - `NATIVE_CHAT_SUBMIT_DELAY_MS` from `src/shared/native-chat/input/native-chat-answer-stepping`(不在 paste-bytes 里)
+  - `NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS` from the same file —— **这个常量现在住在 native chat 的 renderer 模块里,把它挪到 shared**:composer 不能 import native chat 的发送模块(那会把整条发送链路拖进来),而两个 300ms 各写一份必然会漂。挪完让 `native-chat-runtime-image-send.ts` 从 shared 引,原生 chat 自己的测试照过。
   - `agentImagePastePath(agent, path)` from `src/shared/agent-image-paste-path`
   - `agentImagePasteWrites(agent, framedPastes, followedByText)` from `src/shared/agent-image-paste`
   - `PtyTransport.sendInput(data, 'driving')` from `../../pty-transport/pty-transport-types`
@@ -670,8 +673,11 @@ describe('terminal composer writes', () => {
       agent: 'claude'
     })
     expect(writes[0].data).toBe(AGENT_TUI_CLEAR_INPUT_MAX)
-    expect(writes[1].data).toBe(wrapTerminalBracketedPasteText('/ws/.orca/drops/shot.png'))
+    // The last image paste takes a space so the body does not merge into the chip.
+    expect(writes[1].data).toBe(`${wrapTerminalBracketedPasteText('/ws/.orca/drops/shot.png')} `)
     expect(writes[2].data).toBe(buildNativeChatPasteBytes('look at this'))
+    // The chip is created asynchronously; the body waits for it.
+    expect(writes[2].delayBeforeMs).toBe(NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS)
     expect(writes[3].data).toBe(NATIVE_CHAT_SUBMIT)
     expect(writes[3].delayBeforeMs).toBe(NATIVE_CHAT_SUBMIT_DELAY_MS)
   })
@@ -685,10 +691,33 @@ describe('terminal composer writes', () => {
     expect(writes[1].data).toContain('@"/ws/.orca/drops/shot.png"')
   })
 
+  it('gives each image its own paste, in pill order', () => {
+    const writes = buildTerminalComposerWrites({
+      body: 'two',
+      imagePaths: ['/ws/.orca/drops/a.png', '/ws/.orca/drops/b.png'],
+      agent: 'claude'
+    })
+    expect(writes[1].data).toBe(wrapTerminalBracketedPasteText('/ws/.orca/drops/a.png'))
+    expect(writes[2].data).toBe(`${wrapTerminalBracketedPasteText('/ws/.orca/drops/b.png')} `)
+  })
+
   it('writes Enter separately even with no attachments', () => {
     const writes = buildTerminalComposerWrites({ body: 'hello', imagePaths: [], agent: 'claude' })
     expect(writes.map((w) => w.data)).toEqual([
       AGENT_TUI_CLEAR_INPUT_MAX,
+      buildNativeChatPasteBytes('hello'),
+      NATIVE_CHAT_SUBMIT
+    ])
+  })
+
+  it('writes no body when there is only whitespace to send', () => {
+    const writes = buildTerminalComposerWrites({ body: '   ', imagePaths: [], agent: 'claude' })
+    expect(writes.map((w) => w.data)).toEqual([AGENT_TUI_CLEAR_INPUT_MAX, NATIVE_CHAT_SUBMIT])
+  })
+
+  it('does not clear the input line when no agent was detected', () => {
+    const writes = buildTerminalComposerWrites({ body: 'hello', imagePaths: [], agent: null })
+    expect(writes.map((w) => w.data)).toEqual([
       buildNativeChatPasteBytes('hello'),
       NATIVE_CHAT_SUBMIT
     ])
@@ -713,16 +742,29 @@ export function buildTerminalComposerWrites({
   imagePaths: readonly string[]
   agent: string | null
 }): TerminalComposerWrite[] {
-  const writes: TerminalComposerWrite[] = [{ data: AGENT_TUI_CLEAR_INPUT_MAX, delayBeforeMs: 0 }]
+  const writes: TerminalComposerWrite[] = []
+  // The clear empties the *agent's* input line; with no agent there is none, and the bytes
+  // would erase whatever the user had typed into a plain shell.
+  if (agent !== null) {
+    writes.push({ data: AGENT_TUI_CLEAR_INPUT_MAX, delayBeforeMs: 0 })
+  }
+  // A body of only whitespace is no body: native chat treats it as no text.
+  const hasText = body.trim().length > 0
   const framed = agentImagePasteWrites(
     agent,
     imagePaths.map((path) => buildNativeChatImagePasteBytes(agentImagePastePath(agent, path))),
-    body.length > 0
+    hasText
   )
   for (const data of framed) {
     writes.push({ data, delayBeforeMs: 0 })
   }
-  writes.push({ data: buildNativeChatPasteBytes(body), delayBeforeMs: 0 })
+  if (hasText) {
+    writes.push({
+      data: buildNativeChatPasteBytes(body),
+      // The chip is created asynchronously; the body waits for it to exist.
+      delayBeforeMs: imagePaths.length > 0 ? NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS : 0
+    })
+  }
   writes.push({ data: NATIVE_CHAT_SUBMIT, delayBeforeMs: NATIVE_CHAT_SUBMIT_DELAY_MS })
   return writes
 }
@@ -738,6 +780,12 @@ export function buildTerminalComposerWrites({
 - 按 `delayBeforeMs` 串行写:用 `setTimeout` 链,第一次 `delayBeforeMs` 为 0 时立即写。
 - `transport.sendInput(write.data, 'driving')` 返回 false → `{ sent: false, reason: 'write-rejected' }`。
 - transport 不存在 → `{ sent: false, reason: 'pty-disconnected' }`。
+- **写序列要与原生 chat 逐字节对齐。** 对照物是 `src/renderer/src/components/native-chat/session/terminal/send/native-chat-runtime-image-send.ts` 的 `sendNativeChatMessageWithImageAttachments`,它有三条本 task 原先漏掉的规则:
+  1. **图片与正文之间要等 `NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS`(300ms)。** TUI 是异步把图片变成 chip 的,不等这一下,正文可能先落地,agent 收到的顺序就是反的。
+  2. **正文按 trim 后的长度判断有没有文字。** 只有空白的正文等于没有正文:不写正文,最后一张图片的 paste 也不带尾随空格。
+  3. **清 TUI 输入那一步只在有 agent 时做。** 那串字节是「清空 **agent** 的输入行」,没有 agent 就没有 agent 输入行;在普通 shell 里发它等于抹掉用户敲了一半的命令。
+- **`NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS` 挪到 `src/shared/native-chat/input/native-chat-answer-stepping.ts`**(和 `NATIVE_CHAT_SUBMIT_DELAY_MS` 放一起),`native-chat-runtime-image-send.ts` 改成从 shared 引。两个 300ms 各写一份必然会漂,而 composer 不能 import native chat 的发送模块。
+- **测试要钉住「每个图片路径一次独立的 bracketed paste」。** 这是本 task 最重要的载荷规则,只用一张图的话,「把两个路径并进一次 paste」的回归会照样通过。
 
 - [ ] **Step 5: Run the test to verify it passes**
 

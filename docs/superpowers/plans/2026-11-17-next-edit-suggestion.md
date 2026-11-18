@@ -1841,7 +1841,7 @@ git commit -m "feat(code-completion): the suggestion trigger and the Tab routing
 - Consumes: `NesEdit` (Task 1), `sliceRange` (Task 1).
 - Produces:
   - `applyNesEdit(model: editor.ITextModel, editorInstance: editor.IStandaloneCodeEditor, edit: NesEdit): boolean` — true when the edit was applied
-  - `previewNesEdit(model, editorInstance, edit): () => void` — returns the undo function for the preview overlay
+  - `previewNesEdit(model, editorInstance, edit): () => void` — returns the function that releases the preview overlay
 
 - [ ] **Step 1: Write the failing test**
 

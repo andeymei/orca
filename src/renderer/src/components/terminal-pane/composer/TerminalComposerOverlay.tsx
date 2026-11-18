@@ -175,14 +175,15 @@ export function TerminalComposerOverlay({
 
   const handleDropPaths = useCallback(
     (paths: readonly string[]) => {
+      if (paths.length === 0) {
+        // The drop delivered nothing: the hook already said why, or the card went away.
+        return
+      }
       void (async () => {
         const host = buildIntakeHost()
         if (!host) {
           // The card claimed the drop, so the composer owes the user an answer.
           toast.error(terminalComposerHostUnavailableMessage(t))
-          return
-        }
-        if (paths.length === 0) {
           return
         }
         fieldRef.current?.setUploading(true)

@@ -28,6 +28,14 @@ vi.mock('sonner', () => ({
   })
 }))
 
+const fsApi = vi.hoisted(() => ({
+  getPathForFile: vi.fn((file: File) => `/dropped/${file.name}`),
+  prepareDroppedPaths: vi.fn(async ({ paths }: { paths: string[] }) => ({
+    paths,
+    failures: []
+  }))
+}))
+
 const PANE_ID = 1
 const LEAF_ID = 'leaf-1'
 const TAB_ID = 'tab-1'
@@ -35,6 +43,10 @@ const PANE_KEY = `${TAB_ID}:${LEAF_ID}`
 const WORKTREE_PATH = '/worktrees/wt-1'
 
 const initialState = useAppStore.getInitialState()
+
+// The drop owner reaches for window.api; this file installs a partial one, so the original
+// descriptor goes back when the file's tests are done.
+const originalApiDescriptor = Object.getOwnPropertyDescriptor(window, 'api')
 
 function makeWorktree(id: string, path: string): Worktree {
   return {
@@ -99,16 +111,17 @@ beforeEach(() => {
   useAppStore.setState({ terminalComposerOpenByPaneKey: { [PANE_KEY]: true } })
   vi.mocked(pasteTerminalComposerAttachments).mockResolvedValue({ attachments: [], failed: [] })
   toastError.mockClear()
+  fsApi.getPathForFile.mockReset().mockImplementation((file: File) => `/dropped/${file.name}`)
+  fsApi.prepareDroppedPaths
+    .mockReset()
+    .mockImplementation(async ({ paths }: { paths: string[] }) => ({ paths, failures: [] }))
   // The OS drop owner reads the file's path and asks the host to prepare it.
   Object.defineProperty(window, 'api', {
     configurable: true,
     value: {
       fs: {
-        getPathForFile: (file: File) => `/dropped/${file.name}`,
-        prepareDroppedPaths: async ({ paths }: { paths: string[] }) => ({
-          paths,
-          failures: []
-        })
+        getPathForFile: fsApi.getPathForFile,
+        prepareDroppedPaths: fsApi.prepareDroppedPaths
       }
     }
   })
@@ -132,6 +145,12 @@ async function settleDrop(): Promise<void> {
 }
 
 afterEach(() => {
+  // The partial window.api this file installs must not leak into the next test.
+  if (originalApiDescriptor) {
+    Object.defineProperty(window, 'api', originalApiDescriptor)
+  } else {
+    Reflect.deleteProperty(window, 'api')
+  }
   cleanup()
   vi.clearAllTimers()
   vi.useRealTimers()
@@ -205,6 +224,24 @@ describe('terminal composer overlay', () => {
     // The card claimed the drop, so the user was told it could not land: nothing vanished.
     expect(toastError).toHaveBeenCalledTimes(1)
     expect(toastError.mock.calls[0]?.[0]).toContain('cannot be reached')
+    expect(vi.mocked(dropTerminalComposerAttachments)).not.toHaveBeenCalled()
+  })
+
+  it('does not blame the host for a drop that delivered nothing', async () => {
+    // A file the browser invented has no path behind it, so the drop resolves to nothing.
+    fsApi.getPathForFile.mockReturnValue('')
+    const { container } = createOverlay('/cwd', 'runtime:missing-environment')
+    const field = container.querySelector('[data-terminal-composer-editor="true"]')
+    if (!field) {
+      throw new Error('Expected the composer field')
+    }
+    await act(async () => {
+      field.dispatchEvent(osFileDrop([new File(['x'], 'notes.png', { type: 'image/png' })]))
+    })
+    await settleDrop()
+    // The hook said the paths did not resolve; that is the whole answer.
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError.mock.calls[0]?.[0]).not.toContain('cannot be reached')
     expect(vi.mocked(dropTerminalComposerAttachments)).not.toHaveBeenCalled()
   })
 })

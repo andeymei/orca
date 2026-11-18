@@ -101,6 +101,15 @@ describe('code completion api key store', () => {
     expect(reloaded.getCodeCompletionApiKeyProtection()).toBe('sealed')
   })
 
+  it('rejects an empty key', async () => {
+    const store = await loadStore()
+
+    expect(() => store.saveCodeCompletionApiKey('   ')).toThrow(
+      'Code completion API key is required'
+    )
+    expect(writeSecureFileMock).not.toHaveBeenCalled()
+  })
+
   it('reports a plaintext key as unsealed when the keyring is unavailable', async () => {
     safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)

@@ -36,7 +36,7 @@ export type TerminalComposerSendRequest = {
 
 export type TerminalComposerSendResult = {
   sent: boolean
-  reason?: 'pane-changed' | 'write-rejected' | 'pty-disconnected'
+  reason?: 'pane-changed' | 'host-changed' | 'write-rejected' | 'pty-disconnected'
 }
 
 /** The bytes that carry a composed prompt into the pane's agent, in the order the agent reads them. */
@@ -120,7 +120,9 @@ export function useTerminalComposerSend({
         try {
           owner?.assertCurrent()
         } catch {
-          return { sent: false, reason: 'pane-changed' }
+          // The host moved under the send; the pane is still there, so the user retries the
+          // prompt rather than resending to a host that no longer owns this pane.
+          return { sent: false, reason: 'host-changed' }
         }
         if (!liveTransport.sendInput(write.data, 'driving')) {
           return { sent: false, reason: 'write-rejected' }

@@ -147,7 +147,7 @@ describe('terminal composer send', () => {
     const executionHostId = vi.fn().mockReturnValueOnce('local').mockReturnValue('ssh:other')
     const harness = createHarness({ executionHostId })
 
-    expect(await harness.send(REQUEST)).toEqual({ sent: false, reason: 'pane-changed' })
+    expect(await harness.send(REQUEST)).toEqual({ sent: false, reason: 'host-changed' })
     expect(harness.sendInput).not.toHaveBeenCalled()
   })
 

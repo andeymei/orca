@@ -1815,6 +1815,30 @@ The hook:
 - debounces both by `triggerDelayMs`
 - binds the model to its file path in the plan store (`nesPlanStore.bindModel(model.uri.toString(), filePath)`) as soon as it mounts, so the provider (Task 9) can resolve the model
 - on a tick it builds the context (Task 7), collects the related files (Task 7), asks for the plan (Task 7), stores it (Task 8) and fires `fireNesInlineCompletionsChanged()` so Monaco re-queries the provider
+
+**The request the hook assembles.** `NesRequest` is the context, plus the related files, plus the
+recent edits:
+
+```ts
+const context = buildNesContext(model, position, { filePath, relativePath })
+const relatedFiles = await collectNesRelatedFiles({
+  filePath,
+  fileText: model.getValue(),
+  symbolAtCursor: identifierAtCursor(model, position),
+  files
+})
+const plan = await requestNesPlan({ ...context, relatedFiles, recentEdits: [] })
+```
+
+Two of those inputs are not obvious, and the collector's own signature does not supply them:
+
+- **`symbolAtCursor` is a plain identifier.** The collector uses it only to find the files that
+  mention it, and `findSymbolFiles` drops anything that is not a plain identifier. Take the word
+  under the cursor from the model — `model.getWordUntilPosition(position)` — and pass `null` when
+  there is none. Nothing in the repo derives it for you.
+- **`recentEdits` is empty in this round.** The field is in the contract for a later feature and
+  the RPC params default it to `[]`; nothing in this plan records a history, so pass `[]` and do
+  not invent one.
 - **renders the other predicted locations**: `nesLocationMarkers(nesPlanStore.editsForPath(filePath), cursor)` into a `createNesMarkerDecorations(editorInstance, markers)` collection, refreshed on each tick and disposed with the editor. This is the spec's second layer — the gutter markers — and the hook is its only caller. The same list is what `decideNesTabAction`'s `hasOtherLocations` reads.
 - **discards a stale answer**: the request cannot be cancelled end to end (see below), so the hook keeps a generation counter and applies a plan only when the generation still matches the one the request was made under.
 - skips the whole cycle when the file's extension is not in the enabled list, when the feature is off, or when the editor is read-only

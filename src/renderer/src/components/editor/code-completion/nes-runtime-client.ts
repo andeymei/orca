@@ -32,7 +32,7 @@ export async function requestNesPlan(
     return parsed.success ? parsed.data : null
   } catch (error) {
     // Why: a failed request is "no suggestion"; the user has nothing to dismiss.
-    console.error('[code-completion] The plan request failed.', { error: errorDetail(error) })
+    console.error('[code-completion] The plan request failed.', { error: errorName(error) })
     return null
   }
 }
@@ -65,6 +65,6 @@ function settleBeforeDeadline<TResult>(
   })
 }
 
-function errorDetail(error: unknown): string {
-  return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : 'unknown'
 }

@@ -118,6 +118,28 @@ describe('completion backends', () => {
     ])
   })
 
+  it('reports the tokens an Anthropic stream spent', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([
+        JSON.stringify({
+          type: 'message_start',
+          message: { id: 'm1', usage: { input_tokens: 120, cache_read_input_tokens: 80 } }
+        }),
+        anthropicTextEvent(JSON.stringify(MODEL_PLAN)),
+        JSON.stringify({
+          type: 'message_delta',
+          delta: { stop_reason: 'end_turn' },
+          usage: { output_tokens: 42 }
+        })
+      ])
+    )
+    const backend = createAnthropicMessagesBackend(CONFIG, { fetchImpl })
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 42, cacheReadTokens: 80 })
+  })
+
   it('asks for the auto-import when the setting is on', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       sseResponse([anthropicTextEvent(JSON.stringify(MODEL_PLAN))])
@@ -185,6 +207,29 @@ describe('completion backends', () => {
     ])
   })
 
+  it('asks for the usage and reports what the final OpenAI chat chunk spent', async () => {
+    const planJson = JSON.stringify(MODEL_PLAN)
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([
+        JSON.stringify({ choices: [{ delta: { content: planJson } }] }),
+        JSON.stringify({
+          choices: [],
+          usage: {
+            prompt_tokens: 90,
+            completion_tokens: 12,
+            prompt_tokens_details: { cached_tokens: 30 }
+          }
+        })
+      ])
+    )
+    const backend = createOpenAiChatBackend(CONFIG, { fetchImpl })
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.usage).toEqual({ inputTokens: 90, outputTokens: 12, cacheReadTokens: 30 })
+    expect(requestBody(fetchImpl.mock.calls[0]).stream_options).toEqual({ include_usage: true })
+  })
+
   it('reads an OpenAI FIM stream and returns only the cursor edit', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       sseResponse([JSON.stringify({ choices: [{ text: '  const c = 3\n' }] })])
@@ -194,6 +239,7 @@ describe('completion backends', () => {
     const result = await backend.plan(REQUEST, new AbortController().signal)
 
     expect(backend.planCapable).toBe(false)
+    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 })
     expect(result.plan?.edits).toEqual([
       {
         id: 'fim-cursor',

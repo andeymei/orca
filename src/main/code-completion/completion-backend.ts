@@ -146,11 +146,12 @@ export function parseNesPlanText(
   return validateNesEditPlan(parsed, { allowedPaths })
 }
 
-/** The plan a completion stream carries; the finishing step differs per protocol. */
+/** The plan a completion stream carries; the finishing step and the usage fields differ per protocol. */
 export async function planFromCompletionStream(
   request: CompletionHttpRequest,
   extractText: (events: readonly unknown[]) => string,
-  finish: (text: string) => NesEditPlan | null
+  finish: (text: string) => NesEditPlan | null,
+  usageOf: (events: readonly unknown[]) => CompletionUsage
 ): Promise<NesBackendResult> {
   const result = await postCompletionJson(request)
   if (!result.ok) {
@@ -160,5 +161,5 @@ export async function planFromCompletionStream(
   if (!events) {
     return { plan: null, usage: emptyCompletionUsage() }
   }
-  return { plan: finish(extractText(events)), usage: emptyCompletionUsage() }
+  return { plan: finish(extractText(events)), usage: usageOf(events) }
 }

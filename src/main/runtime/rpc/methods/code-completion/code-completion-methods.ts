@@ -10,6 +10,7 @@ import { createOpenAiChatBackend } from '../../../../code-completion/openai-chat
 import { createOpenAiFimBackend } from '../../../../code-completion/openai-fim-backend'
 import { readCodeCompletionApiKey } from '../../../../code-completion/code-completion-api-key-store'
 import type { NesBackend, NesBackendConfig } from '../../../../code-completion/completion-backend'
+import { recordCompletionUsage } from '../../../../code-completion/completion-usage'
 
 /** How many tokens a completion answer may take. */
 const NES_COMPLETION_MAX_TOKENS = 2000
@@ -61,6 +62,11 @@ export const CODE_COMPLETION_METHODS = [
         },
         signal ?? new AbortController().signal
       )
+      const { usage } = result
+      // Why: a null plan can still have spent tokens — the model answered, the answer was unusable.
+      if (usage.inputTokens > 0 || usage.outputTokens > 0 || usage.cacheReadTokens > 0) {
+        recordCompletionUsage({ model: settings.model, usage, at: Date.now() })
+      }
       return { plan: result.plan }
     }
   })

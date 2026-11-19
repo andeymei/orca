@@ -7,6 +7,7 @@ import {
   type NesRequest
 } from '../../shared/code-completion/code-completion-types'
 import {
+  emptyCompletionUsage,
   NES_COMPLETION_OUTPUT_LIMIT,
   nesBackendIdentity,
   planFromCompletionStream,
@@ -49,7 +50,8 @@ export function createOpenAiFimBackend(
           fetchImpl: options?.fetchImpl
         },
         openAiCompletionStreamText,
-        (text) => fimCompletionPlan(text, input)
+        (text) => fimCompletionPlan(text, input),
+        () => emptyCompletionUsage()
       )
     }
   }

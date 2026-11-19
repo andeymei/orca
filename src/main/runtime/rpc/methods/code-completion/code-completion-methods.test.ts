@@ -11,9 +11,14 @@ import { CodeCompletionPlanResult } from '../../../../../shared/rpc-contract/cod
 import { CODE_COMPLETION_METHODS } from './code-completion-methods'
 
 const apiKey = vi.hoisted(() => ({ read: (): string | null => 'test-api-key' }))
+const completionUsage = vi.hoisted(() => ({ record: vi.fn() }))
 
 vi.mock('../../../../code-completion/code-completion-api-key-store', () => ({
   readCodeCompletionApiKey: () => apiKey.read()
+}))
+
+vi.mock('../../../../code-completion/completion-usage', () => ({
+  recordCompletionUsage: completionUsage.record
 }))
 
 const FILE_PATH = '/repo/src/foo.ts'
@@ -88,10 +93,33 @@ function stubCompletionFetch(): ReturnType<typeof vi.fn> {
   return fetchMock
 }
 
+/** The endpoint answers with the given text and reports the Anthropic usage counts. */
+function stubCompletionFetchWithUsage(answer: string): ReturnType<typeof vi.fn> {
+  const start = JSON.stringify({
+    type: 'message_start',
+    message: { id: 'm1', usage: { input_tokens: 12, cache_read_input_tokens: 3 } }
+  })
+  const event = JSON.stringify({
+    type: 'content_block_delta',
+    delta: { type: 'text_delta', text: answer }
+  })
+  const delta = JSON.stringify({ type: 'message_delta', usage: { output_tokens: 7 } })
+  const fetchMock = vi.fn(
+    async () =>
+      new Response(`data: ${start}\n\ndata: ${event}\n\ndata: ${delta}\n\n`, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' }
+      })
+  )
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
 describe('codeCompletion.plan', () => {
   beforeEach(() => {
     completionCache.clear()
     apiKey.read = () => 'test-api-key'
+    completionUsage.record.mockClear()
   })
 
   afterEach(() => {
@@ -131,6 +159,57 @@ describe('codeCompletion.plan', () => {
       'https://endpoint.invalid/v1/messages',
       expect.objectContaining({ method: 'POST' })
     )
+  })
+
+  it('records what the completion spent', async () => {
+    stubCompletionFetchWithUsage(JSON.stringify(MODEL_PLAN))
+    const runtime = createRuntime({
+      enabled: true,
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    await dispatchPlan(runtime, PLAN_PARAMS)
+
+    expect(completionUsage.record).toHaveBeenCalledWith({
+      model: 'test-model',
+      usage: { inputTokens: 12, outputTokens: 7, cacheReadTokens: 3 },
+      at: expect.any(Number)
+    })
+  })
+
+  it('records what the completion spent even when the answer is not a plan', async () => {
+    stubCompletionFetchWithUsage('not a plan')
+    const runtime = createRuntime({
+      enabled: true,
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    const response = await dispatchPlan(runtime, PLAN_PARAMS)
+
+    expect(response).toMatchObject({ ok: true, result: { plan: null } })
+    expect(completionUsage.record).toHaveBeenCalledWith({
+      model: 'test-model',
+      usage: { inputTokens: 12, outputTokens: 7, cacheReadTokens: 3 },
+      at: expect.any(Number)
+    })
+  })
+
+  it('records nothing when the completion spent nothing', async () => {
+    stubCompletionFetch()
+    const runtime = createRuntime({
+      enabled: true,
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    await dispatchPlan(runtime, PLAN_PARAMS)
+
+    expect(completionUsage.record).not.toHaveBeenCalled()
   })
 
   it('returns null when the feature is disabled', async () => {

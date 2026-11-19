@@ -1,6 +1,6 @@
 import { NES_BACKEND_IDS, type NesBackendId } from './code-completion-types'
 
-const DEFAULT_TRIGGER_DELAY_MS = 500
+export const DEFAULT_TRIGGER_DELAY_MS = 500
 const MAX_TRIGGER_DELAY_MS = 5000
 
 const DEFAULT_ENABLED_EXTENSIONS = [

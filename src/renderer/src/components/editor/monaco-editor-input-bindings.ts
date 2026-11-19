@@ -9,10 +9,13 @@ import { openAddToChatMenuAt } from '../native-chat/selection-quotes/add-to-chat
 import { formatNativeChatQuote } from '../native-chat/selection-quotes/native-chat-quote-selection'
 import { getDiffCommentPopoverLeft } from '../diff-comments/diff-comment-popover-position'
 import {
+  installEditorAcceptAiSuggestionShortcut,
   installEditorAddReviewNoteShortcut,
+  installEditorAiSuggestionPreviewShortcut,
   installEditorSaveShortcut,
   installMonacoEditorFindShortcut
 } from './editor-shortcuts'
+import { nesShortcutHandlersFor } from './code-completion/use-monaco-nes'
 import {
   getMonacoMarkdownSelectionAnnotationTarget,
   type MonacoMarkdownSelectionAnnotationTarget
@@ -58,6 +61,18 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
     propsRef.current.onSave(value)
   })
   const cleanupFindShortcut = installMonacoEditorFindShortcut(editorInstance)
+  const cleanupAcceptAiSuggestionShortcut = installEditorAcceptAiSuggestionShortcut(
+    editorDomNode,
+    () => nesShortcutHandlersFor(editorInstance)?.decide() ?? 'pass-through',
+    () => nesShortcutHandlersFor(editorInstance)?.accept(),
+    () => nesShortcutHandlersFor(editorInstance)?.jump()
+  )
+  const cleanupAiSuggestionPreviewShortcut = installEditorAiSuggestionPreviewShortcut(
+    editorDomNode,
+    (active) => {
+      nesShortcutHandlersFor(editorInstance)?.preview(active)
+    }
+  )
   const cleanupAddReviewNoteShortcut = installEditorAddReviewNoteShortcut(editorDomNode, () => {
     // Preserve open drafts during same-tick chords before the composer guard mounts.
     if (commentPopoverRef.current) {
@@ -165,6 +180,8 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
     disposeInputBindings: () => {
       cleanupSaveShortcut()
       cleanupFindShortcut()
+      cleanupAcceptAiSuggestionShortcut()
+      cleanupAiSuggestionPreviewShortcut()
       cleanupAddReviewNoteShortcut()
       pasteCaptureNode.removeEventListener('paste', onLargeTextPaste, { capture: true })
       searchInFilesAction.dispose()

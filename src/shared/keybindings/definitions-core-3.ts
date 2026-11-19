@@ -41,11 +41,7 @@ export const KEYBINDING_DEFINITION_CORE_3: readonly KeybindingDefinition[] = [
     scope: 'browser',
     searchKeywords: ['shortcut', 'browser', 'annotate', 'comment', 'element'],
     // Why: Ctrl+Shift+C is terminal copy on Linux/Windows, including web terminals in the page.
-    defaultBindings: {
-      darwin: ['Mod+Shift+C'],
-      linux: ['Alt+Shift+N'],
-      win32: ['Alt+Shift+N']
-    }
+    defaultBindings: { darwin: ['Mod+Shift+C'], linux: ['Alt+Shift+N'], win32: ['Alt+Shift+N'] }
   },
   {
     id: 'editor.find',
@@ -62,11 +58,7 @@ export const KEYBINDING_DEFINITION_CORE_3: readonly KeybindingDefinition[] = [
     scope: 'editor',
     searchKeywords: ['shortcut', 'editor', 'replace', 'find', 'search'],
     // Why: match the source editor's native replace shortcut per platform.
-    defaultBindings: {
-      darwin: ['Mod+Alt+F'],
-      linux: ['Mod+H'],
-      win32: ['Mod+H']
-    }
+    defaultBindings: { darwin: ['Mod+Alt+F'], linux: ['Mod+H'], win32: ['Mod+H'] }
   },
   {
     id: 'editor.save',
@@ -130,6 +122,24 @@ export const KEYBINDING_DEFINITION_CORE_3: readonly KeybindingDefinition[] = [
     defaultBindings: platformBindings(['Mod+Shift+A'])
   },
   {
+    id: 'editor.acceptAiSuggestion',
+    title: 'Accept AI Suggestion',
+    group: 'Editors',
+    scope: 'editor',
+    searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'accept', 'tab'],
+    // Why: Tab is a bare key, so the definition has to opt in or the default binding is dropped.
+    defaultBindings: platformBindings(['Tab']),
+    allowBareKeybindings: true
+  },
+  {
+    id: 'editor.nextAiSuggestion',
+    title: 'Go to Next AI Suggestion',
+    group: 'Editors',
+    scope: 'editor',
+    searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'next', 'jump'],
+    defaultBindings: platformBindings(['Mod+Tab'])
+  },
+  {
     id: 'sourceControl.sendReviewNotes',
     title: 'Send Review Notes to Agent',
     group: 'Global',
@@ -175,11 +185,7 @@ export const KEYBINDING_DEFINITION_CORE_3: readonly KeybindingDefinition[] = [
     group: 'File Explorer',
     scope: 'fileExplorer',
     searchKeywords: ['shortcut', 'file explorer', 'copy', 'path'],
-    defaultBindings: {
-      darwin: ['Mod+Alt+C'],
-      linux: ['Alt+Shift+C'],
-      win32: ['Alt+Shift+C']
-    }
+    defaultBindings: { darwin: ['Mod+Alt+C'], linux: ['Alt+Shift+C'], win32: ['Alt+Shift+C'] }
   },
   {
     id: 'fileExplorer.copyRelativePath',
@@ -195,11 +201,7 @@ export const KEYBINDING_DEFINITION_CORE_3: readonly KeybindingDefinition[] = [
     group: 'File Explorer',
     scope: 'fileExplorer',
     searchKeywords: ['shortcut', 'file explorer', 'delete', 'remove', 'trash'],
-    defaultBindings: {
-      darwin: ['Mod+Backspace', 'Delete'],
-      linux: ['Delete'],
-      win32: ['Delete']
-    },
+    defaultBindings: { darwin: ['Mod+Backspace', 'Delete'], linux: ['Delete'], win32: ['Delete'] },
     allowBareKeybindings: true
   },
   {

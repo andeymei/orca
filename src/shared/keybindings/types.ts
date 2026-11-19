@@ -101,6 +101,8 @@ export type KeybindingActionId =
   | 'editor.previousChange'
   | 'editor.nextChange'
   | 'editor.addReviewNote'
+  | 'editor.acceptAiSuggestion'
+  | 'editor.nextAiSuggestion'
   | 'sourceControl.sendReviewNotes'
   | 'fileExplorer.undo'
   | 'fileExplorer.redo'

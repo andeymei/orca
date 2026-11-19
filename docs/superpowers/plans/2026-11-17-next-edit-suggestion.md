@@ -2309,8 +2309,9 @@ for the credential status before it types a character.
 
 - [ ] **Step 3: Build in E2E mode and run the spec**
 
-Run: `ORCA_BACKGROUND_LAUNCH=1 pnpm run test:e2e -- next-edit-suggestion`
-Expected: PASS.
+Run: `ORCA_BACKGROUND_LAUNCH=1 pnpm run test:e2e tests/e2e/next-edit-suggestion.spec.ts`
+Expected: PASS. **The file path, not a name and no `--`**: the `--` reaches Playwright's CLI
+verbatim and the run executes the whole suite instead of this one spec.
 
 The E2E build must be `--mode e2e`; a plain build omits `window.__store` and the probe and the spec will time out.
 

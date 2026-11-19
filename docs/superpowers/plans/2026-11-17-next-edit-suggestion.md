@@ -2188,6 +2188,54 @@ Create `tests/e2e/next-edit-suggestion.spec.ts`. Follow `tests/e2e/editor-model-
 
 The mock's plan must place its edit exactly at the cursor the test creates, so the spec types `const x = ` at the end of the file and the plan answers an `insert` whose range ends at that column.
 
+### The mock's answer, exactly — this is where the spec silently finds nothing
+
+**The backend does not read the stream raw.** `readSsePayloads` (`completion-http.ts:68`) keeps only
+the lines that **start with `data:`** and strips that prefix, and `anthropicStreamText`
+(`anthropic-messages-backend.ts:65`) concatenates the `delta.text` of the events shaped exactly
+`{ "type": "content_block_delta", "delta": { "text": … } }`. So a bare JSON line is dropped by the
+reader, and a plan JSON sent as a top-level event is never seen as text at all.
+
+The mock answers:
+
+```
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"<the plan JSON, escaped>"}}
+
+event: message_stop
+data: {"type":"message_stop"}
+```
+
+**The plan JSON has to satisfy the contract, or the edit is dropped without an error.** The
+validator keeps the edits that pass and drops the ones that do not, and the backend answers "no
+plan" when the text is not JSON — so a wrong `path` shows up as _no suggestion at all_.
+
+```json
+{"edits":[{"id":"edit-1","path":"<the absolute path of the file the test opened>","kind":"insert",
+  "range":{"startLine":<the line the test typed on>,"startColumn":<the cursor column>,
+           "endLine":<the same line>,"endColumn":<the same column>},
+  "originalText":"","text":"42","label":"add a value"}]}
+```
+
+- **`path` is the absolute path of the edited file.** `nesAllowedPaths` is
+  `[request.filePath, ...relatedFiles]`, and the file the test opened is the only one in it.
+- **`kind: 'insert'` requires `originalText` to be `""`**; a `replace` requires both `originalText`
+  and `text` to be non-empty.
+- **The range is on one line** (`startLine === endLine`), and the end column is **exclusive**.
+- **`text` must be longer than `originalText` and start with it** — `nesEditExtendsCoveredText` is
+  the rule the provider, the marker and the Tab routing all ask.
+- At most 5 edits, at most 2 per file.
+
+**The columns are the model's, not the file's.** The prompt shows
+`prefix + "<<<CURSOR>>>" + suffix` and tells the model the marker occupies 11 columns, so the
+model counts the marker as text and the backend takes it back off
+(`nesColumnWithoutCursorMarker`, `completion-backend.ts:117`). For an insert **at** the cursor that
+is a no-op — the marker starts at the cursor column, and a column before
+`cursorColumn + 11` is left alone — so the mock reports the cursor's own column. **The line
+numbers are the model's too**: `translateNesEditLines` adds `prefixStartLine - 1` to them. Use a
+**small file**, so the whole prefix fits the budget, `prefixStartLine` is 1, the offset is 0, and
+the model's line numbers are the file's own line numbers.
+
 Then:
 
 1. type `const x = ` in the editor

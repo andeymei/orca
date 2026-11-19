@@ -8,23 +8,22 @@ import {
   getDefaultCodeCompletionSettings,
   type CodeCompletionSettings
 } from '../../../../../shared/code-completion/code-completion-settings'
+import {
+  NES_BACKEND_IDS,
+  type NesBackendId
+} from '../../../../../shared/code-completion/code-completion-types'
 import type { CodeCompletionCredentialsStatus } from '../../../../../shared/code-completion/code-completion-credentials-status'
 import { SearchableSetting } from '../section-layout/SearchableSetting'
 import {
   NumberField,
-  SettingsBadge,
   SettingsRow,
   SettingsSegmentedControl,
   SettingsSwitchRow
 } from '../form-controls/SettingsFormControls'
 import { DebouncedSettingsTextInput } from '../form-controls/DebouncedSettingsTextInput'
-import { UnsealedCredentialNotice } from '../../provider-accounts/UnsealedCredentialNotice'
-import { Button } from '../../ui/button'
-import { Input } from '../../ui/input'
-import { useTranslate } from '@/i18n/use-translate'
-
-/** The credential probe reads the sealed file from disk, so the status is polled instead of read per render. */
-const CREDENTIAL_STATUS_POLL_MS = 5_000
+import { CodeCompletionCredentialSetting } from './CodeCompletionCredentialSetting'
+import { getCodeCompletionSearchEntry } from './code-completion-search'
+import { useIntlLocale, useTranslate } from '@/i18n/use-translate'
 
 type CodeCompletionSectionProps = {
   settings: GlobalSettings
@@ -36,32 +35,12 @@ export function CodeCompletionSection({
   updateSettings
 }: CodeCompletionSectionProps): React.JSX.Element {
   const t = useTranslate()
+  const intlLocale = useIntlLocale()
+  const entry = getCodeCompletionSearchEntry(t)
   // A stable fallback keeps the write ref from resetting on every render.
   const [defaultCompletion] = useState(getDefaultCodeCompletionSettings)
   const completion = settings.codeCompletion ?? defaultCompletion
   const [status, setStatus] = useState<CodeCompletionCredentialsStatus | null>(null)
-  const [apiKeyDraft, setApiKeyDraft] = useState('')
-  const [apiKeyBusy, setApiKeyBusy] = useState(false)
-
-  useEffect(() => {
-    let disposed = false
-    const readStatus = (): void => {
-      void window.api.codeCompletion
-        .getStatus()
-        .then((next) => {
-          if (!disposed) {
-            setStatus(next)
-          }
-        })
-        .catch(() => {})
-    }
-    readStatus()
-    const timer = setInterval(readStatus, CREDENTIAL_STATUS_POLL_MS)
-    return () => {
-      disposed = true
-      clearInterval(timer)
-    }
-  }, [])
 
   // Why: the normalizer resets every field it is not given, so a write carries the whole block.
   // The ref holds the newest block, so a second write before the first echo lands does not undo it.
@@ -76,75 +55,69 @@ export function CodeCompletionSection({
     updateSettings({ codeCompletion: merged })
   }
 
-  const saveApiKey = (): void => {
-    const key = apiKeyDraft.trim()
-    if (!key) {
-      return
-    }
-    setApiKeyBusy(true)
-    void window.api.codeCompletion
-      .saveApiKey(key)
-      .then((next) => {
-        // The command answers with the fresh status, so the user never waits for the poll.
-        setStatus(next)
-        setApiKeyDraft('')
-      })
-      .catch(() => {})
-      .finally(() => {
-        setApiKeyBusy(false)
-      })
+  // Why: the runtime asks for nothing without a key, an endpoint and a model, so the section names what is missing.
+  const missingRequirements: string[] = []
+  if (status !== null && !status.configured) {
+    missingRequirements.push(
+      t('auto.components.settings.editor.CodeCompletionSection.62a1f4af68', 'save an API key')
+    )
   }
-
-  const forgetApiKey = (): void => {
-    setApiKeyBusy(true)
-    void window.api.codeCompletion
-      .clearApiKey()
-      .then((next) => {
-        setStatus(next)
-        setApiKeyDraft('')
-      })
-      .catch(() => {})
-      .finally(() => {
-        setApiKeyBusy(false)
-      })
+  if (completion.baseUrl.trim().length === 0) {
+    missingRequirements.push(
+      t('auto.components.settings.editor.CodeCompletionSection.4c769faa40', 'set the endpoint')
+    )
   }
+  if (completion.model.trim().length === 0) {
+    missingRequirements.push(
+      t('auto.components.settings.editor.CodeCompletionSection.d4579c57ce', 'choose a model')
+    )
+  }
+  const readinessMessage =
+    missingRequirements.length > 0
+      ? t(
+          'auto.components.settings.editor.CodeCompletionSection.6fa1e4323f',
+          'Next edit suggestions stay off until you {{requirements}}.',
+          {
+            requirements: new Intl.ListFormat(intlLocale, { type: 'conjunction' }).format(
+              missingRequirements
+            )
+          }
+        )
+      : null
 
-  const title = t(
-    'auto.components.settings.editor.CodeCompletionSection.7f223e3a62',
-    'Next edit suggestions'
-  )
-  const description = t(
-    'auto.components.settings.editor.CodeCompletionSection.8fdd3137a7',
-    'Ask a model for the edits it expects to come next, then accept them with Tab.'
-  )
-
-  // The key warnings belong beside the key row, and exist only when there is something to warn about.
-  const credentialWarning =
-    status?.unreadable === 'sealed-elsewhere' ||
-    status?.unreadable === 'unreadable' ||
-    status?.protection === 'plaintext'
+  const protocolLabels: Record<NesBackendId, string> = {
+    'anthropic-messages': t(
+      'auto.components.settings.editor.CodeCompletionSection.93ed07a8a9',
+      'Anthropic Messages'
+    ),
+    'openai-chat': t(
+      'auto.components.settings.editor.CodeCompletionSection.ff49e75185',
+      'OpenAI Chat'
+    ),
+    'openai-completions-fim': t(
+      'auto.components.settings.editor.CodeCompletionSection.55e4686ab8',
+      'OpenAI FIM'
+    )
+  }
 
   return (
     <SearchableSetting
       id={GENERAL_SETTING_ANCHORS.codeCompletion}
-      title={title}
-      description={description}
-      keywords={['completion', 'suggestions', 'next edit', 'autocomplete', 'ai', 'model', 'tab']}
+      title={entry.title}
+      description={entry.description}
+      keywords={entry.keywords}
       className="space-y-0"
     >
       <SettingsSwitchRow
-        label={title}
-        description={description}
+        label={entry.title}
+        description={entry.description}
         checked={completion.enabled}
         onChange={() => commit({ enabled: !completion.enabled })}
       />
 
-      {status && !status.configured && !status.unreadable ? (
+      {readinessMessage ? (
         <p role="status" className="py-2 text-xs text-muted-foreground">
-          {t(
-            'auto.components.settings.editor.CodeCompletionSection.4511c1769f',
-            'Next edit suggestions stay off until you save an API key.'
-          )}
+          {readinessMessage}
         </p>
       ) : null}
 
@@ -163,29 +136,7 @@ export function CodeCompletionSection({
             )}
             value={completion.protocol}
             onChange={(protocol) => commit({ protocol })}
-            options={[
-              {
-                value: 'anthropic-messages',
-                label: t(
-                  'auto.components.settings.editor.CodeCompletionSection.93ed07a8a9',
-                  'Anthropic Messages'
-                )
-              },
-              {
-                value: 'openai-chat',
-                label: t(
-                  'auto.components.settings.editor.CodeCompletionSection.ff49e75185',
-                  'OpenAI Chat'
-                )
-              },
-              {
-                value: 'openai-completions-fim',
-                label: t(
-                  'auto.components.settings.editor.CodeCompletionSection.55e4686ab8',
-                  'OpenAI FIM'
-                )
-              }
-            ]}
+            options={NES_BACKEND_IDS.map((id) => ({ value: id, label: protocolLabels[id] }))}
           />
         }
       />
@@ -194,8 +145,8 @@ export function CodeCompletionSection({
         className="border-t border-border"
         label={t('auto.components.settings.editor.CodeCompletionSection.5c05e289b2', 'Base URL')}
         description={t(
-          'auto.components.settings.editor.CodeCompletionSection.8ae1759bf4',
-          'Where the completion request is sent. Leave it empty to use the provider default endpoint.'
+          'auto.components.settings.editor.CodeCompletionSection.ebf2c373f9',
+          "Where the completion request is sent. Required: Orca appends the protocol's path to it, such as /v1/messages for Anthropic Messages."
         )}
         control={
           <DebouncedSettingsTextInput
@@ -214,8 +165,8 @@ export function CodeCompletionSection({
         className="border-t border-border"
         label={t('auto.components.settings.editor.CodeCompletionSection.2208e4af93', 'Model')}
         description={t(
-          'auto.components.settings.editor.CodeCompletionSection.ac46b27154',
-          'Which model the endpoint is asked to predict the next edits with.'
+          'auto.components.settings.editor.CodeCompletionSection.b69a2a51c9',
+          'Which model the endpoint is asked to predict the next edits with. Required.'
         )}
         control={
           <DebouncedSettingsTextInput
@@ -230,96 +181,7 @@ export function CodeCompletionSection({
         }
       />
 
-      <SettingsRow
-        className="border-t border-border"
-        label={
-          <span className="flex items-center gap-2">
-            {t('auto.components.settings.editor.CodeCompletionSection.13dcd09aa3', 'API key')}
-            <SettingsBadge tone={status?.configured ? 'accent' : 'muted'}>
-              {status?.configured
-                ? t(
-                    'auto.components.settings.editor.CodeCompletionSection.6cc3ca851a',
-                    'Configured'
-                  )
-                : t(
-                    'auto.components.settings.editor.CodeCompletionSection.3f93dfe0a5',
-                    'Not configured'
-                  )}
-            </SettingsBadge>
-          </span>
-        }
-        description={t(
-          'auto.components.settings.editor.CodeCompletionSection.b6c02a6499',
-          'The key sent to the endpoint. It is stored on this computer and never read back here.'
-        )}
-        control={
-          <div className="flex items-center gap-2">
-            <Input
-              type="password"
-              aria-label={t(
-                'auto.components.settings.editor.CodeCompletionSection.13dcd09aa3',
-                'API key'
-              )}
-              value={apiKeyDraft}
-              onChange={(event) => setApiKeyDraft(event.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              className="w-56 text-xs"
-            />
-            <Button size="xs" onClick={saveApiKey} disabled={apiKeyBusy || !apiKeyDraft.trim()}>
-              {t('auto.components.settings.editor.CodeCompletionSection.6ae350e2f4', 'Save key')}
-            </Button>
-            {status?.configured ? (
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={forgetApiKey}
-                disabled={apiKeyBusy}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                {t(
-                  'auto.components.settings.editor.CodeCompletionSection.431571ae23',
-                  'Forget key'
-                )}
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
-
-      {credentialWarning ? (
-        <div className="space-y-2 py-3">
-          {status?.unreadable === 'sealed-elsewhere' ? (
-            <p
-              role="alert"
-              className="rounded-md border border-status-warning-border bg-status-warning-background px-3 py-2 text-xs text-status-warning"
-            >
-              {t(
-                'auto.components.settings.editor.CodeCompletionSection.585decfc3d',
-                'Another Orca app on this computer saved the API key, and this one cannot read it. Enter the key again here.'
-              )}
-            </p>
-          ) : null}
-          {status?.unreadable === 'unreadable' ? (
-            <p
-              role="alert"
-              className="rounded-md border border-status-warning-border bg-status-warning-background px-3 py-2 text-xs text-status-warning"
-            >
-              {t(
-                'auto.components.settings.editor.CodeCompletionSection.4a609b9771',
-                'The saved API key cannot be read on this computer. Enter the key again.'
-              )}
-            </p>
-          ) : null}
-          <UnsealedCredentialNotice
-            protection={status?.protection ?? null}
-            credentialName={t(
-              'auto.components.settings.editor.CodeCompletionSection.13dcd09aa3',
-              'API key'
-            )}
-          />
-        </div>
-      ) : null}
+      <CodeCompletionCredentialSetting status={status} onStatusChange={setStatus} />
 
       <NumberField
         className="border-t border-border"

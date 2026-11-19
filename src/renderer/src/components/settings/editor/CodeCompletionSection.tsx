@@ -145,8 +145,8 @@ export function CodeCompletionSection({
         className="border-t border-border"
         label={t('auto.components.settings.editor.CodeCompletionSection.5c05e289b2', 'Base URL')}
         description={t(
-          'auto.components.settings.editor.CodeCompletionSection.aabf70b36c',
-          "Where the completion request is sent. Required: the base URL only, such as https://api.anthropic.com — Orca appends the protocol's path, such as /v1/messages for Anthropic Messages."
+          'auto.components.settings.editor.CodeCompletionSection.9e5354b432',
+          'Where the completion request is sent. Required: the base URL without the path Orca appends — Anthropic Messages takes https://api.anthropic.com and appends /v1/messages, OpenAI Chat takes https://api.openai.com/v1 and appends /chat/completions, and OpenAI FIM takes https://api.openai.com/v1 and appends /completions.'
         )}
         control={
           <DebouncedSettingsTextInput

@@ -192,10 +192,12 @@ describe('CodeCompletionSection', () => {
     expect(screen.queryByText('Configured')).not.toBeInTheDocument()
   })
 
-  it('asks for the base URL only, so the path is not pasted twice', () => {
+  it('names the base URL of every protocol, so the path is not pasted twice', () => {
     renderSection()
 
-    expect(screen.getByText(/the base URL only/)).toBeInTheDocument()
+    const description = screen.getByText(/the base URL without the path Orca appends/)
+    expect(description).toHaveTextContent('https://api.anthropic.com')
+    expect(description).toHaveTextContent('https://api.openai.com/v1')
   })
 
   it('reports a failed status probe instead of claiming the key is missing', async () => {

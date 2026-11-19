@@ -2126,8 +2126,15 @@ git commit -m "feat(code-completion): apply an accepted edit and preview it"
 
 - Create: `src/renderer/src/components/settings/editor/CodeCompletionSection.tsx`
 - Create: `src/renderer/src/components/settings/editor/CodeCompletionSection.test.tsx`
+- Create: `src/renderer/src/components/settings/editor/CodeCompletionCredentialSetting.tsx` (the credential
+  block, split out of the section: one file cannot hold both the settings and the key under the
+  400-line ceiling for a `.tsx`)
+- Create: `src/renderer/src/components/settings/editor/code-completion-search.ts` (the search entry's
+  title, description and keywords, so the section and the settings search index cannot drift)
+- Modify: `src/renderer/src/components/settings/editor/general-editor-search.ts` (the search entry)
 - Modify: `src/renderer/src/components/settings/editor/GeneralEditorSettingsSection.tsx` (render the section)
 - Modify: `src/renderer/src/components/settings/general/general-setting-anchors.ts` (the new anchor id and its owner)
+- Modify: `src/renderer/src/i18n/locales/en.json` (the extracted keys)
 
 **Interfaces:**
 

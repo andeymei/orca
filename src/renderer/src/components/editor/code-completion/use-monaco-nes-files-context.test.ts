@@ -47,7 +47,7 @@ describe('useMonacoNesFilesContext', () => {
     expect(result.current).toBeNull()
     expect(errorSpy).toHaveBeenCalledWith(
       '[code-completion] The file owner is unresolved; the related files stay out.',
-      { error: 'Error' }
+      { error: 'Error: the owner is ambiguous' }
     )
     errorSpy.mockRestore()
   })

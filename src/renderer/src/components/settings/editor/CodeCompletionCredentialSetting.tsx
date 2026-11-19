@@ -145,6 +145,34 @@ export function CodeCompletionCredentialSetting({
     'API key'
   )
 
+  // Why: a key file that exists but cannot be read leaves the feature inert, so it is not "Configured".
+  const badge: { tone: 'neutral' | 'accent' | 'muted'; label: string } | null =
+    status === null
+      ? null
+      : status.unreadable
+        ? {
+            tone: 'neutral',
+            label: t(
+              'auto.components.settings.editor.CodeCompletionCredentialSetting.3545656faa',
+              'Not readable'
+            )
+          }
+        : status.configured
+          ? {
+              tone: 'accent',
+              label: t(
+                'auto.components.settings.editor.CodeCompletionCredentialSetting.72110c5f60',
+                'Configured'
+              )
+            }
+          : {
+              tone: 'muted',
+              label: t(
+                'auto.components.settings.editor.CodeCompletionCredentialSetting.058d528ffc',
+                'Not configured'
+              )
+            }
+
   return (
     <>
       <SettingsRow
@@ -153,19 +181,7 @@ export function CodeCompletionCredentialSetting({
           <span className="flex items-center gap-2">
             {apiKeyLabel}
             {/* The badge must not state a fact the section does not know yet. */}
-            {status ? (
-              <SettingsBadge tone={status.configured ? 'accent' : 'muted'}>
-                {status.configured
-                  ? t(
-                      'auto.components.settings.editor.CodeCompletionCredentialSetting.72110c5f60',
-                      'Configured'
-                    )
-                  : t(
-                      'auto.components.settings.editor.CodeCompletionCredentialSetting.058d528ffc',
-                      'Not configured'
-                    )}
-              </SettingsBadge>
-            ) : null}
+            {badge ? <SettingsBadge tone={badge.tone}>{badge.label}</SettingsBadge> : null}
           </span>
         }
         description={t(
@@ -189,7 +205,8 @@ export function CodeCompletionCredentialSetting({
                 'Save key'
               )}
             </Button>
-            {status?.configured ? (
+            {/* A key the user can see is a key the user can clear, so the button stays when the status is unknown. */}
+            {status === null || status.configured ? (
               <Button
                 variant="ghost"
                 size="xs"

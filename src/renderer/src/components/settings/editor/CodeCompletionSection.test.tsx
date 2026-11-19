@@ -174,6 +174,30 @@ describe('CodeCompletionSection', () => {
     expect(screen.queryByText('Not configured')).not.toBeInTheDocument()
   })
 
+  it('offers the Forget key button while the status is unknown', async () => {
+    installApi({
+      getStatus: vi.fn(() => Promise.reject(new Error('the key file is gone')))
+    })
+    renderSection()
+
+    // A key the user can see is a key the user can clear.
+    expect(await screen.findByRole('button', { name: 'Forget key' })).toBeInTheDocument()
+  })
+
+  it('does not read Configured when the saved key cannot be read', async () => {
+    statuses.current = statusFixture({ configured: true, unreadable: 'unreadable' })
+    renderSection()
+
+    expect(await screen.findByText('Not readable')).toBeInTheDocument()
+    expect(screen.queryByText('Configured')).not.toBeInTheDocument()
+  })
+
+  it('asks for the base URL only, so the path is not pasted twice', () => {
+    renderSection()
+
+    expect(screen.getByText(/the base URL only/)).toBeInTheDocument()
+  })
+
   it('reports a failed status probe instead of claiming the key is missing', async () => {
     installApi({
       getStatus: vi.fn(() => Promise.reject(new Error('the key file is gone')))

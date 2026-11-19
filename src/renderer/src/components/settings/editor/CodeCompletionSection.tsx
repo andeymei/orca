@@ -145,8 +145,8 @@ export function CodeCompletionSection({
         className="border-t border-border"
         label={t('auto.components.settings.editor.CodeCompletionSection.5c05e289b2', 'Base URL')}
         description={t(
-          'auto.components.settings.editor.CodeCompletionSection.ebf2c373f9',
-          "Where the completion request is sent. Required: Orca appends the protocol's path to it, such as /v1/messages for Anthropic Messages."
+          'auto.components.settings.editor.CodeCompletionSection.aabf70b36c',
+          "Where the completion request is sent. Required: the base URL only, such as https://api.anthropic.com — Orca appends the protocol's path, such as /v1/messages for Anthropic Messages."
         )}
         control={
           <DebouncedSettingsTextInput

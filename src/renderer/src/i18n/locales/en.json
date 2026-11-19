@@ -14296,12 +14296,12 @@
             "b48c20da2a": "Let the model add the imports the suggested edit needs.",
             "679889f02f": "Enabled extensions",
             "424ecd45b2": "The file extensions the suggestion runs in. Separate them with commas.",
-            "ebf2c373f9": "Where the completion request is sent. Required: Orca appends the protocol's path to it, such as /v1/messages for Anthropic Messages.",
             "b69a2a51c9": "Which model the endpoint is asked to predict the next edits with. Required.",
             "6fa1e4323f": "Next edit suggestions stay off until you {{requirements}}.",
             "62a1f4af68": "save an API key",
             "4c769faa40": "set the endpoint",
-            "d4579c57ce": "choose a model"
+            "d4579c57ce": "choose a model",
+            "aabf70b36c": "Where the completion request is sent. Required: the base URL only, such as https://api.anthropic.com — Orca appends the protocol's path, such as /v1/messages for Anthropic Messages."
           },
           "code": {
             "completion": {
@@ -14331,7 +14331,8 @@
             "ab6fc68dff": "The API key could not be saved: {{reason}}",
             "8e1a003071": "The API key could not be forgotten: {{reason}}",
             "bae7fac98c": "Another Orca app on this computer saved the API key, and this one cannot read it. Enter the key again here.",
-            "5cd84c92f7": "The saved API key cannot be read on this computer. Enter the key again."
+            "5cd84c92f7": "The saved API key cannot be read on this computer. Enter the key again.",
+            "3545656faa": "Not readable"
           }
         }
       },

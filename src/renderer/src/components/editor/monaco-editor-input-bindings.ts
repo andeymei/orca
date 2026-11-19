@@ -65,7 +65,8 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
     editorDomNode,
     () => nesShortcutHandlersFor(editorInstance)?.decide() ?? 'pass-through',
     () => nesShortcutHandlersFor(editorInstance)?.accept(),
-    () => nesShortcutHandlersFor(editorInstance)?.jump()
+    () => nesShortcutHandlersFor(editorInstance)?.jump(),
+    () => nesShortcutHandlersFor(editorInstance)?.hasNextLocation() ?? false
   )
   const cleanupAiSuggestionPreviewShortcut = installEditorAiSuggestionPreviewShortcut(
     editorDomNode,

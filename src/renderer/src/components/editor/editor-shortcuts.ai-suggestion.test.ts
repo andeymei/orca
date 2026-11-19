@@ -35,7 +35,10 @@ function pressKey(target: HTMLElement, key: string, init: KeyboardEventInit = {}
   return event
 }
 
-function installTabShortcut(decision: NesTabDecision): {
+function installTabShortcut(
+  decision: NesTabDecision,
+  hasNextLocation = false
+): {
   target: HTMLElement
   onAccept: ReturnType<typeof vi.fn>
   onJump: ReturnType<typeof vi.fn>
@@ -43,7 +46,15 @@ function installTabShortcut(decision: NesTabDecision): {
   const target = createTarget()
   const onAccept = vi.fn()
   const onJump = vi.fn()
-  disposers.push(installEditorAcceptAiSuggestionShortcut(target, () => decision, onAccept, onJump))
+  disposers.push(
+    installEditorAcceptAiSuggestionShortcut(
+      target,
+      () => decision,
+      onAccept,
+      onJump,
+      () => hasNextLocation
+    )
+  )
   return { target, onAccept, onJump }
 }
 
@@ -69,7 +80,7 @@ describe('installEditorAcceptAiSuggestionShortcut', () => {
   })
 
   it('consumes the key and jumps when the plan has other locations', () => {
-    const { target, onAccept, onJump } = installTabShortcut('jump-to-next-location')
+    const { target, onAccept, onJump } = installTabShortcut('jump-to-next-location', true)
 
     const event = pressKey(target, 'Tab')
 
@@ -89,12 +100,22 @@ describe('installEditorAcceptAiSuggestionShortcut', () => {
   })
 
   it('jumps on the next-suggestion chord', () => {
-    const { target, onAccept, onJump } = installTabShortcut('jump-to-next-location')
+    const { target, onAccept, onJump } = installTabShortcut('jump-to-next-location', true)
 
     const event = pressKey(target, 'F8')
 
     expect(event.defaultPrevented).toBe(true)
     expect(onJump).toHaveBeenCalledOnce()
+    expect(onAccept).not.toHaveBeenCalled()
+  })
+
+  it('leaves the jump chord alone when there is no next location', () => {
+    const { target, onAccept, onJump } = installTabShortcut('accept-suggestion')
+
+    const event = pressKey(target, 'F8')
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(onJump).not.toHaveBeenCalled()
     expect(onAccept).not.toHaveBeenCalled()
   })
 })

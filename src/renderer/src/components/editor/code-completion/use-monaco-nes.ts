@@ -22,6 +22,8 @@ export type NesShortcutHandlers = {
   accept: () => void
   jump: () => void
   preview: (active: boolean) => void
+  /** Whether the plan predicts a location the cursor is not on; the jump chord needs its own answer. */
+  hasNextLocation: () => boolean
 }
 
 const handlersByEditor = new WeakMap<editor.IStandaloneCodeEditor, NesShortcutHandlers>()
@@ -40,7 +42,6 @@ export function nesShortcutHandlersFor(
 export function useMonacoNextEditSuggestions(params: {
   filePath: string | undefined
   relativePath: string | undefined
-  languageId: string
   enabled: boolean
   triggerDelayMs: number
   /** The extensions the feature is on for; a file outside the list is skipped whole. */
@@ -53,7 +54,6 @@ export function useMonacoNextEditSuggestions(params: {
   const {
     filePath,
     relativePath,
-    languageId,
     enabled,
     triggerDelayMs,
     enabledExtensions,
@@ -131,9 +131,12 @@ export function useMonacoNextEditSuggestions(params: {
       if (!model || !edit) {
         return
       }
+      // Why: a refused edit leaves the model alone, so the preview must stay until one lands.
+      if (!applyNesEdit(model, editorInstance, edit)) {
+        return
+      }
       // Why: Monaco's ghost text must not outlive the text we applied.
       void editorInstance.getAction('editor.action.inlineSuggest.hide')?.run()
-      applyNesEdit(model, editorInstance, edit)
     }
 
     const jump = (): void => {
@@ -189,7 +192,6 @@ export function useMonacoNextEditSuggestions(params: {
         : []
       const plan = await requestNesPlan({
         ...context,
-        languageId,
         relatedFiles,
         recentEdits: []
       })
@@ -199,6 +201,9 @@ export function useMonacoNextEditSuggestions(params: {
       }
       if (plan) {
         nesPlanStore.setPlan(filePath, plan)
+      } else {
+        // Why: the markers re-read the stored plan, so a failed request must not leave the old one.
+        nesPlanStore.remove(filePath)
       }
       fireNesInlineCompletionsChanged()
       refreshMarkers()
@@ -210,7 +215,9 @@ export function useMonacoNextEditSuggestions(params: {
       }
       timer = setTimeout(() => {
         timer = null
-        void tick()
+        void tick().catch((error: unknown) => {
+          console.error('[code-completion] The plan tick failed.', error)
+        })
       }, triggerDelayMs)
     }
 
@@ -224,7 +231,13 @@ export function useMonacoNextEditSuggestions(params: {
     // Why: the content sync lands before this effect subscribes, so opening a file would never ask.
     scheduleTick()
 
-    handlersByEditor.set(editorInstance, { decide, accept, jump, preview })
+    handlersByEditor.set(editorInstance, {
+      decide,
+      accept,
+      jump,
+      preview,
+      hasNextLocation: () => markers.length > 0
+    })
 
     return () => {
       // Why: an answer that arrives after the editor moved on must not reach the store.
@@ -243,7 +256,6 @@ export function useMonacoNextEditSuggestions(params: {
     modelKey,
     filePath,
     relativePath,
-    languageId,
     enabled,
     triggerDelayMs,
     enabledExtensions,

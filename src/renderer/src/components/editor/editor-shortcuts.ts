@@ -135,7 +135,8 @@ export function installEditorAcceptAiSuggestionShortcut(
   target: HTMLElement,
   decide: () => NesTabDecision,
   onAccept: () => void,
-  onJump: () => void
+  onJump: () => void,
+  hasNextLocation: () => boolean
 ): () => void {
   // Why: a held chord repeats, and the repeats must keep the outcome of the press that started them.
   let consumedChord = false
@@ -151,7 +152,7 @@ export function installEditorAcceptAiSuggestionShortcut(
     consumedChord = false
     if (editorShortcutMatches('editor.nextAiSuggestion', event)) {
       // Why: the chord belongs to other bindings when the feature has nowhere to jump to.
-      if (decide() === 'pass-through') {
+      if (!hasNextLocation()) {
         return
       }
       consumedChord = true

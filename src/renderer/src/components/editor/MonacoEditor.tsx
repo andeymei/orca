@@ -29,7 +29,7 @@ import { useMonacoMarkdownAnnotations } from './markdown-source-tools/monaco/use
 import { useMonacoEditorDecorations } from './use-monaco-editor-decorations'
 import { useMonacoEditorMount } from './use-monaco-editor-mount'
 import { useMonacoNextEditSuggestions } from './code-completion/use-monaco-nes'
-import { buildWorkspaceFileContextForFile } from '@/runtime/files/workspace-file-host-routing'
+import { useMonacoNesFilesContext } from './code-completion/use-monaco-nes-files-context'
 import { DEFAULT_TRIGGER_DELAY_MS } from '../../../../shared/code-completion/code-completion-settings'
 import {
   useMonacoAiInstructions,
@@ -122,9 +122,6 @@ export default function MonacoEditor({
   contentSyncModeRef.current = readOnly && liveTail ? 'read-only-live-tail' : 'undoable'
 
   const settings = useAppStore((s) => s.settings)
-  const worktreePath = useAppStore((state) =>
-    worktreeId ? (state.getKnownWorktreeById(worktreeId)?.path ?? null) : null
-  )
   const setPendingEditorReveal = useAppStore((s) => s.setPendingEditorReveal)
   const setEditorCursorLine = useAppStore((s) => s.setEditorCursorLine)
   const typography = useEditorTypography()
@@ -143,16 +140,6 @@ export default function MonacoEditor({
     [filePath, modelOwnerKey]
   )
   useEditorModelRekeyCarry(fileId, modelUri)
-  // Why: the related-file search reads the workspace the file belongs to, so the context is per file.
-  const nesFilesContext = useMemo(() => {
-    try {
-      // Why: no runtime environment id, so the workspace owner decides which host holds the file.
-      return buildWorkspaceFileContextForFile(worktreeId ?? '', worktreePath ?? '', filePath)
-    } catch {
-      // Why: an unresolvable owner means the file cannot be read; the editor must still render.
-      return null
-    }
-  }, [worktreeId, worktreePath, filePath])
   const estimatedAutoHeight = useMemo(() => {
     if (!autoHeight) {
       return null
@@ -233,10 +220,10 @@ export default function MonacoEditor({
   })
 
   const codeCompletion = settings?.codeCompletion
+  const nesFilesContext = useMonacoNesFilesContext({ worktreeId, filePath })
   useMonacoNextEditSuggestions({
     filePath,
     relativePath,
-    languageId: language,
     // Why: a mirror of another tab's record must not ask for plans of its own.
     enabled: Boolean(codeCompletion?.enabled) && !passiveMirror,
     triggerDelayMs: codeCompletion?.triggerDelayMs ?? DEFAULT_TRIGGER_DELAY_MS,

@@ -150,7 +150,7 @@ type TerminalComposerAttachment = {
   id: string
   /** Display name in the pill (the file's base name). */
   name: string
-  /** Where the bytes landed, on the host that owns this terminal. */
+  /** Where the bytes landed, on the host that owns this terminal. The intake always returns a landed path — "still uploading" is the pending promise, not a null path. */
   workspacePath: string | null
   /** True for image pills, which the agent receives as a separate path write. */
   isImage: boolean
@@ -194,7 +194,9 @@ type TerminalComposerAttachment = {
 
 ### 5.3 剪贴板图片
 
-`saveClipboardImageAsTempFile` 已经会把图片存到**目标宿主**上的临时文件（远端走 `clipboard.startImageUpload` / `appendImageUploadChunk` / `commitImageUpload` 的分片 base64 通道），返回该宿主上的路径。之后再走 §5.2 拷进 `.orca/drops`，让「附件都在工作区里」这条规则统一成立。
+剪贴板图片先**存到本机**（`saveClipboardImageAsTempFile` 不带 `connectionId` / `runtimeEnvironmentId`，走本机临时文件分支），再把那个**本机路径**交给 §5.2 的上传/拷贝通路，由它送到拥有该终端的那台机器的 `.orca/drops`，让「附件都在工作区里」这条规则统一成立。
+
+**不要**把图片先存到目标宿主再「从那里拷到工作区」：§5.2 的源路径按契约是**客户端本机路径**（远端时它从客户端读字节再上传），一个已经在远端的临时路径它根本读不到。存本机再上传，字节只走一遍（客户端 → 远端），和「挑一个本地文件」完全同一条路。
 
 ### 5.4 失败语义
 
@@ -286,13 +288,13 @@ E2E（`tests/e2e/`）：终端面板展开 composer → 输入多行 → `Mod+En
 
 ## 11. 已知风险与取舍
 
-| 风险                                                                                                             | 缓解                                                                                           |
-| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| TipTap 叠在 xterm 之上的焦点 / IME 行为需要真机验（尤其 Windows ConPTY）                                         | E2E 覆盖输入路径；Windows 的 modified-Enter 策略不受影响（我们只发 `\r`，不发 modified Enter） |
-| 抽共用件要动原生 chat，回归面比「直接复用」大                                                                    | 分两步走（§4.2）：终端侧先用共用件跑通，原生 chat 的切换可延后                                 |
-| 直接 SSH 宿主的附件落地分支需要实机确认（现代路径下 SSH 走 runtime environment，老路径 `SshHostNotServedError`） | 实现时先在本地与配对 runtime 验通；SSH 分支单独一轮实机验证                                    |
-| `Mod+Shift+P` 在某些终端模拟器/远程 shell 里可能被占用                                                           | keybinding 可改；且有 affordance 按钮兜底                                                      |
-| 草稿不持久化，重启丢失                                                                                           | v1 明确接受；后续可另起 IndexedDB store                                                        |
+| 风险                                                                                                             | 缓解                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TipTap 叠在 xterm 之上的焦点 / IME 行为需要真机验（尤其 Windows ConPTY）                                         | E2E 覆盖输入路径；Windows 的 modified-Enter 策略不受影响（我们只发 `\r`，不发 modified Enter）                                                                                                                                                                                                                                                                                                                     |
+| 抽共用件要动原生 chat，回归面比「直接复用」大                                                                    | 分两步走（§4.2）：终端侧先用共用件跑通，原生 chat 的切换可延后                                                                                                                                                                                                                                                                                                                                                     |
+| 直接 SSH 宿主的附件落地分支需要实机确认（现代路径下 SSH 走 runtime environment，老路径 `SshHostNotServedError`） | **已由代码勘察确认(2026-11-18)**:`fs:*` 变更在本机 main 侧对带 `connectionId` 的请求一律抛 `SshHostNotServedError`(`filesystem-mutations.ts:171`),所以**没有 runtime environment 的老式直接 SSH 宿主无法落地附件**。这不是 composer 特有的——文件浏览器的 import 走同一条路,同样失败。composer 不为此另造一条 SSH 上传通道;失败必须**诚实可见**(pill 标为需重新添加 + toast),正文的发送不受影响(走 `terminal.send`) |
+| `Mod+Shift+P` 在某些终端模拟器/远程 shell 里可能被占用                                                           | keybinding 可改；且有 affordance 按钮兜底                                                                                                                                                                                                                                                                                                                                                                          |
+| 草稿不持久化，重启丢失                                                                                           | v1 明确接受；后续可另起 IndexedDB store                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## 12. 与既有工作的关系
 

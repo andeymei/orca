@@ -1,4 +1,6 @@
 export const NATIVE_CHAT_SUBMIT_DELAY_MS = 500
+// The TUI turns an image paste into a chip asynchronously; the body waits for the chip to exist.
+export const NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS = 300
 // Allow 500ms for the next question to render on slow machines or SSH before writing its body.
 export const NATIVE_CHAT_ADVANCE_BUFFER_MS = 500
 export const NATIVE_CHAT_QUESTION_STEP_MS =

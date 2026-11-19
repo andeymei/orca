@@ -1,4 +1,7 @@
-import { removePaneKeys } from '../slices/agent-status/agent-status-pane-keyed-records'
+import {
+  removePaneKeys,
+  removePaneKeysByTabPrefix
+} from '../slices/agent-status/agent-status-pane-keyed-records'
 import type { AppState } from '../types'
 import { forgetAgentHibernationTabOutput } from '@/lib/agent-session/hibernation/agent-hibernation-output-activity'
 import { forgetForegroundTerminalTabs } from '@/components/terminal-pane/parking/retention/foreground-terminal-tabs'
@@ -16,12 +19,15 @@ import { buildPaneForegroundAgentTabPrefixClearPatch } from '../slices/agent-sta
 
 export type RetiredTerminalTabSweepActions = Pick<
   AppState,
-  'dropAgentStatusByTabPrefix' | 'clearPaneForegroundAgentByTabPrefix'
+  | 'dropAgentStatusByTabPrefix'
+  | 'clearPaneForegroundAgentByTabPrefix'
+  | 'clearTerminalComposerStateForTab'
 >
 
 /** Narrow state lets non-store callers supply their own view. */
 export type RetiredTerminalTabSweepState = AgentStatusTabPrefixDropState &
-  Pick<AppState, 'paneForegroundAgentByPaneKey'>
+  Pick<AppState, 'paneForegroundAgentByPaneKey'> &
+  Pick<AppState, 'terminalComposerDraftByPaneKey' | 'terminalComposerOpenByPaneKey'>
 
 /** Shared retirement sweep prevents divergent cleanup (STA-4593); not full closeTab parity: callers still own other pane maps. Run after tabsByWorktree removal so completed-orphan detection works. */
 export function sweepRetiredTerminalTabState(
@@ -34,6 +40,8 @@ export function sweepRetiredTerminalTabState(
   // Worktree scope sweeps Pi’s completed missing-tab rows while preserving active pre-render children.
   actions.dropAgentStatusByTabPrefix(tabId, worktreeId ? { worktreeId } : undefined)
   actions.clearPaneForegroundAgentByTabPrefix(tabId)
+  // The tab's panes go with it; their composer drafts and open flags must not outlive them.
+  actions.clearTerminalComposerStateForTab(tabId)
   forgetAgentHibernationTabOutput(tabId)
   forgetNativeChatPromptDismissalsForTab(tabId)
   forgetForegroundTerminalTabs([tabId])
@@ -83,7 +91,28 @@ export function buildRetiredTerminalTabStateSweepPatch(
       : buildPaneForegroundAgentTabPrefixClearPatch(swept.paneForegroundAgentByPaneKey, [
           `${tabId}:`
         ])
-    swept = { ...swept, ...patch, ...foreground }
+    const composer = opts?.paneKeys
+      ? {
+          terminalComposerDraftByPaneKey: removePaneKeys(
+            swept.terminalComposerDraftByPaneKey,
+            opts.paneKeys
+          ),
+          terminalComposerOpenByPaneKey: removePaneKeys(
+            swept.terminalComposerOpenByPaneKey,
+            opts.paneKeys
+          )
+        }
+      : {
+          terminalComposerDraftByPaneKey: removePaneKeysByTabPrefix(
+            swept.terminalComposerDraftByPaneKey,
+            tabId
+          ),
+          terminalComposerOpenByPaneKey: removePaneKeysByTabPrefix(
+            swept.terminalComposerOpenByPaneKey,
+            tabId
+          )
+        }
+    swept = { ...swept, ...patch, ...foreground, ...composer }
     if (!opts?.paneKeys) {
       forgetAgentHibernationTabOutput(tabId)
       forgetNativeChatPromptDismissalsForTab(tabId)

@@ -220,6 +220,7 @@ export function installPreviewTerminalKeyHandler(args: {
       case 'splitActivePane':
       case 'toggleExpandActivePane':
       case 'toggleSearch':
+      case 'toggleComposer':
         return consumeEvent(event)
     }
   })

@@ -1,17 +1,19 @@
 import { NativeChatFileReferencePill } from './NativeChatFileReferencePill'
 import { NativeChatSkillPill, skillLabel } from './NativeChatSkillPill'
 import { NativeChatImageReferencePill } from './NativeChatImageReferencePill'
-import { formatNativeChatFileReference } from '../../../../../../shared/agent-image-paste'
-import { imageReferenceToken } from '../../../../../../shared/native-chat/native-chat-image-reference'
 import {
-  FILE_REFERENCE_NODE,
-  IMAGE_REFERENCE_NODE,
-  promptLeafString
-} from './native-chat-prompt-document-text'
+  PromptFileReference,
+  PromptImageReference,
+  fileReferenceContent,
+  promptHasAttachmentReferences
+} from '@/components/prompt-editor/prompt-editor-nodes'
+import { promptLeafString } from './native-chat-prompt-document-text'
 import { ReactNodeViewRenderer, Node, type JSONContent } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { AgentJournalSkillRef } from '../../../../../../shared/agent-session/journal/agent-session-journal-types'
 import { agentSessionInteractionCommand } from '../../../../../../shared/agent-session/options/agent-session-interaction-mode'
+
+export { fileReferenceContent, promptHasAttachmentReferences }
 
 export const NativeChatSkill = Node.create({
   name: 'nativeChatSkill',
@@ -37,31 +39,14 @@ export const NativeChatSkill = Node.create({
 })
 
 /** A file attached by path. `token` is the reference the agent reads; the pill shows the filename. */
-export const NativeChatFileReference = Node.create({
-  name: FILE_REFERENCE_NODE,
-  group: 'inline',
-  inline: true,
-  atom: true,
-  selectable: true,
-  addNodeView: () => ReactNodeViewRenderer(NativeChatFileReferencePill),
-  addAttributes: () => ({ token: { default: '' }, path: { default: '' } }),
-  renderText: ({ node }) => node.attrs.token,
-  renderHTML: ({ node }) => ['span', { 'data-native-chat-file-reference': node.attrs.path }]
+export const NativeChatFileReference = PromptFileReference.extend({
+  addNodeView: () => ReactNodeViewRenderer(NativeChatFileReferencePill)
 })
 
-export const NativeChatImageReference = Node.create({
-  name: IMAGE_REFERENCE_NODE,
-  group: 'inline',
-  inline: true,
-  atom: true,
-  selectable: true,
+export const NativeChatImageReference = PromptImageReference.extend({
   addNodeView: () => ReactNodeViewRenderer(NativeChatImageReferencePill),
-  addAttributes: () => ({ attachmentId: { default: '' } }),
-  renderText: ({ node }) => imageReferenceToken(node.attrs.attachmentId),
-  renderHTML: ({ node }) => [
-    'span',
-    { 'data-native-chat-image-reference': node.attrs.attachmentId }
-  ]
+  // The chip is numbered, not named; a name attribute would change every stored draft's shape.
+  addAttributes: () => ({ attachmentId: { default: '' } })
 })
 
 export function promptSkillRefs(document: JSONContent | undefined): AgentJournalSkillRef[] {
@@ -81,16 +66,6 @@ export function promptSkillRefs(document: JSONContent | undefined): AgentJournal
   return [...own, ...(document.content ?? []).flatMap((child) => promptSkillRefs(child))]
 }
 
-/** Files or images attached inline as pills. */
-export function promptHasAttachmentReferences(document: JSONContent | undefined): boolean {
-  return (
-    document !== undefined &&
-    (document.type === NativeChatFileReference.name ||
-      document.type === NativeChatImageReference.name ||
-      (document.content ?? []).some(promptHasAttachmentReferences))
-  )
-}
-
 export function promptHasInteractionModeSkill(
   agent: string,
   text: string,
@@ -100,13 +75,6 @@ export function promptHasInteractionModeSkill(
     agentSessionInteractionCommand(agent, text) !== null &&
     promptSkillRefs(document).some((skill) => text.trimEnd() === `/${skill.name}`)
   )
-}
-
-export function fileReferenceContent(path: string): JSONContent {
-  return {
-    type: NativeChatFileReference.name,
-    attrs: { token: formatNativeChatFileReference(path), path }
-  }
 }
 
 /** A pill reads as its token and a hard break as a newline, so the text is what the agent receives. */

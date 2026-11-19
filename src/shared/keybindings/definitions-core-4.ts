@@ -104,6 +104,14 @@ export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
     }
   },
   {
+    id: 'terminal.toggleComposer',
+    title: 'Toggle the terminal composer',
+    group: 'Terminal Panes',
+    scope: 'terminal',
+    searchKeywords: ['shortcut', 'terminal', 'composer', 'prompt', 'agent', 'attach', 'toggle'],
+    defaultBindings: platformBindings(['Mod+Shift+P'])
+  },
+  {
     id: 'terminal.switchInputSource',
     title: 'Switch input source / language (native)',
     group: 'Terminal Panes',

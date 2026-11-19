@@ -10,7 +10,7 @@ import { FileX, Hourglass } from 'lucide-react'
 import { useTranslate } from '@/i18n/use-translate'
 import { basename } from '@/lib/path'
 import { getFileTypeIcon } from '@/lib/file-icons/file-type-icons'
-import { NativeChatPromptPill } from './NativeChatPromptPill'
+import { PromptPill } from '@/components/prompt-editor/PromptPill'
 import { isNativeChatPastedTextPath } from '../../../../../../shared/native-chat/native-chat-image-label'
 import {
   nativeChatPastedTextOperations,
@@ -31,7 +31,7 @@ export function NativeChatFileReferencePill({ node, selected }: NodeViewProps): 
   const canOpen = open && (live?.scopeKey === scope || isCommittedChatAttachmentCandidate(path))
   const unsaved = state === 'unsaved'
   const pill = (
-    <NativeChatPromptPill
+    <PromptPill
       icon={unsaved ? FileX : state === 'saving' ? Hourglass : getFileTypeIcon(path)}
       label={
         unsaved

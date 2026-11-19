@@ -14,9 +14,9 @@ import { createNonSecureContextUuid as createUuidV4 } from '../../../../../../sh
 import { promptSkillRefs } from '../../composer/editor/native-chat-prompt-document'
 import {
   promptTextContent,
-  seedPromptSkillReferences,
-  withoutImageReferenceNodes
+  seedPromptSkillReferences
 } from '../../composer/editor/native-chat-prompt-document-text'
+import { withoutImageReferenceNodes } from '@/components/prompt-editor/prompt-editor-nodes'
 import {
   appendToNativeChatComposerDraft,
   openNativeChatEditDraft,
@@ -140,7 +140,7 @@ export function handBackNativeChatQueuedEdit(
   for (const { id } of kept) {
     text = withoutImageReference(text, id)
     if (document) {
-      document = withoutImageReferenceNodes(document, id)
+      document = withoutImageReferenceNodes(document, id, true)
     }
   }
   const dirty = force || nativeChatQueuedEditDirty(edit)

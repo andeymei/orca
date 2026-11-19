@@ -3,7 +3,7 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import { ImageIcon, ImageOff } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
 import { useTranslate, type Translate } from '@/i18n/use-translate'
-import { NativeChatPromptPill } from './NativeChatPromptPill'
+import { PromptPill } from '@/components/prompt-editor/PromptPill'
 
 /** The ids of the composer's thumbnail row, in order: what numbers a chip and its thumbnail. */
 const ImageRowContext = createContext<readonly string[]>([])
@@ -20,7 +20,7 @@ export function NativeChatImageReferencePill({ node, selected }: NodeViewProps):
   const index = useContext(ImageRowContext).indexOf(attachmentId)
   return (
     <NodeViewWrapper as="span" className="inline" contentEditable={false}>
-      <NativeChatPromptPill
+      <PromptPill
         icon={index === -1 ? ImageOff : ImageIcon}
         label={
           index === -1

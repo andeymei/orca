@@ -22391,6 +22391,7 @@
       "terminalExpandPane": "창 확장/접기",
       "chatFind": "채팅에서 찾기",
       "terminalToggleNativeChat": "채팅 UI와 터미널 간 전환",
+      "terminalToggleComposer": "터미널 컴포저 전환",
       "terminalClosePane": "활성 창 닫기",
       "terminalSplitRight": "터미널 오른쪽으로 분할",
       "terminalSplitDown": "터미널 아래로 분할",
@@ -23512,5 +23513,29 @@
       "dismiss": "닫기",
       "cancelDownload": "다운로드 취소"
     }
+  },
+  "terminalComposer": {
+    "attach": "첨부파일 추가",
+    "send": "보내기",
+    "placeholder": "에이전트에게 메시지 쓰기",
+    "open": "에이전트에게 메시지 보내기",
+    "enterHint": "Enter로 줄바꿈",
+    "sendHint": "로 보내기",
+    "uploadFailed": "파일을 첨부하지 못했습니다",
+    "hostChanged": "호스트가 바뀌어 메시지를 보내지 못했습니다",
+    "hostChangedWhileAttaching": "호스트가 바뀌어 아무것도 첨부되지 않았습니다. 다시 시도해 주세요.",
+    "disconnected": "터미널 연결이 끊어져 메시지를 보내지 못했습니다",
+    "paneChanged": "패인이 바뀌어 메시지를 보내지 못했습니다",
+    "writeRejected": "호스트가 메시지를 거부했습니다",
+    "sendFailed": "메시지를 보내지 못했습니다",
+    "hostUnavailable": "이 터미널의 호스트에 연결할 수 없어 아무것도 첨부되지 않았습니다.",
+    "uploading": "업로드 중…",
+    "attachAgain": "다시 첨부",
+    "dismissFailed": "첨부 실패한 파일 닫기",
+    "reasonMissing": "파일이 없습니다",
+    "reasonSymlink": "그 경로는 파일이 아니라 링크입니다",
+    "reasonPermissionDenied": "파일을 읽을 권한이 없습니다",
+    "reasonUnsupported": "이 종류의 파일은 첨부할 수 없습니다",
+    "reasonNoLocalPath": "붙여넣은 항목에 파일이 없습니다"
   }
 }

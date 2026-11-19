@@ -22376,6 +22376,7 @@
       "terminalExpandPane": "展開／收合窗格",
       "chatFind": "在聊天中尋找",
       "terminalToggleNativeChat": "在聊天介面與終端機之間切換",
+      "terminalToggleComposer": "切換終端機輸入框",
       "terminalClosePane": "關閉作用中的窗格",
       "terminalSplitRight": "向右分割終端機",
       "terminalSplitDown": "向下分割終端機",
@@ -23444,5 +23445,29 @@
       "dismiss": "關閉",
       "cancelDownload": "取消下載"
     }
+  },
+  "terminalComposer": {
+    "attach": "新增附件",
+    "send": "傳送",
+    "placeholder": "給代理程式發訊息",
+    "open": "給代理程式發訊息",
+    "enterHint": "Enter 換行",
+    "sendHint": "傳送",
+    "uploadFailed": "附件新增失敗",
+    "hostChanged": "主機已改變，訊息沒有傳送",
+    "hostChangedWhileAttaching": "主機已改變，因此沒有新增附件。請再試一次。",
+    "disconnected": "終端機已中斷，訊息沒有傳送",
+    "paneChanged": "面板已改變，訊息沒有傳送",
+    "writeRejected": "主機拒絕了這批位元組",
+    "sendFailed": "訊息沒有傳送",
+    "hostUnavailable": "無法連線至此終端機所在的主機，因此沒有新增附件。",
+    "uploading": "上傳中…",
+    "attachAgain": "重新附加",
+    "dismissFailed": "忽略新增失敗的附件",
+    "reasonMissing": "檔案不在了",
+    "reasonSymlink": "這個路徑是連結，不是檔案",
+    "reasonPermissionDenied": "沒有權限讀取這個檔案",
+    "reasonUnsupported": "這種檔案不能作為附件新增",
+    "reasonNoLocalPath": "貼上的內容背後沒有檔案"
   }
 }

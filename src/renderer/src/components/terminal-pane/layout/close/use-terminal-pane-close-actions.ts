@@ -73,6 +73,8 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
         })
         useAppStore.getState().setCacheTimerStartedAt(makePaneKey(tabId, leafId), null)
         useAppStore.getState().dropAgentStatus(makePaneKey(tabId, leafId), { paneRemoved: true })
+        // The pane's draft and open flag must not outlive the pane.
+        useAppStore.getState().clearTerminalComposerPane(makePaneKey(tabId, leafId))
       }
       setTerminalErrorsByPaneId((current) => clearPaneTerminalError(current, paneId))
       if (leafId) {

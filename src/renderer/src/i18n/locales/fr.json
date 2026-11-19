@@ -23091,6 +23091,7 @@
       "terminalExpandPane": "Agrandir / réduire le volet",
       "chatFind": "Rechercher dans le chat",
       "terminalToggleNativeChat": "Basculer entre l'interface de chat et le terminal",
+      "terminalToggleComposer": "Basculer le composeur du terminal",
       "terminalClosePane": "Fermer le volet actif",
       "terminalSplitRight": "Scinder le terminal vers la droite",
       "terminalSplitDown": "Scinder le terminal vers le bas",
@@ -24226,5 +24227,29 @@
       "dismiss": "Ignorer",
       "cancelDownload": "Annuler le téléchargement"
     }
+  },
+  "terminalComposer": {
+    "attach": "Ajouter une pièce jointe",
+    "send": "Envoyer",
+    "placeholder": "Écrire à l’agent",
+    "open": "Envoyer un message à l’agent",
+    "enterHint": "Entrée pour une nouvelle ligne",
+    "sendHint": "pour envoyer",
+    "uploadFailed": "Impossible de joindre le fichier",
+    "hostChanged": "L’hôte a changé, le message n’a donc pas été envoyé",
+    "hostChangedWhileAttaching": "L’hôte a changé, rien n’a donc été joint. Réessayez.",
+    "disconnected": "Le terminal s’est déconnecté, le message n’a donc pas été envoyé",
+    "paneChanged": "Le panneau a changé, le message n’a donc pas été envoyé",
+    "writeRejected": "L’hôte a refusé le message",
+    "sendFailed": "Le message n’a pas été envoyé",
+    "hostUnavailable": "L’hôte de ce terminal est injoignable, rien n’a donc été joint.",
+    "uploading": "Envoi en cours…",
+    "attachAgain": "Joindre à nouveau",
+    "dismissFailed": "Ignorer la pièce jointe en échec",
+    "reasonMissing": "Le fichier n’existe plus",
+    "reasonSymlink": "Ce chemin est un lien, pas un fichier",
+    "reasonPermissionDenied": "Pas de permission de lire le fichier",
+    "reasonUnsupported": "Ce type de fichier ne peut pas être joint",
+    "reasonNoLocalPath": "L’élément collé n’a aucun fichier derrière"
   }
 }

@@ -23068,6 +23068,7 @@
       "terminalExpandPane": "Expandir / contraer panel",
       "chatFind": "Buscar en el chat",
       "terminalToggleNativeChat": "Cambiar entre la interfaz de chat y el terminal",
+      "terminalToggleComposer": "Alternar el compositor del terminal",
       "terminalClosePane": "Cerrar panel activo",
       "terminalSplitRight": "Dividir terminal a la derecha",
       "terminalSplitDown": "Dividir terminal hacia abajo",
@@ -24209,5 +24210,29 @@
       "read": "No se pudo cargar el uso. Pulsa Actualizar de nuevo.",
       "retry": "Actualizar"
     }
+  },
+  "terminalComposer": {
+    "attach": "Añadir archivo adjunto",
+    "send": "Enviar",
+    "placeholder": "Escribe al agente",
+    "open": "Enviar un mensaje al agente",
+    "enterHint": "Enter para una nueva línea",
+    "sendHint": "para enviar",
+    "uploadFailed": "No se pudo adjuntar el archivo",
+    "hostChanged": "El host cambió, así que el mensaje no se envió",
+    "hostChangedWhileAttaching": "El host cambió, así que no se adjuntó nada. Inténtalo de nuevo.",
+    "disconnected": "La terminal se desconectó, así que el mensaje no se envió",
+    "paneChanged": "El panel cambió, así que el mensaje no se envió",
+    "writeRejected": "El host rechazó el mensaje",
+    "sendFailed": "El mensaje no se envió",
+    "hostUnavailable": "No se puede acceder al host de esta terminal, así que no se adjuntó nada.",
+    "uploading": "Subiendo…",
+    "attachAgain": "Adjuntar de nuevo",
+    "dismissFailed": "Descartar el adjunto fallido",
+    "reasonMissing": "El archivo ya no está",
+    "reasonSymlink": "Esa ruta es un enlace, no un archivo",
+    "reasonPermissionDenied": "Sin permiso para leer el archivo",
+    "reasonUnsupported": "Ese tipo de archivo no se puede adjuntar",
+    "reasonNoLocalPath": "El elemento pegado no tiene ningún archivo detrás"
   }
 }

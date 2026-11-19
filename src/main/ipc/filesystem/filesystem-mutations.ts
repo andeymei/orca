@@ -178,6 +178,10 @@ export function registerFilesystemMutationHandlers(store: Store): void {
         store,
         'import-into'
       )
+      // The copy opens files without creating parents, so an asked-for destination has to exist first.
+      if (args.ensureDir) {
+        await mkdir(windowsFsPath(resolvedDest), { recursive: true })
+      }
 
       const results: ImportItemResult[] = []
       const reservedNames = new Set<string>()

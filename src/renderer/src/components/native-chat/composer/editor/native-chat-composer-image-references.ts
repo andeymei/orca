@@ -16,7 +16,7 @@ import {
   imageReferenceToken,
   withoutImageReference
 } from '../../../../../../shared/native-chat/native-chat-image-reference'
-import { withoutImageReferenceNodes } from './native-chat-prompt-document-text'
+import { withoutImageReferenceNodes } from '@/components/prompt-editor/prompt-editor-nodes'
 
 /** A chip for each image at the caret, or after the draft when the editor takes no input. */
 export function insertImageReferences(
@@ -56,7 +56,10 @@ export function removeImageReferences(
   const change =
     kept.trim() === ''
       ? { text: '', document: undefined }
-      : { text: kept, document: document && withoutImageReferenceNodes(document, attachmentId) }
+      : {
+          text: kept,
+          document: document && withoutImageReferenceNodes(document, attachmentId, true)
+        }
   updateNativeChatComposerDraft(scopeKey, change, 'immediate')
 }
 

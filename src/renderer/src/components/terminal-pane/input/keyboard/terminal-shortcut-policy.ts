@@ -68,6 +68,7 @@ export type TerminalShortcutAction =
     }
   | { type: 'trackNativeOptionDeadKey' }
   | { type: 'switchInputSource' }
+  | { type: 'toggleComposer' }
 
 /** Resolve platform-aware Orca shortcuts and byte fallbacks before xterm encoding. */
 export function resolveTerminalShortcutAction(
@@ -159,6 +160,11 @@ export function resolveTerminalShortcutAction(
 
     if (matches('terminal.splitDown')) {
       return { type: 'splitActivePane', direction: 'horizontal' }
+    }
+
+    // The composer's own field is editable, so the pipeline's editable-target bypass keeps the chord away from it.
+    if (matches('terminal.toggleComposer')) {
+      return { type: 'toggleComposer' }
     }
   }
 

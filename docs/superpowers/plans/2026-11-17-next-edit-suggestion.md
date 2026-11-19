@@ -2319,7 +2319,6 @@ git commit -m "test(code-completion): prove a suggestion appears and Tab accepts
 - Modify: `src/main/code-completion/anthropic-messages-backend.ts` (report the usage)
 - Modify: `src/main/code-completion/openai-chat-backend.ts` (report the usage)
 - Modify: `src/main/code-completion/openai-fim-backend.ts` (report the usage)
-- Modify: `src/main/code-completion/completion-service.ts` (pass the usage through)
 - Modify: `src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts` (report the usage)
 
 **Interfaces:**
@@ -2367,7 +2366,19 @@ Each backend reads the token counts from its own stream and returns them beside 
 
 The three backends already share a stream reader, so the parsing belongs in the shared code where the events are dispatched — not three times over.
 
-Update `createCompletionService` to pass the usage through, and update the RPC handler to call `recordCompletionUsage` after a successful plan.
+**The service already passes the usage through — it is not part of this task.**
+`completion-service.ts:64` returns the whole `NesBackendResult`, and the other three paths
+already say the right thing: the **cache hit** returns `emptyCompletionUsage()` because a
+cache hit spends nothing, the **"the endpoint returned no plan"** path returns the **real**
+usage because those tokens _were_ spent, and the error paths return zeros.
+
+**The RPC handler is the seam.** `code-completion-methods.ts:64` returns
+`{ plan: result.plan }` and drops the usage. Call
+`recordCompletionUsage({ model: settings.model, usage: result.usage, at: Date.now() })` there —
+and **record it whenever the usage is not zero, not only after a successful plan**: the path
+at `completion-service.ts:61` returns a null plan _with_ the real usage, because the model
+answered and the answer was not usable. Those tokens were spent, and a counter that only
+adds up the successes under-reports exactly the case where the model wasted the money.
 
 - [ ] **Step 5: Run the test to verify it passes**
 

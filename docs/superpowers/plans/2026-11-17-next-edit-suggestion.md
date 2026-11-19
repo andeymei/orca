@@ -1633,7 +1633,7 @@ work changing. The numbering stays; the execution order is **9 → 11 → 10**.
 - Create: `src/renderer/src/components/editor/code-completion/nes-key-routing.ts`
 - Create: `src/renderer/src/components/editor/code-completion/nes-key-routing.test.ts`
 - Modify: `src/shared/keybindings/types.ts` (add the action ids)
-- Modify: `src/shared/keybindings/definitions-core-3.ts` (add the definitions)
+- Modify: `src/shared/keybindings/definitions-core-4.ts` (add the definitions)
 - Modify: `src/renderer/src/components/editor/editor-shortcuts.ts` (add the installers)
 - Modify: `src/renderer/src/components/editor/monaco-editor-input-bindings.ts` (install and dispose them)
 - Modify: `src/renderer/src/components/editor/MonacoEditor.tsx` (mount the hook, pass the editor instance and the extension list)
@@ -1725,11 +1725,27 @@ In `src/shared/keybindings/definitions-core-3.ts`, add two definitions in the ed
     group: 'Editors',
     scope: 'editor',
     searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'next', 'jump'],
-    defaultBindings: platformBindings(['Mod+Tab'])
+    // Why: F8 is the sibling of the F7 "go to next change" this repo already binds.
+    defaultBindings: platformBindings(['F8']),
+    allowBareKeybindings: true
   },
 ```
 
-`Tab` is a bare key, so the definition needs `allowBareKeybindings: true`.
+**Both bindings are bare keys, so both definitions need `allowBareKeybindings: true`.** A bare `Tab`
+and a bare `F8` are both dropped by the normalizer without the flag — the action would exist and
+would never fire.
+
+**The jump chord is `F8`, not `Mod+Tab`.** `Mod+Tab` is `Cmd+Tab` on macOS, which the OS consumes
+before the renderer sees it, so the action could never fire there; and it is `Ctrl+Tab` on Linux
+and Windows, which `tab.previousRecent` already owns (`definitions-core-2.ts:211`). `F8` is free
+across the whole repo — no other definition and no terminal binding uses it — and no OS eats it.
+It is also the natural sibling of the `F7` "go to next change" this repo already binds.
+
+**The definitions go in `definitions-core-4.ts`, not `definitions-core-3.ts`.** The four core files
+are split by size, not by subject, and `definitions-core-3.ts` sits at 297 of its 300 **code**
+lines (`.oxlintrc.json:244` counts code lines — blank lines and comments do not count). Two more
+definitions do not fit, and the max-lines ratchet refuses a new over-limit file, so the two
+definitions belong in `definitions-core-4.ts`, which has room.
 
 - [ ] **Step 5: Write the installers**
 
@@ -1813,6 +1829,14 @@ The hook:
 
 - subscribes to the editor's `onDidChangeModelContent` and `onDidChangeCursorPosition`
 - debounces both by `triggerDelayMs`
+- **fires one tick when it mounts**, so opening a file asks for a plan instead of waiting for the
+  user to type. The content sync's effect runs _before_ the hook's (the sync is called at
+  `MonacoEditor.tsx:178`, the hook at `:236`), so the model already holds the file when the hook
+  subscribes and the content-change event that would have triggered the request has already gone
+  by. The spec's acceptance line is "打开文件 → 触发 → 看到 ghost text" — without the mount tick the
+  suggestion only appears after the first keystroke. The tick is debounced like every other, so a
+  content change that lands during the debounce window coalesces into it rather than adding a
+  second request.
 - binds the model to its file path in the plan store (`nesPlanStore.bindModel(model.uri.toString(), filePath)`) as soon as it mounts, so the provider (Task 9) can resolve the model
 - on a tick it builds the context (Task 7), collects the related files (Task 7), asks for the plan (Task 7), stores it (Task 8) and fires `fireNesInlineCompletionsChanged()` so Monaco re-queries the provider
 

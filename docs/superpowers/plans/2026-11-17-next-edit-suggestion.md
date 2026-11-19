@@ -2284,7 +2284,7 @@ Then:
 5. assert the buffer now holds the typed text **and** the suggested text
 6. in a second case, plan an edit at another line and press `Tab` with no suggestion showing; assert the cursor moved to that line
 
-**The key file lives in the developer's real home** (`~/.orca/code-completion-api-key.enc` — `homedir()` is not sandboxed by the E2E app). The spec must clear the key in an `afterAll` hook (`window.api.codeCompletion.clearApiKey()`), and the test must not overwrite a key the developer already had — read `getStatus()` first and skip the save when one is already configured.
+**The key file lives in the E2E's disposable home, so the developer's key is not at risk.** The harness creates `<userDataDir>/home` and launches Electron with `HOME` and `USERPROFILE` pointing at it (`tests/e2e/helpers/electron-home-isolation.ts:71-110`), then asserts that the app's resolved `app.getPath('home')` is that isolated home (`tests/e2e/helpers/orca-app.ts:191-194`). The key store reads `join(homedir(), '.orca', 'code-completion-api-key.enc')`, so the file the app reads is this spec's own. The spec stores `e2e-test-key` and clears it in an `afterAll` hook (`window.api.codeCompletion.clearApiKey()`); nothing of the developer's is touched. **Do not** set `HOME` or `USERPROFILE` through `orcaAppExtraEnv` — the harness rejects those keys on purpose (`cannot override the E2E home boundary`) and the launch throws. What still matters is that the mock never prints the headers it receives: the request carries the key as `x-api-key`.
 
 - [ ] **Step 3: Build in E2E mode and run the spec**
 

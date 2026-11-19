@@ -22,6 +22,8 @@ export type MonacoE2EProbe = {
   restoreScrollTop: (scrollTop: number) => void
   runLegacySetValueAppend: (suffix: string) => void
   snapshot: () => MonacoE2ESnapshot
+  /** The model's whole buffer; the tail is not enough to assert what a suggestion accepted. */
+  value: () => string
 }
 
 export function installMonacoE2EProbe(
@@ -59,6 +61,7 @@ export function installMonacoE2EProbe(
       // Reset recorded geometry because the legacy control can perturb Monaco’s pixel rounding.
       editorInstance.setScrollTop(scrollTop)
     },
+    value: (): string => editorInstance.getModel()?.getValue() ?? '',
     snapshot: (): MonacoE2ESnapshot => {
       const container = editorInstance.getContainerDomNode()
       const findWidget = container.querySelector<HTMLElement>('.find-widget')

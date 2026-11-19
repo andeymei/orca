@@ -87,6 +87,16 @@ describe('installEditorAcceptAiSuggestionShortcut', () => {
     expect(onAccept).toHaveBeenCalledOnce()
     expect(repeat.defaultPrevented).toBe(true)
   })
+
+  it('jumps on the next-suggestion chord', () => {
+    const { target, onAccept, onJump } = installTabShortcut('jump-to-next-location')
+
+    const event = pressKey(target, 'F8')
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(onJump).toHaveBeenCalledOnce()
+    expect(onAccept).not.toHaveBeenCalled()
+  })
 })
 
 describe('installEditorAiSuggestionPreviewShortcut', () => {

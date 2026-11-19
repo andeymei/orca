@@ -221,6 +221,9 @@ export function useMonacoNextEditSuggestions(params: {
       scheduleTick()
     })
 
+    // Why: the content sync lands before this effect subscribes, so opening a file would never ask.
+    scheduleTick()
+
     handlersByEditor.set(editorInstance, { decide, accept, jump, preview })
 
     return () => {

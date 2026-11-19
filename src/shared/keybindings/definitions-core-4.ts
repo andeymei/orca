@@ -135,5 +135,25 @@ export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
     },
     // Why: macOS uses Shift+Space as an input-source shortcut; Orca otherwise rejects Shift-only bindings to avoid stealing typed text.
     allowShiftOnlyKeybindings: true
+  },
+  {
+    id: 'editor.acceptAiSuggestion',
+    title: 'Accept AI Suggestion',
+    group: 'Editors',
+    scope: 'editor',
+    searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'accept', 'tab'],
+    // Why: Tab is a bare key, so the definition has to opt in or the binding is dropped.
+    defaultBindings: platformBindings(['Tab']),
+    allowBareKeybindings: true
+  },
+  {
+    id: 'editor.nextAiSuggestion',
+    title: 'Go to Next AI Suggestion',
+    group: 'Editors',
+    scope: 'editor',
+    searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'next', 'jump'],
+    // Why: F8 is the sibling of the F7 "go to next change" this repo already binds.
+    defaultBindings: platformBindings(['F8']),
+    allowBareKeybindings: true
   }
 ]

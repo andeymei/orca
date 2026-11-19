@@ -79,7 +79,32 @@ afterEach(() => {
 })
 
 describe('useMonacoNextEditSuggestions', () => {
-  it('binds the model under the key the inline provider asks by', async () => {
+  it('asks for a plan when the file opens', async () => {
+    const model = createModel()
+    requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
+    collectNesRelatedFilesMock.mockResolvedValue([])
+    const { editorInstance } = createFakeEditor(model)
+
+    const view = renderHook(() =>
+      useMonacoNextEditSuggestions({
+        filePath: FILE_PATH,
+        relativePath: 'src/app.ts',
+        languageId: 'typescript',
+        enabled: true,
+        triggerDelayMs: 0,
+        enabledExtensions: ['ts'],
+        editorInstance,
+        files: { target: { kind: 'local' }, worktreeId: null, worktreePath: null }
+      })
+    )
+
+    await waitFor(() => {
+      expect(requestNesPlanMock).toHaveBeenCalled()
+    })
+    view.unmount()
+  })
+
+  it('asks again when the cursor moves', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
     collectNesRelatedFilesMock.mockResolvedValue([])
@@ -98,9 +123,38 @@ describe('useMonacoNextEditSuggestions', () => {
       })
     )
 
+    await waitFor(() => {
+      expect(requestNesPlanMock).toHaveBeenCalledTimes(1)
+    })
+
     act(() => {
       moveCursor()
     })
+
+    await waitFor(() => {
+      expect(requestNesPlanMock).toHaveBeenCalledTimes(2)
+    })
+    view.unmount()
+  })
+
+  it('binds the model under the key the inline provider asks by', async () => {
+    const model = createModel()
+    requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
+    collectNesRelatedFilesMock.mockResolvedValue([])
+    const { editorInstance } = createFakeEditor(model)
+
+    const view = renderHook(() =>
+      useMonacoNextEditSuggestions({
+        filePath: FILE_PATH,
+        relativePath: 'src/app.ts',
+        languageId: 'typescript',
+        enabled: true,
+        triggerDelayMs: 0,
+        enabledExtensions: ['ts'],
+        editorInstance,
+        files: { target: { kind: 'local' }, worktreeId: null, worktreePath: null }
+      })
+    )
 
     await waitFor(() => {
       expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()

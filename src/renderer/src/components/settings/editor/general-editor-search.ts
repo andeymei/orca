@@ -50,6 +50,38 @@ export const getGeneralEditorSearchDescriptors = createLocalizedCatalog(() => [
       ...translateSearchKeyword('auto.components.settings.general.search.3ca5ab78a5', 'code')
     ]
   }),
+  generalSetting(GENERAL_SETTING_ANCHORS.codeCompletion, {
+    title: translate(
+      'auto.components.settings.editor.general.editor.search.1cc3f2128a',
+      'Next edit suggestions'
+    ),
+    description: translate(
+      'auto.components.settings.editor.general.editor.search.6d7b522d61',
+      'Ask a model for the edits it expects to come next, then accept them with Tab.'
+    ),
+    keywords: [
+      ...translateSearchKeyword(
+        'auto.components.settings.editor.general.editor.search.a44ca7f350',
+        'completion'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.editor.general.editor.search.11e2e0cd6f',
+        'suggestions'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.editor.general.editor.search.0997121ccd',
+        'next edit'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.editor.general.editor.search.dcaae11ee7',
+        'autocomplete'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.editor.general.editor.search.3e1fe5c32a',
+        'ai'
+      )
+    ]
+  }),
   generalSetting(GENERAL_SETTING_ANCHORS.collapseUnchanged, {
     title: translate(
       'auto.components.settings.general.search.aa367d753d',

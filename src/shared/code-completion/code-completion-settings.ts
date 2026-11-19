@@ -1,7 +1,7 @@
 import { NES_BACKEND_IDS, type NesBackendId } from './code-completion-types'
 
 export const DEFAULT_TRIGGER_DELAY_MS = 500
-const MAX_TRIGGER_DELAY_MS = 5000
+export const MAX_TRIGGER_DELAY_MS = 5000
 
 const DEFAULT_ENABLED_EXTENSIONS = [
   'ts',

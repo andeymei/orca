@@ -13,7 +13,20 @@ import type { SettingsNavigationModel } from '../navigation/use-settings-navigat
 import type { SettingsTerminalModel } from '../page/use-settings-terminal-model'
 import { TooltipProvider } from '../../ui/tooltip'
 
-beforeEach(() => useAppStore.setState(useAppStore.getInitialState(), true))
+beforeEach(() => {
+  useAppStore.setState(useAppStore.getInitialState(), true)
+  // The editor page reads the completion credential status from the bridge on mount.
+  Object.defineProperty(window, 'api', {
+    configurable: true,
+    value: {
+      codeCompletion: {
+        getStatus: vi.fn(async () => ({ configured: false, protection: null })),
+        saveApiKey: vi.fn(async () => ({ configured: false, protection: null })),
+        clearApiKey: vi.fn(async () => ({ configured: false, protection: null }))
+      }
+    }
+  })
+})
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()

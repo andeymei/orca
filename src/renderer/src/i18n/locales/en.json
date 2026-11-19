@@ -14279,6 +14279,50 @@
             "buckets": "Gemini model buckets",
             "optional": "dropped when a placeholder inside is empty"
           }
+        },
+        "editor": {
+          "CodeCompletionSection": {
+            "7f223e3a62": "Next edit suggestions",
+            "8fdd3137a7": "Ask a model for the edits it expects to come next, then accept them with Tab.",
+            "585decfc3d": "Another Orca app on this computer saved the API key, and this one cannot read it. Enter the key again here.",
+            "4a609b9771": "The saved API key cannot be read on this computer. Enter the key again.",
+            "4511c1769f": "Next edit suggestions stay off until you save an API key.",
+            "13dcd09aa3": "API key",
+            "dfddbe2660": "Protocol",
+            "41a5da86af": "The API shape the endpoint speaks.",
+            "93ed07a8a9": "Anthropic Messages",
+            "ff49e75185": "OpenAI Chat",
+            "55e4686ab8": "OpenAI FIM",
+            "5c05e289b2": "Base URL",
+            "8ae1759bf4": "Where the completion request is sent. Leave it empty to use the provider default endpoint.",
+            "2208e4af93": "Model",
+            "ac46b27154": "Which model the endpoint is asked to predict the next edits with.",
+            "6cc3ca851a": "Configured",
+            "3f93dfe0a5": "Not configured",
+            "b6c02a6499": "The key sent to the endpoint. It is stored on this computer and never read back here.",
+            "6ae350e2f4": "Save key",
+            "431571ae23": "Forget key",
+            "0a392011b5": "Trigger delay",
+            "016631d629": "How long Orca waits after you stop typing before it asks for the next edits.",
+            "2a22a3771c": "ms",
+            "3e8b886968": "Auto import",
+            "b48c20da2a": "Let the model add the imports the suggested edit needs.",
+            "679889f02f": "Enabled extensions",
+            "424ecd45b2": "The file extensions the suggestion runs in. Separate them with commas."
+          },
+          "general": {
+            "editor": {
+              "search": {
+                "1cc3f2128a": "Next edit suggestions",
+                "6d7b522d61": "Ask a model for the edits it expects to come next, then accept them with Tab.",
+                "a44ca7f350": "completion",
+                "11e2e0cd6f": "suggestions",
+                "0997121ccd": "next edit",
+                "dcaae11ee7": "autocomplete",
+                "3e1fe5c32a": "ai"
+              }
+            }
+          }
         }
       },
       "right": {
@@ -24401,7 +24445,9 @@
       "128cce6e6d": "Set title…",
       "e9da9f872a": "Send review notes to agent",
       "1524825c2c": "Toggle workspace board",
-      "d286d1ab85": "Clear pane title"
+      "d286d1ab85": "Clear pane title",
+      "editorAcceptAiSuggestion": "Accept AI Suggestion",
+      "editorNextAiSuggestion": "Go to Next AI Suggestion"
     },
     "group": {
       "global": "Global",

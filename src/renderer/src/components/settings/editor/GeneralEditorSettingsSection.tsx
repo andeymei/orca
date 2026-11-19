@@ -17,6 +17,7 @@ import { RichMarkdownSpellcheckSetting } from './RichMarkdownSpellcheckSetting'
 import { MarkdownDefaultViewSetting } from './MarkdownDefaultViewSetting'
 import { DiffShowWhitespaceSetting } from './DiffShowWhitespaceSetting'
 import { EditorWordWrapSetting } from './EditorWordWrapSetting'
+import { CodeCompletionSection } from './CodeCompletionSection'
 import { EditorFontFamilySetting } from './EditorFontFamilySetting'
 import { EditorFormatOnSaveSetting } from './EditorFormatOnSaveSetting'
 import { EditorInsertFinalNewlineSetting } from './EditorInsertFinalNewlineSetting'
@@ -181,6 +182,7 @@ export function GeneralEditorSettingsSection({
             }
           />
         </SearchableSetting>
+        <CodeCompletionSection settings={settings} updateSettings={updateSettings} />
       </SettingsGroup>
       <SettingsGroup title={t('settings.general.editorGroups.diffs', 'Diffs')}>
         <SearchableSetting

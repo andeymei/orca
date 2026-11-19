@@ -23,7 +23,7 @@ export function useMonacoNesFilesContext(params: {
     } catch (error) {
       // Why: an unresolvable owner means the file cannot be read; the editor must still render.
       console.error('[code-completion] The file owner is unresolved; the related files stay out.', {
-        error: error instanceof Error ? error.name : 'unknown'
+        error: error instanceof Error ? `${error.name}: ${error.message}` : String(error)
       })
       return null
     }

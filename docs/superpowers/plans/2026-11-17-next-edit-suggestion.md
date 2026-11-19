@@ -1769,7 +1769,7 @@ installer must do the same: a held Tab key fires a stream of repeats, and the fi
 suggestion — the repeats must not accept again, and must not fall through to the suggest widget and
 insert whitespace either. Skip repeats before deciding anything.
 
-**The accept path is ours, not Monaco's.** On `accept-suggestion` the hook calls `applyNesEdit` (Task 11) — it does **not** run Monaco's `editor.action.inlineSuggest.commit`. The Global Constraints require an accepted suggestion to be one undoable step made with `pushUndoStop()` / `pushEditOperations` / `pushUndoStop()`, and Task 11's `originalText` guard must sit on the path that actually applies the edit. The hook hides the inline widget first (`editor.action.inlineSuggest.hide`) so Monaco's ghost text does not outlive the text we applied.
+**The accept path is ours, not Monaco's.** On `accept-suggestion` the hook calls `applyNesEdit` (Task 11) — it does **not** run Monaco's `editor.action.inlineSuggest.commit`. The Global Constraints require an accepted suggestion to be one undoable step made with `pushUndoStop()` / `pushEditOperations` / `pushUndoStop()`, and Task 11's `originalText` guard must sit on the path that actually applies the edit. The hook applies the edit **first** and hides the inline widget (`editor.action.inlineSuggest.hide`) **only when the edit landed** — a refused edit keeps the ghost text, so the user does not lose the preview and get nothing.
 
 Add a second installer for the preview modifier:
 
@@ -1813,7 +1813,6 @@ Create `src/renderer/src/components/editor/code-completion/use-monaco-nes.ts`:
 export function useMonacoNextEditSuggestions(params: {
   filePath: string | undefined
   relativePath: string | undefined
-  languageId: string
   enabled: boolean
   triggerDelayMs: number
   /** The extensions the feature is on for; a file outside the list is skipped whole. */

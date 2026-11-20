@@ -93,7 +93,7 @@ describe('qoder builds keep their own row identity', () => {
         JSON.stringify({
           type: 'workspace-directories',
           sessionId: 'qoder-cn-session',
-          directories: ['/tmp/qoder-cn']
+          directories: [join(root, 'workspace')]
         }),
         JSON.stringify({
           type: 'user',

@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input } from '@/components/ui/input'
 import { useTranslate } from '@/i18n/use-translate'
 import { useAppStore } from '@/store/index'
 import { installWindowVisibilityInterval } from '@/lib/window-activity/window-visibility-interval'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
+import { parseExecutionHostId } from '../../../../shared/execution-host'
+import type { ClaudeAgentsScope } from '../../../../shared/claude-background-agents'
 import {
   buildBackgroundAgentListRows,
   countBackgroundAgentListRows,
   groupBackgroundAgentListRows,
   type BackgroundAgentListRow
 } from './background-agent-list-rows'
+import { BackgroundAgentComposer } from './BackgroundAgentComposer'
 import { BackgroundAgentEmptyState } from './BackgroundAgentEmptyState'
+import { BackgroundAgentHostNotice } from './BackgroundAgentHostNotice'
 import { BackgroundAgentRowView } from './BackgroundAgentRow'
 import { useBackgroundAgentScopeMatcher } from './use-background-agent-scope-matcher'
 import { useBackgroundAgentDispatch } from './use-background-agent-dispatch'
@@ -61,11 +63,24 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   const failureMessage = useAppStore((state) => state.backgroundAgentsMessage)
   const openBackgroundAgent = useAppStore((state) => state.openBackgroundAgent)
   const { dispatch, dispatchPrompt, cancelOpeningDispatch } = useBackgroundAgentDispatch()
-  // Why: the panel lists this machine's agents, so a workspace on another host needs saying out loud.
-  const listsThisMachineOnly = useAppStore(
-    (state) =>
-      (state.activeWorkspaceExecutionHostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
+  // The roster follows the workspace's host: this machine's CLI, or a paired runtime's job files.
+  const activeWorktreeId = useAppStore((state) => state.activeWorktreeId)
+  const activeWorkspaceExecutionHostId = useAppStore(
+    (state) => state.activeWorkspaceExecutionHostId
   )
+  const scope = useMemo<ClaudeAgentsScope>(
+    () => ({
+      worktreeId: activeWorktreeId,
+      executionHostId: activeWorkspaceExecutionHostId
+    }),
+    [activeWorktreeId, activeWorkspaceExecutionHostId]
+  )
+  const executionHostKind = parseExecutionHostId(activeWorkspaceExecutionHostId)?.kind ?? 'local'
+  // Why read-only: opening an agent needs its remote PTY, and starting, stopping or deleting one
+  // needs a one-shot remote command, neither of which this version has.
+  const hostRosterIsReadOnly = executionHostKind === 'runtime'
+  // Why: an SSH host cannot answer the listing at all, so this machine's roster is all there is.
+  const hostNoticeKind = executionHostKind === 'local' ? null : executionHostKind
 
   // Why: the CLI lists this machine's agents, so the panel keeps the ones of the open workspace.
   // The scope follows the workspace, so switching projects swaps the roster.
@@ -90,9 +105,14 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   useBackgroundAgentRosterRefresh()
 
   useEffect(() => {
-    // Why: the CLI's prompt box is ready to type into the moment the screen opens.
+    // Why: the CLI's prompt box is ready to type into the moment the screen opens; a read-only
+    // host has no prompt, so the list itself takes the keys.
+    if (hostRosterIsReadOnly) {
+      rootRef.current?.focus()
+      return
+    }
     composerRef.current?.focus()
-  }, [])
+  }, [hostRosterIsReadOnly])
 
   useEffect(() => {
     // Why: the elapsed column has no reader while the window is hidden.
@@ -112,7 +132,8 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
         return
       }
       try {
-        const read = await window.api.claudeAgents.readDetails(ids)
+        // Why the scope: a paired host answers these from the details its listing already read.
+        const read = await window.api.claudeAgents.readDetails(ids, scope)
         if (!cancelled) {
           useAppStore.getState().publishBackgroundAgentDetails(read)
         }
@@ -131,7 +152,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       cancelled = true
       stop()
     }
-  }, [agents])
+  }, [agents, scope])
 
   const moveSelection = (delta: 1 | -1): void => {
     if (selectableRows.length === 0) {
@@ -143,6 +164,9 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   }
 
   const activateOrDispatch = async (): Promise<void> => {
+    if (hostRosterIsReadOnly) {
+      return
+    }
     const prompt = composer.trim()
     if (prompt !== '') {
       // Why: the prompt stays in the box while the agent opens, and a refused dispatch keeps it
@@ -159,7 +183,8 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
 
   const runSelectedCommand = async (): Promise<void> => {
     const row = selectedRow
-    if (!row) {
+    // Why: stopping or deleting an agent on another host has no command path in this version.
+    if (!row || hostRosterIsReadOnly) {
       return
     }
     // Why: a finished agent has nothing left to stop, so the second Ctrl+X deletes it instead.
@@ -327,7 +352,12 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
             key={row.id}
             row={row}
             selected={selectedRow?.id === row.id}
-            onSelect={(picked) => openBackgroundAgent(picked.id)}
+            disabled={hostRosterIsReadOnly}
+            onSelect={(picked) => {
+              if (!hostRosterIsReadOnly) {
+                openBackgroundAgent(picked.id)
+              }
+            }}
             now={now}
             hint={commandHint(row)}
             onKeyDown={handleRowKeyDown}
@@ -358,17 +388,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
           )}
         </span>
       </div>
-      {listsThisMachineOnly ? (
-        <div
-          data-testid="background-agents-local-only-notice"
-          className="px-2 pt-1 text-2xs text-muted-foreground"
-        >
-          {t(
-            'auto.components.backgroundAgents.localOnlyNotice',
-            'This panel lists background agents running on this machine'
-          )}
-        </div>
-      ) : null}
+      <BackgroundAgentHostNotice hostKind={hostNoticeKind} />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-sleek px-1 pb-2">
         {dispatch ? (
           <div
@@ -430,26 +450,14 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
           )}
         </div>
       </div>
-      <div className="border-t border-border px-2 py-2">
-        <Input
-          ref={composerRef}
-          density="compact"
+      {hostRosterIsReadOnly ? null : (
+        <BackgroundAgentComposer
           value={composer}
           onChange={(event) => setComposer(event.target.value)}
           onKeyDown={handleComposerKeyDown}
-          placeholder={t(
-            'auto.components.backgroundAgents.composerPlaceholder',
-            'Describe a task for a new session'
-          )}
-          aria-label={t('auto.components.backgroundAgents.composerLabel', 'New background agent')}
+          inputRef={composerRef}
         />
-      </div>
-      <div className="px-2 pb-2 text-2xs text-muted-foreground">
-        {t(
-          'auto.components.backgroundAgents.shortcuts',
-          '↑↓ select · enter enter · ctrl+x stop · / task'
-        )}
-      </div>
+      )}
     </div>
   )
 }

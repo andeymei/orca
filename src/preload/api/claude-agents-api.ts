@@ -1,4 +1,5 @@
 import type {
+  ClaudeAgentsScope,
   ClaudeBackgroundAgentCommandResult,
   ClaudeBackgroundAgentDetail,
   ClaudeBackgroundAgentDispatchArgs,
@@ -7,10 +8,13 @@ import type {
 } from '../../shared/claude-background-agents'
 
 export type ClaudeAgentsApi = {
-  /** The agents on this machine and what each one is doing. */
-  list: () => Promise<ClaudeBackgroundAgentListResult>
+  /** The agents the asking workspace's host owns and what each one is doing. */
+  list: (scope?: ClaudeAgentsScope) => Promise<ClaudeBackgroundAgentListResult>
   /** The activity lines of the given agents; the fast poll asks only for these. */
-  readDetails: (ids: string[]) => Promise<Record<string, ClaudeBackgroundAgentDetail>>
+  readDetails: (
+    ids: string[],
+    scope?: ClaudeAgentsScope
+  ) => Promise<Record<string, ClaudeBackgroundAgentDetail>>
   /** Start a background agent; the CLI answers with the id it gave it. */
   dispatch: (args: ClaudeBackgroundAgentDispatchArgs) => Promise<ClaudeBackgroundAgentCommandResult>
   /** Cancel the dispatch that is still opening; there is nothing to cancel otherwise. */

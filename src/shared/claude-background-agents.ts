@@ -74,6 +74,28 @@ export type ClaudeBackgroundAgentDetail = {
   updatedAt: number | null
 }
 
+/**
+ * Which workspace is asking for the roster.
+ *
+ * Both fields may be absent: an older caller, or a panel with no workspace open, reads as this
+ * machine. A `runtime:<environmentId>` host asks that machine's runtime instead.
+ */
+export type ClaudeAgentsScope = {
+  worktreeId: string | null
+  executionHostId: string | null
+}
+
+/** The scope when the caller did not say: this machine, no workspace. */
+export function readClaudeAgentsScope(value: unknown): ClaudeAgentsScope {
+  if (!isRecord(value)) {
+    return { worktreeId: null, executionHostId: null }
+  }
+  return {
+    worktreeId: typeof value.worktreeId === 'string' ? value.worktreeId : null,
+    executionHostId: typeof value.executionHostId === 'string' ? value.executionHostId : null
+  }
+}
+
 /** What the panel gets over IPC. */
 export type ClaudeBackgroundAgentListResult = {
   /** 'unsupported' means this machine has no Claude Code CLI to ask. */

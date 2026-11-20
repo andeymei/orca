@@ -1,11 +1,14 @@
 import { ipcMain } from 'electron'
 import {
   isRecord,
+  readClaudeAgentsScope,
+  type ClaudeAgentsScope,
   type ClaudeBackgroundAgent,
   type ClaudeBackgroundAgentCommandResult,
   type ClaudeBackgroundAgentDetail,
   type ClaudeBackgroundAgentListResult
 } from '../../../shared/claude-background-agents'
+import { parseExecutionHostId } from '../../../shared/execution-host'
 import {
   dispatchClaudeBackgroundAgent,
   removeClaudeBackgroundAgent,
@@ -13,6 +16,10 @@ import {
 } from '../../claude/background-agents/claude-background-agent-commands'
 import { readClaudeBackgroundAgentJobState } from '../../claude/background-agents/claude-background-agent-job-state'
 import { listClaudeBackgroundAgentsOrNull } from '../../claude/background-agents/claude-background-agent-list'
+import {
+  listRemoteClaudeBackgroundAgents,
+  readRemoteClaudeBackgroundAgentDetails
+} from '../../claude/background-agents/claude-background-agent-remote-list'
 
 /**
  * The two sources of the panel, merged into one answer.
@@ -62,7 +69,7 @@ async function readClaudeBackgroundAgentDetails(
 }
 
 /**
- * The commands this layer runs; injected so the tests can replace them.
+ * The commands and read sources this layer runs; injected so the tests can replace them.
  *
  * The dispatch has to be interruptible: the panel may cancel it while the agent is still opening.
  */
@@ -70,6 +77,76 @@ export type ClaudeAgentsHandlerDependencies = {
   dispatch?: typeof dispatchClaudeBackgroundAgent
   stop?: typeof stopClaudeBackgroundAgent
   remove?: typeof removeClaudeBackgroundAgent
+  listLocal?: typeof listClaudeBackgroundAgentsOrNull
+  readLocalDetail?: typeof readClaudeBackgroundAgentJobState
+  listRemote?: typeof listRemoteClaudeBackgroundAgents
+  readRemoteDetails?: typeof readRemoteClaudeBackgroundAgentDetails
+  userDataPath?: () => string | Promise<string>
+}
+
+/**
+ * The roster for the workspace that asked.
+ *
+ * A `local` (or absent) host keeps the CLI listing exactly as it was. A `runtime:` host is read
+ * from that machine's `~/.claude/jobs`, because its worktrees do not exist on this machine. An
+ * `ssh:` host cannot answer this version: the panel says so rather than showing local agents.
+ */
+export async function buildClaudeBackgroundAgentListResultForScope(
+  scope: ClaudeAgentsScope,
+  dependencies: ClaudeAgentsHandlerDependencies = {}
+): Promise<ClaudeBackgroundAgentListResult> {
+  const host = parseExecutionHostId(scope.executionHostId)
+  if (host?.kind === 'runtime') {
+    if (!scope.worktreeId) {
+      return { status: 'ready', agents: [], details: {}, message: null }
+    }
+    const listRemote = dependencies.listRemote ?? listRemoteClaudeBackgroundAgents
+    const userDataPath = await (dependencies.userDataPath ?? defaultUserDataPath)()
+    return listRemote({
+      userDataPath,
+      environmentId: host.environmentId,
+      worktreeId: scope.worktreeId
+    })
+  }
+  if (host?.kind === 'ssh') {
+    return { status: 'ready', agents: [], details: {}, message: null }
+  }
+  return buildClaudeBackgroundAgentListResult(
+    () => (dependencies.listLocal ?? listClaudeBackgroundAgentsOrNull)(),
+    (id) => (dependencies.readLocalDetail ?? readClaudeBackgroundAgentJobState)(id)
+  )
+}
+
+/**
+ * The activity lines for the agents in scope.
+ *
+ * The remote listing already read every state file, so its details come from that cache and send
+ * no request at all — the panel asks again every two seconds.
+ */
+export async function readClaudeBackgroundAgentDetailsForScope(
+  scope: ClaudeAgentsScope,
+  ids: readonly string[],
+  dependencies: ClaudeAgentsHandlerDependencies = {}
+): Promise<Record<string, ClaudeBackgroundAgentDetail>> {
+  const host = parseExecutionHostId(scope.executionHostId)
+  if (host?.kind === 'runtime') {
+    return (dependencies.readRemoteDetails ?? readRemoteClaudeBackgroundAgentDetails)(
+      host.environmentId,
+      ids
+    )
+  }
+  if (host?.kind === 'ssh') {
+    return {}
+  }
+  return readClaudeBackgroundAgentDetails(ids, (id) =>
+    (dependencies.readLocalDetail ?? readClaudeBackgroundAgentJobState)(id)
+  )
+}
+
+async function defaultUserDataPath(): Promise<string> {
+  const { getRuntimeEnvironmentRegistryRoot } =
+    await import('../runtime-environments/runtime-environment-registry-root')
+  return getRuntimeEnvironmentRegistryRoot()
 }
 
 export function registerClaudeAgentsHandlers(
@@ -82,21 +159,21 @@ export function registerClaudeAgentsHandlers(
   // level one would be shared by every registration and leak between tests.
   let inFlightDispatch: AbortController | null = null
 
-  ipcMain.handle('claudeAgents:list', (): Promise<ClaudeBackgroundAgentListResult> =>
-    buildClaudeBackgroundAgentListResult(
-      () => listClaudeBackgroundAgentsOrNull(),
-      (id) => readClaudeBackgroundAgentJobState(id)
-    )
+  ipcMain.handle(
+    'claudeAgents:list',
+    (_event, scope: unknown): Promise<ClaudeBackgroundAgentListResult> =>
+      buildClaudeBackgroundAgentListResultForScope(readClaudeAgentsScope(scope), dependencies)
   )
   // The fast poll asks only for the activity lines; the slow one asks the CLI for the roster.
   // The ids are checked against the CLI's short-id pattern inside readClaudeBackgroundAgentJobState,
   // before the id becomes a path segment, so this layer does not validate them a second time.
   ipcMain.handle(
     'claudeAgents:readDetails',
-    (_event, ids: unknown): Promise<Record<string, ClaudeBackgroundAgentDetail>> =>
-      readClaudeBackgroundAgentDetails(
+    (_event, ids: unknown, scope: unknown): Promise<Record<string, ClaudeBackgroundAgentDetail>> =>
+      readClaudeBackgroundAgentDetailsForScope(
+        readClaudeAgentsScope(scope),
         Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [],
-        (id) => readClaudeBackgroundAgentJobState(id)
+        dependencies
       )
   )
   // The permission modes the CLI accepts and the `--` that keeps a prompt starting with a dash out

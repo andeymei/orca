@@ -125,6 +125,10 @@ git commit -m "feat(agent-launch): let Orca install and sign in to Qoder"
 - Modify: `src/main/ai-vault/session-scanner-types.ts` — `AiVaultScanOptions` (line 16)
 - Modify: `src/main/ai-vault/scanners/qoder/session-scanner-qoder-parser.ts` — label the row with the build that owns it
 - Modify: `src/main/ai-vault/session-scanner-agent-parser.ts` — the `parseAgentSessionFile` switch (line 83)
+- Modify: `src/main/ai-vault/parse-cache/session-scanner-parse-cache.ts` — `resumableStateFactoryFor`,
+  an exhaustive switch the new agent breaks
+- Modify: `src/shared/ai-vault/resume/ai-vault-resume-command.ts` — `buildAgentResumeInvocation`,
+  the other exhaustive switch
 - Create: `src/main/ai-vault/scanners/qoder/qoder-cn-row-identity.test.ts`
 
 **Interfaces:**
@@ -138,7 +142,7 @@ Create `src/main/ai-vault/scanners/qoder/qoder-cn-row-identity.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AI_VAULT_AGENTS, AI_VAULT_AGENT_LABELS } from '../../../../shared/ai-vault/contracts/ai-vault-types'
@@ -176,7 +180,9 @@ describe('Qoder China build rows', () => {
       )
       const session = await parseQoderSessionFile(
         { path: file, mtimeMs: 0, modifiedAt: '2026-11-17T00:00:00.000Z' },
-        'linux'
+        'linux',
+        undefined,
+        'qoder-cn'
       )
       expect(session?.agent).toBe('qoder-cn')
     } finally {

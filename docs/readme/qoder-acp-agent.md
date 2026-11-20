@@ -22,6 +22,11 @@ The two builds keep separate accounts and config homes: the global build reads
 Orca drives Qoder CLI over ACP: the CLI serves ACP on stdio and the chat is the client.
 Pick **Qoder CLI** in a chat's agent picker; it answers in native chat, not in a pane.
 
+To confirm the ACP chat is the one talking: the chat's agent is the **Qoder CLI** entry
+(or **Qoder CLI China**), and the session shows up in the AI Vault's History rows under
+that agent. An ACP session never opens a terminal pane; a pane is the terminal Qoder
+agent.
+
 ## The handshake test (opt-in)
 
 ```bash
@@ -29,11 +34,30 @@ Pick **Qoder CLI** in a chat's agent picker; it answers in native chat, not in a
 ORCA_REAL_QODER_CLI_TEST=1 pnpm test src/main/qoder/qoder-acp-session-launch.test.ts --maxWorkers=2
 ```
 
+Every build whose binary is installed is proved; the build that is not installed is
+skipped. The suite fails when no build is installed, and when an installed build
+cannot sign in.
+
 ## Check the session id against `--resume`
 
 The History row and the terminal-resume guard assume the id the ACP session reports
-is the id `qodercli --resume` opens. Run the test with
-`ORCA_QODER_PROOF_PATH=/tmp/qoder-acp-proof.json` set, then check that its `sessionId`
-opens with `qodercli --resume '<sessionId>'` and names the transcript
-`~/.qoder/projects/*/<sessionId>.jsonl` (China build: `~/.qoder-cn/...`). If either
-fails, the two ids are different id spaces and a History row would name an id `--resume` cannot open.
+is the id `qodercli --resume` opens. Run the test with both variables set:
+
+```bash
+ORCA_REAL_QODER_CLI_TEST=1 ORCA_QODER_PROOF_PATH=/tmp/qoder-acp-proof.json \
+  pnpm test src/main/qoder/qoder-acp-session-launch.test.ts --maxWorkers=2
+```
+
+Then check the `sessionId` of the build you installed in the proof file's `builds`
+array: it must open with `qodercli --resume '<sessionId>'` and name the transcript
+`~/.qoder/projects/*/<sessionId>.jsonl` (China build: `~/.qoder-cn/...`).
+
+If no proof file appears, the suite skipped: `ORCA_REAL_QODER_CLI_TEST=1` was missing,
+so the run did nothing at all. Run the command above exactly as written. If the suite
+ran and failed instead, the CLI is not signed in — sign in with `qodercli login` and
+run it again.
+
+If either id check fails, the two ids are different id spaces: the ACP session id
+cannot be used to resume from a terminal, so a History row would name an id `--resume`
+cannot open. Nothing else changes that — repeat this manual step once a newer CLI
+release is installed, and report the mismatch if it survives the upgrade.

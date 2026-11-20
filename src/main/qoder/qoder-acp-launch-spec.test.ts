@@ -1,9 +1,14 @@
+import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { acpLaunchSpecFor } from '../acp/launch/acp-launch-registry'
 import { GENERIC_ACP_DIALECT } from '../acp/acp-dialects/acp-dialect'
 
 describe('Qoder ACP launch spec', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   it('launches the global build in ACP mode', () => {
     const spec = acpLaunchSpecFor('qoder')
     expect(spec?.command).toBe('qodercli')
@@ -24,6 +29,32 @@ describe('Qoder ACP launch spec', () => {
     expect(acpLaunchSpecFor('qoder-cn')?.account.pin).toEqual({
       accountHomeVariable: 'QODERCN_CONFIG_DIR'
     })
+  })
+
+  it('gives each build its own account home path', async () => {
+    vi.stubEnv('QODER_CONFIG_DIR', undefined)
+    vi.stubEnv('QODERCN_CONFIG_DIR', undefined)
+    expect(
+      await acpLaunchSpecFor('qoder')?.account.resolve({
+        launchEnv: { QODER_CONFIG_DIR: '/accounts/global' },
+        stateDirectory: '/state'
+      })
+    ).toEqual({ variable: 'QODER_CONFIG_DIR', path: '/accounts/global' })
+    expect(
+      await acpLaunchSpecFor('qoder-cn')?.account.resolve({
+        launchEnv: { QODERCN_CONFIG_DIR: '/accounts/china' },
+        stateDirectory: '/state'
+      })
+    ).toEqual({ variable: 'QODERCN_CONFIG_DIR', path: '/accounts/china' })
+    expect(
+      await acpLaunchSpecFor('qoder')?.account.resolve({ launchEnv: {}, stateDirectory: '/state' })
+    ).toEqual({ variable: 'QODER_CONFIG_DIR', path: join(homedir(), '.qoder') })
+    expect(
+      await acpLaunchSpecFor('qoder-cn')?.account.resolve({
+        launchEnv: {},
+        stateDirectory: '/state'
+      })
+    ).toEqual({ variable: 'QODERCN_CONFIG_DIR', path: join(homedir(), '.qoder-cn') })
   })
 
   it('signs in with the command each build ships', () => {
@@ -50,5 +81,34 @@ describe('Qoder ACP launch spec', () => {
     const history = acpLaunchSpecFor('qoder')?.sessionHistory
     expect(history?.parseResumeArgs(['--resume', 'session-42'])).toEqual({ target: 'session-42' })
     expect(history?.parseResumeArgs(['--acp'])).toBeNull()
+  })
+
+  it('resumes a Qoder session by every documented spelling', () => {
+    const history = acpLaunchSpecFor('qoder')?.sessionHistory
+    expect(history?.parseResumeArgs(['-r', 'session-42'])).toEqual({ target: 'session-42' })
+    expect(history?.parseResumeArgs(['--resume=session-42'])).toEqual({ target: 'session-42' })
+    expect(history?.parseResumeArgs(['-c'])).toEqual({ target: null })
+    expect(history?.parseResumeArgs(['--continue'])).toEqual({ target: null })
+  })
+
+  it('scrubs the permission-mode variables that would bypass the prompts', () => {
+    const env: Record<string, string> = {
+      QODER_PERMISSION_MODE: 'bypass_permissions',
+      QODERCN_PERMISSION_MODE: 'bypass_permissions'
+    }
+    expect(acpLaunchSpecFor('qoder')?.scrubEnvironment?.(env, {})).toEqual([
+      'QODER_PERMISSION_MODE',
+      'QODERCN_PERMISSION_MODE'
+    ])
+    expect(env).toEqual({})
+    const chinaEnv: Record<string, string> = {
+      QODER_PERMISSION_MODE: 'bypass_permissions',
+      QODERCN_PERMISSION_MODE: 'bypass_permissions'
+    }
+    expect(acpLaunchSpecFor('qoder-cn')?.scrubEnvironment?.(chinaEnv, {})).toEqual([
+      'QODER_PERMISSION_MODE',
+      'QODERCN_PERMISSION_MODE'
+    ])
+    expect(chinaEnv).toEqual({})
   })
 })

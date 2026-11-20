@@ -469,24 +469,42 @@ git commit -m "feat(acp): run Qoder CLI as an ACP agent"
 
 - [ ] **Step 1: Write the opt-in test**
 
-Create `src/main/qoder/qoder-acp-session-launch.test.ts`. Follow the repo's existing opt-in pattern (`describe.skipIf(...)`, as the WSL suites use): detect the binary with a `which`-style lookup and skip the whole suite when it is absent.
+Create `src/main/qoder/qoder-acp-session-launch.test.ts`.
+
+**Gate the suite the way the repo gates every real-CLI test**: `it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')`
+— the pattern `src/main/qoder/real-cli.test.ts:31` already uses. Do **not** gate on "the binary is
+present": a test that skips wherever the CLI is missing proves nothing on any machine, and it hides
+the difference between "not installed" and "installed but not signed in".
+
+**Spawn through `@orca/process-host`, never `node:child_process` directly.** `spawnProcess(spec)`
+(`src/packages/process-host/src/run-process.ts:23`) takes a `PipedProcessSpec` and returns a
+`ChildProcessWithoutNullStreams` — piped stdio, the same constraints the rest of the app obeys.
 
 The suite must:
 
-- launch the build's command with the spec's `args({ fullAccess: false, pluginDir: null })`
-- send the ACP `initialize` request and assert the response carries a protocol version and an agent capability block
-- close the connection and assert the process exits
+- spawn the build's command with the spec's `args({ fullAccess: false, pluginDir: null })`
+- write the ACP `initialize` request as **one NDJSON line** — the framing is line-delimited JSON
+  (`acp-session-agent-turns.test.ts:36` splits on `'\n'`), and the request body is exactly what Orca
+  sends (`acp-session-runtime.ts:90-100`):
+  `{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false}}`
+- read one line from stdout, parse it, and assert `protocolVersion === 1`
+  (`ACP_PROTOCOL_VERSION`, `src/main/acp/generated/acp-protocol.generated.ts:200`) and that
+  `agentCapabilities` is present
+- end stdin, terminate the child, and assert the process exits
 
-Reuse the repo's ACP rig rather than hand-rolling a stdio client:
-`src/main/acp/session/testing/acp-structured-adapter.test-support.ts` exports
-`openAcpAdapterRig`, which `src/main/acp/turns/acp-structured-image-prompts.test.ts` opens from an
-`AcpLaunchSpec`. `resolveAcpLaunchCommand` lives in **`src/main/acp/launch/acp-launch-command.ts`**
-— not in `acp-structured-launch-resolution.ts`, which exists but does not export it.
+**Do not try to reuse `openAcpAdapterRig` as the transport.** It fakes the child — its `connect`
+builds a `FakeAcpChild`, never spawning the vendor's binary
+(`src/main/acp/session/testing/acp-structured-adapter.test-support.ts:133-135`) — so it cannot prove
+a real handshake. It is the reference for _how Orca drives_ an ACP agent; the transport here is a
+real stdio pipe. `resolveAcpLaunchCommand` lives in
+**`src/main/acp/launch/acp-launch-command.ts`** — not in `acp-structured-launch-resolution.ts`,
+which exists but does not export it.
 
 - [ ] **Step 2: Run the test to verify it skips cleanly**
 
 Run: `pnpm test src/main/qoder/qoder-acp-session-launch.test.ts --maxWorkers=2`
-Expected: SKIPPED (the CLI is not installed on this machine) — not a failure.
+Expected: SKIPPED — the suite is opt-in and `ORCA_REAL_QODER_CLI_TEST` is unset — not a failure.
+With `ORCA_REAL_QODER_CLI_TEST=1` on a machine that has Qoder installed and signed in, it runs.
 
 - [ ] **Step 3: Write the runbook**
 
@@ -500,6 +518,11 @@ Create `docs/readme/qoder-acp-agent.md` covering:
   alternative is a Personal Access Token in `QODER_PERSONAL_ACCESS_TOKEN`.
 - starting a Qoder chat in Orca and confirming the ACP session is the one talking
 - how to tell an ACP chat apart from the existing terminal Qoder agent (the ACP one lives in native chat; the terminal one is a pane)
+- **running the handshake test yourself:** `ORCA_REAL_QODER_CLI_TEST=1 pnpm test src/main/qoder/qoder-acp-session-launch.test.ts --maxWorkers=2`
+  — it is opt-in, so it stays skipped everywhere else
+- **two accounts, two config homes:** the global build reads `QODER_CONFIG_DIR` (default `~/.qoder`)
+  and the China build reads `QODERCN_CONFIG_DIR` (default `~/.qoder-cn`), so each build signs in
+  separately
 - the two builds' separate accounts, and that each needs its own `login`
 
 Keep it under 40 lines.

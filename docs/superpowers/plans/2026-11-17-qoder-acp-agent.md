@@ -406,10 +406,11 @@ function qoderAcpLaunchSpec(build: QoderBuild): AcpLaunchSpec {
       join(homePath, build.accountDirName)
     ),
     installDirectories: ({ homePath }) => [build.installDir(homePath)],
-    // The CLI lists models only inside a session; a listing session would land in the user's history.
+    // The CLI has --list-models, but its output format is not documented, so there is
+    // nothing stable to parse.
     modelDiscovery: {
       kind: 'unavailable',
-      reason: 'Qoder CLI lists its models inside a session'
+      reason: 'Qoder CLI has --list-models, but its output format is not documented'
     },
     compaction: true,
     transcriptImport: null,

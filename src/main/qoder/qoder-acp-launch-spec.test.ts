@@ -89,6 +89,9 @@ describe('Qoder ACP launch spec', () => {
     expect(history?.parseResumeArgs(['--resume=session-42'])).toEqual({ target: 'session-42' })
     expect(history?.parseResumeArgs(['-c'])).toEqual({ target: null })
     expect(history?.parseResumeArgs(['--continue'])).toEqual({ target: null })
+    // A marker with no value could open any session, so the guard reads it as targetless.
+    expect(history?.parseResumeArgs(['--resume'])).toEqual({ target: null })
+    expect(history?.parseResumeArgs(['-r=session-42'])).toEqual({ target: 'session-42' })
   })
 
   it('scrubs the permission-mode variables that would bypass the prompts', () => {

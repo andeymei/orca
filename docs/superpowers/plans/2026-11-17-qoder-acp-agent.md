@@ -513,6 +513,8 @@ git commit -m "feat(acp): run Qoder CLI as an ACP agent"
 
 - Create: `src/main/qoder/qoder-acp-session-launch.test.ts`
 - Create: `docs/readme/qoder-acp-agent.md` (a short runbook for the manual path)
+- Modify: `config/scripts/test-runtime/environment/vitest-real-agent-cli-guard.ts` — register
+  `ORCA_REAL_QODER_CLI_TEST` among the switches that exempt a real-agent suite from the guard
 
 **Interfaces:**
 
@@ -537,8 +539,10 @@ The suite must:
 - spawn the build's command with the spec's `args({ fullAccess: false, pluginDir: null })`
 - write the ACP `initialize` request as **one NDJSON line** — the framing is line-delimited JSON
   (`acp-session-agent-turns.test.ts:36` splits on `'\n'`), and the request body is exactly what Orca
-  sends (`acp-session-runtime.ts:90-100`):
-  `{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false}}`
+  sends (`acp-session-runtime.ts:90-100`), **including `clientInfo`**, which
+  `acp-structured-acquire.ts:107` sets to `{ name: 'orca', version: '1' }` — a handshake that differs
+  by one field can pass while the product fails:
+  `{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false},"clientInfo":{"name":"orca","version":"1"}}`
 - read one line from stdout, parse it, and assert `protocolVersion === 1`
   (`ACP_PROTOCOL_VERSION`, `src/main/acp/generated/acp-protocol.generated.ts:200`) and that
   `agentCapabilities` is present

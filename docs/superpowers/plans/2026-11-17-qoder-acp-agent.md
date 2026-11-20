@@ -281,6 +281,7 @@ git commit -m "feat(ai-vault): give the Qoder China build its own History rows"
 Create `src/main/qoder/qoder-acp-launch-spec.test.ts`:
 
 ```ts
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { acpLaunchSpecFor } from '../acp/launch/acp-launch-registry'
 import { GENERIC_ACP_DIALECT } from '../acp/acp-dialects/acp-dialect'
@@ -300,8 +301,8 @@ describe('Qoder ACP launch spec', () => {
   })
 
   it('keeps the two builds on separate account homes', () => {
-    expect(acpLaunchSpecFor('qoder')?.account.pin.accountHomeVariable).toBe('QODER_HOME')
-    expect(acpLaunchSpecFor('qoder-cn')?.account.pin.accountHomeVariable).toBe('QODER_CN_HOME')
+    expect(acpLaunchSpecFor('qoder')?.account.pin.accountHomeVariable).toBe('QODER_CONFIG_DIR')
+    expect(acpLaunchSpecFor('qoder-cn')?.account.pin.accountHomeVariable).toBe('QODERCN_CONFIG_DIR')
   })
 
   it('signs in with the command each build ships', () => {
@@ -341,6 +342,11 @@ Expected: FAIL — `acpLaunchSpecFor('qoder')` returns `null`.
 
 Create `src/main/qoder/qoder-acp-launch-spec.ts`:
 
+Each build pins the config-directory variable **Qoder's own documentation names** — `QODER_CONFIG_DIR`
+(default `~/.qoder`) for the global build, `QODERCN_CONFIG_DIR` (default `~/.qoder-cn`) for the China
+build. `directoryAccountBinding` selects an alternate account by setting this variable in the child's
+environment, so an invented name would make that path silently do nothing.
+
 ```ts
 import { join } from 'node:path'
 import type { AcpLaunchSpec } from '../acp/launch/acp-launch-contract'
@@ -365,14 +371,14 @@ const QODER_BUILDS: readonly QoderBuild[] = [
   {
     agent: 'qoder',
     command: 'qodercli',
-    accountHomeVariable: 'QODER_HOME',
+    accountHomeVariable: 'QODER_CONFIG_DIR',
     accountDirName: '.qoder',
     installDir: (homePath) => join(homePath, '.qoder', 'bin', 'qodercli')
   },
   {
     agent: 'qoder-cn',
     command: 'qoderclicn',
-    accountHomeVariable: 'QODER_CN_HOME',
+    accountHomeVariable: 'QODERCN_CONFIG_DIR',
     accountDirName: '.qoder-cn',
     installDir: (homePath) => join(homePath, '.qoder-cn', 'bin')
   }

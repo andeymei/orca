@@ -488,6 +488,10 @@ Create `docs/readme/qoder-acp-agent.md` covering:
 
 - installing the build: `npm install -g @qoder-ai/qodercli` (or `@qodercn-ai/qoderclicn`)
 - signing in: `qodercli login`
+- **signing in from a remote host:** the CLI has no device-code flow, but it does not need one — on a
+  remote server, in a container or in CI it skips the browser and **prints the login URL**, which
+  you open on your own machine. There is no invisible prompt to wait on. The browserless
+  alternative is a Personal Access Token in `QODER_PERSONAL_ACCESS_TOKEN`.
 - starting a Qoder chat in Orca and confirming the ACP session is the one talking
 - how to tell an ACP chat apart from the existing terminal Qoder agent (the ACP one lives in native chat; the terminal one is a pane)
 - the two builds' separate accounts, and that each needs its own `login`

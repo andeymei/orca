@@ -21,6 +21,7 @@ import type {
 export const SELF_CONTAINED_TRANSCRIPT_AGENTS = {
   claude: true,
   qoder: true,
+  'qoder-cn': true,
   codebuddy: true,
   codex: false, // session_index.jsonl can override titles.
   gemini: true,

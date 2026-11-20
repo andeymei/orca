@@ -49,7 +49,10 @@ function resumableStateFactoryFor(
     case 'claude':
       return (messages) => createClaudeSessionResumeState(candidate.file, messages)
     case 'qoder':
-      return (messages) => createQoderSessionResumeState(candidate.file, messages)
+    case 'qoder-cn': {
+      const agent = candidate.agent
+      return (messages) => createQoderSessionResumeState(candidate.file, messages, agent)
+    }
     case 'codebuddy':
       return (messages) => createCodebuddySessionResumeState(candidate.file, messages)
     case 'codex':

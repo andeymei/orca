@@ -32,6 +32,7 @@ const logFileResolvers = {
   claude: jsonlLog,
   codebuddy: jsonlLog,
   qoder: jsonlLog,
+  'qoder-cn': jsonlLog,
   codex: jsonlLog,
   hermes: jsonLog,
   pi: jsonlLog,

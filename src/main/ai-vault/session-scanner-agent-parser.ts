@@ -82,6 +82,8 @@ export async function parseAgentSessionFile(
   switch (candidate.agent) {
     case 'qoder':
       return parseQoderSessionFile(candidate.file, platform, messages)
+    case 'qoder-cn':
+      return parseQoderSessionFile(candidate.file, platform, messages, 'qoder-cn')
     case 'codebuddy':
       return parseCodebuddySessionFile(candidate.file, platform, messages)
     case 'claude':

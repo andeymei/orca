@@ -23,12 +23,16 @@ type ParserOptions = {
   executionHostPlatform?: NodeJS.Platform | null
 }
 
+/** The two Qoder builds ship as separate packages with separate config homes. */
+type QoderBuild = 'qoder' | 'qoder-cn'
+
 function createQoderState(
   file: FileWithMtime,
-  messages?: TranscriptMessageSink
+  messages?: TranscriptMessageSink,
+  agent: QoderBuild = 'qoder'
 ): ClaudeSessionParseState {
   const state = createClaudeSessionParseState(file, messages)
-  state.accumulator.agent = 'qoder'
+  state.accumulator.agent = agent
   return state
 }
 
@@ -72,20 +76,22 @@ function resumeState(state: ClaudeSessionParseState): ResumableSessionParseState
 
 export function createQoderSessionResumeState(
   file: FileWithMtime,
-  messages?: TranscriptMessageSink
+  messages?: TranscriptMessageSink,
+  agent: QoderBuild = 'qoder'
 ): ResumableSessionParseState {
-  return resumeState(createQoderState(file, messages))
+  return resumeState(createQoderState(file, messages, agent))
 }
 
 export async function parseQoderSessionFile(
   file: FileWithMtime,
   platform: NodeJS.Platform = process.platform,
-  messages?: TranscriptMessageSink
+  messages?: TranscriptMessageSink,
+  agent: QoderBuild = 'qoder'
 ) {
   const stream = openTranscriptReadStream(file.path, { encoding: 'utf-8' }, 'scan')
   const lines = createInterface({ input: stream, crlfDelay: Infinity })
   try {
-    return await parseLines(file, lines, platform, {}, messages)
+    return await parseLines(file, lines, platform, {}, messages, agent)
   } finally {
     lines.close()
     stream.destroy()
@@ -107,9 +113,10 @@ async function parseLines(
   lines: AsyncIterable<string> | Iterable<string>,
   platform: NodeJS.Platform,
   options: ParserOptions,
-  messages?: TranscriptMessageSink
+  messages?: TranscriptMessageSink,
+  agent: QoderBuild = 'qoder'
 ) {
-  const state = createQoderState(file, messages)
+  const state = createQoderState(file, messages, agent)
   for await (const line of lines) {
     consumeQoderLine(state, line)
   }

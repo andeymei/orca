@@ -19,6 +19,7 @@ export type AiVaultScanOptions = {
   claudeProfileProjectsDirs?: readonly string[]
   codebuddyProjectsDir?: string
   qoderProjectsDir?: string
+  qoderCnProjectsDir?: string
   codexSessionsDir?: string
   additionalCodexSessionsDirs?: readonly string[]
   // Override the default Codex home to test unprefixed resume commands without reading user data.

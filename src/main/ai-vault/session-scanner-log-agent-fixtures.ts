@@ -37,6 +37,24 @@ export async function writeLogAgentFixtures(
     ])
   )
 
+  await mkdir(join(roots.qoderCnProjectsDir, 'project'), { recursive: true })
+  await writeFile(
+    join(roots.qoderCnProjectsDir, 'project', 'qoder-cn-session.jsonl'),
+    jsonlBody([
+      {
+        type: 'workspace-directories',
+        sessionId: 'qoder-cn-session',
+        directories: ['/tmp/qoder-cn']
+      },
+      {
+        type: 'user',
+        sessionId: 'qoder-cn-session',
+        timestamp: '2026-05-01T10:00:00.000Z',
+        message: { role: 'user', content: 'Qoder China title' }
+      }
+    ])
+  )
+
   await mkdir(join(roots.codebuddyProjectsDir, 'project'), { recursive: true })
   await writeFile(
     join(roots.codebuddyProjectsDir, 'project', 'codebuddy-session.jsonl'),

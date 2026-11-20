@@ -20,6 +20,7 @@ import { resolveMuseSessionsDir } from '../../shared/muse-session-log'
 import { isKiroSessionMetadataPath } from './scanners/kiro/session-scanner-kiro-parser'
 
 import { OPENCLAW_AGENT_SOURCE } from './scanners/openclaw/openclaw-session-layout'
+import { QODER_AGENT_SOURCE, QODER_CN_AGENT_SOURCE } from './scanners/qoder/qoder-agent-sources'
 import { isOmpConversationDirectory } from './scanners/omp/session-scanner-omp-subagent-transcripts'
 import {
   claudeProjectsRootDirs,
@@ -102,16 +103,8 @@ export const AI_VAULT_AGENT_SOURCES: AiVaultAgentSourceTable = {
     // Subagent transcripts are read under their parent instead of duplicating History rows.
     directoryPredicate: isClaudeProjectBucketDirectory
   },
-  qoder: {
-    rootDirs: (options, wslHomeDirs) =>
-      sessionRootDirs(
-        options.qoderProjectsDir ?? join(homedir(), '.qoder', 'projects'),
-        wslHomeDirs,
-        ['.qoder', 'projects']
-      ),
-    extensions: ['.jsonl'],
-    directoryPredicate: (name) => name !== SUBAGENT_DIR_NAME
-  },
+  qoder: QODER_AGENT_SOURCE,
+  'qoder-cn': QODER_CN_AGENT_SOURCE,
   codebuddy: {
     rootDirs: (options, wslHomeDirs) => [
       options.codebuddyProjectsDir ?? CODEBUDDY_PROJECTS_DIR,

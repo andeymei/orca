@@ -210,6 +210,7 @@ function buildAgentResumeInvocation(
     case 'cline':
       return `${baseCommand} --id ${sessionArg}`
     case 'qoder':
+    case 'qoder-cn':
     case 'codebuddy':
     case 'zcode':
     case 'cursor':

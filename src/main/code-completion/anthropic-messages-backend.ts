@@ -5,6 +5,7 @@ import {
 } from '../../shared/code-completion/code-completion-prompt'
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import {
+  completionTokenCount,
   emptyCompletionUsage,
   nesBackendIdentity,
   planFromCompletionStream,
@@ -25,19 +26,11 @@ const anthropicTextDelta = z.object({
   delta: z.object({ text: z.string() })
 })
 
-const anthropicMessageStart = z.object({
-  type: z.literal('message_start'),
-  message: z.object({
-    usage: z.object({
-      input_tokens: z.number(),
-      cache_read_input_tokens: z.number().optional()
-    })
-  })
-})
-
-const anthropicMessageDelta = z.object({
-  type: z.literal('message_delta'),
-  usage: z.object({ output_tokens: z.number() })
+// Why a record: a null count is legal, and one of them must not discard the others.
+const anthropicUsageEvent = z.object({
+  type: z.string(),
+  message: z.object({ usage: z.record(z.string(), z.unknown()) }).optional(),
+  usage: z.record(z.string(), z.unknown()).optional()
 })
 
 export function createAnthropicMessagesBackend(
@@ -84,15 +77,18 @@ export function createAnthropicMessagesBackend(
 function anthropicStreamUsage(events: readonly unknown[]): CompletionUsage {
   const usage = emptyCompletionUsage()
   for (const event of events) {
-    const start = anthropicMessageStart.safeParse(event)
-    if (start.success) {
-      usage.inputTokens = start.data.message.usage.input_tokens
-      usage.cacheReadTokens = start.data.message.usage.cache_read_input_tokens ?? 0
+    const parsed = anthropicUsageEvent.safeParse(event)
+    if (!parsed.success) {
       continue
     }
-    const delta = anthropicMessageDelta.safeParse(event)
-    if (delta.success) {
-      usage.outputTokens = delta.data.usage.output_tokens
+    if (parsed.data.type === 'message_start') {
+      const counts = parsed.data.message?.usage
+      usage.inputTokens = completionTokenCount(counts?.input_tokens) ?? usage.inputTokens
+      usage.cacheReadTokens =
+        completionTokenCount(counts?.cache_read_input_tokens) ?? usage.cacheReadTokens
+    } else if (parsed.data.type === 'message_delta') {
+      usage.outputTokens =
+        completionTokenCount(parsed.data.usage?.output_tokens) ?? usage.outputTokens
     }
   }
   return usage

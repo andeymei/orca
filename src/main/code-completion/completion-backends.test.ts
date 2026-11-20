@@ -140,6 +140,24 @@ describe('completion backends', () => {
     expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 42, cacheReadTokens: 80 })
   })
 
+  it('still reports the input tokens when the cache count is null', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([
+        JSON.stringify({
+          type: 'message_start',
+          message: { id: 'm1', usage: { input_tokens: 120, cache_read_input_tokens: null } }
+        }),
+        anthropicTextEvent(JSON.stringify(MODEL_PLAN)),
+        JSON.stringify({ type: 'message_delta', usage: { output_tokens: 42 } })
+      ])
+    )
+    const backend = createAnthropicMessagesBackend(CONFIG, { fetchImpl })
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 42, cacheReadTokens: 0 })
+  })
+
   it('asks for the auto-import when the setting is on', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       sseResponse([anthropicTextEvent(JSON.stringify(MODEL_PLAN))])
@@ -228,6 +246,24 @@ describe('completion backends', () => {
 
     expect(result.usage).toEqual({ inputTokens: 90, outputTokens: 12, cacheReadTokens: 30 })
     expect(requestBody(fetchImpl.mock.calls[0]).stream_options).toEqual({ include_usage: true })
+  })
+
+  it('still reports the counts when the cached-token details are null', async () => {
+    const planJson = JSON.stringify(MODEL_PLAN)
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([
+        JSON.stringify({ choices: [{ delta: { content: planJson } }] }),
+        JSON.stringify({
+          choices: [],
+          usage: { prompt_tokens: 90, completion_tokens: 12, prompt_tokens_details: null }
+        })
+      ])
+    )
+    const backend = createOpenAiChatBackend(CONFIG, { fetchImpl })
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.usage).toEqual({ inputTokens: 90, outputTokens: 12, cacheReadTokens: 0 })
   })
 
   it('reads an OpenAI FIM stream and returns only the cursor edit', async () => {

@@ -117,17 +117,36 @@ describe('completion usage', () => {
     })
   })
 
-  it('drops days older than its window', async () => {
+  it('keeps the last 30 days and drops the rest', async () => {
     const usage = await loadUsage()
-    const old = new Date(2026, 9, 1, 12).getTime()
-    const recent = new Date(2026, 10, 15, 12).getTime()
+    const dayThirtyOne = new Date(2026, 9, 20, 12).getTime()
+    const cutoffDay = new Date(2026, 9, 21, 12).getTime()
+    const firstKept = new Date(2026, 9, 22, 12).getTime()
     const spent = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0 }
 
-    usage.recordCompletionUsage({ model: 'model-a', usage: spent, at: old })
-    usage.recordCompletionUsage({ model: 'model-a', usage: spent, at: recent })
+    usage.recordCompletionUsage({ model: 'model-a', usage: spent, at: dayThirtyOne })
+    usage.recordCompletionUsage({ model: 'model-a', usage: spent, at: cutoffDay })
+    usage.recordCompletionUsage({ model: 'model-a', usage: spent, at: firstKept })
     usage.recordCompletionUsage({ model: 'model-a', usage: spent, at: DAY })
 
-    expect(Object.keys(savedUsage()).sort()).toEqual(['2026-11-15', '2026-11-20'])
+    expect(Object.keys(savedUsage()).sort()).toEqual(['2026-10-22', '2026-11-20'])
+  })
+
+  it('keys a completion by the local day, not the UTC day', async () => {
+    const usage = await loadUsage()
+    const justAfterLocalMidnight = new Date('2026-11-20T00:05:00').getTime()
+    const justBeforeLocalMidnight = new Date('2026-11-20T23:55:00').getTime()
+    const spent = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0 }
+
+    usage.recordCompletionUsage({ model: 'model-a', usage: spent, at: justAfterLocalMidnight })
+    usage.recordCompletionUsage({ model: 'model-a', usage: spent, at: justBeforeLocalMidnight })
+
+    expect(Object.keys(savedUsage())).toEqual(['2026-11-20'])
+    expect(usage.readCompletionUsageToday(new Date('2026-11-20T12:00:00').getTime())).toEqual({
+      inputTokens: 2,
+      outputTokens: 2,
+      cacheReadTokens: 0
+    })
   })
 
   it('does not throw when the file cannot be hardened', async () => {

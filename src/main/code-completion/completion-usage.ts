@@ -79,13 +79,13 @@ export function recordCompletionUsage(entry: {
   }
 }
 
-/** Drops days older than the window so the file never accumulates forever. */
+/** Drops the cutoff day and everything before it, so the file keeps exactly the last 30 local days. */
 function pruneDays(days: CompletionUsageDays, at: number): void {
   const cutoff = new Date(at)
   cutoff.setDate(cutoff.getDate() - COMPLETION_USAGE_RETENTION_DAYS)
   const oldest = localDayKey(cutoff.getTime())
   for (const day of Object.keys(days)) {
-    if (day < oldest) {
+    if (day <= oldest) {
       delete days[day]
     }
   }

@@ -52,6 +52,11 @@ export function emptyCompletionUsage(): CompletionUsage {
   return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 }
 }
 
+/** A provider's token count, or null when the field is absent or not a count. */
+export function completionTokenCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
+}
+
 /** The absolute paths a plan may name: the edited file and the related files. */
 export function nesAllowedPaths(input: NesRequest): string[] {
   return [input.filePath, ...input.relatedFiles.map((relatedFile) => relatedFile.path)]

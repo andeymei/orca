@@ -124,6 +124,7 @@ describe('codeCompletion.plan', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('returns a plan from the completion service', async () => {
@@ -180,6 +181,7 @@ describe('codeCompletion.plan', () => {
   })
 
   it('records what the completion spent even when the answer is not a plan', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
     stubCompletionFetchWithUsage('not a plan')
     const runtime = createRuntime({
       enabled: true,

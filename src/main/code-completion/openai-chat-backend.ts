@@ -5,6 +5,7 @@ import {
 } from '../../shared/code-completion/code-completion-prompt'
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import {
+  completionTokenCount,
   emptyCompletionUsage,
   nesBackendIdentity,
   planFromCompletionStream,
@@ -23,15 +24,11 @@ const openAiChatDelta = z.object({
   choices: z.array(z.object({ delta: z.object({ content: z.string() }) })).min(1)
 })
 
+const usageCounts = z.record(z.string(), z.unknown())
+
+// Why a record: a null detail is legal, and one of them must not discard the others.
 const openAiChatUsage = z.object({
-  usage: z
-    .object({
-      prompt_tokens: z.number().optional(),
-      completion_tokens: z.number().optional(),
-      prompt_tokens_details: z.object({ cached_tokens: z.number().optional() }).optional()
-    })
-    .nullable()
-    .optional()
+  usage: usageCounts.nullable().optional()
 })
 
 export function createOpenAiChatBackend(
@@ -79,11 +76,16 @@ function openAiChatStreamUsage(events: readonly unknown[]): CompletionUsage {
   const usage = emptyCompletionUsage()
   for (const event of events) {
     const parsed = openAiChatUsage.safeParse(event)
-    if (parsed.success && parsed.data.usage) {
-      usage.inputTokens = parsed.data.usage.prompt_tokens ?? 0
-      usage.outputTokens = parsed.data.usage.completion_tokens ?? 0
-      usage.cacheReadTokens = parsed.data.usage.prompt_tokens_details?.cached_tokens ?? 0
+    if (!parsed.success || !parsed.data.usage) {
+      continue
     }
+    const counts = parsed.data.usage
+    const details = usageCounts.safeParse(counts.prompt_tokens_details)
+    usage.inputTokens = completionTokenCount(counts.prompt_tokens) ?? usage.inputTokens
+    usage.outputTokens = completionTokenCount(counts.completion_tokens) ?? usage.outputTokens
+    usage.cacheReadTokens =
+      completionTokenCount(details.success ? details.data.cached_tokens : null) ??
+      usage.cacheReadTokens
   }
   return usage
 }

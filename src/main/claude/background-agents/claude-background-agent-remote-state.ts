@@ -97,16 +97,18 @@ export async function mapWithConcurrency<TItem, TResult>(
 /**
  * One state file as the panel's row.
  *
- * `state.json` has no `startedAt` and no `kind`: the job's creation time is the start, and a job
- * that reached here is a background agent because only `template: 'bg'` is kept.
+ * `state.json` has no `startedAt` and no `kind`: the job's creation time is the start.
+ *
+ * A job directory *is* a background agent: the CLI's own listing is the job directory plus the
+ * sessions directory, and only the sessions half holds interactive sessions — which carry no id
+ * and never appear here. `template` does not separate the two: it names how the agent was
+ * started (`bg` for `claude --bg`, `claude` for the daemon the CLI itself spawns), and the CLI
+ * lists both as background agents.
  */
 export function mapRemoteJobState(
   jobId: string,
   state: Record<string, unknown>
 ): RemoteJobAgent | null {
-  if (state.template !== 'bg') {
-    return null
-  }
   const sessionId = state.sessionId
   // Why: the panel's model requires a conversation id, so a job without one cannot be a row.
   if (typeof sessionId !== 'string' || sessionId === '') {

@@ -14,10 +14,11 @@ const JOBS_DIR = `${HOME}\\.claude\\jobs`
 const WORKTREE = 'repo::D:\\ctjt\\code\\ctjt-service'
 
 const BACKGROUND_JOB = 'aaaa1111'
-const INTERACTIVE_JOB = 'bbbb2222'
+const DAEMON_JOB = 'bbbb2222'
 const EMPTY_JOB = 'cccc3333'
 const FAILING_READ_JOB = 'dddd4444'
 const UNKNOWN_STATE_JOB = 'eeee5555'
+const NO_SESSION_JOB = 'ffff6666'
 const UPPERCASE_JOB = 'ABCDEF12'
 
 const BACKGROUND_STATE = {
@@ -31,13 +32,23 @@ const BACKGROUND_STATE = {
   updatedAt: '2026-11-20T10:05:30.000Z'
 }
 
-const INTERACTIVE_STATE = {
+/** The CLI's own daemon starts most jobs; `template` names how, not whether. */
+const DAEMON_STATE = {
   template: 'claude',
   state: 'working',
-  sessionId: 'session-interactive',
+  sessionId: 'session-daemon',
+  name: 'agent beta',
   cwd: 'D:\\ctjt\\code\\ctjt-platform\\ctjt-service',
   createdAt: '2026-11-20T09:00:00.000Z',
   updatedAt: '2026-11-20T09:10:00.000Z'
+}
+
+const NO_SESSION_STATE = {
+  template: 'bg',
+  state: 'done',
+  name: 'agent without a conversation',
+  cwd: 'D:\\ctjt\\code\\ctjt-platform\\ctjt-service',
+  createdAt: '2026-11-20T07:00:00.000Z'
 }
 
 const UNKNOWN_STATE = {
@@ -107,10 +118,11 @@ function createHostCalls(fixture: RemoteFixture, options: { jobsMissing?: boolea
           pathFlavor: 'win32',
           entries: [
             { name: BACKGROUND_JOB, isDirectory: true, isSymlink: false },
-            { name: INTERACTIVE_JOB, isDirectory: true, isSymlink: false },
+            { name: DAEMON_JOB, isDirectory: true, isSymlink: false },
             { name: EMPTY_JOB, isDirectory: true, isSymlink: false },
             { name: FAILING_READ_JOB, isDirectory: true, isSymlink: false },
             { name: UNKNOWN_STATE_JOB, isDirectory: true, isSymlink: false },
+            { name: NO_SESSION_JOB, isDirectory: true, isSymlink: false },
             { name: UPPERCASE_JOB, isDirectory: true, isSymlink: false },
             { name: 'not-hex', isDirectory: true, isSymlink: false },
             { name: 'pins.json', isDirectory: false, isSymlink: false }
@@ -164,11 +176,12 @@ function createHostCalls(fixture: RemoteFixture, options: { jobsMissing?: boolea
 
 function makeFixture(): RemoteFixture {
   return {
-    stateFiles: new Map([
+    stateFiles: new Map<string, unknown>([
       [`${JOBS_DIR}\\${BACKGROUND_JOB}\\state.json`, BACKGROUND_STATE],
-      [`${JOBS_DIR}\\${INTERACTIVE_JOB}\\state.json`, INTERACTIVE_STATE],
+      [`${JOBS_DIR}\\${DAEMON_JOB}\\state.json`, DAEMON_STATE],
       [`${JOBS_DIR}\\${FAILING_READ_JOB}\\state.json`, BACKGROUND_STATE],
-      [`${JOBS_DIR}\\${UNKNOWN_STATE_JOB}\\state.json`, UNKNOWN_STATE]
+      [`${JOBS_DIR}\\${UNKNOWN_STATE_JOB}\\state.json`, UNKNOWN_STATE],
+      [`${JOBS_DIR}\\${NO_SESSION_JOB}\\state.json`, NO_SESSION_STATE]
     ]),
     failingReads: new Set([`${JOBS_DIR}\\${FAILING_READ_JOB}\\state.json`]),
     calls: [],
@@ -193,11 +206,17 @@ beforeEach(() => {
 })
 
 describe('listRemoteClaudeBackgroundAgents', () => {
-  it('lists a background job and leaves out the interactive one', async () => {
+  it('lists a job the CLI daemon started as well as one started by --bg', async () => {
     const fixture = makeFixture()
     const result = await listWith(fixture)
     expect(result.status).toBe('ready')
-    expect(result.agents.map((agent) => agent.id)).toEqual([BACKGROUND_JOB, UNKNOWN_STATE_JOB])
+    // Why: `template` names how a job was started, not whether it is a background agent; the
+    // CLI's own listing reports both as background, so the roster must keep both.
+    expect(result.agents.map((agent) => agent.id)).toEqual([
+      BACKGROUND_JOB,
+      DAEMON_JOB,
+      UNKNOWN_STATE_JOB
+    ])
     const background = result.agents[0]
     expect(background).toMatchObject({
       id: BACKGROUND_JOB,
@@ -207,6 +226,22 @@ describe('listRemoteClaudeBackgroundAgents', () => {
       kind: 'background',
       state: 'done'
     })
+    expect(result.agents[1]).toMatchObject({
+      id: DAEMON_JOB,
+      sessionId: 'session-daemon',
+      name: 'agent beta',
+      kind: 'background',
+      state: 'working'
+    })
+  })
+
+  it('leaves out a state file without a conversation id and still answers ready', async () => {
+    const fixture = makeFixture()
+    const result = await listWith(fixture)
+    // Why: the host answered, so a job it cannot make a row of is a shorter roster, not a
+    // broken host.
+    expect(result.status).toBe('ready')
+    expect(result.agents.map((agent) => agent.id)).not.toContain(NO_SESSION_JOB)
   })
 
   it('skips job directories without a state file, pins.json and non-hex names', async () => {
@@ -249,7 +284,7 @@ describe('listRemoteClaudeBackgroundAgents', () => {
   it('answers ready with the readable jobs when only some jobs fail', async () => {
     const fixture = makeFixture()
     const result = await listWith(fixture)
-    // The fixture lists five job directories; two of them cannot be read.
+    // The fixture lists six job directories; two of them cannot be read.
     expect(result.status).toBe('ready')
     expect(result.agents.map((agent) => agent.id)).toContain(BACKGROUND_JOB)
     expect(result.agents.map((agent) => agent.id)).not.toContain(FAILING_READ_JOB)
@@ -269,7 +304,7 @@ describe('listRemoteClaudeBackgroundAgents', () => {
     expect(result.status).toBe('error')
     expect(result.agents).toEqual([])
     expect(result.details).toEqual({})
-    expect(result.message).toContain('5')
+    expect(result.message).toContain('6')
     expect(result.message).toContain('could not read')
   })
 

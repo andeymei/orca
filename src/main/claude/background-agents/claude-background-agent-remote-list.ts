@@ -210,6 +210,9 @@ async function listRemoteJobDirectories(
 
 type RemoteJobAgentsRead = { ok: true; agents: RemoteJobAgent[] } | { ok: false; message: string }
 
+/** What one job directory answered: the state file, and the row it maps to. */
+type RemoteJobRead = { state: Record<string, unknown> | null; agent: RemoteJobAgent | null }
+
 /**
  * Every job directory's state file, read a few at a time.
  *
@@ -218,6 +221,9 @@ type RemoteJobAgentsRead = { ok: true; agents: RemoteJobAgent[] } | { ok: false;
  * listed jobs and *none* of them could be read, the host itself is unreadable — an older host
  * refusing the grant, or the device connection dropping mid-sweep — and answering "no agents"
  * would replace the panel's last roster with a false empty one.
+ *
+ * A state file that was read but carries no conversation id is not an unreadable host: the host
+ * answered, so the roster is simply shorter.
  */
 async function readRemoteJobAgents(
   call: RuntimeRpcCall,
@@ -231,25 +237,26 @@ async function readRemoteJobAgents(
     REMOTE_CLAUDE_DIR,
     REMOTE_JOBS_DIR
   )
-  const readOne = async (directory: string): Promise<RemoteJobAgent | null> => {
+  const readOne = async (directory: string): Promise<RemoteJobRead> => {
     try {
       const statePath = joinRemotePath(home.pathFlavor, jobsPath, directory, REMOTE_STATE_FILE)
       const state = await readRemoteJobState(call, worktreeId, statePath)
-      return state ? mapRemoteJobState(directory, state) : null
+      return { state, agent: state ? mapRemoteJobState(directory, state) : null }
     } catch {
       // Why: a grant that lapsed or a file gone between browse and read is skipped until next poll.
-      return null
+      return { state: null, agent: null }
     }
   }
-  const agents = await mapWithConcurrency(directories, JOB_READ_CONCURRENCY, readOne)
-  const readable = agents.filter((agent): agent is RemoteJobAgent => agent !== null)
-  if (directories.length > 0 && readable.length === 0) {
+  const reads = await mapWithConcurrency(directories, JOB_READ_CONCURRENCY, readOne)
+  const agents = reads.flatMap((read) => (read.agent ? [read.agent] : []))
+  const unreadable = reads.filter((read) => read.state === null).length
+  if (directories.length > 0 && unreadable === directories.length) {
     return {
       ok: false,
       message: `could not read any of the ${directories.length} background agent jobs on the paired machine`
     }
   }
-  return { ok: true, agents: readable }
+  return { ok: true, agents }
 }
 
 async function readRemoteJobState(

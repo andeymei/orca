@@ -11,8 +11,15 @@
 **这是设计如此**：lister 跑的是**本机**的 `claude agents --json --all`，所以它只能列出本机的 agent；
 远端工作区的目录在远端主机上 ⇒ 作用域过滤之后 0 行。
 
-**实测**（2026-11-20，探针）：那台主机上 **108 个 job 目录**，其中 **7 个是后台 agent（`template: "bg"`）**，
-**5 个的 `cwd` 就在 `D:\ctjt\code\ctjt-platform\ctjt-service`**。也就是说面板确实藏着真东西。
+**实测**（2026-11-20，探针）：那台主机上 **111 个 job 目录**，其中 **78 个有 `state.json`**，
+**73 个的 `cwd` 就在 `D:\ctjt\code\ctjt-platform\ctjt-service`**。也就是说面板确实藏着真东西。
+
+> **更正（2026-11-20 晚）**：这份文档原先写「108 个目录里只有 7 个是后台 agent（`template: "bg"`）」，
+> **那是错的**。远端 `claude agents --json --all` 报的 id 集合**恰好等于**那 78 个有 `state.json`
+> 的目录 ⇒ **每个带 `state.json` 的 job 目录都是一个后台 agent**，`template` 并不区分后台/前台
+> （它描述的是启动方式：`claude --bg` 起的写 `bg`，CLI 自己起的 daemon 写 `claude`，两者都是
+> `kind: "background"`）。只有 jobs 目录之外的 `~/.claude/sessions/<pid>.json` 才是 interactive
+> （无 id，不在这里）。按 `template === 'bg'` 过滤会丢掉 71/78 个 agent，且**正在跑的 agent 全被丢掉**。
 
 ## 2. 约束
 
@@ -34,14 +41,15 @@
   所以 feature 只要走 app 的正常路由即可。
 - **`files.read` / `readDir` / `stat` 不接受绝对路径**（`invalid_relative_path`），所以「读文件」只有 grant 这一条路。
 - **`browseServerDir` 的 entry 没有 stat**：只有 `{ name, isDirectory, isSymlink }`。⇒
-  **没法靠 mtime 跳过没变的 job**，每次轮询都得重读所有 `state.json` 才知道每个 job 的 template / cwd / state。
+  **没法靠 mtime 跳过没变的 job**，每次轮询都得重读所有 `state.json` 才知道每个 job 的 cwd / state。
 - **时延**（持久连接）：一次 resolve+read 中位 **49 ms**；108 个目录全扫（183 个请求）**4.77 s**。
   15 s 的轮询今天放得下，但 job 一多就放不下。
 - **远端 home**：`files.browseServerDir { path: '~' }` → `resolvedPath: "C:\\Users\\andey"`，`pathFlavor: "win32"`。
 - **`state.json` 的字段**：`state`、`detail`、`name`、`cwd`、`sessionId`、`intent`、`template`、
   `createdAt`、`updatedAt`、`needs`/`block`（被卡住时）。**没有 `startedAt`**、**没有 `kind`**。
-  `template` 是背景/交互的判据：`"bg"` = 后台 agent，`"claude"` = 交互会话。
-  `jobs/` 里还有 `pins.json`（文件）和**没有 `state.json` 的目录**（108 个里有 33 个）—— 都要跳过。
+  `template` **不是**背景/交互的判据（见 §1 的更正）：它只说明 agent 怎么起的
+  （`"bg"` = `claude --bg`，`"claude"` = CLI 自己的 daemon），**两者都是后台 agent**。
+  `jobs/` 里还有 `pins.json`（文件）和**没有 `state.json` 的目录**（111 个里有 33 个）—— 都要跳过。
 
 ## 4. 设计
 
@@ -90,7 +98,7 @@
 | `state`                                  | `state`；**不在已知集合里就当作缺失**（`sectionForState(undefined)` ⇒ Completed，和更旧的 CLI 一样） |
 | `startedAt`                              | **`createdAt`**（没有 `startedAt`）                                                                  |
 | details.`detail` / `needs` / `updatedAt` | `detail` / `needs` / `updatedAt`（ISO → epoch ms）                                                   |
-| 背景 vs 交互                             | **`template === 'bg'`** 才要                                                                         |
+| 背景 vs 交互                             | **不用判**：job 目录里的每一行都是后台 agent（§1 的更正）                                            |
 
 ### 4.4 轮询
 
@@ -139,7 +147,7 @@
 ## 7. 测试
 
 - **远端 lister 的单测**（注入一个假的 RPC 调用）：
-  - `template: 'claude'` 的 job **不出现**；`'bg'` 的出现。
+  - `template: 'claude'` 的 job **也出现**（`template` 只说明怎么起的）；只有没有 `sessionId` 的不出现。
   - 没有 `state.json` 的目录、`pins.json` **被跳过**。
   - `startedAt` 来自 `createdAt`；`updatedAt` 的 ISO 解析成 epoch ms。
   - 未知的 `state` 词 ⇒ 落到 Completed（和更旧 CLI 的行为一致）。
@@ -147,7 +155,8 @@
 - **宿主路由的测试**：`executionHostId` 为 `local` ⇒ 走本地 lister；`runtime:<id>` ⇒ 走远端；
   `ssh:` ⇒ 0 个 + 说明。
 - **渲染层**：远端宿主下 composer 不渲染、行不可点；提示语是新的那句。
-- **活的验证**：跑一次对 `frp-yolocalc` 的真实查询，确认 `ctjt-service` 那 **5 个 done** 的 agent 出现。
+- **活的验证**：跑一次对 `frp-yolocalc` 的真实查询，确认 `ctjt-service` 那 **81 个** agent 出现
+  （其中在跑的也在），数量与远端 `claude agents --json --all` 一致。
 
 ## 8. 一条实现规则（探针踩出来的）
 

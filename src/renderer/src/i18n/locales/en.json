@@ -20092,6 +20092,7 @@
         "unsupported": "Claude Code CLI not found",
         "error": "Could not read the background agents",
         "localOnlyNotice": "This panel lists background agents running on this machine",
+        "remoteHostNotice": "Showing this project's agents on its host. Opening, stopping and starting them there is not supported yet.",
         "stopConfirm": "ctrl+x again to stop",
         "deleteConfirm": "ctrl+x again to delete",
         "deleteWarning": "Deleting an agent also deletes its worktree",

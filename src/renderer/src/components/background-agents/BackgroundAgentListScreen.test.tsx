@@ -390,6 +390,84 @@ it('keeps this machine out of scope when the workspace runs elsewhere', async ()
   expect(view.queryAllByTestId('background-agent-row')).toHaveLength(0)
 })
 
+it('lists a paired runtime host’s agents read-only', async () => {
+  const list = vi.fn(async (): Promise<ClaudeBackgroundAgentListResult> => ({
+    status: 'ready',
+    agents: ROSTER,
+    details: DETAILS,
+    message: null
+  }))
+  installApi({ list })
+  useAppStore.setState({
+    activeWorkspaceExecutionHostId: 'runtime:frp-yolocalc',
+    worktreesByRepo: {
+      repo1: [
+        makeWorktree({
+          id: WORKSPACE_ID,
+          repoId: 'repo1',
+          path: '/w',
+          hostId: 'runtime:frp-yolocalc'
+        }),
+        makeWorktree({
+          id: SIBLING_WORKSPACE_ID,
+          repoId: 'repo1',
+          path: '/w-feature',
+          hostId: 'runtime:frp-yolocalc'
+        })
+      ]
+    }
+  })
+  const view = await renderScreen()
+
+  expect(list).toHaveBeenCalledWith({
+    worktreeId: WORKSPACE_ID,
+    executionHostId: 'runtime:frp-yolocalc'
+  })
+  expect(view.getByTestId('background-agents-remote-host-notice').textContent).toContain(
+    "Showing this project's agents on its host. Opening, stopping and starting them there is not supported yet."
+  )
+  expect(view.getByTestId('background-agents-list')).toBeTruthy()
+  // The composer and the stop/delete hint are entries this version does not have for a remote host.
+  expect(view.queryByLabelText('New background agent')).toBeNull()
+  expect(view.queryByText('↑↓ select · enter enter · ctrl+x stop · / task')).toBeNull()
+
+  const rows = view.getAllByTestId('background-agent-row')
+  expect(rows).toHaveLength(2)
+  expect(rows[0].hasAttribute('disabled')).toBe(true)
+  await act(async () => {
+    fireEvent.click(rows[0])
+  })
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({ kind: 'list' })
+
+  await press(view.getByTestId('background-agents-list'), 'Enter')
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({ kind: 'list' })
+  await press(view.getByTestId('background-agents-list'), 'x', { ctrlKey: true })
+  expect(view.queryByText(/ctrl\+x again/)).toBeNull()
+})
+
+it('reads the new host’s roster as soon as the workspace switches to it', async () => {
+  const list = vi.fn(async (): Promise<ClaudeBackgroundAgentListResult> => ({
+    status: 'ready',
+    agents: [],
+    details: {},
+    message: null
+  }))
+  installApi({ list })
+  const view = await renderScreen()
+  const callsBeforeSwitch = list.mock.calls.length
+
+  await act(async () => {
+    useAppStore.setState({ activeWorkspaceExecutionHostId: 'runtime:frp-yolocalc' })
+  })
+
+  expect(list).toHaveBeenCalledTimes(callsBeforeSwitch + 1)
+  expect(list).toHaveBeenLastCalledWith({
+    worktreeId: WORKSPACE_ID,
+    executionHostId: 'runtime:frp-yolocalc'
+  })
+  expect(view.getByTestId('background-agents-remote-host-notice')).toBeTruthy()
+})
+
 it('leaves the agents of the sibling workspace out of the rows and the counts', async () => {
   const view = await renderScreen()
   const rows = view.getAllByTestId('background-agent-row')

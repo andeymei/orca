@@ -30,10 +30,13 @@ export function BackgroundAgentRowView({
   onSelect,
   now,
   hint = null,
-  onKeyDown
+  onKeyDown,
+  disabled = false
 }: {
   row: BackgroundAgentListRow
   selected: boolean
+  /** A row on a host this version cannot open: it can be read, not activated. */
+  disabled?: boolean
   onSelect: (row: BackgroundAgentListRow) => void
   /** Epoch ms the elapsed column counts from; the list ticks it every second. */
   now?: number
@@ -53,6 +56,7 @@ export function BackgroundAgentRowView({
       type="button"
       role="option"
       aria-selected={selected}
+      disabled={disabled}
       data-selected={selected ? 'true' : undefined}
       // Why: the agent's id is what a test (and a deep link) needs to name one row.
       data-agent-id={row.id}

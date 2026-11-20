@@ -1,5 +1,6 @@
 import { ipcRenderer } from 'electron'
 import type {
+  ClaudeAgentsScope,
   ClaudeBackgroundAgentCommandResult,
   ClaudeBackgroundAgentDetail,
   ClaudeBackgroundAgentDispatchArgs,
@@ -9,9 +10,13 @@ import type {
 import type { PreloadApi } from '../api-types'
 
 export const claudeAgentsApi = {
-  list: (): Promise<ClaudeBackgroundAgentListResult> => ipcRenderer.invoke('claudeAgents:list'),
-  readDetails: (ids: string[]): Promise<Record<string, ClaudeBackgroundAgentDetail>> =>
-    ipcRenderer.invoke('claudeAgents:readDetails', ids),
+  list: (scope?: ClaudeAgentsScope): Promise<ClaudeBackgroundAgentListResult> =>
+    ipcRenderer.invoke('claudeAgents:list', scope),
+  readDetails: (
+    ids: string[],
+    scope?: ClaudeAgentsScope
+  ): Promise<Record<string, ClaudeBackgroundAgentDetail>> =>
+    ipcRenderer.invoke('claudeAgents:readDetails', ids, scope),
   dispatch: (
     args: ClaudeBackgroundAgentDispatchArgs
   ): Promise<ClaudeBackgroundAgentCommandResult> =>

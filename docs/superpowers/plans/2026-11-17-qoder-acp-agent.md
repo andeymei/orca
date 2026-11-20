@@ -286,6 +286,12 @@ git commit -m "feat(ai-vault): give the Qoder China build its own History rows"
 
 Create `src/main/qoder/qoder-acp-launch-spec.test.ts`:
 
+`AcpAccountBinding.pin` is a **union** — `{ accountHomeVariable: string } | { accountLocatorKind:
+'opencode' }` (`src/main/acp/launch/acp-account-binding.ts:10`) — so `pin.accountHomeVariable` is not
+readable without narrowing and `tsc` rejects it. Assert on the pin object instead: the expected
+values are unchanged and the assertion is stricter, since it also proves the pin is the directory
+kind rather than the opencode locator kind.
+
 ```ts
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -307,8 +313,12 @@ describe('Qoder ACP launch spec', () => {
   })
 
   it('keeps the two builds on separate account homes', () => {
-    expect(acpLaunchSpecFor('qoder')?.account.pin.accountHomeVariable).toBe('QODER_CONFIG_DIR')
-    expect(acpLaunchSpecFor('qoder-cn')?.account.pin.accountHomeVariable).toBe('QODERCN_CONFIG_DIR')
+    expect(acpLaunchSpecFor('qoder')?.account.pin).toEqual({
+      accountHomeVariable: 'QODER_CONFIG_DIR'
+    })
+    expect(acpLaunchSpecFor('qoder-cn')?.account.pin).toEqual({
+      accountHomeVariable: 'QODERCN_CONFIG_DIR'
+    })
   })
 
   it('signs in with the command each build ships', () => {

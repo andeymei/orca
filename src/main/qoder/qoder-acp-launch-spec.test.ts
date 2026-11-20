@@ -14,6 +14,9 @@ describe('Qoder ACP launch spec', () => {
     expect(spec?.command).toBe('qodercli')
     expect(spec?.args({ fullAccess: false, pluginDir: null })).toEqual(['--acp'])
     expect(spec?.dialect).toBe(GENERIC_ACP_DIALECT)
+    // /compact takes focus areas after the command.
+    expect(spec?.compaction).toBe(true)
+    expect(spec?.compactionInstructions).toBe(true)
   })
 
   it('launches the China build under its own command', () => {

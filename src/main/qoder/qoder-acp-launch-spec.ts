@@ -76,6 +76,8 @@ function qoderAcpLaunchSpec(build: QoderBuild): AcpLaunchSpec {
       reason: 'Qoder CLI has --list-models, but its output format is not documented'
     },
     compaction: true,
+    // /compact takes focus areas after the command.
+    compactionInstructions: true,
     transcriptImport: null,
     sessionHistory: qoderSessionHistory(build.agent)
   }

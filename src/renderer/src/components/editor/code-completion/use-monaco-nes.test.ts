@@ -22,25 +22,36 @@ const HIDE_ACTION = 'editor.action.inlineSuggest.hide'
 
 const models: monaco.editor.ITextModel[] = []
 
-function createModel(): monaco.editor.ITextModel {
-  const model = monaco.editor.createModel('const a = 1', 'typescript', monaco.Uri.parse(MODEL_URI))
+function createModel(text = 'const a = 1'): monaco.editor.ITextModel {
+  const model = monaco.editor.createModel(text, 'typescript', monaco.Uri.parse(MODEL_URI))
   models.push(model)
   return model
 }
 
-/** The editor half of the test; the model is the real one, so its URI and text are real. */
-function createFakeEditor(model: monaco.editor.ITextModel): {
+type FakeNesEditor = {
   editorInstance: monaco.editor.IStandaloneCodeEditor
   moveCursor: () => void
   hiddenActions: string[]
-} {
+  pressEscape: () => void
+  clickGutter: (lineNumber: number) => void
+  markerCounts: () => number[]
+}
+
+/** The editor half of the test; the model is the real one, so its URI and text are real. */
+function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
   const cursorListeners: (() => void)[] = []
+  const keyListeners: ((event: monaco.IKeyboardEvent) => void)[] = []
+  const mouseListeners: ((event: monaco.editor.IEditorMouseEvent) => void)[] = []
   const hiddenActions: string[] = []
+  const markerCounts: number[] = []
+  let position = { ...CURSOR }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this editor double only answers the calls the hook makes, and the model behind it is a real Monaco model.
   const editorInstance = {
     getModel: () => model,
-    getPosition: () => CURSOR,
-    setPosition: () => {},
+    getPosition: () => position,
+    setPosition: (next: monaco.IPosition) => {
+      position = { lineNumber: next.lineNumber, column: next.column }
+    },
     getOption: () => false,
     pushUndoStop: () => true,
     getAction: (id: string) => ({
@@ -49,10 +60,23 @@ function createFakeEditor(model: monaco.editor.ITextModel): {
         return Promise.resolve()
       }
     }),
-    createDecorationsCollection: () => ({ set: () => {}, clear: () => {} }),
+    createDecorationsCollection: () => ({
+      set: (decorations: monaco.editor.IModelDeltaDecoration[]) => {
+        markerCounts.push(decorations.length)
+      },
+      clear: () => {}
+    }),
     onDidChangeModelContent: () => ({ dispose: () => {} }),
     onDidChangeCursorPosition: (listener: () => void) => {
       cursorListeners.push(listener)
+      return { dispose: () => {} }
+    },
+    onKeyDown: (listener: (event: monaco.IKeyboardEvent) => void) => {
+      keyListeners.push(listener)
+      return { dispose: () => {} }
+    },
+    onMouseDown: (listener: (event: monaco.editor.IEditorMouseEvent) => void) => {
+      mouseListeners.push(listener)
       return { dispose: () => {} }
     }
   }
@@ -64,7 +88,29 @@ function createFakeEditor(model: monaco.editor.ITextModel): {
         listener()
       }
     },
-    hiddenActions
+    hiddenActions,
+    pressEscape: () => {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hook reads the key code only, so the double carries that one field.
+      const event = { keyCode: monaco.KeyCode.Escape } as monaco.IKeyboardEvent
+      for (const listener of keyListeners) {
+        listener(event)
+      }
+    },
+    clickGutter: (lineNumber: number) => {
+      const mouseEvent = {
+        target: {
+          type: monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN,
+          position: { lineNumber, column: 1 }
+        },
+        event: { leftButton: true }
+      }
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hook reads the target type, the button and the line only, so the double carries those three fields.
+      const event = mouseEvent as unknown as monaco.editor.IEditorMouseEvent
+      for (const listener of mouseListeners) {
+        listener(event)
+      }
+    },
+    markerCounts: () => markerCounts
   }
 }
 
@@ -81,13 +127,8 @@ function makeEdit(overrides: Partial<NesEdit> = {}): NesEdit {
   }
 }
 
-function renderHookFor(model: monaco.editor.ITextModel): {
-  editorInstance: monaco.editor.IStandaloneCodeEditor
-  moveCursor: () => void
-  hiddenActions: string[]
-  unmount: () => void
-} {
-  const { editorInstance, moveCursor, hiddenActions } = createFakeEditor(model)
+function renderHookFor(model: monaco.editor.ITextModel): FakeNesEditor & { unmount: () => void } {
+  const fakeEditor = createFakeEditor(model)
   const view = renderHook(() =>
     useMonacoNextEditSuggestions({
       filePath: FILE_PATH,
@@ -95,11 +136,11 @@ function renderHookFor(model: monaco.editor.ITextModel): {
       enabled: true,
       triggerDelayMs: 0,
       enabledExtensions: ['ts'],
-      editorInstance,
+      editorInstance: fakeEditor.editorInstance,
       files: { target: { kind: 'local' }, worktreeId: null, worktreePath: null }
     })
   )
-  return { editorInstance, moveCursor, hiddenActions, unmount: view.unmount }
+  return { ...fakeEditor, unmount: view.unmount }
 }
 
 afterEach(() => {
@@ -166,15 +207,18 @@ describe('useMonacoNextEditSuggestions', () => {
   it('records a failed tick instead of leaving an unhandled rejection', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const model = createModel()
-    collectNesRelatedFilesMock.mockRejectedValue(new Error('the collector is down'))
+    const failure = new Error('the collector is down')
+    failure.name = 'CollectorFailure'
+    collectNesRelatedFilesMock.mockRejectedValue(failure)
     requestNesPlanMock.mockResolvedValue(null)
 
     const { unmount } = renderHookFor(model)
 
     await waitFor(() => {
+      // Why: the message can carry a path, so only the name reaches the log.
       expect(errorSpy).toHaveBeenCalledWith(
         '[code-completion] The plan tick failed.',
-        expect.any(Error)
+        'CollectorFailure'
       )
     })
     errorSpy.mockRestore()
@@ -237,22 +281,130 @@ describe('useMonacoNextEditSuggestions', () => {
     unmount()
   })
 
-  it('keeps the ghost text when the edit no longer fits the model', async () => {
+  it('drops the accepted edit so a second Tab cannot write it twice', async () => {
     const model = createModel()
-    requestNesPlanMock.mockResolvedValue({
-      edits: [makeEdit({ originalText: 'const b = 1', text: 'const b = 12' })]
-    })
+    requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
     collectNesRelatedFilesMock.mockResolvedValue([])
 
-    const { editorInstance, hiddenActions, unmount } = renderHookFor(model)
+    const { editorInstance, unmount } = renderHookFor(model)
     await waitFor(() => {
       expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
     })
 
     nesShortcutHandlersFor(editorInstance)?.accept()
 
+    // Why: the cursor still stands at the insertion point, where the provider would draw it again.
+    expect(model.getValue()).toBe('const a = 12')
+    expect(nesPlanStore.getPlan(FILE_PATH)).toBeNull()
+    expect(nesShortcutHandlersFor(editorInstance)?.decide()).toBe('pass-through')
+
+    nesShortcutHandlersFor(editorInstance)?.accept()
+    expect(model.getValue()).toBe('const a = 12')
+    unmount()
+  })
+
+  it('rejects the suggestion on Escape, so the next Tab cannot write it', async () => {
+    const model = createModel()
+    requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
+    collectNesRelatedFilesMock.mockResolvedValue([])
+
+    const { editorInstance, pressEscape, hiddenActions, unmount } = renderHookFor(model)
+    await waitFor(() => {
+      expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
+    })
+    expect(nesShortcutHandlersFor(editorInstance)?.decide()).toBe('accept-suggestion')
+
+    act(() => {
+      pressEscape()
+    })
+
+    expect(nesShortcutHandlersFor(editorInstance)?.decide()).toBe('pass-through')
+    // Why: a Tab after the Esc must not write the edit the user just rejected.
+    nesShortcutHandlersFor(editorInstance)?.accept()
     expect(model.getValue()).toBe('const a = 1')
     expect(hiddenActions).toEqual([])
+    unmount()
+  })
+
+  it('keeps the plan when Escape lands with no suggestion at the cursor', async () => {
+    const model = createModel('const a = 1\nconst b = 1')
+    requestNesPlanMock.mockResolvedValue({
+      edits: [
+        makeEdit({
+          range: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 12 },
+          originalText: 'const b = 1',
+          text: 'const b = 12'
+        })
+      ]
+    })
+    collectNesRelatedFilesMock.mockResolvedValue([])
+
+    const { editorInstance, pressEscape, unmount } = renderHookFor(model)
+    await waitFor(() => {
+      expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
+    })
+    // Why: the cursor sits on line 1, so the line-2 edit is a marker and not a suggestion.
+    expect(nesShortcutHandlersFor(editorInstance)?.decide()).toBe('jump-to-next-location')
+
+    act(() => {
+      pressEscape()
+    })
+
+    expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
+    unmount()
+  })
+
+  it('drops the plan when the edit no longer matches the buffer', async () => {
+    const model = createModel()
+    // Why: the rewrite cannot be drawn as a ghost, so the plan shows it as a gutter marker.
+    requestNesPlanMock.mockResolvedValue({
+      edits: [makeEdit({ originalText: 'const b = 1', text: 'const b = 99' })]
+    })
+    collectNesRelatedFilesMock.mockResolvedValue([])
+
+    const { editorInstance, hiddenActions, markerCounts, unmount } = renderHookFor(model)
+    await waitFor(() => {
+      expect(markerCounts().at(-1)).toBe(1)
+    })
+
+    nesShortcutHandlersFor(editorInstance)?.accept()
+
+    expect(model.getValue()).toBe('const a = 1')
+    expect(hiddenActions).toEqual([])
+    // Why: a marker that can never land would keep offering the refused edit.
+    expect(nesPlanStore.getPlan(FILE_PATH)).toBeNull()
+    expect(markerCounts().at(-1)).toBe(0)
+    unmount()
+  })
+
+  it('jumps to the marker whose gutter glyph was clicked', async () => {
+    const model = createModel('const a = 1\nconst b = 1')
+    requestNesPlanMock.mockResolvedValue({
+      edits: [
+        makeEdit({
+          range: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 12 },
+          originalText: 'const b = 1',
+          text: 'const b = 12'
+        })
+      ]
+    })
+    collectNesRelatedFilesMock.mockResolvedValue([])
+
+    const { editorInstance, clickGutter, markerCounts, unmount } = renderHookFor(model)
+    await waitFor(() => {
+      expect(markerCounts().at(-1)).toBe(1)
+    })
+
+    act(() => {
+      clickGutter(3)
+    })
+    expect(editorInstance.getPosition()).toEqual(CURSOR)
+
+    act(() => {
+      clickGutter(2)
+    })
+    // Why: the marker's edit becomes the anchor at its range end, which is where the jump goes.
+    expect(editorInstance.getPosition()).toEqual({ lineNumber: 2, column: 12 })
     unmount()
   })
 

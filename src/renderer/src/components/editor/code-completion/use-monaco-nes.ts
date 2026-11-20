@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { editor, type IPosition } from 'monaco-editor/esm/vs/editor/editor.api.js'
+import { editor, KeyCode, type IPosition } from 'monaco-editor/esm/vs/editor/editor.api.js'
 import type { RuntimeFileOperationArgs } from '@/runtime/files/runtime-file-client-types'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 import { buildNesContext } from './nes-context-builder'
@@ -119,6 +119,14 @@ export function useMonacoNextEditSuggestions(params: {
       return nesPlanStore.editAt(model.uri.toString(), position)
     }
 
+    const dropPlan = (): void => {
+      // Why: the plan must not outlive the user's decision, and an answer in flight predates it.
+      generationRef.current += 1
+      nesPlanStore.remove(filePath)
+      fireNesInlineCompletionsChanged()
+      refreshMarkers()
+    }
+
     const decide = (): NesTabDecision => {
       const model = editorInstance.getModel()
       const edit = editAtCursor()
@@ -134,25 +142,31 @@ export function useMonacoNextEditSuggestions(params: {
       if (!model || !edit) {
         return
       }
-      // Why: a refused edit leaves the model alone, so the preview must stay until one lands.
+      // Why: the edit no longer matches this buffer, so keeping it would leave a marker that can never land.
       if (!applyNesEdit(model, editorInstance, edit)) {
+        dropPlan()
         return
       }
+      // Why: the accepted edit is gone from the plan, and the next tick asks for a fresh one.
+      dropPlan()
       // Why: Monaco's ghost text must not outlive the text we applied.
       void editorInstance.getAction('editor.action.inlineSuggest.hide')?.run()
     }
 
-    const jump = (): void => {
-      const position = editorInstance.getPosition()
-      const next = position ? nextMarkerAfter(markers, position) : null
-      if (!next) {
-        return
-      }
+    const jump = (marker: NesLocationMarker): void => {
       // Why: the edit's range end is where the edit becomes the anchor, so the ghost text shows there.
       editorInstance.setPosition({
-        lineNumber: next.edit.range.endLine,
-        column: next.edit.range.endColumn
+        lineNumber: marker.edit.range.endLine,
+        column: marker.edit.range.endColumn
       })
+    }
+
+    const jumpToNextLocation = (): void => {
+      const position = editorInstance.getPosition()
+      const next = position ? nextMarkerAfter(markers, position) : null
+      if (next) {
+        jump(next)
+      }
     }
 
     const preview = (active: boolean): void => {
@@ -219,7 +233,11 @@ export function useMonacoNextEditSuggestions(params: {
       timer = setTimeout(() => {
         timer = null
         void tick().catch((error: unknown) => {
-          console.error('[code-completion] The plan tick failed.', error)
+          // Why: a message can carry the endpoint's path, so the log keeps the error's name only.
+          console.error(
+            '[code-completion] The plan tick failed.',
+            error instanceof Error ? error.name : 'unknown'
+          )
         })
       }, triggerDelayMs)
     }
@@ -230,6 +248,33 @@ export function useMonacoNextEditSuggestions(params: {
       refreshMarkers()
       scheduleTick()
     })
+    const keySubscription = editorInstance.onKeyDown((event) => {
+      if (event.keyCode !== KeyCode.Escape) {
+        return
+      }
+      // Why: an Esc that closes a widget, or lands with no suggestion showing, is not a rejection.
+      if (decide() !== 'accept-suggestion') {
+        return
+      }
+      dropPlan()
+    })
+    const mouseSubscription = editorInstance.onMouseDown((event) => {
+      if (event.target.type !== editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        return
+      }
+      // Why: a right click asks for a context menu, so only the left button jumps.
+      if (!event.event.leftButton) {
+        return
+      }
+      const lineNumber = event.target.position?.lineNumber
+      if (!lineNumber) {
+        return
+      }
+      const marker = markers.find((candidate) => candidate.lineNumber === lineNumber)
+      if (marker) {
+        jump(marker)
+      }
+    })
 
     // Why: the content sync lands before this effect subscribes, so opening a file would never ask.
     scheduleTick()
@@ -237,7 +282,7 @@ export function useMonacoNextEditSuggestions(params: {
     handlersByEditor.set(editorInstance, {
       decide,
       accept,
-      jump,
+      jump: jumpToNextLocation,
       preview,
       hasNextLocation: () => markers.length > 0
     })
@@ -250,6 +295,8 @@ export function useMonacoNextEditSuggestions(params: {
       }
       contentSubscription.dispose()
       cursorSubscription.dispose()
+      keySubscription.dispose()
+      mouseSubscription.dispose()
       releasePreview()
       collection.clear()
       handlersByEditor.delete(editorInstance)

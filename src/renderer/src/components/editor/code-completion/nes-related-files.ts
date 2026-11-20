@@ -14,6 +14,8 @@ import { shouldIncludeQuickOpenPath } from '../../../../../shared/quick-open/qui
 
 export const NES_RELATED_FILE_MAX = 8
 export const NES_RELATED_FILE_TOKEN_BUDGET = 1000
+// Why: an import can appear, or a related file change, while the feature sits idle on one buffer.
+const NES_RELATED_FILES_CACHE_TTL_MS = 5_000
 
 export type NesRelatedFile = { path: string; content: string; startLine: number }
 
@@ -39,6 +41,7 @@ const SYMBOL_SEARCH_MAX_RESULTS = 200
 type NesRelatedFilesCacheEntry = {
   symbolAtCursor: string | null
   files: NesRelatedFile[]
+  collectedAt: number
 }
 
 const relatedFilesCache = new Map<string, Map<string, NesRelatedFilesCacheEntry>>()
@@ -69,17 +72,21 @@ export async function collectNesRelatedFiles(
     relatedFilesCache.get(input.filePath) ?? new Map<string, NesRelatedFilesCacheEntry>()
   const hostKey = hostKeyOf(input.files)
   const cached = byHost.get(hostKey)
-  if (cached && cached.symbolAtCursor === input.symbolAtCursor) {
+  if (
+    cached &&
+    cached.symbolAtCursor === input.symbolAtCursor &&
+    Date.now() - cached.collectedAt < NES_RELATED_FILES_CACHE_TTL_MS
+  ) {
     return [...cached.files]
   }
   const files = await gatherRelatedFiles(input)
-  byHost.set(hostKey, { symbolAtCursor: input.symbolAtCursor, files: [...files] })
+  byHost.set(hostKey, {
+    symbolAtCursor: input.symbolAtCursor,
+    files: [...files],
+    collectedAt: Date.now()
+  })
   relatedFilesCache.set(input.filePath, byHost)
   return files
-}
-
-export function clearNesRelatedFilesCache(filePath: string): void {
-  relatedFilesCache.delete(filePath)
 }
 
 /** Two hosts can hold the same path, so a cached entry names the host it belongs to. */

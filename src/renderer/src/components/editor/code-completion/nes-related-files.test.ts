@@ -1,15 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fsReadFile,
   fsSearch,
   installRuntimeFileClientEnvironment
 } from '@/runtime/files/runtime-file-client-test-harness'
 import type { RuntimeFileOperationArgs } from '@/runtime/files/runtime-file-client-types'
-import {
-  clearNesRelatedFilesCache,
-  collectNesRelatedFiles,
-  parseRelativeImports
-} from './nes-related-files'
+import { collectNesRelatedFiles, parseRelativeImports } from './nes-related-files'
 import { readRuntimeFileContent } from '@/runtime/files/reads/runtime-file-read-client'
 
 vi.mock('@/runtime/files/reads/runtime-file-read-client', async (importOriginal) => {
@@ -59,10 +55,14 @@ function searchResult(
   }
 }
 
+/** The fake clock the cache lifetime is measured against. */
+let now = 0
+
 beforeEach(() => {
-  for (const filePath of [CURRENT_FILE, WINDOWS_FILE, BLOCKED_ANCESTOR_FILE]) {
-    clearNesRelatedFilesCache(filePath)
-  }
+  // Why: the cache lives in this module and every test shares it, so each test starts past the
+  // entries the previous one left behind.
+  now += 5_000
+  vi.spyOn(Date, 'now').mockReturnValue(now)
   binaryPaths.clear()
   vi.mocked(readRuntimeFileContent).mockClear()
   fsReadFile.mockImplementation(async ({ filePath }: { filePath: string }) => {
@@ -73,6 +73,10 @@ beforeEach(() => {
     return { content, isBinary: binaryPaths.has(filePath) }
   })
   fsSearch.mockResolvedValue({ files: [], totalMatches: 0, truncated: false })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('parseRelativeImports', () => {
@@ -313,7 +317,7 @@ describe('collectNesRelatedFiles', () => {
     expect(fsSearch).not.toHaveBeenCalled()
   })
 
-  it('keeps the collected files until the cache is cleared', async () => {
+  it('keeps the collected files inside five seconds and re-reads them past it', async () => {
     const input = {
       filePath: CURRENT_FILE,
       fileText: '',
@@ -332,10 +336,15 @@ describe('collectNesRelatedFiles', () => {
     await collectNesRelatedFiles(input)
     fsSearch.mockClear()
 
+    // Why: a hit inside the lifetime is what keeps the search off every keystroke.
+    now += 4_999
+    vi.spyOn(Date, 'now').mockReturnValue(now)
     await collectNesRelatedFiles(input)
     expect(fsSearch).not.toHaveBeenCalled()
 
-    clearNesRelatedFilesCache(CURRENT_FILE)
+    // Why: past the lifetime the file may have gained an import or changed on disk.
+    now += 1
+    vi.spyOn(Date, 'now').mockReturnValue(now)
     await collectNesRelatedFiles(input)
     expect(fsSearch).toHaveBeenCalled()
   })

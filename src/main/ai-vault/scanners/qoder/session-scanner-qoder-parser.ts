@@ -103,9 +103,17 @@ export async function parseQoderSessionContent(
   content: RemoteSessionContent,
   platform: NodeJS.Platform = process.platform,
   options: ParserOptions = {},
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  agent: QoderBuild = 'qoder'
 ) {
-  return parseLines(file, remoteSessionContentLines(content, signal), platform, options)
+  return parseLines(
+    file,
+    remoteSessionContentLines(content, signal),
+    platform,
+    options,
+    undefined,
+    agent
+  )
 }
 
 async function parseLines(

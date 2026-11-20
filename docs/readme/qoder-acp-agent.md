@@ -1,5 +1,11 @@
 # Qoder as an ACP agent
 
+> **Not yet verified against a real Qoder CLI.** The harness is proved on every machine — a
+> non-opt-in test drives it against the repo's own scripted ACP CLI — but no machine this feature
+> was written on has Qoder installed, so the live handshake and the session-id check below have
+> never been performed. Green tests do not mean the feature works. Run the two steps here and
+> record the outcome before relying on it.
+
 ## Install and sign in
 
 ```bash
@@ -37,6 +43,10 @@ ORCA_REAL_QODER_CLI_TEST=1 pnpm test src/main/qoder/qoder-acp-session-launch.tes
 Every build whose binary is installed is proved; the build that is not installed is
 skipped. The suite fails when no build is installed, and when an installed build
 cannot sign in.
+
+The switch also enables the older `src/main/qoder/real-cli.test.ts`, which drives the
+real CLI through a full managed task. Name the single file above unless you want that
+too.
 
 ## Check the session id against `--resume`
 

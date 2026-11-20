@@ -104,7 +104,8 @@ describe('Qoder ACP launch spec', () => {
     }
     expect(acpLaunchSpecFor('qoder')?.scrubEnvironment?.(env, {})).toEqual([
       'QODER_PERMISSION_MODE',
-      'QODERCN_PERMISSION_MODE'
+      'QODERCN_PERMISSION_MODE',
+      'QODERCN_CONFIG_DIR'
     ])
     expect(env).toEqual({})
     const chinaEnv: Record<string, string> = {
@@ -113,8 +114,33 @@ describe('Qoder ACP launch spec', () => {
     }
     expect(acpLaunchSpecFor('qoder-cn')?.scrubEnvironment?.(chinaEnv, {})).toEqual([
       'QODER_PERMISSION_MODE',
-      'QODERCN_PERMISSION_MODE'
+      'QODERCN_PERMISSION_MODE',
+      'QODER_CONFIG_DIR'
     ])
     expect(chinaEnv).toEqual({})
+  })
+
+  it("scrubs the other build's config home but keeps this build's own", () => {
+    // An inherited QODERCN_CONFIG_DIR must not point the global build at the China home.
+    const globalEnv: Record<string, string> = {
+      QODER_CONFIG_DIR: '/home/dev/.qoder',
+      QODERCN_CONFIG_DIR: '/home/dev/.qoder-cn'
+    }
+    expect(acpLaunchSpecFor('qoder')?.scrubEnvironment?.(globalEnv, {})).toContain(
+      'QODERCN_CONFIG_DIR'
+    )
+    expect(globalEnv.QODER_CONFIG_DIR).toBe('/home/dev/.qoder')
+    expect(globalEnv.QODERCN_CONFIG_DIR).toBeUndefined()
+
+    // And the other way round.
+    const chinaEnv: Record<string, string> = {
+      QODER_CONFIG_DIR: '/home/dev/.qoder',
+      QODERCN_CONFIG_DIR: '/home/dev/.qoder-cn'
+    }
+    expect(acpLaunchSpecFor('qoder-cn')?.scrubEnvironment?.(chinaEnv, {})).toContain(
+      'QODER_CONFIG_DIR'
+    )
+    expect(chinaEnv.QODERCN_CONFIG_DIR).toBe('/home/dev/.qoder-cn')
+    expect(chinaEnv.QODER_CONFIG_DIR).toBeUndefined()
   })
 })

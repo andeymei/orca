@@ -375,9 +375,15 @@ Each build scrubs **both** documented permission-mode variables — `QODER_PERMI
 (`docs.qoder.com/cli/settings-reference`) and `QODERCN_PERMISSION_MODE`
 (`docs.qoder.cn/cli/settings-reference`). The CLI accepts `bypass_permissions` there, and the spec's
 `env` is _added to_ the inherited environment, so an exported one would start the server bypassing
-prompts while the chat shows Ask. Copilot does the same for `COPILOT_ALLOW_ALL`. Do **not** widen the
-scrub to `QODER_APPEND_SYSTEM_PROMPT`, `QODER_MODEL`, `QODER_WORKING_DIR` or the rest — the Copilot
-precedent scrubs exactly the variable that makes the displayed mode untrue.
+prompts while the chat shows Ask. Copilot does the same for `COPILOT_ALLOW_ALL`.
+
+It also scrubs **the other build's config-dir variable** — `QODERCN_CONFIG_DIR` for the global build,
+`QODER_CONFIG_DIR` for the China build — so an inherited one cannot point this build at the other
+build's home and credentials. **Never the build's own config-dir variable:** the account binding sets
+it in the child's environment _before_ the scrub runs, so deleting it would break the pin.
+
+Do **not** widen the scrub to `QODER_APPEND_SYSTEM_PROMPT`, `QODER_MODEL`, `QODER_WORKING_DIR` or
+the rest — the Copilot precedent scrubs exactly the variables that make the displayed state untrue.
 
 Each build pins the config-directory variable **Qoder's own documentation names** — `QODER_CONFIG_DIR`
 (default `~/.qoder`) for the global build, `QODERCN_CONFIG_DIR` (default `~/.qoder-cn`) for the China
@@ -447,7 +453,8 @@ function qoderAcpLaunchSpec(build: QoderBuild): AcpLaunchSpec {
     scrubEnvironment: (env) => {
       delete env.QODER_PERMISSION_MODE
       delete env.QODERCN_PERMISSION_MODE
-      return ['QODER_PERMISSION_MODE', 'QODERCN_PERMISSION_MODE']
+      delete env[build.otherBuildConfigDirVariable]
+      return ['QODER_PERMISSION_MODE', 'QODERCN_PERMISSION_MODE', build.otherBuildConfigDirVariable]
     },
     dialect: GENERIC_ACP_DIALECT,
     loginCommand: agentSessionSetupFor(build.agent)?.loginCommand ?? [],
@@ -581,7 +588,8 @@ Create `docs/readme/qoder-acp-agent.md` covering:
   separately
 - the two builds' separate accounts, and that each needs its own `login`
 
-Keep it under 40 lines.
+Keep it short. It grew past the original 40-line budget because the session-id check is the
+most valuable part of it — do not cut that to hit a line count.
 
 - [ ] **Step 4: Commit**
 

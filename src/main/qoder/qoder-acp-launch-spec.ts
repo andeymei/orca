@@ -14,6 +14,8 @@ type QoderBuild = {
   command: string
   accountHomeVariable: string
   accountDirName: '.qoder' | '.qoder-cn'
+  /** The other build's config home, so an inherited variable cannot point this one at it. */
+  otherBuildConfigDirVariable: string
   installDir: (homePath: string) => string
 }
 
@@ -23,6 +25,7 @@ const QODER_BUILDS: readonly QoderBuild[] = [
     command: 'qodercli',
     accountHomeVariable: 'QODER_CONFIG_DIR',
     accountDirName: '.qoder',
+    otherBuildConfigDirVariable: 'QODERCN_CONFIG_DIR',
     installDir: (homePath) => join(homePath, '.qoder', 'bin', 'qodercli')
   },
   {
@@ -30,6 +33,7 @@ const QODER_BUILDS: readonly QoderBuild[] = [
     command: 'qoderclicn',
     accountHomeVariable: 'QODERCN_CONFIG_DIR',
     accountDirName: '.qoder-cn',
+    otherBuildConfigDirVariable: 'QODER_CONFIG_DIR',
     installDir: (homePath) => join(homePath, '.qoder-cn', 'bin')
   }
 ]
@@ -57,11 +61,14 @@ function qoderAcpLaunchSpec(build: QoderBuild): AcpLaunchSpec {
     // No bypass flag; full access approves permission requests individually.
     args: () => ['--acp'],
     env: {},
-    // An inherited permission mode would bypass the prompts while the chat shows Ask.
+    // An inherited permission mode would bypass the prompts while the chat shows Ask, and an
+    // inherited config-dir variable would point this build at the other one's home. The build's
+    // own config-dir variable is set by the account binding before this runs, so it stays.
     scrubEnvironment: (env) => {
       delete env.QODER_PERMISSION_MODE
       delete env.QODERCN_PERMISSION_MODE
-      return ['QODER_PERMISSION_MODE', 'QODERCN_PERMISSION_MODE']
+      delete env[build.otherBuildConfigDirVariable]
+      return ['QODER_PERMISSION_MODE', 'QODERCN_PERMISSION_MODE', build.otherBuildConfigDirVariable]
     },
     dialect: GENERIC_ACP_DIALECT,
     loginCommand: agentSessionSetupFor(build.agent)?.loginCommand ?? [],

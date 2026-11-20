@@ -41,6 +41,9 @@ export const AGENT_SESSION_SETUP_COMMANDS = [
   // An `agy` login does not sign its chats in: they keep their own sign-in.
   { agent: 'antigravity', loginCommand: [] },
   // The two Qoder builds are separate npm packages with separate accounts, so they sign in separately.
+  // Neither login has a device-code path: on a remote host, in a container or in CI the CLI skips
+  // the browser and prints the login URL to open on another machine, so the remote sign-in never
+  // waits on a browser prompt nobody can see.
   {
     agent: 'qoder',
     loginCommand: ['qodercli', 'login'],

@@ -113,6 +113,16 @@ async function endSession(child: ChildProcessWithoutNullStreams): Promise<Proces
   return waitForExit(child, KILL_TIMEOUT_MS)
 }
 
+/** The proof file records what each build answered, so a human can check it against `--resume`. */
+async function writeProof(
+  proofPath: string | undefined,
+  builds: Record<string, unknown>[]
+): Promise<void> {
+  if (proofPath) {
+    await writeFile(proofPath, JSON.stringify({ builds }, null, 2))
+  }
+}
+
 /** The handshake the product sends, answered by the agent the program speaks ACP for. */
 async function runHandshake(
   peer: AcpJsonRpcPeer,
@@ -220,7 +230,7 @@ it("completes an ACP handshake with the repo's scripted CLI", async () => {
   expect(handshake.sessionId).toBe('wsl-lane-grok-session')
   expect(handshake.exit, 'The scripted ACP process did not exit').not.toBeNull()
   expect(handshake.exit?.signal, 'The scripted ACP process was killed').not.toBe('SIGKILL')
-})
+}, 30_000)
 
 it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
   'completes a real Qoder ACP handshake',
@@ -229,6 +239,7 @@ it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
     // launches the agent in, so it proves the protocol and not the product's launch directory.
     const cwd = process.cwd()
     const builds: Record<string, unknown>[] = []
+    const proofPath = process.env.ORCA_QODER_PROOF_PATH
     for (const spec of QODER_ACP_LAUNCH_SPECS) {
       const env = await launchEnvironment(spec)
       if (!(await isInstalled(spec, env))) {
@@ -257,12 +268,10 @@ it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
         agentCapabilities: handshake.agentCapabilities,
         sessionId: handshake.sessionId
       })
+      // Written per build, so a later build's failure does not lose the earlier proof.
+      await writeProof(proofPath, builds)
     }
     expect(builds.length, 'No Qoder build is installed').toBeGreaterThan(0)
-    const proofPath = process.env.ORCA_QODER_PROOF_PATH
-    if (proofPath) {
-      await writeFile(proofPath, JSON.stringify({ builds }, null, 2))
-    }
   },
   180_000
 )

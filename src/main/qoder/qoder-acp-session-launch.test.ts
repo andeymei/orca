@@ -79,6 +79,7 @@ function waitForExit(
   timeoutMs: number
 ): Promise<ProcessExit | null> {
   return new Promise((resolve) => {
+    // ast-grep-ignore: test-no-real-time-wait -- a child's exit has no condition to poll; the deadline is the bound
     const timer = setTimeout(() => resolve(null), timeoutMs)
     const settle = (code: number | null, signal: NodeJS.Signals | null) => {
       clearTimeout(timer)
@@ -217,6 +218,7 @@ async function completeAcpHandshake(input: {
   return { ...answers, exit }
 }
 
+// The scripted CLI answers in milliseconds; the bound only covers a slow machine.
 it("completes an ACP handshake with the repo's scripted CLI", async () => {
   const handshake = await completeAcpHandshake({
     program: process.execPath,

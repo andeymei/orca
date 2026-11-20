@@ -39,7 +39,18 @@ export const AGENT_SESSION_SETUP_COMMANDS = [
     installCommand: 'curl -fsSL https://gh.io/copilot-install | bash'
   },
   // An `agy` login does not sign its chats in: they keep their own sign-in.
-  { agent: 'antigravity', loginCommand: [] }
+  { agent: 'antigravity', loginCommand: [] },
+  // The two Qoder builds are separate npm packages with separate accounts, so they sign in separately.
+  {
+    agent: 'qoder',
+    loginCommand: ['qodercli', 'login'],
+    installCommand: 'npm install -g @qoder-ai/qodercli'
+  },
+  {
+    agent: 'qoder-cn',
+    loginCommand: ['qoderclicn', 'login'],
+    installCommand: 'npm install -g @qodercn-ai/qoderclicn'
+  }
 ] as const
 
 export function agentSessionSetupFor(agent: string | undefined) {

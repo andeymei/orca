@@ -83,6 +83,40 @@ describe('codex-specific resume behavior', () => {
   })
 })
 
+describe('qoder builds keep their own row identity', () => {
+  it('publishes a China build row as qoder-cn through the cached scan path', async () => {
+    const root = await makeTempDir()
+    const path = join(root, 'qoder-cn-session.jsonl')
+    await writeFile(
+      path,
+      `${[
+        JSON.stringify({
+          type: 'workspace-directories',
+          sessionId: 'qoder-cn-session',
+          directories: ['/tmp/qoder-cn']
+        }),
+        JSON.stringify({
+          type: 'user',
+          sessionId: 'qoder-cn-session',
+          timestamp: '2026-05-01T10:00:00.000Z',
+          message: { role: 'user', content: [{ type: 'text', text: 'Qoder China title' }] }
+        })
+      ].join('\n')}\n`
+    )
+
+    // The cached scan path builds its own parse state, so the build label must reach it too.
+    const cached = await parseAgentSessionFileCached(
+      await candidateFor('qoder-cn', path),
+      process.platform
+    )
+    expect(cached?.title).toBe('Qoder China title')
+    expect(cached?.agent).toBe('qoder-cn')
+    expect(cached).toEqual(
+      await parseAgentSessionFile(await candidateFor('qoder-cn', path), process.platform)
+    )
+  })
+})
+
 describe('non-resumable formats keep reuse-only caching', () => {
   it('re-parses cline when only its messages sidecar changed', async () => {
     const root = await makeTempDir()

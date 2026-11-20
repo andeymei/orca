@@ -100,6 +100,13 @@ export function useMonacoNextEditSuggestions(params: {
       previewRelease = null
     }
 
+    const cancelScheduledTick = (): void => {
+      if (timer !== null) {
+        clearTimeout(timer)
+        timer = null
+      }
+    }
+
     const refreshMarkers = (): void => {
       const position = editorInstance.getPosition()
       markers = position
@@ -122,6 +129,7 @@ export function useMonacoNextEditSuggestions(params: {
     const dropPlan = (): void => {
       // Why: the plan must not outlive the user's decision, and an answer in flight predates it.
       generationRef.current += 1
+      releasePreview()
       nesPlanStore.remove(filePath)
       fireNesInlineCompletionsChanged()
       refreshMarkers()
@@ -227,9 +235,7 @@ export function useMonacoNextEditSuggestions(params: {
     }
 
     const scheduleTick = (): void => {
-      if (timer !== null) {
-        clearTimeout(timer)
-      }
+      cancelScheduledTick()
       timer = setTimeout(() => {
         timer = null
         void tick().catch((error: unknown) => {
@@ -256,6 +262,8 @@ export function useMonacoNextEditSuggestions(params: {
       if (decide() !== 'accept-suggestion') {
         return
       }
+      // Why: a tick still waiting would ask again for the same buffer and undo the rejection.
+      cancelScheduledTick()
       dropPlan()
     })
     const mouseSubscription = editorInstance.onMouseDown((event) => {
@@ -290,9 +298,7 @@ export function useMonacoNextEditSuggestions(params: {
     return () => {
       // Why: an answer that arrives after the editor moved on must not reach the store.
       generationRef.current += 1
-      if (timer !== null) {
-        clearTimeout(timer)
-      }
+      cancelScheduledTick()
       contentSubscription.dispose()
       cursorSubscription.dispose()
       keySubscription.dispose()

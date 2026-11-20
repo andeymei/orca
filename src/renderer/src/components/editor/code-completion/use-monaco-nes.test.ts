@@ -35,6 +35,7 @@ type FakeNesEditor = {
   pressEscape: () => void
   clickGutter: (lineNumber: number) => void
   markerCounts: () => number[]
+  previewWidgets: () => monaco.editor.IContentWidget[]
 }
 
 /** The editor half of the test; the model is the real one, so its URI and text are real. */
@@ -44,6 +45,7 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
   const mouseListeners: ((event: monaco.editor.IEditorMouseEvent) => void)[] = []
   const hiddenActions: string[] = []
   const markerCounts: number[] = []
+  const previewWidgets: monaco.editor.IContentWidget[] = []
   let position = { ...CURSOR }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this editor double only answers the calls the hook makes, and the model behind it is a real Monaco model.
   const editorInstance = {
@@ -66,6 +68,16 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
       },
       clear: () => {}
     }),
+    addContentWidget: (widget: monaco.editor.IContentWidget) => {
+      previewWidgets.push(widget)
+    },
+    removeContentWidget: (widget: monaco.editor.IContentWidget) => {
+      const index = previewWidgets.indexOf(widget)
+      if (index !== -1) {
+        previewWidgets.splice(index, 1)
+      }
+    },
+    layoutContentWidget: () => {},
     onDidChangeModelContent: () => ({ dispose: () => {} }),
     onDidChangeCursorPosition: (listener: () => void) => {
       cursorListeners.push(listener)
@@ -110,7 +122,8 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
         listener(event)
       }
     },
-    markerCounts: () => markerCounts
+    markerCounts: () => markerCounts,
+    previewWidgets: () => previewWidgets
   }
 }
 
@@ -127,14 +140,17 @@ function makeEdit(overrides: Partial<NesEdit> = {}): NesEdit {
   }
 }
 
-function renderHookFor(model: monaco.editor.ITextModel): FakeNesEditor & { unmount: () => void } {
+function renderHookFor(
+  model: monaco.editor.ITextModel,
+  options: { triggerDelayMs?: number } = {}
+): FakeNesEditor & { unmount: () => void } {
   const fakeEditor = createFakeEditor(model)
   const view = renderHook(() =>
     useMonacoNextEditSuggestions({
       filePath: FILE_PATH,
       relativePath: 'src/app.ts',
       enabled: true,
-      triggerDelayMs: 0,
+      triggerDelayMs: options.triggerDelayMs ?? 0,
       enabledExtensions: ['ts'],
       editorInstance: fakeEditor.editorInstance,
       files: { target: { kind: 'local' }, worktreeId: null, worktreePath: null }
@@ -351,6 +367,102 @@ describe('useMonacoNextEditSuggestions', () => {
     })
 
     expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
+    unmount()
+  })
+
+  it('keeps the editor quiet when Escape cancels a tick that was still waiting', async () => {
+    vi.useFakeTimers()
+    try {
+      const model = createModel()
+      requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
+      collectNesRelatedFilesMock.mockResolvedValue([])
+
+      const { editorInstance, moveCursor, pressEscape, unmount } = renderHookFor(model, {
+        triggerDelayMs: 1_000
+      })
+
+      // The first tick is the one the effect scheduled on mount.
+      await act(async () => vi.advanceTimersByTimeAsync(1_000))
+      expect(nesShortcutHandlersFor(editorInstance)?.decide()).toBe('accept-suggestion')
+      expect(requestNesPlanMock).toHaveBeenCalledTimes(1)
+
+      // The move schedules another tick while the old plan still draws the ghost.
+      act(() => {
+        moveCursor()
+      })
+      act(() => {
+        pressEscape()
+      })
+
+      // Why: the rejection must survive the delay, or the ghost returns with no input from the user.
+      await act(async () => vi.advanceTimersByTimeAsync(1_000))
+
+      expect(requestNesPlanMock).toHaveBeenCalledTimes(1)
+      expect(nesPlanStore.getPlan(FILE_PATH)).toBeNull()
+      expect(nesShortcutHandlersFor(editorInstance)?.decide()).toBe('pass-through')
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('drops an answer that was in flight when the plan was dropped', async () => {
+    const model = createModel()
+    requestNesPlanMock.mockResolvedValueOnce({ edits: [makeEdit()] })
+    let releasePlan: (plan: unknown) => void = () => {}
+    requestNesPlanMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releasePlan = resolve
+      })
+    )
+    collectNesRelatedFilesMock.mockResolvedValue([])
+
+    const { editorInstance, moveCursor, pressEscape, unmount } = renderHookFor(model)
+    await waitFor(() => {
+      expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
+    })
+
+    act(() => {
+      moveCursor()
+    })
+    await waitFor(() => {
+      expect(requestNesPlanMock).toHaveBeenCalledTimes(2)
+    })
+
+    act(() => {
+      pressEscape()
+    })
+    expect(nesPlanStore.getPlan(FILE_PATH)).toBeNull()
+
+    await act(async () => {
+      releasePlan({ edits: [makeEdit()] })
+    })
+
+    // Why: that answer was computed before the rejection, so it must not re-seed the plan.
+    expect(nesPlanStore.getPlan(FILE_PATH)).toBeNull()
+    expect(nesShortcutHandlersFor(editorInstance)?.decide()).toBe('pass-through')
+    unmount()
+  })
+
+  it('releases the Alt preview when the plan is dropped', async () => {
+    const model = createModel()
+    requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
+    collectNesRelatedFilesMock.mockResolvedValue([])
+
+    const { editorInstance, pressEscape, previewWidgets, unmount } = renderHookFor(model)
+    await waitFor(() => {
+      expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
+    })
+
+    nesShortcutHandlersFor(editorInstance)?.preview(true)
+    expect(previewWidgets()).toHaveLength(1)
+
+    act(() => {
+      pressEscape()
+    })
+
+    // Why: the preview draws the rejected edit, so it must not outlive the rejection.
+    expect(previewWidgets()).toHaveLength(0)
     unmount()
   })
 

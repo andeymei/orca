@@ -72,12 +72,13 @@ export async function collectNesRelatedFiles(
     relatedFilesCache.get(input.filePath) ?? new Map<string, NesRelatedFilesCacheEntry>()
   const hostKey = hostKeyOf(input.files)
   const cached = byHost.get(hostKey)
-  if (
-    cached &&
-    cached.symbolAtCursor === input.symbolAtCursor &&
-    Date.now() - cached.collectedAt < NES_RELATED_FILES_CACHE_TTL_MS
-  ) {
-    return [...cached.files]
+  if (cached) {
+    if (Date.now() - cached.collectedAt >= NES_RELATED_FILES_CACHE_TTL_MS) {
+      // Why: an expired entry is dead weight, so the map must not keep one stale entry per file.
+      byHost.delete(hostKey)
+    } else if (cached.symbolAtCursor === input.symbolAtCursor) {
+      return [...cached.files]
+    }
   }
   const files = await gatherRelatedFiles(input)
   byHost.set(hostKey, {

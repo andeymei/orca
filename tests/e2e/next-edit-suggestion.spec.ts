@@ -235,6 +235,51 @@ test('shows the predicted edit at the cursor and Tab accepts it', async ({
   }
 })
 
+test('Esc rejects the suggestion, so the next Tab never writes it', async ({
+  orcaPage,
+  testRepoPath,
+  registerPostElectronShutdownCleanup
+}) => {
+  // Why: a cold app launch plus the plan's round trip can outlast the default budget.
+  test.setTimeout(240_000)
+  await waitForSessionReady(orcaPage)
+  await waitForActiveWorktree(orcaPage)
+
+  // Why: an empty file, so the ten typed characters put the cursor on line 1, column 11.
+  const filePath = path.join(testRepoPath, `nes-escape-${randomUUID()}.ts`)
+  await writeFile(filePath, '', 'utf8')
+  registerPostElectronShutdownCleanup(() => rm(filePath, { force: true }))
+
+  const worktreeId = await worktreeIdFor(orcaPage, testRepoPath)
+  const endpoint = await startPlanEndpoint(mockPlan(filePath, 1, ACCEPT_EDIT_COLUMN))
+  try {
+    await pointTheFeatureAt(orcaPage, endpoint.baseUrl)
+    await openTypescriptFile(orcaPage, filePath, worktreeId)
+    await waitForEditorFile(orcaPage, filePath)
+
+    const editor = visibleEditor(orcaPage)
+    await editor.click()
+    await orcaPage.keyboard.press('ControlOrMeta+End')
+    await orcaPage.keyboard.type('const x = ')
+
+    const ghostText = editor.locator('.ghost-text-decoration')
+    await expect(ghostText).toBeVisible({ timeout: 30_000 })
+    await expect(ghostText).toHaveText(MOCK_EDIT_TEXT)
+
+    await orcaPage.keyboard.press('Escape')
+    // Why: the rejection has to reach the plan, not just Monaco's widget.
+    await expect(ghostText).toBeHidden({ timeout: 10_000 })
+
+    // Why: a Tab the user presses after rejecting must never insert the rejected edit.
+    await orcaPage.keyboard.press('Tab')
+    await expect.poll(() => editorValue(orcaPage)).not.toContain(MOCK_EDIT_TEXT)
+  } finally {
+    // Why: the key clears first, so a failing close cannot leave it behind.
+    await orcaPage.evaluate(() => window.api.codeCompletion.clearApiKey()).catch(() => undefined)
+    await endpoint.close()
+  }
+})
+
 test('Tab jumps to the predicted location when the cursor is not on it', async ({
   orcaPage,
   testRepoPath,

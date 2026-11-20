@@ -319,6 +319,19 @@ describe('Qoder ACP launch spec', () => {
     expect(acpLaunchSpecFor('qoder-cn')?.account.pin).toEqual({
       accountHomeVariable: 'QODERCN_CONFIG_DIR'
     })
+    // The path is what keeps the builds apart, so assert it too.
+    expect(
+      acpLaunchSpecFor('qoder')?.account.resolve({ launchEnv: {}, stateDirectory: '/state' })
+    ).resolves.toEqual({
+      variable: 'QODER_CONFIG_DIR',
+      path: join('/home/dev', '.qoder')
+    })
+    expect(
+      acpLaunchSpecFor('qoder-cn')?.account.resolve({ launchEnv: {}, stateDirectory: '/state' })
+    ).resolves.toEqual({
+      variable: 'QODERCN_CONFIG_DIR',
+      path: join('/home/dev', '.qoder-cn')
+    })
   })
 
   it('signs in with the command each build ships', () => {
@@ -358,6 +371,14 @@ Expected: FAIL — `acpLaunchSpecFor('qoder')` returns `null`.
 
 Create `src/main/qoder/qoder-acp-launch-spec.ts`:
 
+Each build scrubs **both** documented permission-mode variables — `QODER_PERMISSION_MODE`
+(`docs.qoder.com/cli/settings-reference`) and `QODERCN_PERMISSION_MODE`
+(`docs.qoder.cn/cli/settings-reference`). The CLI accepts `bypass_permissions` there, and the spec's
+`env` is _added to_ the inherited environment, so an exported one would start the server bypassing
+prompts while the chat shows Ask. Copilot does the same for `COPILOT_ALLOW_ALL`. Do **not** widen the
+scrub to `QODER_APPEND_SYSTEM_PROMPT`, `QODER_MODEL`, `QODER_WORKING_DIR` or the rest — the Copilot
+precedent scrubs exactly the variable that makes the displayed mode untrue.
+
 Each build pins the config-directory variable **Qoder's own documentation names** — `QODER_CONFIG_DIR`
 (default `~/.qoder`) for the global build, `QODERCN_CONFIG_DIR` (default `~/.qoder-cn`) for the China
 build. `directoryAccountBinding` selects an alternate account by setting this variable in the child's
@@ -370,7 +391,7 @@ import { GENERIC_ACP_DIALECT } from '../acp/acp-dialects/acp-dialect'
 import { directoryAccountBinding } from '../acp/launch/acp-account-binding'
 import { agentSessionSetupFor } from '../../shared/agent-session/lifecycle/agent-session-setup-commands'
 import {
-  resumeInvocationAfterMarker,
+  resumeInvocationFromOptions,
   sessionFileResumeTargetMatches,
   type StructuredAgentSessionHistory
 } from '../native-chat/structured-agent-cli-conversations'
@@ -405,7 +426,13 @@ function qoderSessionHistory(agent: 'qoder' | 'qoder-cn'): StructuredAgentSessio
     rowAgents: [agent],
     rowSessionId: (link) => link.handle.nativeId,
     // Qoder stores sessions under its projects folder, whose files are Claude-shaped.
-    parseResumeArgs: (args) => resumeInvocationAfterMarker(args, ['--resume']),
+    // The CLI documents -r/--resume [id], and resumeInvocationFromOptions also reads
+    // the --resume=<id> form, so every documented spelling reaches the resume guard.
+    parseResumeArgs: (args) =>
+      resumeInvocationFromOptions(args, {
+        targetless: ['--continue'],
+        markers: ['-r', '--resume']
+      }),
     resumeTargetMatches: sessionFileResumeTargetMatches
   }
 }
@@ -416,6 +443,12 @@ function qoderAcpLaunchSpec(build: QoderBuild): AcpLaunchSpec {
     command: build.command,
     args: () => ['--acp'],
     env: {},
+    // An inherited permission mode would bypass the prompts while the chat shows Ask.
+    scrubEnvironment: (env) => {
+      delete env.QODER_PERMISSION_MODE
+      delete env.QODERCN_PERMISSION_MODE
+      return ['QODER_PERMISSION_MODE', 'QODERCN_PERMISSION_MODE']
+    },
     dialect: GENERIC_ACP_DIALECT,
     loginCommand: agentSessionSetupFor(build.agent)?.loginCommand ?? [],
     account: directoryAccountBinding(build.accountHomeVariable, (homePath) =>

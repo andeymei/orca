@@ -13,8 +13,8 @@ import { CodeCompletionSection } from './CodeCompletionSection'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }))
 
-const statuses = vi.hoisted(() => ({
-  current: { configured: false, protection: null } as CodeCompletionCredentialsStatus
+const statuses = vi.hoisted((): { current: CodeCompletionCredentialsStatus } => ({
+  current: { configured: false, protection: null }
 }))
 
 function statusFixture(overrides: Partial<CodeCompletionCredentialsStatus> = {}) {
@@ -43,6 +43,7 @@ function installApi(overrides: Partial<ApiRecorder> = {}): ApiRecorder {
 
 function renderSection(overrides: Partial<GlobalSettings['codeCompletion']> = {}) {
   const defaults = getDefaultSettings('/tmp')
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the defaults carry every field the partial override omits, so the spread is always a whole GlobalSettings.
   const settings = {
     ...defaults,
     codeCompletion: {
@@ -52,6 +53,7 @@ function renderSection(overrides: Partial<GlobalSettings['codeCompletion']> = {}
       model: 'claude-sonnet-4',
       ...overrides
     }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the defaults carry every field the partial override omits, so the spread is always a whole GlobalSettings.
   } as GlobalSettings
   const updateSettings = vi.fn()
   render(

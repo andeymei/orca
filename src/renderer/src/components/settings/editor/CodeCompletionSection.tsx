@@ -156,7 +156,8 @@ export function CodeCompletionSection({
             )}
             value={completion.baseUrl}
             commit={(baseUrl) => commit({ baseUrl })}
-            className="w-72 text-xs"
+            variant="code"
+            className="w-72"
           />
         }
       />
@@ -176,7 +177,8 @@ export function CodeCompletionSection({
             )}
             value={completion.model}
             commit={(model) => commit({ model })}
-            className="w-72 text-xs"
+            variant="code"
+            className="w-72"
           />
         }
       />
@@ -232,7 +234,8 @@ export function CodeCompletionSection({
             )}
             value={completion.enabledExtensions.join(', ')}
             commit={(next) => commit({ enabledExtensions: parseExtensions(next) })}
-            className="w-72 text-xs"
+            variant="code"
+            className="w-72"
           />
         }
       />

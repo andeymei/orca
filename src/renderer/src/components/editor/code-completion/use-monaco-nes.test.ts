@@ -57,6 +57,7 @@ function createFakeEditor(model: monaco.editor.ITextModel): {
     }
   }
   return {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a test double stands in for Monaco's editor; it implements only the members this hook calls.
     editorInstance: editorInstance as unknown as monaco.editor.IStandaloneCodeEditor,
     moveCursor: () => {
       for (const listener of cursorListeners) {

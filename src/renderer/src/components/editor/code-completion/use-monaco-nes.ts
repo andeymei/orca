@@ -79,6 +79,9 @@ export function useMonacoNextEditSuggestions(params: {
     }
   }, [modelKey, filePath, enabled, enabledExtensions])
 
+  // The cleanup below clears the timer unconditionally; the rule cannot see that once a
+  // subscription shares the effect with it.
+  // oxlint-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     if (!editorInstance || !modelKey || !filePath || !enabled) {
       return

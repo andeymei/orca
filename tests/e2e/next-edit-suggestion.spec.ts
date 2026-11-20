@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import type { Page } from '@stablyai/playwright-test'
 import { test, expect } from './helpers/orca-app'
@@ -91,7 +90,11 @@ async function startPlanEndpoint(planText: string): Promise<PlanEndpoint> {
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve)
   })
-  const { port } = server.address() as AddressInfo
+  const address = server.address()
+  if (typeof address === 'string' || address === null) {
+    throw new Error('the plan endpoint is not listening on a port')
+  }
+  const { port } = address
   return {
     // Why: 127.0.0.1 is in the proxy bypass lists, and the backend appends the protocol path itself.
     baseUrl: `http://127.0.0.1:${port}`,

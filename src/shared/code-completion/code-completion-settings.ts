@@ -55,12 +55,17 @@ export function getDefaultCodeCompletionSettings(): CodeCompletionSettings {
   }
 }
 
+/** An object that carries named fields; the settings block is read field by field off it. */
+function isSettingsRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 export function normalizeCodeCompletionSettings(value: unknown): CodeCompletionSettings {
   const defaults = getDefaultCodeCompletionSettings()
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isSettingsRecord(value)) {
     return defaults
   }
-  const record = value as Record<string, unknown>
+  const record = value
   return {
     enabled: typeof record.enabled === 'boolean' ? record.enabled : defaults.enabled,
     protocol: isNesBackendId(record.protocol) ? record.protocol : defaults.protocol,

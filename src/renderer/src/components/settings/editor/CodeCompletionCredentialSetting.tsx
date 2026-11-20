@@ -197,7 +197,8 @@ export function CodeCompletionCredentialSetting({
               onChange={(event) => setApiKeyDraft(event.target.value)}
               autoComplete="off"
               spellCheck={false}
-              className="w-56 text-xs"
+              variant="code"
+              className="w-56"
             />
             <Button size="xs" onClick={saveApiKey} disabled={apiKeyBusy || !apiKeyDraft.trim()}>
               {t(
@@ -207,13 +208,7 @@ export function CodeCompletionCredentialSetting({
             </Button>
             {/* A key the user can see is a key the user can clear, so the button stays when the status is unknown. */}
             {status === null || status.configured ? (
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={forgetApiKey}
-                disabled={apiKeyBusy}
-                className="text-muted-foreground hover:text-foreground"
-              >
+              <Button variant="ghost" size="xs" onClick={forgetApiKey} disabled={apiKeyBusy}>
                 {t(
                   'auto.components.settings.editor.CodeCompletionCredentialSetting.4e5566955b',
                   'Forget key'

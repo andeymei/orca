@@ -76,7 +76,7 @@ function errorName(error: unknown): string {
   if (typeof error !== 'object' || error === null) {
     return 'unknown'
   }
-  const name = (error as { name?: unknown }).name
+  const name: unknown = Reflect.get(error, 'name')
   return typeof name === 'string' ? name : 'unknown'
 }
 

@@ -7,6 +7,7 @@ import { UnsealedCredentialNotice } from '../../provider-accounts/UnsealedCreden
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { useTranslate, type Translate } from '@/i18n/use-translate'
+import { installWindowVisibilityInterval } from '@/lib/window-activity/window-visibility-interval'
 
 /** The credential probe reads the sealed file from disk, so the status is polled instead of read per render. */
 const CREDENTIAL_STATUS_POLL_MS = 5_000
@@ -89,10 +90,17 @@ export function CodeCompletionCredentialSetting({
         })
     }
     readStatus()
-    const timer = setInterval(readStatus, CREDENTIAL_STATUS_POLL_MS)
+    // Why: a hidden settings window has nobody reading the status, and a background probe per
+    // five seconds is a disk read the user never asked for.
+    const uninstall = installWindowVisibilityInterval({
+      run: readStatus,
+      runOnVisible: readStatus,
+      intervalMs: CREDENTIAL_STATUS_POLL_MS,
+      slowWhileUnfocused: true
+    })
     return () => {
       disposed = true
-      clearInterval(timer)
+      uninstall()
     }
   }, [onStatusChange, t])
 

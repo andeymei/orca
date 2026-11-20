@@ -107,13 +107,18 @@ export async function listRemoteClaudeBackgroundAgents(
         : errorResult(`could not read the background agents directory: ${jobs.message}`)
     }
     const jobAgents = await readRemoteJobAgents(call, args.worktreeId, home, jobs.directories)
+    if (!jobAgents.ok) {
+      // Why: a host that listed jobs but could read none of them is unreadable, not empty. The
+      // panel keeps the roster it already had instead of saying the project has no agents.
+      return errorResult(jobAgents.message)
+    }
     const details = new Map<string, ClaudeBackgroundAgentDetail>()
-    for (const { agent, detail } of jobAgents) {
+    for (const { agent, detail } of jobAgents.agents) {
       details.set(agent.id, detail)
     }
     remoteDetailsByEnvironment.set(args.environmentId, details)
     return readyResult(
-      jobAgents.map(({ agent }) => agent),
+      jobAgents.agents.map(({ agent }) => agent),
       Object.fromEntries(details)
     )
   } catch (error) {
@@ -203,18 +208,23 @@ async function listRemoteJobDirectories(
   }
 }
 
+type RemoteJobAgentsRead = { ok: true; agents: RemoteJobAgent[] } | { ok: false; message: string }
+
 /**
  * Every job directory's state file, read a few at a time.
  *
  * One job the host cannot answer for is skipped, never allowed to fail the whole roster: a
- * cleaned-up directory or a file the daemon is rewriting is normal.
+ * cleaned-up directory or a file the daemon is rewriting is normal. But when the directory
+ * listed jobs and *none* of them could be read, the host itself is unreadable — an older host
+ * refusing the grant, or the device connection dropping mid-sweep — and answering "no agents"
+ * would replace the panel's last roster with a false empty one.
  */
 async function readRemoteJobAgents(
   call: RuntimeRpcCall,
   worktreeId: string,
   home: RemoteHome,
   directories: readonly string[]
-): Promise<RemoteJobAgent[]> {
+): Promise<RemoteJobAgentsRead> {
   const jobsPath = joinRemotePath(
     home.pathFlavor,
     home.resolvedPath,
@@ -232,7 +242,14 @@ async function readRemoteJobAgents(
     }
   }
   const agents = await mapWithConcurrency(directories, JOB_READ_CONCURRENCY, readOne)
-  return agents.filter((agent): agent is RemoteJobAgent => agent !== null)
+  const readable = agents.filter((agent): agent is RemoteJobAgent => agent !== null)
+  if (directories.length > 0 && readable.length === 0) {
+    return {
+      ok: false,
+      message: `could not read any of the ${directories.length} background agent jobs on the paired machine`
+    }
+  }
+  return { ok: true, agents: readable }
 }
 
 async function readRemoteJobState(

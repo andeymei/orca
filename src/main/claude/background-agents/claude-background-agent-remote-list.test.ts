@@ -55,6 +55,8 @@ type RemoteFixture = {
   /** Reads the host answers with an error even though the grant resolved. */
   failingReads: Set<string>
   calls: { method: string; params: unknown }[]
+  /** The worktree selector each file call carried; pinned so the sent form cannot drift. */
+  worktreeSelectors: { method: string; worktree: string | null }[]
 }
 
 function okResult(result: unknown): RuntimeRpcResponse<unknown> {
@@ -81,6 +83,12 @@ function createHostCalls(fixture: RemoteFixture, options: { jobsMissing?: boolea
     params: unknown
   ): Promise<RuntimeRpcResponse<unknown>> => {
     fixture.calls.push({ method, params })
+    if (method === 'files.resolveTerminalPath' || method === 'files.readTerminalArtifact') {
+      fixture.worktreeSelectors.push({
+        method,
+        worktree: readStringField(params, 'worktree')
+      })
+    }
     if (method === 'files.browseServerDir') {
       const path = readStringField(params, 'path')
       if (path === '~') {
@@ -163,7 +171,8 @@ function makeFixture(): RemoteFixture {
       [`${JOBS_DIR}\\${UNKNOWN_STATE_JOB}\\state.json`, UNKNOWN_STATE]
     ]),
     failingReads: new Set([`${JOBS_DIR}\\${FAILING_READ_JOB}\\state.json`]),
-    calls: []
+    calls: [],
+    worktreeSelectors: []
   }
 }
 
@@ -237,11 +246,48 @@ describe('listRemoteClaudeBackgroundAgents', () => {
     })
   })
 
-  it('keeps the other jobs when one job cannot be read', async () => {
+  it('answers ready with the readable jobs when only some jobs fail', async () => {
     const fixture = makeFixture()
     const result = await listWith(fixture)
+    // The fixture lists five job directories; two of them cannot be read.
+    expect(result.status).toBe('ready')
     expect(result.agents.map((agent) => agent.id)).toContain(BACKGROUND_JOB)
     expect(result.agents.map((agent) => agent.id)).not.toContain(FAILING_READ_JOB)
+    expect(result.agents.map((agent) => agent.id)).not.toContain(EMPTY_JOB)
+  })
+
+  it('reports an error when the host lists jobs but none of them can be read', async () => {
+    // Why: an older host refusing the grant, or a connection dropping mid-sweep, must not turn
+    // into "this project has no background agents" and replace the panel's last roster.
+    const fixture: RemoteFixture = {
+      stateFiles: new Map(),
+      failingReads: new Set(),
+      calls: [],
+      worktreeSelectors: []
+    }
+    const result = await listWith(fixture)
+    expect(result.status).toBe('error')
+    expect(result.agents).toEqual([])
+    expect(result.details).toEqual({})
+    expect(result.message).toContain('5')
+    expect(result.message).toContain('could not read')
+  })
+
+  it("sends the caller's bare worktree id with both file calls", async () => {
+    const fixture = makeFixture()
+    await listWith(fixture)
+    const resolveCalls = fixture.worktreeSelectors.filter(
+      (call) => call.method === 'files.resolveTerminalPath'
+    )
+    const readCalls = fixture.worktreeSelectors.filter(
+      (call) => call.method === 'files.readTerminalArtifact'
+    )
+    expect(resolveCalls.length).toBeGreaterThan(0)
+    expect(readCalls.length).toBeGreaterThan(0)
+    // The probe proved the bare id resolves on the real host; an `id:` prefix would be untested.
+    expect(new Set(fixture.worktreeSelectors.map((call) => call.worktree))).toEqual(
+      new Set([WORKTREE])
+    )
   })
 
   it('answers ready with no agents when the host has no jobs directory', async () => {

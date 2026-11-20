@@ -19,7 +19,8 @@ const JUMP_EDIT_COLUMN = 12
 /** The seven fields the settings block carries; the normalizer resets every field it is not given. */
 const CODE_COMPLETION_SETTINGS = {
   enabled: true,
-  protocol: 'anthropic-messages',
+  // Why: without this the literal widens to `string`, which the settings type does not accept.
+  protocol: 'anthropic-messages' as const,
   model: 'e2e-model',
   triggerDelayMs: 0,
   autoImport: false,
@@ -70,6 +71,12 @@ async function startPlanEndpoint(planText: string): Promise<PlanEndpoint> {
     console.log(`[nes-mock] ${request.method} ${request.url}`)
     request.on('data', () => {})
     request.on('end', () => {
+      // Why: answering anything would hide a wrong endpoint — the backend appends /v1/messages.
+      if (request.method !== 'POST' || request.url !== '/v1/messages') {
+        response.writeHead(404, { 'content-type': 'text/plain' })
+        response.end(`unexpected ${request.method} ${request.url}`)
+        return
+      }
       response.writeHead(200, { 'content-type': 'text/event-stream' })
       response.write(
         `event: content_block_delta\ndata: ${JSON.stringify({
@@ -172,8 +179,11 @@ function editorValue(page: Page): Promise<string | undefined> {
 /** The cursor of the mounted editor, as `line:column`. */
 function editorCursor(page: Page): Promise<string | null> {
   return page.evaluate(() => {
+    // Why: ISelection carries the selection's own fields, not IRange's start/end names.
     const selection = window.__monacoEditorE2E?.snapshot().selection
-    return selection ? `${selection.startLineNumber}:${selection.startColumn}` : null
+    return selection
+      ? `${selection.selectionStartLineNumber}:${selection.selectionStartColumn}`
+      : null
   })
 }
 
@@ -187,7 +197,7 @@ test('shows the predicted edit at the cursor and Tab accepts it', async ({
   await waitForSessionReady(orcaPage)
   await waitForActiveWorktree(orcaPage)
 
-  // Why: one line and no trailing newline, so the cursor the test creates is line 1, column 11.
+  // Why: an empty file, so the ten typed characters put the cursor on line 1, column 11.
   const filePath = path.join(testRepoPath, `nes-accept-${randomUUID()}.ts`)
   await writeFile(filePath, '', 'utf8')
   registerPostElectronShutdownCleanup(() => rm(filePath, { force: true }))
@@ -216,8 +226,9 @@ test('shows the predicted edit at the cursor and Tab accepts it', async ({
     await orcaPage.keyboard.press('Tab')
     await expect.poll(() => editorValue(orcaPage)).toBe(`const x = ${MOCK_EDIT_TEXT}`)
   } finally {
-    await endpoint.close()
+    // Why: the key clears first, so a failing close cannot leave it behind.
     await orcaPage.evaluate(() => window.api.codeCompletion.clearApiKey()).catch(() => undefined)
+    await endpoint.close()
   }
 })
 
@@ -246,22 +257,28 @@ test('Tab jumps to the predicted location when the cursor is not on it', async (
     const editor = visibleEditor(orcaPage)
     const ghostText = editor.locator('.ghost-text-decoration')
     await editor.click()
-    // The cursor stands on the second line; the plan puts the edit on the first one.
+    // Why: End stops on the last line at the same column, and Up carries that column to the first
+    // line — which is the edit's own end column, the place Monaco draws the ghost. The test then
+    // returns to line 2, where the edit is a marker rather than an accept, and the last Tab jumps.
     await orcaPage.keyboard.press('ControlOrMeta+End')
     await orcaPage.keyboard.press('ArrowUp')
     // Why: the suggestion only draws where the cursor is, so its arrival is how the plan shows.
     await expect(ghostText).toBeVisible({ timeout: 30_000 })
     await expect(ghostText).toHaveText(MOCK_EDIT_TEXT)
 
-    await orcaPage.keyboard.press('ControlOrMeta+End')
-    await expect(ghostText).toBeHidden()
+    // Why: the ghost stays anchored to the edit's own line — what the jump needs is the cursor
+    // somewhere else, so that the edit is a marker rather than an accept.
+    await expect.poll(() => editorCursor(orcaPage)).toBe(`1:${JUMP_EDIT_COLUMN}`)
+    await orcaPage.keyboard.press('ArrowDown')
+    await expect.poll(() => editorCursor(orcaPage)).toBe(`2:${JUMP_EDIT_COLUMN}`)
 
     await orcaPage.keyboard.press('Tab')
     await expect.poll(() => editorCursor(orcaPage)).toBe(`1:${JUMP_EDIT_COLUMN}`)
     // Why: a jump moves the cursor; it does not write the edit into the buffer.
     await expect.poll(() => editorValue(orcaPage)).toBe('const a = 1\nconst b = 2')
   } finally {
-    await endpoint.close()
+    // Why: the key clears first, so a failing close cannot leave it behind.
     await orcaPage.evaluate(() => window.api.codeCompletion.clearApiKey()).catch(() => undefined)
+    await endpoint.close()
   }
 })

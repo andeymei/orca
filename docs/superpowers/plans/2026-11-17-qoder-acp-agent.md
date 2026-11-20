@@ -174,7 +174,10 @@ describe('Qoder China build rows', () => {
         ].join('\n'),
         'utf8'
       )
-      const session = await parseQoderSessionFile({ path: file, modifiedAt: 0 }, 'linux')
+      const session = await parseQoderSessionFile(
+        { path: file, mtimeMs: 0, modifiedAt: '2026-11-17T00:00:00.000Z' },
+        'linux'
+      )
       expect(session?.agent).toBe('qoder-cn')
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -183,7 +186,7 @@ describe('Qoder China build rows', () => {
 })
 ```
 
-If the `FileWithMtime` shape used by `parseQoderSessionFile` differs from `{ path, modifiedAt }`, copy the shape from the existing Qoder scanner test rather than inventing fields.
+**`FileWithMtime` needs `mtimeMs: number` and `modifiedAt: string`** (`src/main/ai-vault/session-scanner-types.ts:69`), so `{ path: file, modifiedAt: 0 }` does not typecheck — `modifiedAt` is a string there, not a number.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -468,7 +471,11 @@ The suite must:
 - send the ACP `initialize` request and assert the response carries a protocol version and an agent capability block
 - close the connection and assert the process exits
 
-Reuse the repo's ACP rig rather than hand-rolling a stdio client: `src/main/acp/turns/acp-structured-image-prompts.test.ts` opens a rig from an `AcpLaunchSpec`, and `src/main/acp/launch/acp-structured-launch-resolution.ts` exports `resolveAcpLaunchCommand`.
+Reuse the repo's ACP rig rather than hand-rolling a stdio client:
+`src/main/acp/session/testing/acp-structured-adapter.test-support.ts` exports
+`openAcpAdapterRig`, which `src/main/acp/turns/acp-structured-image-prompts.test.ts` opens from an
+`AcpLaunchSpec`. `resolveAcpLaunchCommand` lives in **`src/main/acp/launch/acp-launch-command.ts`**
+— not in `acp-structured-launch-resolution.ts`, which exists but does not export it.
 
 - [ ] **Step 2: Run the test to verify it skips cleanly**
 

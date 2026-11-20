@@ -28,6 +28,7 @@ import { OMP_SESSION_HISTORY } from '../../omp/omp-session-history'
 import { OMP_TRANSCRIPT_IMPORT } from '../../omp/omp-transcript-import'
 import { ANTIGRAVITY_LAUNCH_SPEC } from '../../antigravity/antigravity-acp-launch-spec'
 import { COPILOT_LAUNCH_SPEC } from '../../copilot/copilot-acp-launch-spec'
+import { QODER_ACP_LAUNCH_SPECS } from '../../qoder/qoder-acp-launch-spec'
 import type { AcpLaunchSpec } from './acp-launch-contract'
 
 const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
@@ -156,7 +157,8 @@ export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [
   OPENCODE2_LAUNCH_SPEC,
   OMP_LAUNCH_SPEC,
   ANTIGRAVITY_LAUNCH_SPEC,
-  COPILOT_LAUNCH_SPEC
+  COPILOT_LAUNCH_SPEC,
+  ...QODER_ACP_LAUNCH_SPECS
 ]
 
 export function acpLaunchSpecFor(agent: string): AcpLaunchSpec | null {

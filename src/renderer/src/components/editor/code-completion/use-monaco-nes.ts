@@ -13,7 +13,7 @@ import {
   type NesLocationMarker
 } from './nes-location-markers'
 import { nesPlanStore } from './nes-plan-store'
-import { collectNesRelatedFiles } from './nes-related-files'
+import { collectNesRelatedFilesWithinBudget } from './nes-related-files'
 import { requestNesPlan } from './nes-runtime-client'
 
 /** What the editor's shortcut installers call; the hook publishes them for its own editor. */
@@ -208,7 +208,7 @@ export function useMonacoNextEditSuggestions(params: {
         relativePath: relativePath ?? filePath
       })
       const relatedFiles = files
-        ? await collectNesRelatedFiles({
+        ? await collectNesRelatedFilesWithinBudget({
             filePath,
             fileText: model.getValue(),
             symbolAtCursor: identifierAtCursor(model, position),

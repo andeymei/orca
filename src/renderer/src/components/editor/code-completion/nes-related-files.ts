@@ -14,6 +14,11 @@ import { shouldIncludeQuickOpenPath } from '../../../../../shared/quick-open/qui
 
 export const NES_RELATED_FILE_MAX = 8
 export const NES_RELATED_FILE_TOKEN_BUDGET = 1000
+/**
+ * How long the related-file search may hold up a suggestion. A remote host answers a full-text
+ * search in seconds, and the suggestion the user is waiting for must not wait for it.
+ */
+export const NES_RELATED_FILES_BUDGET_MS = 1_000
 // Why: an import can appear, or a related file change, while the feature sits idle on one buffer.
 const NES_RELATED_FILES_CACHE_TTL_MS = 5_000
 
@@ -45,6 +50,9 @@ type NesRelatedFilesCacheEntry = {
 }
 
 const relatedFilesCache = new Map<string, Map<string, NesRelatedFilesCacheEntry>>()
+// Why: a budgeted search keeps running after the caller gave up, so the next tick must join it
+// instead of starting a second search the host would have to answer as well.
+const inFlightSearches = new Map<string, Promise<NesRelatedFile[]>>()
 
 /** The relative specifiers of a file, resolved against the file's own directory. */
 export function parseRelativeImports(fileText: string, filePath: string): string[] {
@@ -80,14 +88,48 @@ export async function collectNesRelatedFiles(
       return [...cached.files]
     }
   }
-  const files = await gatherRelatedFiles(input)
-  byHost.set(hostKey, {
-    symbolAtCursor: input.symbolAtCursor,
-    files: [...files],
-    collectedAt: Date.now()
+  const searchKey = `${input.filePath}\0${hostKey}\0${input.symbolAtCursor ?? ''}`
+  const running = inFlightSearches.get(searchKey)
+  if (running) {
+    return [...(await running)]
+  }
+  const search = gatherRelatedFiles(input)
+  inFlightSearches.set(searchKey, search)
+  try {
+    const files = await search
+    byHost.set(hostKey, {
+      symbolAtCursor: input.symbolAtCursor,
+      files: [...files],
+      collectedAt: Date.now()
+    })
+    relatedFilesCache.set(input.filePath, byHost)
+    return [...files]
+  } finally {
+    if (inFlightSearches.get(searchKey) === search) {
+      inFlightSearches.delete(searchKey)
+    }
+  }
+}
+
+/**
+ * The related files, or none when the search outlasts the budget. The search keeps running and
+ * fills the cache, so the next tick has them; the plan is asked for without them meanwhile.
+ */
+export async function collectNesRelatedFilesWithinBudget(
+  input: NesRelatedFilesInput,
+  budgetMs: number = NES_RELATED_FILES_BUDGET_MS
+): Promise<NesRelatedFile[]> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const budget = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), budgetMs)
   })
-  relatedFilesCache.set(input.filePath, byHost)
-  return files
+  try {
+    return (await Promise.race([collectNesRelatedFiles(input), budget])) ?? []
+  } finally {
+    if (timer !== null) {
+      clearTimeout(timer)
+    }
+  }
 }
 
 /** Two hosts can hold the same path, so a cached entry names the host it belongs to. */

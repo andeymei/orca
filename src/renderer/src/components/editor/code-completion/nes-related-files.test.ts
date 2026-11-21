@@ -5,7 +5,11 @@ import {
   installRuntimeFileClientEnvironment
 } from '@/runtime/files/runtime-file-client-test-harness'
 import type { RuntimeFileOperationArgs } from '@/runtime/files/runtime-file-client-types'
-import { collectNesRelatedFiles, parseRelativeImports } from './nes-related-files'
+import {
+  collectNesRelatedFiles,
+  collectNesRelatedFilesWithinBudget,
+  parseRelativeImports
+} from './nes-related-files'
 import { readRuntimeFileContent } from '@/runtime/files/reads/runtime-file-read-client'
 
 vi.mock('@/runtime/files/reads/runtime-file-read-client', async (importOriginal) => {
@@ -77,6 +81,55 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+})
+
+describe('collectNesRelatedFilesWithinBudget', () => {
+  it('gives up on the search when it outlasts the budget', async () => {
+    vi.useFakeTimers()
+    try {
+      fsSearch.mockImplementation(async () => {
+        // Why: a remote host that answers in seconds must not hold up the suggestion.
+        await new Promise<void>(() => {})
+        return { files: [], totalMatches: 0, truncated: false }
+      })
+
+      const pending = collectNesRelatedFilesWithinBudget(
+        {
+          filePath: '/repo/src/slow-host.ts',
+          fileText: '',
+          symbolAtCursor: 'helper',
+          files: filesContext()
+        },
+        1_000
+      )
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      await expect(pending).resolves.toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the related files a search that answers in time finds', async () => {
+    fsSearch.mockResolvedValue(
+      searchResult([
+        {
+          filePath: '/repo/src/helper.ts',
+          relativePath: 'src/helper.ts',
+          lineContent: 'export function helper() {}'
+        }
+      ])
+    )
+
+    const related = await collectNesRelatedFilesWithinBudget({
+      filePath: '/repo/src/fast-host.ts',
+      fileText: '',
+      symbolAtCursor: 'helper',
+      files: filesContext()
+    })
+
+    expect(related.map((file) => file.path)).toEqual(['/repo/src/helper.ts'])
+  })
 })
 
 describe('parseRelativeImports', () => {
@@ -393,5 +446,40 @@ describe('collectNesRelatedFiles', () => {
 
     const second = await collectNesRelatedFiles(input)
     expect(second.map((file) => file.path)).toEqual(['/repo/src/helper.ts'])
+  })
+
+  it('joins a search that is still running instead of starting a second one', async () => {
+    let releaseSearch: () => void = () => {}
+    fsSearch.mockImplementation(async () => {
+      await new Promise<void>((resolve) => {
+        releaseSearch = () => resolve()
+      })
+      return searchResult([
+        {
+          filePath: '/repo/src/helper.ts',
+          relativePath: 'src/helper.ts',
+          lineContent: 'export function helper() {}'
+        }
+      ])
+    })
+    const input = {
+      filePath: '/repo/src/joined.ts',
+      fileText: '',
+      symbolAtCursor: 'helper',
+      files: filesContext()
+    }
+
+    const first = collectNesRelatedFiles(input)
+    const second = collectNesRelatedFiles(input)
+    await vi.waitFor(() => {
+      expect(fsSearch).toHaveBeenCalledTimes(1)
+    })
+    releaseSearch()
+
+    // Why: the host answers one search, so a second one would double the wait the user is already in.
+    const [firstFiles, secondFiles] = await Promise.all([first, second])
+    expect(fsSearch).toHaveBeenCalledTimes(1)
+    expect(firstFiles.map((file) => file.path)).toEqual(['/repo/src/helper.ts'])
+    expect(secondFiles.map((file) => file.path)).toEqual(['/repo/src/helper.ts'])
   })
 })

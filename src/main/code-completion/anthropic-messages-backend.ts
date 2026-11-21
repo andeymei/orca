@@ -89,6 +89,11 @@ function anthropicStreamUsage(events: readonly unknown[]): CompletionUsage {
     } else if (parsed.data.type === 'message_delta') {
       usage.outputTokens =
         completionTokenCount(parsed.data.usage?.output_tokens) ?? usage.outputTokens
+      // Why: a gateway can report the input counts in the closing frame instead of the opening
+      // one, and the usage the user reads must be the usage the endpoint reported.
+      usage.inputTokens = completionTokenCount(parsed.data.usage?.input_tokens) ?? usage.inputTokens
+      usage.cacheReadTokens =
+        completionTokenCount(parsed.data.usage?.cache_read_input_tokens) ?? usage.cacheReadTokens
     }
   }
   return usage

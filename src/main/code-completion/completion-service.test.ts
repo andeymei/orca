@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { NesEditPlan, NesRequest } from '../../shared/code-completion/code-completion-types'
 import { emptyCompletionUsage, type NesBackend, type NesBackendResult } from './completion-backend'
 import { completionCache, createCompletionCache } from './completion-cache'
-import { createCompletionService } from './completion-service'
+import { createCompletionService, NES_COMPLETION_REQUEST_TIMEOUT_MS } from './completion-service'
 
 const FILE_PATH = '/repo/src/foo.ts'
 const IDENTITY = 'anthropic-messages|https://endpoint.invalid|test-model|no-auto-import'
@@ -269,7 +269,7 @@ describe('completion service', () => {
       })
 
       const pending = service.plan(request(), new AbortController().signal)
-      await vi.advanceTimersByTimeAsync(8_000)
+      await vi.advanceTimersByTimeAsync(NES_COMPLETION_REQUEST_TIMEOUT_MS)
       const result = await pending
 
       expect(result.plan).toBeNull()

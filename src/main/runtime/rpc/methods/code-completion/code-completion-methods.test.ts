@@ -162,6 +162,75 @@ describe('codeCompletion.plan', () => {
     )
   })
 
+  it('asks the endpoint for enough tokens to answer after the model has thought', async () => {
+    const fetchMock = stubCompletionFetch()
+    const runtime = createRuntime({
+      enabled: true,
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    await dispatchPlan(runtime, PLAN_PARAMS)
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    // Why: a reasoning model spends the first part of its budget thinking, and a cap that ends
+    // before the answer leaves the user with nothing at all.
+    expect(body.max_tokens).toBe(8000)
+  })
+
+  it('stops the request in flight when a newer request for the same file arrives', async () => {
+    const event = JSON.stringify({
+      type: 'content_block_delta',
+      delta: { type: 'text_delta', text: JSON.stringify(MODEL_PLAN) }
+    })
+    let calls = 0
+    const aborted: string[] = []
+    let firstReachedEndpoint!: () => void
+    const endpointReached = new Promise<void>((resolve) => {
+      firstReachedEndpoint = resolve
+    })
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1
+      if (calls === 1) {
+        firstReachedEndpoint()
+        // Why: the first answer never comes, so only the abort can end the request.
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            aborted.push('first')
+            reject(new Error('The completion request was aborted.'))
+          })
+        })
+      }
+      return Promise.resolve(
+        new Response(`data: ${event}\n\n`, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' }
+        })
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const runtime = createRuntime({
+      enabled: true,
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    const first = dispatchPlan(runtime, PLAN_PARAMS)
+    await endpointReached
+    const second = dispatchPlan(runtime, PLAN_PARAMS)
+
+    await expect(second).resolves.toMatchObject({
+      ok: true,
+      result: { plan: { edits: [{ id: 'e1' }] } }
+    })
+    // Why: the assertion comes before the first request settles, so a missing abort fails here
+    // instead of hanging until the request timeout.
+    expect(aborted).toEqual(['first'])
+    await expect(first).resolves.toMatchObject({ ok: true, result: { plan: null } })
+  })
+
   it('records what the completion spent', async () => {
     stubCompletionFetchWithUsage(JSON.stringify(MODEL_PLAN))
     const runtime = createRuntime({

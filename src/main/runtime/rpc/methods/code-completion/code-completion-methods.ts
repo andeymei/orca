@@ -12,15 +12,30 @@ import { readCodeCompletionApiKey } from '../../../../code-completion/code-compl
 import type { NesBackend, NesBackendConfig } from '../../../../code-completion/completion-backend'
 import { recordCompletionUsage } from '../../../../code-completion/completion-usage'
 
-/** How many tokens a completion answer may take. */
-const NES_COMPLETION_MAX_TOKENS = 2000
+/**
+ * How many tokens a completion answer may take. A reasoning model spends the first part of its
+ * budget thinking, so a small cap leaves it no room to answer at all.
+ */
+const NES_COMPLETION_MAX_TOKENS = 8000
+
+/**
+ * The plan request each client has in flight for each file it is editing. A newer request for the
+ * same file supersedes the older one: the user has typed since, so the older answer is about text
+ * that is gone, and the endpoint should stop working on it. Two panes of one file share the key,
+ * so the pane that asked last is the one that gets an answer.
+ */
+const inFlightPlanRequests = new Map<string, AbortController>()
+
+function planRequestKey(clientId: string | undefined, filePath: string): string {
+  return `${clientId ?? 'unknown-client'}:${filePath}`
+}
 
 export const CODE_COMPLETION_METHODS = [
   defineMethod({
     name: 'codeCompletion.plan',
     permission: 'workspace',
     params: CodeCompletionPlan,
-    handler: async (params, { runtime, signal }): Promise<CodeCompletionPlanResult> => {
+    handler: async (params, { runtime, signal, clientId }): Promise<CodeCompletionPlanResult> => {
       // Why: the store holds the desktop's own settings; the client projection omits this block.
       const settings = runtime.requireStore().getSettings().codeCompletion
       if (!settings?.enabled) {
@@ -47,27 +62,45 @@ export const CODE_COMPLETION_METHODS = [
             autoImport: settings.autoImport
           })
       })
-      const result = await service.plan(
-        {
-          filePath: params.filePath,
-          relativePath: params.relativePath,
-          languageId: params.languageId,
-          prefix: params.prefix,
-          suffix: params.suffix,
-          prefixStartLine: params.prefixStartLine,
-          cursorLine: params.cursorLine,
-          cursorColumn: params.cursorColumn,
-          relatedFiles: params.relatedFiles,
-          recentEdits: params.recentEdits
-        },
-        signal ?? new AbortController().signal
-      )
-      const { usage } = result
-      // Why: a null plan can still have spent tokens — the model answered, the answer was unusable.
-      if (usage.inputTokens > 0 || usage.outputTokens > 0 || usage.cacheReadTokens > 0) {
-        recordCompletionUsage({ model: settings.model, usage, at: Date.now() })
+      const requestKey = planRequestKey(clientId, params.filePath)
+      inFlightPlanRequests.get(requestKey)?.abort()
+      const controller = new AbortController()
+      inFlightPlanRequests.set(requestKey, controller)
+      const abortFromCaller = (): void => controller.abort(signal?.reason)
+      if (signal?.aborted) {
+        controller.abort(signal.reason)
+      } else {
+        signal?.addEventListener('abort', abortFromCaller, { once: true })
       }
-      return { plan: result.plan }
+      try {
+        const result = await service.plan(
+          {
+            filePath: params.filePath,
+            relativePath: params.relativePath,
+            languageId: params.languageId,
+            prefix: params.prefix,
+            suffix: params.suffix,
+            prefixStartLine: params.prefixStartLine,
+            cursorLine: params.cursorLine,
+            cursorColumn: params.cursorColumn,
+            relatedFiles: params.relatedFiles,
+            recentEdits: params.recentEdits
+          },
+          controller.signal
+        )
+        const { usage } = result
+        // Why: a null plan can still have spent tokens — the model answered, the answer was unusable.
+        if (usage.inputTokens > 0 || usage.outputTokens > 0 || usage.cacheReadTokens > 0) {
+          recordCompletionUsage({ model: settings.model, usage, at: Date.now() })
+        }
+        return { plan: result.plan }
+      } finally {
+        signal?.removeEventListener('abort', abortFromCaller)
+        // Why: a superseded request must not retire the request that replaced it.
+        if (inFlightPlanRequests.get(requestKey) === controller) {
+          inFlightPlanRequests.delete(requestKey)
+        }
+      }
     }
   })
 ]

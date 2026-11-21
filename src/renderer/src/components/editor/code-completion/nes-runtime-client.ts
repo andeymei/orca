@@ -5,7 +5,11 @@ import {
   type NesRequest
 } from '../../../../../shared/code-completion/code-completion-types'
 
-const NES_REQUEST_TIMEOUT_MS = 12_000
+/**
+ * How long the renderer waits for the runtime. It outlasts the runtime's own window, so the
+ * runtime's answer arrives rather than this side's deadline.
+ */
+const NES_REQUEST_TIMEOUT_MS = 35_000
 
 export async function requestNesPlan(
   input: NesRequest,

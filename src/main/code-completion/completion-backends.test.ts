@@ -158,6 +158,24 @@ describe('completion backends', () => {
     expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 42, cacheReadTokens: 0 })
   })
 
+  it('reads the input counts a gateway reports in the closing frame', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([
+        JSON.stringify({ type: 'message_start', message: { id: 'm1' } }),
+        anthropicTextEvent(JSON.stringify(MODEL_PLAN)),
+        JSON.stringify({
+          type: 'message_delta',
+          usage: { input_tokens: 1241, output_tokens: 7, cache_read_input_tokens: 2056 }
+        })
+      ])
+    )
+    const backend = createAnthropicMessagesBackend(CONFIG, { fetchImpl })
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.usage).toEqual({ inputTokens: 1241, outputTokens: 7, cacheReadTokens: 2056 })
+  })
+
   it('asks for the auto-import when the setting is on', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       sseResponse([anthropicTextEvent(JSON.stringify(MODEL_PLAN))])

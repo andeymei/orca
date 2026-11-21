@@ -3,8 +3,12 @@ import { PrioritySemaphore } from '../../shared/priority-semaphore'
 import { emptyCompletionUsage, type NesBackend, type NesBackendResult } from './completion-backend'
 import { completionCache, completionCacheKey, type CompletionCache } from './completion-cache'
 
-/** A request that has not answered in eight seconds is abandoned, the queue wait included. */
-export const NES_COMPLETION_REQUEST_TIMEOUT_MS = 8_000
+/**
+ * A request that has not answered in thirty seconds is abandoned, the queue wait included.
+ * A reasoning model spends the first seconds of its budget thinking, so a shorter window
+ * discards an answer that was about to arrive.
+ */
+export const NES_COMPLETION_REQUEST_TIMEOUT_MS = 30_000
 /** The endpoint takes four requests at a time; a fifth one waits in the queue. */
 export const NES_COMPLETION_MAX_CONCURRENT_REQUESTS = 4
 

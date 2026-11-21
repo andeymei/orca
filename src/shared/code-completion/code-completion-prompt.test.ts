@@ -42,6 +42,7 @@ describe('buildNesUserPrompt', () => {
       [
         'Current file: src/foo.ts',
         'Language: typescript',
+        'Cursor: line 2, column 1 of the file below, counting its first line as line 1.',
         '',
         '###PATH: /repo/src/foo.ts',
         'const a = 1',
@@ -55,6 +56,15 @@ describe('buildNesUserPrompt', () => {
         '- src/bar.ts: rename the helper'
       ].join('\n')
     )
+  })
+
+  it('names the cursor position the way the model counts the file it is shown', () => {
+    const prompt = buildNesUserPrompt(
+      buildPromptInput({ prefixStartLine: 40, cursorLine: 41, cursorColumn: 17 })
+    )
+
+    // Why: the model counts from the first line it is shown, so the absolute line would be wrong.
+    expect(prompt).toContain('Cursor: line 2, column 17 of the file below')
   })
 
   it('includes the related files after the current one', () => {
@@ -130,10 +140,12 @@ describe('buildNesSystemPrompt', () => {
     expect(prompt).toContain('the line right after its `###PATH:` header, is line 1 of that file')
   })
 
-  it('states that the cursor marker occupies columns of the content', () => {
+  it('states that the cursor marker occupies the columns after the cursor', () => {
     const prompt = buildNesSystemPrompt()
 
-    expect(prompt).toContain(`occupies ${NES_CURSOR_MARKER.length} columns of the content`)
+    expect(prompt).toContain(
+      `starts at the cursor and occupies the ${NES_CURSOR_MARKER.length} columns after it`
+    )
   })
 
   it('offers only the kinds the editor can show, and states the two rules they obey', () => {

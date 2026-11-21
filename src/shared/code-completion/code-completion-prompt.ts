@@ -25,7 +25,7 @@ export function buildNesSystemPrompt(options?: { autoImport?: boolean }): string
     "An edit's range must be on one line.",
     `Count each file's lines separately — the first line of a file's content, the line right after its \`${NES_PATH_MARKER}\` header, is line 1 of that file.`,
     `The cursor is marked with \`${NES_CURSOR_MARKER}\` in the file content.`,
-    `The cursor marker \`${NES_CURSOR_MARKER}\` occupies ${NES_CURSOR_MARKER.length} columns of the content, so count those columns when you answer; the cursor is at the marker.`,
+    `The cursor marker \`${NES_CURSOR_MARKER}\` starts at the cursor and occupies the ${NES_CURSOR_MARKER.length} columns after it, so a column past the marker is ${NES_CURSOR_MARKER.length} larger than the file's column.`,
     'The edit at the cursor must end at the cursor position, so the suggestion applies where the user is typing.',
     'originalText must be the exact text the range currently covers.',
     'An edit may only add to the text its range covers: an insert, or a replace whose text begins with the originalText it replaces.',
@@ -39,9 +39,14 @@ export function buildNesSystemPrompt(options?: { autoImport?: boolean }): string
 }
 
 export function buildNesUserPrompt(input: NesPromptInput): string {
+  // Why: the model counts the content it is shown from its first line, so the cursor's line is
+  // counted from there. Naming the position saves it from counting lines and columns itself,
+  // and an edit it cannot place is an edit the editor cannot draw.
+  const cursorLineInContent = input.cursorLine - input.prefixStartLine + 1
   const sections = [
     `Current file: ${input.relativePath}`,
     `Language: ${input.languageId}`,
+    `Cursor: line ${cursorLineInContent}, column ${input.cursorColumn} of the file below, counting its first line as line 1.`,
     '',
     `${NES_PATH_HEADER_PREFIX}${input.filePath}`,
     `${input.prefix}${NES_CURSOR_MARKER}${input.suffix}`

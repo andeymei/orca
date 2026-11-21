@@ -42,7 +42,13 @@ export const CODE_COMPLETION_METHODS = [
       // Why: a request that shows nothing leaves the user without an answer, so the outcome of
       // every request lands in the trace: the model, the time it took and what came back.
       const span = startSpan('codeCompletion.plan', {
-        attributes: { model: settings?.model ?? '', protocol: settings?.protocol ?? '' }
+        attributes: {
+          model: settings?.model ?? '',
+          protocol: settings?.protocol ?? '',
+          // Why: the file names the request, and a trace that cannot name it cannot say which
+          // buffer the user was waiting for.
+          file: params.relativePath
+        }
       })
       if (!settings?.enabled) {
         span.setAttribute('outcome', 'disabled')

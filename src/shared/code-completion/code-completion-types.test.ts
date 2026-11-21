@@ -54,6 +54,60 @@ describe('validateNesEditPlan', () => {
     ])
   })
 
+  it('keeps an edit a model numbered and called an import', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          {
+            id: 1,
+            path: 'src/foo.ts',
+            kind: 'import',
+            range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+            originalText: '',
+            text: 'const answer = 42\n',
+            label: 'add the answer'
+          }
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    // Why: a model that numbers its edits means the same thing as one that names them, and the
+    // text the range covers says whether the edit inserts or replaces.
+    expect(plan.edits).toEqual([
+      {
+        id: '1',
+        path: 'src/foo.ts',
+        kind: 'insert',
+        range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+        originalText: '',
+        text: 'const answer = 42\n',
+        label: 'add the answer'
+      }
+    ])
+  })
+
+  it('reads an unknown kind as a replace when the range covers text', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          {
+            id: 'e1',
+            path: 'src/foo.ts',
+            kind: 'change',
+            range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+            originalText: 'const answer = 42\n',
+            text: 'const answer = 42\n and the question',
+            label: 'extend the answer'
+          }
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    expect(plan.edits[0]?.kind).toBe('replace')
+  })
+
   it('drops an edit whose path is not in the context', () => {
     const plan = validateNesEditPlan(
       { edits: [buildEdit({ path: 'src/other.ts' })] },

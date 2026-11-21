@@ -37,6 +37,40 @@ function capNesEditCount(raw: unknown): unknown {
   return { edits: unvalidated.data.edits.slice(0, NES_MAX_EDITS) }
 }
 
+/**
+ * The shape a model answers with, brought back to what the editor can draw.
+ *
+ * A model that numbers its edits, or calls an insert an "import", means the same thing as one
+ * that names them and calls it an insert; the intent is unambiguous, so the answer is read
+ * instead of dropped. Only the text the range covers says which kind an edit is.
+ */
+function normalizeNesEdit(raw: unknown): unknown {
+  if (!z.util.isPlainObject(raw)) {
+    return raw
+  }
+  const edit: Record<string, unknown> = { ...raw }
+  if (typeof edit.id === 'number') {
+    edit.id = String(edit.id)
+  }
+  if (typeof edit.kind === 'string' && !NES_EDIT_KINDS.includes(edit.kind)) {
+    edit.kind = edit.originalText === '' ? 'insert' : 'replace'
+  }
+  return edit
+}
+
+const NES_EDIT_KINDS: readonly string[] = NesEditKind.options
+
+function normalizeNesEditPlan(raw: unknown): unknown {
+  if (!z.util.isPlainObject(raw)) {
+    return raw
+  }
+  const edits = raw.edits
+  if (!Array.isArray(edits)) {
+    return raw
+  }
+  return { ...raw, edits: edits.map(normalizeNesEdit) }
+}
+
 // Why: one broken edit drops itself, so the edits the model got right still reach the user.
 export const NesEditPlan = z.object({
   edits: salvagingArray(NesEdit).check(z.maxLength(NES_MAX_EDITS))
@@ -78,7 +112,7 @@ export function validateNesEditPlan(
   raw: unknown,
   options: { allowedPaths: readonly string[] }
 ): NesEditPlan {
-  const parsed = NesEditPlan.safeParse(capNesEditCount(raw))
+  const parsed = NesEditPlan.safeParse(normalizeNesEditPlan(capNesEditCount(raw)))
   if (!parsed.success) {
     return { edits: [] }
   }

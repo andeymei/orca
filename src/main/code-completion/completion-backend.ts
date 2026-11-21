@@ -244,7 +244,15 @@ function nesPositionInContent(content: string, offset: number): { line: number; 
 
 /** The edit that adds an import; its label carries the marker the prompt asked for. */
 function isNesImportEdit(edit: NesEdit): boolean {
-  return edit.kind === 'insert' && edit.label.startsWith(NES_IMPORT_LABEL_PREFIX)
+  if (edit.kind !== 'insert') {
+    return false
+  }
+  // Why: the label says the edit is an import only when the model followed the convention; the
+  // text it wrote says so in every case, and an import belongs at the top of the file either way.
+  return (
+    edit.label.startsWith(NES_IMPORT_LABEL_PREFIX) ||
+    /^\s*import\s+(static\s+)?[\w.]/.test(edit.text)
+  )
 }
 
 /** The plan a model answer carries, in the file's own line numbers. */

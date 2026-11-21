@@ -61,7 +61,7 @@ export function AgentTerminalPreview({
   linkSource?: DashboardPreviewLinkSource
   onBrowserForeground?: () => void
   /** Claims a key before xterm encodes it; returning true stops xterm from handling it. */
-  claimKeyEvent?: (event: KeyboardEvent) => boolean
+  claimKeyEvent?: (event: KeyboardEvent, terminal: Terminal) => boolean
 }): React.JSX.Element {
   const t = useTranslate()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -237,7 +237,8 @@ export function AgentTerminalPreview({
           requestClose: () => onRequestCloseRef.current?.(),
           ...(claimKeyEventRef.current
             ? {
-                claimKeyEvent: (event: KeyboardEvent) => claimKeyEventRef.current?.(event) ?? false
+                claimKeyEvent: (event: KeyboardEvent, terminal: Terminal) =>
+                  claimKeyEventRef.current?.(event, terminal) ?? false
               }
             : {})
         })

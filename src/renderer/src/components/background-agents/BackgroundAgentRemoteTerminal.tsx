@@ -93,7 +93,9 @@ export function BackgroundAgentRemoteTerminal({
           ptyId={ptyId}
           className="h-full"
           // Why: the agent's own TUI reads the left arrow as "back", so Orca claims it.
-          claimKeyEvent={(event) => claimAgentTerminalBackKey(event, () => onBackRef.current())}
+          claimKeyEvent={(event, terminal) =>
+            claimAgentTerminalBackKey(event, () => onBackRef.current(), terminal)
+          }
         />
       ) : null}
     </div>

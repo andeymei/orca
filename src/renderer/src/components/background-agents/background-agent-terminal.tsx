@@ -183,7 +183,8 @@ export function BackgroundAgentTerminal({
         getSettings: () => settingsRef.current,
         getMacOptionAsAlt: () => macOptionAsAltRef.current,
         getTerminalInput: () => null,
-        claimKeyEvent: (event) => claimAgentTerminalBackKey(event, () => onBackRef.current())
+        claimKeyEvent: (event, terminal) =>
+          claimAgentTerminalBackKey(event, () => onBackRef.current(), terminal)
       })
       if (!standalone) {
         // Why: the screen has nothing to show without a terminal, so the list is the honest place to be.

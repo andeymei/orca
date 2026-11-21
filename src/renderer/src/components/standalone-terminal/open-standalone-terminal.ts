@@ -40,8 +40,11 @@ export type StandaloneTerminalArgs = {
    * The hook sees every event type the custom handler sees — keydown, keyup and keypress. A caller
    * must claim a whole chord consistently: claiming the press but not the release lets the release
    * reach xterm's Kitty encoder, and the release bytes go out to the terminal.
+   *
+   * The terminal comes with the event so a claim can read what is on screen — whether the user has
+   * typed into a prompt, for instance.
    */
-  claimKeyEvent?: (event: KeyboardEvent) => boolean
+  claimKeyEvent?: (event: KeyboardEvent, terminal: Terminal) => boolean
 }
 
 export type StandaloneTerminal = {
@@ -101,7 +104,10 @@ export function openStandaloneTerminal(args: StandaloneTerminalArgs): Standalone
   const disposeKeyHandler = installPreviewTerminalKeyHandler({
     terminal,
     claimImeKeyEvent: (event) => imeBridge?.claimKeyEvent(event) ?? false,
-    claimKeyEvent: args.claimKeyEvent,
+    // Why the wrapper: the key handler only knows the event, but a claim may need the screen.
+    claimKeyEvent: args.claimKeyEvent
+      ? (event) => args.claimKeyEvent?.(event, terminal) ?? false
+      : undefined,
     pasteClipboardText: (activeElement, source) => void pasteClipboardText(activeElement, source),
     // Why: route through terminal.input so the chord's bytes carry core's user-input signal, like typed keys.
     sendInput: (data) => terminal.input(data),

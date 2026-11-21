@@ -24216,6 +24216,7 @@
     "send": "Enviar",
     "placeholder": "Escribe al agente",
     "open": "Enviar un mensaje al agente",
+    "collapse": "Contraer el compositor",
     "enterHint": "Enter para una nueva línea",
     "sendHint": "para enviar",
     "uploadFailed": "No se pudo adjuntar el archivo",

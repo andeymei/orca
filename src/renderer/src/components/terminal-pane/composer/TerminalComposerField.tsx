@@ -1,7 +1,7 @@
 import { useCallback, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { JSONContent } from '@tiptap/react'
-import { CornerDownLeft, Paperclip } from 'lucide-react'
+import { ChevronDown, CornerDownLeft, Paperclip } from 'lucide-react'
 import { toast } from 'sonner'
 import { PromptEditor, type PromptEditorInput } from '@/components/prompt-editor/PromptEditor'
 import {
@@ -321,6 +321,24 @@ export function TerminalComposerField({
             {t('terminalComposer.sendHint', 'to send')}
           </span>
         </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t('terminalComposer.collapse', 'Collapse the composer')}
+                onClick={onDismiss}
+              >
+                <ChevronDown />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}>
+              {t('terminalComposer.collapse', 'Collapse the composer')}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   )

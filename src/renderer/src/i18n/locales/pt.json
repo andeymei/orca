@@ -24849,6 +24849,7 @@
     "send": "Enviar",
     "placeholder": "Escreva para o agente",
     "open": "Enviar uma mensagem ao agente",
+    "collapse": "Recolher o compositor",
     "enterHint": "Enter para uma nova linha",
     "sendHint": "para enviar",
     "uploadFailed": "Não foi possível anexar o arquivo",

@@ -23744,6 +23744,7 @@
     "send": "Gönder",
     "placeholder": "Ajanına yaz",
     "open": "Ajanına mesaj gönder",
+    "collapse": "Oluşturucuyu daralt",
     "enterHint": "Enter yeni satır açar",
     "sendHint": "ile gönder",
     "uploadFailed": "Dosya eklenemedi",

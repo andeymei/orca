@@ -24233,6 +24233,7 @@
     "send": "Envoyer",
     "placeholder": "Écrire à l’agent",
     "open": "Envoyer un message à l’agent",
+    "collapse": "Réduire le composeur",
     "enterHint": "Entrée pour une nouvelle ligne",
     "sendHint": "pour envoyer",
     "uploadFailed": "Impossible de joindre le fichier",

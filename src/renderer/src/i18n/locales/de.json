@@ -23777,6 +23777,7 @@
     "send": "Senden",
     "placeholder": "Den Agenten anschreiben",
     "open": "Eine Nachricht an den Agenten senden",
+    "collapse": "Composer einklappen",
     "enterHint": "Enter für eine neue Zeile",
     "sendHint": "zum Senden",
     "uploadFailed": "Die Datei konnte nicht angehängt werden",

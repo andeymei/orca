@@ -332,4 +332,15 @@ describe('a drop into the composer card', () => {
     expect(consoleError).toHaveBeenCalled()
     consoleError.mockRestore()
   })
+
+  it('puts the composer away when the collapse button is pressed', async () => {
+    const view = createOverlay()
+    const collapse = view.getByRole('button', { name: 'Collapse the composer' })
+    await act(async () => {
+      fireEvent.click(collapse)
+    })
+    // The composer is put away without sending, and the button that opens it is back.
+    expect(useAppStore.getState().terminalComposerOpenByPaneKey[PANE_KEY]).not.toBe(true)
+    expect(view.getByRole('button', { name: 'Send a message to the agent' })).toBeTruthy()
+  })
 })

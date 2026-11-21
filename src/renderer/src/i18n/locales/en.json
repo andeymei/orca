@@ -25430,6 +25430,7 @@
     "send": "Send",
     "placeholder": "Message the agent",
     "open": "Send a message to the agent",
+    "collapse": "Collapse the composer",
     "enterHint": "Enter for a new line",
     "sendHint": "to send",
     "uploadFailed": "Could not attach the file",

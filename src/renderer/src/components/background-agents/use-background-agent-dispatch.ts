@@ -5,6 +5,7 @@ import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-reco
 import { findFirstIndexedWorktree } from '@/lib/workspace/ownership/worktree-runtime-owner-index'
 import type { BackgroundAgentsDispatch } from '@/store/slices/background-agents/create-background-agents-slice'
 import { CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE } from '../../../../shared/claude-background-agents'
+import { dispatchBackgroundAgentOnHost } from './background-agent-host-command'
 import { refreshBackgroundAgentRoster } from './use-background-agent-roster-refresh'
 
 /** How long the "started" row stays before it disappears on its own. */
@@ -31,6 +32,10 @@ function isDispatchOnItsWay(dispatch: BackgroundAgentsDispatch | null): boolean 
  */
 async function dispatchBackgroundAgent(args: {
   prompt: string
+  /** The workspace's directory, in the host's own path style. */
+  cwd: string | null
+  executionHostId: string | null
+  signal: AbortSignal
   /** Whether the user asked for this dispatch to be aborted. */
   cancelled: () => boolean
   publish: (dispatch: BackgroundAgentsDispatch | null) => void
@@ -38,13 +43,12 @@ async function dispatchBackgroundAgent(args: {
   settled: () => void
 }): Promise<boolean> {
   try {
-    const state = useAppStore.getState()
-    const cwd = state.activeWorktreeId
-      ? findFirstIndexedWorktree(selectWorktreesByRepo(state), state.activeWorktreeId)?.path
-      : undefined
-    const result = await window.api.claudeAgents.dispatch(
-      cwd ? { prompt: args.prompt, cwd } : { prompt: args.prompt }
-    )
+    const result = await dispatchBackgroundAgentOnHost({
+      executionHostId: args.executionHostId,
+      prompt: args.prompt,
+      cwd: args.cwd,
+      signal: args.signal
+    })
     if (result.ok) {
       if (args.cancelled()) {
         // The CLI won the race against the cancel, so the agent exists; saying otherwise would lie.
@@ -95,6 +99,7 @@ export function useBackgroundAgentDispatch(): BackgroundAgentDispatchControls {
     (state) => state.publishBackgroundAgentsDispatch
   )
   const inFlightRef = useRef(false)
+  const controllerRef = useRef<AbortController | null>(null)
 
   /** Starts a background agent; it answers whether the agent came up. */
   const dispatchPrompt = async (prompt: string): Promise<boolean> => {
@@ -106,14 +111,25 @@ export function useBackgroundAgentDispatch(): BackgroundAgentDispatchControls {
       return false
     }
     inFlightRef.current = true
+    const controller = new AbortController()
+    controllerRef.current = controller
     publishBackgroundAgentsDispatch({ state: 'opening', agentId: null, message: null })
+    const state = useAppStore.getState()
+    const cwd = state.activeWorktreeId
+      ? (findFirstIndexedWorktree(selectWorktreesByRepo(state), state.activeWorktreeId)?.path ??
+        null)
+      : null
     return dispatchBackgroundAgent({
       prompt,
+      cwd,
+      executionHostId: state.activeWorkspaceExecutionHostId,
+      signal: controller.signal,
       // Why: the cancel flag lives in the store, so a remount still knows the outcome.
       cancelled: () => useAppStore.getState().backgroundAgentsDispatch?.state === 'cancelling',
       publish: publishBackgroundAgentsDispatch,
       settled: () => {
         inFlightRef.current = false
+        controllerRef.current = null
       }
     })
   }
@@ -124,6 +140,8 @@ export function useBackgroundAgentDispatch(): BackgroundAgentDispatchControls {
       return
     }
     publishBackgroundAgentsDispatch({ state: 'cancelling', agentId: null, message: null })
+    // Why: a paired host's command runs in the panel's own terminal, so the panel stops it.
+    controllerRef.current?.abort()
     // Why: the abort only delivers the signal; the row waits for the dispatch to settle.
     void window.api.claudeAgents.cancelDispatch()
   }

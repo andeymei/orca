@@ -13,9 +13,14 @@ import {
   type BackgroundAgentListRow
 } from './background-agent-list-rows'
 import { BackgroundAgentComposer } from './BackgroundAgentComposer'
+import { BackgroundAgentDispatchRow } from './BackgroundAgentDispatchRow'
 import { BackgroundAgentEmptyState } from './BackgroundAgentEmptyState'
 import { BackgroundAgentHostNotice } from './BackgroundAgentHostNotice'
 import { BackgroundAgentRowView } from './BackgroundAgentRow'
+import {
+  removeBackgroundAgentOnHost,
+  stopBackgroundAgentOnHost
+} from './background-agent-host-command'
 import { useBackgroundAgentScopeMatcher } from './use-background-agent-scope-matcher'
 import { useBackgroundAgentDispatch } from './use-background-agent-dispatch'
 import {
@@ -78,9 +83,8 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   const executionHostKind = parseExecutionHostId(activeWorkspaceExecutionHostId)?.kind ?? 'local'
   // Why: a paired host can show its agent's own terminal, so its rows open.
   const hostCanOpenAgents = executionHostKind !== 'ssh'
-  // Why read-only: starting, stopping or deleting an agent needs a one-shot remote command, and
-  // no such command exists yet.
-  const hostCanCommandAgents = executionHostKind === 'local'
+  // Why: a paired host runs the command in a terminal on that host, so it can be commanded too.
+  const hostCanCommandAgents = executionHostKind !== 'ssh'
   // Why: an SSH host cannot answer the listing at all, so this machine's roster is all there is.
   const hostNoticeKind = executionHostKind === 'local' ? null : executionHostKind
 
@@ -201,8 +205,16 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       setPendingCommand(null)
       const result =
         kind === 'stop'
-          ? await window.api.claudeAgents.stop({ id: row.id })
-          : await window.api.claudeAgents.remove({ id: row.id })
+          ? await stopBackgroundAgentOnHost({
+              executionHostId: activeWorkspaceExecutionHostId,
+              id: row.id,
+              cwd: row.cwd
+            })
+          : await removeBackgroundAgentOnHost({
+              executionHostId: activeWorkspaceExecutionHostId,
+              id: row.id,
+              cwd: row.cwd
+            })
       if (!result.ok) {
         toast.error(result.message)
         return
@@ -317,26 +329,6 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
     }
   }
 
-  const handleDispatchRowKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape' && dispatch?.state === 'opening') {
-      event.preventDefault()
-      event.stopPropagation()
-      cancelOpeningDispatch()
-    }
-  }
-
-  const dispatchLabel =
-    dispatch?.state === 'failed'
-      ? (dispatch.message ??
-        t('auto.components.backgroundAgents.dispatchFailed', 'The agent could not be started'))
-      : dispatch?.state === 'started'
-        ? t('auto.components.backgroundAgents.dispatchStarted', 'started · {{id}}', {
-            id: dispatch.agentId ?? ''
-          })
-        : dispatch?.state === 'cancelling'
-          ? t('auto.components.backgroundAgents.dispatchingCancelling', 'cancelling…')
-          : t('auto.components.backgroundAgents.dispatching', 'opening… · esc to cancel')
-
   const renderSection = (
     label: string,
     sectionRows: BackgroundAgentListRow[]
@@ -393,26 +385,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       <BackgroundAgentHostNotice hostKind={hostNoticeKind} />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-sleek px-1 pb-2">
         {dispatch ? (
-          <div
-            role="status"
-            data-testid="background-agent-dispatch-row"
-            tabIndex={-1}
-            onKeyDown={handleDispatchRowKeyDown}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs"
-          >
-            {dispatch.state === 'opening' ? (
-              <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
-            ) : null}
-            <span
-              className={
-                dispatch.state === 'failed'
-                  ? 'min-w-0 flex-1 truncate text-destructive'
-                  : 'min-w-0 flex-1 truncate text-muted-foreground'
-              }
-            >
-              {dispatchLabel}
-            </span>
-          </div>
+          <BackgroundAgentDispatchRow dispatch={dispatch} onCancel={cancelOpeningDispatch} />
         ) : null}
         {status === 'loading' ? (
           <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">

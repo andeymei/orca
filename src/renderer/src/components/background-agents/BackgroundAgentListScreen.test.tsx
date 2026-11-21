@@ -25,6 +25,14 @@ vi.mock('@/i18n/i18n', async (importOriginal) => ({
 }))
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }))
 
+const runtimeRpcMocks = vi.hoisted(() => ({
+  callRuntimeRpc: vi.fn()
+}))
+
+vi.mock('@/runtime/rpc/calls/runtime-rpc-call', () => ({
+  callRuntimeRpc: runtimeRpcMocks.callRuntimeRpc
+}))
+
 const ROSTER: ClaudeBackgroundAgent[] = [
   { id: 'aaaa1111', sessionId: 's1', name: 'alpha', cwd: '/w', state: 'working' },
   { id: 'bbbb2222', sessionId: 's2', name: 'beta', cwd: '/w', state: 'working' },
@@ -67,6 +75,21 @@ function installApi(overrides: Partial<ClaudeAgentsApi> = {}): void {
       ...overrides
     }
   })
+}
+
+/** Answers the paired host's calls the way a host that ran the command would. */
+function installPairedHost(): void {
+  runtimeRpcMocks.callRuntimeRpc.mockImplementation(
+    async (_target: unknown, method: string): Promise<unknown> => {
+      if (method === 'terminal.create') {
+        return { terminal: { handle: 'handle-1' } }
+      }
+      if (method === 'terminal.read') {
+        return { terminal: { tail: ['backgrounded · cccc3333', 'ORCA_CLAUDE_RESULT_0'] } }
+      }
+      return undefined
+    }
+  )
 }
 
 async function renderScreen(): Promise<ReturnType<typeof render>> {
@@ -123,6 +146,7 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
+  runtimeRpcMocks.callRuntimeRpc.mockReset()
 })
 
 it('moves the selection with the arrow keys', async () => {
@@ -424,12 +448,12 @@ it('lists a paired runtime host’s agents and opens them', async () => {
     executionHostId: 'runtime:frp-yolocalc'
   })
   expect(view.getByTestId('background-agents-remote-host-notice').textContent).toContain(
-    "Showing this project's agents on its host. Starting and stopping them there is not supported yet."
+    "Showing this project's agents on its host. Starting, stopping and deleting them run there too."
   )
   expect(view.getByTestId('background-agents-list')).toBeTruthy()
-  // The composer and the stop/delete hint are entries this version does not have for a remote host.
-  expect(view.queryByLabelText('New background agent')).toBeNull()
-  expect(view.queryByText('↑↓ select · enter enter · ctrl+x stop · / task')).toBeNull()
+  // Why: the host runs the panel's commands, so it gets the composer and the stop/delete keys.
+  expect(view.queryByLabelText('New background agent')).not.toBeNull()
+  expect(view.queryByText('↑↓ select · enter enter · ctrl+x stop · / task')).not.toBeNull()
 
   const rows = view.getAllByTestId('background-agent-row')
   expect(rows).toHaveLength(2)
@@ -456,7 +480,38 @@ it('lists a paired runtime host’s agents and opens them', async () => {
     useAppStore.setState({ backgroundAgentsScreen: { kind: 'list' } })
   })
   await press(view.getByTestId('background-agents-list'), 'x', { ctrlKey: true })
-  expect(view.queryByText(/ctrl\+x again/)).toBeNull()
+  expect(view.queryByText(/ctrl\+x again/)).not.toBeNull()
+})
+
+it('starts an agent on the paired host that owns the workspace', async () => {
+  const list = vi.fn(async (): Promise<ClaudeBackgroundAgentListResult> => ({
+    status: 'ready',
+    agents: ROSTER,
+    details: DETAILS,
+    message: null
+  }))
+  installApi({ list })
+  installPairedHost()
+  useAppStore.setState({
+    activeWorkspaceExecutionHostId: 'runtime:frp-yolocalc',
+    worktreesByRepo: {
+      repo1: [makeWorktree({ id: WORKSPACE_ID, repoId: 'repo1', path: '/w' })]
+    }
+  })
+  const view = await renderScreen()
+
+  await type(view, 'do it')
+  await press(view.getByLabelText('New background agent'), 'Enter')
+
+  const [target, method, params] = runtimeRpcMocks.callRuntimeRpc.mock.calls[0]
+  expect(target).toEqual({ kind: 'environment', environmentId: 'frp-yolocalc' })
+  expect(method).toBe('terminal.create')
+  expect(params).toMatchObject({
+    command: "claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_$?",
+    cwd: '/w'
+  })
+  // Why: the command ran on that host, so this machine's own dispatch was never asked.
+  expect(window.api.claudeAgents.dispatch).not.toHaveBeenCalled()
 })
 
 it('reads the new host’s roster as soon as the workspace switches to it', async () => {

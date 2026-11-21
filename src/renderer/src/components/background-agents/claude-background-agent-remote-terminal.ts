@@ -4,6 +4,7 @@ import { toRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-r
 import { buildClaudeAttachStartup } from '../../../../shared/ai-vault/resume/ai-vault-attach-startup'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { RuntimeTerminalCreate } from '../../../../shared/runtime-terminal-create-contract'
+import { hostPlatformOf } from './background-agent-host-platform'
 
 /** A terminal on a paired host, as the panel previews it. */
 export type RemoteBackgroundAgentTerminal = {
@@ -11,17 +12,6 @@ export type RemoteBackgroundAgentTerminal = {
   ptyId: string
   /** The host's own handle, for closing that terminal again. */
   handle: string
-}
-
-/** The host that runs the agent also runs the shell its terminal starts. */
-function hostPlatformOf(cwd: string | null): NodeJS.Platform {
-  if (!cwd) {
-    return 'linux'
-  }
-  if (/^[A-Za-z]:[\\/]/.test(cwd)) {
-    return 'win32'
-  }
-  return /^\/(Users|Volumes)\//.test(cwd) ? 'darwin' : 'linux'
 }
 
 /**

@@ -3,8 +3,9 @@ import { useTranslate } from '@/i18n/use-translate'
 /**
  * What the panel says when the open workspace's agents do not live on this machine.
  *
- * A paired runtime can list its agents — the panel reads its job files — and can show the agent's
- * own terminal, but cannot start or stop one yet. An SSH host cannot answer the listing at all.
+ * A paired runtime lists its agents, shows the agent's own terminal and runs the panel's commands
+ * there, so the user has to know that the panel's keys reach another machine. An SSH host cannot
+ * answer the listing at all.
  */
 export function BackgroundAgentHostNotice({
   hostKind
@@ -20,7 +21,7 @@ export function BackgroundAgentHostNotice({
       >
         {t(
           'auto.components.backgroundAgents.remoteHostNotice',
-          "Showing this project's agents on its host. Starting and stopping them there is not supported yet."
+          "Showing this project's agents on its host. Starting, stopping and deleting them run there too."
         )}
       </div>
     )

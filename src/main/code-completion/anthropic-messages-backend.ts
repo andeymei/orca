@@ -8,7 +8,6 @@ import {
   completionTokenCount,
   emptyCompletionUsage,
   nesBackendIdentity,
-  planFromCompletionStream,
   planFromCompletionText,
   type CompletionBackendOptions,
   type CompletionUsage,
@@ -16,7 +15,11 @@ import {
   type NesBackendConfig,
   type NesBackendResult
 } from './completion-backend'
-import { completionEndpointUrl } from './completion-http'
+import {
+  completionEndpointUrl,
+  parseCompletionSseEvents,
+  postCompletionJson
+} from './completion-http'
 
 const ANTHROPIC_MESSAGES_PATH = '/v1/messages'
 const ANTHROPIC_VERSION = '2023-06-01'
@@ -33,42 +36,93 @@ const anthropicUsageEvent = z.object({
   usage: z.record(z.string(), z.unknown()).optional()
 })
 
+/**
+ * The endpoints that refuse the thinking control. A model that reasons first answers a suggestion
+ * request slower and often answers nothing at all, so the request asks for no reasoning; an
+ * endpoint that rejects the control outright is asked again without it, and is not asked again.
+ */
+const identitiesRefusingThinking = new Set<string>()
+
+/** The statuses that mean the endpoint refused the request rather than failing on its own. */
+const REFUSAL_STATUSES = new Set([400, 404, 405, 422])
+
 export function createAnthropicMessagesBackend(
   config: NesBackendConfig,
   options?: CompletionBackendOptions
 ): NesBackend {
+  const identity = nesBackendIdentity('anthropic-messages', config)
   return {
     id: 'anthropic-messages',
-    identity: nesBackendIdentity('anthropic-messages', config),
+    identity,
     planCapable: true,
-    plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
-      return planFromCompletionStream(
-        {
-          url: completionEndpointUrl(config.baseUrl, ANTHROPIC_MESSAGES_PATH),
-          headers: {
-            'x-api-key': config.apiKey,
-            'anthropic-version': ANTHROPIC_VERSION,
-            'content-type': 'application/json'
-          },
-          body: {
-            model: config.model,
-            max_tokens: config.maxTokens,
-            system: buildNesSystemPrompt({ autoImport: config.autoImport }),
-            messages: [
-              {
-                role: 'user',
-                content: buildNesUserPrompt({ ...input, autoImport: config.autoImport })
-              }
-            ],
-            stream: true
-          },
-          signal,
-          fetchImpl: options?.fetchImpl
+    async plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
+      const request = (withThinkingControl: boolean): Parameters<typeof postCompletionJson>[0] => ({
+        url: completionEndpointUrl(config.baseUrl, ANTHROPIC_MESSAGES_PATH),
+        headers: {
+          'x-api-key': config.apiKey,
+          'anthropic-version': ANTHROPIC_VERSION,
+          'content-type': 'application/json'
         },
-        anthropicStreamText,
-        (text) => planFromCompletionText(text, input),
-        anthropicStreamUsage
-      )
+        body: {
+          model: config.model,
+          max_tokens: config.maxTokens,
+          system: buildNesSystemPrompt({ autoImport: config.autoImport }),
+          messages: [
+            {
+              role: 'user',
+              content: buildNesUserPrompt({ ...input, autoImport: config.autoImport })
+            }
+          ],
+          stream: true,
+          // Why: a model that thinks first spends its budget deciding whether there is anything to
+          // suggest, and then answers with nothing; the suggestion is the answer, not the thought.
+          ...(withThinkingControl ? { thinking: { type: 'disabled' } } : {})
+        },
+        signal,
+        fetchImpl: options?.fetchImpl
+      })
+
+      if (identitiesRefusingThinking.has(identity)) {
+        return (await requestPlan(request(false), input)).result
+      }
+      const first = await requestPlan(request(true), input)
+      if (first.ok || !first.refused) {
+        return first.result
+      }
+      // Why: the endpoint refused the request, so the control is the likely reason; ask again
+      // without it and stop asking for it from now on.
+      identitiesRefusingThinking.add(identity)
+      return (await requestPlan(request(false), input)).result
+    }
+  }
+}
+
+/** The plan the endpoint answered with, or the refusal that stopped the request. */
+type PlanRequestResult =
+  | { ok: true; result: NesBackendResult }
+  | { ok: false; refused: boolean; result: NesBackendResult }
+
+async function requestPlan(
+  request: Parameters<typeof postCompletionJson>[0],
+  input: NesRequest
+): Promise<PlanRequestResult> {
+  const response = await postCompletionJson(request)
+  if (!response.ok) {
+    return {
+      ok: false,
+      refused: response.status !== undefined && REFUSAL_STATUSES.has(response.status),
+      result: { plan: null, usage: emptyCompletionUsage() }
+    }
+  }
+  const events = parseCompletionSseEvents(response.text)
+  if (!events) {
+    return { ok: false, refused: false, result: { plan: null, usage: emptyCompletionUsage() } }
+  }
+  return {
+    ok: true,
+    result: {
+      plan: planFromCompletionText(anthropicStreamText(events), input),
+      usage: anthropicStreamUsage(events)
     }
   }
 }

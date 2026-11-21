@@ -118,6 +118,49 @@ describe('completion backends', () => {
     ])
   })
 
+  it('asks the endpoint for no reasoning', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([anthropicTextEvent(JSON.stringify(MODEL_PLAN))])
+    )
+    const backend = createAnthropicMessagesBackend(
+      { ...CONFIG, model: 'no-reasoning-model' },
+      { fetchImpl }
+    )
+
+    await backend.plan(REQUEST, new AbortController().signal)
+
+    // Why: a model that thinks first spends its budget deciding whether there is anything to
+    // suggest, and then answers with nothing.
+    expect(requestBody(fetchImpl.mock.calls[0]).thinking).toEqual({ type: 'disabled' })
+  })
+
+  it('asks again without the control when the endpoint refuses it, and then stops asking', async () => {
+    const planJson = JSON.stringify(MODEL_PLAN)
+    let calls = 0
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      calls += 1
+      if (calls === 1) {
+        return new Response('{"error":{"message":"invalid params"}}', { status: 400 })
+      }
+      return sseResponse([anthropicTextEvent(planJson)])
+    })
+    const config = { ...CONFIG, model: 'refuses-thinking-model' }
+    const backend = createAnthropicMessagesBackend(config, { fetchImpl })
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.plan).toEqual(ABSOLUTE_PLAN)
+    expect(calls).toBe(2)
+    expect(requestBody(fetchImpl.mock.calls[0]).thinking).toEqual({ type: 'disabled' })
+    expect(requestBody(fetchImpl.mock.calls[1]).thinking).toBeUndefined()
+
+    // Why: the endpoint refused the control once, so the next request must not pay for it again.
+    const next = createAnthropicMessagesBackend(config, { fetchImpl })
+    await next.plan(REQUEST, new AbortController().signal)
+    expect(calls).toBe(3)
+    expect(requestBody(fetchImpl.mock.calls[2]).thinking).toBeUndefined()
+  })
+
   it('reports the tokens an Anthropic stream spent', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       sseResponse([

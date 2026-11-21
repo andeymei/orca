@@ -10,7 +10,7 @@ export type CompletionHttpRequest = {
 
 export type CompletionHttpResult =
   | { ok: true; text: string }
-  | { ok: false; reason: 'http_error' | 'stream_error' | 'aborted' }
+  | { ok: false; reason: 'http_error' | 'stream_error' | 'aborted'; status?: number }
 
 /** The endpoint URL of a base URL and a protocol path; a trailing slash on the base is dropped. */
 export function completionEndpointUrl(baseUrl: string, path: string): string {
@@ -52,7 +52,8 @@ export async function postCompletionJson(
   }
   if (!response.ok) {
     await response.body?.cancel().catch(() => {})
-    return { ok: false, reason: 'http_error' }
+    // Why: the caller has to know the endpoint refused the request, not that it failed somehow.
+    return { ok: false, reason: 'http_error', status: response.status }
   }
   if (!response.body) {
     return { ok: false, reason: 'stream_error' }

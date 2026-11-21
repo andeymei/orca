@@ -5,15 +5,23 @@ import { useAppStore } from '@/store/index'
 
 const mocks = vi.hoisted(() => ({
   callRuntimeRpc: vi.fn(),
-  previewPtyId: { current: null as string | null }
+  previewPtyId: { current: null as string | null },
+  claimKeyEvent: { current: null as ((event: KeyboardEvent) => boolean) | null }
 }))
 
 vi.mock('@/runtime/rpc/calls/runtime-rpc-call', () => ({
   callRuntimeRpc: mocks.callRuntimeRpc
 }))
 vi.mock('@/components/dashboard-popout/AgentTerminalPreview', () => ({
-  AgentTerminalPreview: ({ ptyId }: { ptyId: string }) => {
+  AgentTerminalPreview: ({
+    ptyId,
+    claimKeyEvent
+  }: {
+    ptyId: string
+    claimKeyEvent?: (event: KeyboardEvent) => boolean
+  }) => {
     mocks.previewPtyId.current = ptyId
+    mocks.claimKeyEvent.current = claimKeyEvent ?? null
     return <div data-testid="agent-terminal-preview" />
   }
 }))
@@ -28,6 +36,7 @@ const ENVIRONMENT_ID = 'env-remote'
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.previewPtyId.current = null
+  mocks.claimKeyEvent.current = null
   mocks.callRuntimeRpc.mockResolvedValue({ terminal: { handle: 'handle-1' } })
   useAppStore.setState({
     activeWorkspaceExecutionHostId: `runtime:${ENVIRONMENT_ID}`
@@ -77,4 +86,23 @@ it('closes the host’s terminal when the user leaves the agent', async () => {
     { terminal: 'handle-1' },
     { timeoutMs: 15_000 }
   )
+})
+
+it('takes the left arrow back to the list instead of the agent’s own view', async () => {
+  const onBack = vi.fn()
+  render(<BackgroundAgentRemoteTerminal agentId="aaaa1111" cwd="/w" onBack={onBack} />)
+  await act(async () => {
+    await Promise.resolve()
+  })
+
+  const claim = mocks.claimKeyEvent.current
+  expect(claim).toBeTruthy()
+  const press = (init: KeyboardEventInit): KeyboardEvent =>
+    new KeyboardEvent('keydown', { key: 'ArrowLeft', ...init })
+
+  expect(claim?.(press({}))).toBe(true)
+  expect(onBack).toHaveBeenCalledTimes(1)
+  // Why: the modified arrows move the cursor, so they belong to the agent.
+  expect(claim?.(press({ metaKey: true }))).toBe(false)
+  expect(onBack).toHaveBeenCalledTimes(1)
 })

@@ -21,6 +21,7 @@ import { subscribeToPtyData } from '@/components/terminal-pane/pty-transport/del
 import { extractIpcErrorMessage } from '@/runtime/errors/ipc-error'
 import { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal/protocol/input-modes/terminal-kitty-keyboard-mode-tracker'
 import { buildClaudeAttachStartup } from '../../../../shared/ai-vault/resume/ai-vault-attach-startup'
+import { claimAgentTerminalBackKey } from './background-agent-terminal-back-key'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { resolveTerminalMinimumContrastRatio } from '../../../../shared/terminal-themes/terminal-contrast-correction'
 
@@ -182,23 +183,7 @@ export function BackgroundAgentTerminal({
         getSettings: () => settingsRef.current,
         getMacOptionAsAlt: () => macOptionAsAltRef.current,
         getTerminalInput: () => null,
-        claimKeyEvent: (event) => {
-          // Why: Esc belongs to the Claude Code TUI; the screen's root claims it instead.
-          if (event.key !== 'ArrowLeft') {
-            return false
-          }
-          // Why: the modified arrows move the cursor (cmd+left is line start), so they belong to the agent.
-          if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
-            return false
-          }
-          // Why: the chord has to be claimed whole — a released arrow would reach xterm's kitty encoder.
-          if (event.type === 'keydown' && !event.repeat) {
-            event.preventDefault()
-            event.stopPropagation()
-            onBackRef.current()
-          }
-          return true
-        }
+        claimKeyEvent: (event) => claimAgentTerminalBackKey(event, () => onBackRef.current())
       })
       if (!standalone) {
         // Why: the screen has nothing to show without a terminal, so the list is the honest place to be.

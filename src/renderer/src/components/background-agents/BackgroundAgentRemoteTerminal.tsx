@@ -9,6 +9,7 @@ import {
   closeRemoteBackgroundAgentTerminal,
   createRemoteBackgroundAgentTerminal
 } from './claude-background-agent-remote-terminal'
+import { claimAgentTerminalBackKey } from './background-agent-terminal-back-key'
 
 /**
  * One agent's own terminal on a paired host, shown in place.
@@ -87,7 +88,14 @@ export function BackgroundAgentRemoteTerminal({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
       data-testid="background-agent-remote-terminal"
     >
-      {ptyId ? <AgentTerminalPreview ptyId={ptyId} className="h-full" /> : null}
+      {ptyId ? (
+        <AgentTerminalPreview
+          ptyId={ptyId}
+          className="h-full"
+          // Why: the agent's own TUI reads the left arrow as "back", so Orca claims it.
+          claimKeyEvent={(event) => claimAgentTerminalBackKey(event, () => onBackRef.current())}
+        />
+      ) : null}
     </div>
   )
 }

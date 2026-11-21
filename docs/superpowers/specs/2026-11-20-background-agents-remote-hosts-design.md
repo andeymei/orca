@@ -158,6 +158,10 @@
    所以用哪个作用域都无所谓。
 3. 面板用**已经存在**的 `AgentTerminalPreview` 预览它 —— 它认 `remote:` id，会走
    `remoteRuntimeTerminalPreviewApi`（连远端的 multiplexer）。这就是本地 agent 那条路的同一块组件。
+   - **左键**：agent 自己的 TUI 把 ← 读成「返回」，不拦的话用户会掉进 CLI 自己的 agent 视图，
+     而不是 Orca 的列表。本机那条路用 `claimKeyEvent` 抢下这个键；远端这条路要把同一个规则传进去
+     （`AgentTerminalPreview` 加一个可选的 `claimKeyEvent`）。带修饰键的 ←（cmd/ctrl/alt/shift）
+     仍然归 agent —— 那是移动光标。
 4. 离开这个界面 ⇒ `terminal.close` 关掉那个远端终端。**agent 继续跑**（关掉的只是 attach 客户端），
    再回来时重新 attach 一次。本机那条路会把 attach 留着（面板被切走时 PTY 不杀），
    远端这条是「离开即关、回来即重连」。

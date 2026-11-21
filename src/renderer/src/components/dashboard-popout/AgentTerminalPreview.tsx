@@ -50,7 +50,8 @@ export function AgentTerminalPreview({
   className,
   onRequestClose,
   linkSource,
-  onBrowserForeground
+  onBrowserForeground,
+  claimKeyEvent
 }: {
   ptyId: string
   /** Host-input facts relayed with the card; null routes bytes by client OS. */
@@ -59,6 +60,8 @@ export function AgentTerminalPreview({
   onRequestClose?: () => void
   linkSource?: DashboardPreviewLinkSource
   onBrowserForeground?: () => void
+  /** Claims a key before xterm encodes it; returning true stops xterm from handling it. */
+  claimKeyEvent?: (event: KeyboardEvent) => boolean
 }): React.JSX.Element {
   const t = useTranslate()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -75,6 +78,7 @@ export function AgentTerminalPreview({
   const macOptionAsAltRef = useRef(macOptionAsAlt)
   const terminalInputRef = useRef(terminalInput)
   const onRequestCloseRef = useRef(onRequestClose)
+  const claimKeyEventRef = useRef(claimKeyEvent)
   const { terminalTheme: composedTheme, terminalMode } = useMemo(() => {
     if (!settings) {
       return { terminalTheme: null, terminalMode: 'dark' as const }
@@ -98,7 +102,16 @@ export function AgentTerminalPreview({
     macOptionAsAltRef.current = macOptionAsAlt
     terminalInputRef.current = terminalInput
     onRequestCloseRef.current = onRequestClose
-  }, [settings, macOptionAsAlt, terminalInput, onRequestClose, linkSource, onBrowserForeground])
+    claimKeyEventRef.current = claimKeyEvent
+  }, [
+    settings,
+    macOptionAsAlt,
+    terminalInput,
+    onRequestClose,
+    linkSource,
+    onBrowserForeground,
+    claimKeyEvent
+  ])
 
   // Font changes retain the replay-driven fit, grid claim and input-owner reset.
   useEffect(() => {
@@ -221,7 +234,12 @@ export function AgentTerminalPreview({
           getSettings: () => settingsRef.current,
           getMacOptionAsAlt: () => macOptionAsAltRef.current,
           getTerminalInput: () => terminalInputRef.current,
-          requestClose: () => onRequestCloseRef.current?.()
+          requestClose: () => onRequestCloseRef.current?.(),
+          ...(claimKeyEventRef.current
+            ? {
+                claimKeyEvent: (event: KeyboardEvent) => claimKeyEventRef.current?.(event) ?? false
+              }
+            : {})
         })
         if (!standalone) {
           return

@@ -110,16 +110,21 @@ export type NesPromptInput = NesRequest & { autoImport: boolean }
 
 export function validateNesEditPlan(
   raw: unknown,
-  options: { allowedPaths: readonly string[] }
+  options: {
+    allowedPaths: readonly string[]
+    /** Fix the edits before the rules are checked, so a repair cannot smuggle in an undrawable edit. */
+    repair?: (plan: NesEditPlan) => NesEditPlan
+  }
 ): NesEditPlan {
   const parsed = NesEditPlan.safeParse(normalizeNesEditPlan(capNesEditCount(raw)))
   if (!parsed.success) {
     return { edits: [] }
   }
+  const repaired = options.repair ? options.repair(parsed.data) : parsed.data
   const allowedPaths = new Set(options.allowedPaths)
   const kept: NesEdit[] = []
   const keptPerPath = new Map<string, number>()
-  for (const edit of parsed.data.edits) {
+  for (const edit of repaired.edits) {
     if (!isApplicableNesEdit(edit, allowedPaths)) {
       continue
     }

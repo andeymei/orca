@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { NesEditPlan, NesRequest } from '../../shared/code-completion/code-completion-types'
 import { createAnthropicMessagesBackend } from './anthropic-messages-backend'
-import { translateNesEditLines } from './completion-backend'
+import { repairNesEditRanges, translateNesEditLines } from './completion-backend'
 import { createOpenAiChatBackend } from './openai-chat-backend'
 import { createOpenAiFimBackend } from './openai-fim-backend'
 
@@ -597,6 +597,72 @@ describe("translateNesEditLines on the cursor's line", () => {
       startColumn: 25,
       endLine: 40,
       endColumn: 25
+    })
+  })
+})
+
+describe('repairNesEditRanges', () => {
+  // The file the model was shown: three lines, and the cursor at the end of the second.
+  const SHOWN: NesRequest = {
+    ...REQUEST,
+    prefix: 'const a = 1\nconst b = 2',
+    suffix: '\nconst c = 3',
+    prefixStartLine: 40,
+    cursorLine: 41,
+    cursorColumn: 12
+  }
+
+  it('finds the edit where its text sits, not where the model said it was', () => {
+    const plan = {
+      edits: [
+        {
+          id: 'e1',
+          path: FILE_PATH,
+          kind: 'replace' as const,
+          // Why: the model counted the lines of the file wrong and named a line that is not there.
+          range: { startLine: 7, startColumn: 1, endLine: 7, endColumn: 1 },
+          originalText: 'const b = 2',
+          text: 'const b = 2 and more',
+          label: 'extend the second constant'
+        }
+      ]
+    }
+
+    const repaired = repairNesEditRanges(plan, SHOWN)
+
+    expect(repaired.edits[0].range).toEqual({
+      startLine: 41,
+      startColumn: 1,
+      endLine: 41,
+      endColumn: 12
+    })
+  })
+
+  it('reads the text a model quoted up to the cursor as the text it covers', () => {
+    const plan = {
+      edits: [
+        {
+          id: 'e1',
+          path: FILE_PATH,
+          kind: 'replace' as const,
+          range: { startLine: 7, startColumn: 1, endLine: 7, endColumn: 1 },
+          // Why: the model echoed the marker into the text it quoted.
+          originalText: 'const b = 2<<<CURSOR>>>',
+          text: 'const b = 2\n<<<CURSOR>>>',
+          label: 'add a line break after the second constant'
+        }
+      ]
+    }
+
+    const repaired = repairNesEditRanges(plan, SHOWN)
+
+    expect(repaired.edits[0].originalText).toBe('const b = 2')
+    expect(repaired.edits[0].text).toBe('const b = 2\n')
+    expect(repaired.edits[0].range).toEqual({
+      startLine: 41,
+      startColumn: 1,
+      endLine: 41,
+      endColumn: 12
     })
   })
 })

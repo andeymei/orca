@@ -8,7 +8,44 @@ import {
   type CodeCompletionSettings
 } from '../../../../../shared/code-completion/code-completion-settings'
 import { CodeCompletionPlanResult } from '../../../../../shared/rpc-contract/code-completion-params'
+import { setActiveSink } from '../../../../observability/tracer'
 import { CODE_COMPLETION_METHODS } from './code-completion-methods'
+
+/** The shape of a trace record the span writes; the sink takes whatever it is handed. */
+type TracedRecord = {
+  name: string
+  attributes: Record<string, unknown>
+}
+
+/** Whether the sink handed over a trace record with the fields the span writes. */
+function isTracedRecord(value: unknown): value is TracedRecord {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'name' in value &&
+    typeof value.name === 'string' &&
+    'attributes' in value &&
+    typeof value.attributes === 'object' &&
+    value.attributes !== null
+  )
+}
+
+/** A sink that keeps the records the span writes. */
+function traceSink(records: TracedRecord[]): {
+  push: (record: unknown) => void
+  flush: () => void
+  close: () => void
+} {
+  return {
+    push: (record: unknown) => {
+      if (isTracedRecord(record)) {
+        records.push(record)
+      }
+    },
+    flush: () => {},
+    close: () => {}
+  }
+}
 
 const apiKey = vi.hoisted(() => ({ read: (): string | null => 'test-api-key' }))
 const completionUsage = vi.hoisted(() => ({ record: vi.fn() }))
@@ -354,6 +391,73 @@ describe('codeCompletion.plan', () => {
     expect(serialized).not.toContain('super-secret-api-key')
     expect(serialized).not.toContain('user:pass')
     expect(response).toMatchObject({ ok: true, result: { plan: { edits: [{ id: 'e1' }] } } })
+  })
+})
+
+describe('the codeCompletion.plan trace', () => {
+  beforeEach(() => {
+    // Why: the cache lives in this module and every test shares it, so a plan an earlier test
+    // cached would answer the next one instead of the endpoint.
+    completionCache.clear()
+  })
+
+  afterEach(() => {
+    setActiveSink(null)
+  })
+
+  it('records the suggestion the request produced', async () => {
+    const records: TracedRecord[] = []
+    setActiveSink(traceSink(records))
+    stubCompletionFetch()
+    const runtime = createRuntime({
+      enabled: true,
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    await dispatchPlan(runtime, PLAN_PARAMS)
+
+    const span = records.find((record) => record.name === 'codeCompletion.plan')
+    // Why: a user who sees nothing has to be able to tell a declined answer from a failure.
+    expect(span?.attributes).toMatchObject({
+      model: 'test-model',
+      outcome: 'suggested',
+      edit_count: 1
+    })
+  })
+
+  it('records the request the model declined to answer', async () => {
+    const records: TracedRecord[] = []
+    setActiveSink(traceSink(records))
+    stubCompletionFetchWithUsage(JSON.stringify({ edits: [] }))
+    const runtime = createRuntime({
+      enabled: true,
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    await dispatchPlan(runtime, PLAN_PARAMS)
+
+    const span = records.find((record) => record.name === 'codeCompletion.plan')
+    expect(span?.attributes).toMatchObject({ outcome: 'declined', edit_count: 0 })
+  })
+
+  it('records a request that never left the app', async () => {
+    const records: TracedRecord[] = []
+    setActiveSink(traceSink(records))
+    const runtime = createRuntime({
+      enabled: false,
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://endpoint.invalid',
+      model: 'test-model'
+    })
+
+    await dispatchPlan(runtime, PLAN_PARAMS)
+
+    const span = records.find((record) => record.name === 'codeCompletion.plan')
+    expect(span?.attributes).toMatchObject({ outcome: 'disabled' })
   })
 })
 

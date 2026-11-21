@@ -12,8 +12,24 @@ export const NES_COMPLETION_REQUEST_TIMEOUT_MS = 30_000
 /** The endpoint takes four requests at a time; a fifth one waits in the queue. */
 export const NES_COMPLETION_MAX_CONCURRENT_REQUESTS = 4
 
+/**
+ * Why the plan is or is not there. The renderer cannot tell a declined answer from a failed
+ * request — both arrive as "no plan" — so the reason has to survive into the trace.
+ */
+export type CompletionPlanOutcome =
+  | 'suggested'
+  | 'declined'
+  | 'failed'
+  | 'abandoned'
+  | 'no_backend'
+  | 'cached'
+
+export type CompletionServiceResult = NesBackendResult & {
+  readonly outcome: CompletionPlanOutcome
+}
+
 export type CompletionService = {
-  plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult>
+  plan(input: NesRequest, signal: AbortSignal): Promise<CompletionServiceResult>
 }
 
 /** The cap is global, because the service is created per request and a per-service cap would never bind. */
@@ -32,7 +48,7 @@ export function createCompletionService(options: {
     async plan(input, signal) {
       const backend = options.resolveBackend()
       if (!backend) {
-        return { plan: null, usage: emptyCompletionUsage() }
+        return { plan: null, usage: emptyCompletionUsage(), outcome: 'no_backend' }
       }
       const key = completionCacheKey({
         filePath: input.filePath,
@@ -47,25 +63,30 @@ export function createCompletionService(options: {
       })
       const cached = cache.get(key)
       if (cached) {
-        return { plan: cached, usage: emptyCompletionUsage() }
+        return { plan: cached, usage: emptyCompletionUsage(), outcome: 'cached' }
       }
       const outcome = await requestPlan(backend, input, signal, now)
       if (outcome.kind === 'abandoned') {
-        return { plan: null, usage: emptyCompletionUsage() }
+        return { plan: null, usage: emptyCompletionUsage(), outcome: 'abandoned' }
       }
       if (outcome.kind === 'failed') {
         console.error('[code-completion] The request failed.', {
           backend: backend.id,
           error: errorName(outcome.error)
         })
-        return { plan: null, usage: emptyCompletionUsage() }
+        return { plan: null, usage: emptyCompletionUsage(), outcome: 'failed' }
       }
       if (!outcome.result.plan) {
         console.error('[code-completion] The endpoint returned no plan.', { backend: backend.id })
-        return { plan: null, usage: outcome.result.usage }
+        return { plan: null, usage: outcome.result.usage, outcome: 'declined' }
       }
       cache.set(key, outcome.result.plan)
-      return outcome.result
+      // Why: a plan that carries no edit shows nothing, so as far as the user is concerned it is
+      // a decline; the difference between the two answers is not worth the user's attention.
+      return {
+        ...outcome.result,
+        outcome: outcome.result.plan.edits.length > 0 ? 'suggested' : 'declined'
+      }
     }
   }
 }

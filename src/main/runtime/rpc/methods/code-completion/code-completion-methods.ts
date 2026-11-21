@@ -11,6 +11,7 @@ import { createOpenAiFimBackend } from '../../../../code-completion/openai-fim-b
 import { readCodeCompletionApiKey } from '../../../../code-completion/code-completion-api-key-store'
 import type { NesBackend, NesBackendConfig } from '../../../../code-completion/completion-backend'
 import { recordCompletionUsage } from '../../../../code-completion/completion-usage'
+import { startSpan } from '../../../../observability/tracer'
 
 /**
  * How many tokens a completion answer may take. A reasoning model spends the first part of its
@@ -38,7 +39,14 @@ export const CODE_COMPLETION_METHODS = [
     handler: async (params, { runtime, signal, clientId }): Promise<CodeCompletionPlanResult> => {
       // Why: the store holds the desktop's own settings; the client projection omits this block.
       const settings = runtime.requireStore().getSettings().codeCompletion
+      // Why: a request that shows nothing leaves the user without an answer, so the outcome of
+      // every request lands in the trace: the model, the time it took and what came back.
+      const span = startSpan('codeCompletion.plan', {
+        attributes: { model: settings?.model ?? '', protocol: settings?.protocol ?? '' }
+      })
       if (!settings?.enabled) {
+        span.setAttribute('outcome', 'disabled')
+        span.end()
         return { plan: null }
       }
       // Why: a key file that cannot be read or decrypted must make the feature *inert*,
@@ -47,9 +55,13 @@ export const CODE_COMPLETION_METHODS = [
       try {
         apiKey = readCodeCompletionApiKey()
       } catch {
+        span.setAttribute('outcome', 'no_key')
+        span.end()
         return { plan: null }
       }
       if (!apiKey || !settings.baseUrl || !settings.model) {
+        span.setAttribute('outcome', 'incomplete_settings')
+        span.end()
         return { plan: null }
       }
       const service = createCompletionService({
@@ -93,7 +105,19 @@ export const CODE_COMPLETION_METHODS = [
         if (usage.inputTokens > 0 || usage.outputTokens > 0 || usage.cacheReadTokens > 0) {
           recordCompletionUsage({ model: settings.model, usage, at: Date.now() })
         }
+        const editCount = result.plan?.edits.length ?? 0
+        span.setAttribute('edit_count', editCount)
+        span.setAttribute('outcome', result.outcome)
+        span.setAttribute('input_tokens', usage.inputTokens)
+        span.setAttribute('output_tokens', usage.outputTokens)
+        span.end()
         return { plan: result.plan }
+      } catch (error) {
+        // Why: the name of the failure is the only clue the user has, so it must not carry the message.
+        span.setAttribute('outcome', controller.signal.aborted ? 'superseded' : 'failed')
+        span.setAttribute('error', errorName(error))
+        span.fail(error instanceof Error ? error : errorName(error))
+        throw error
       } finally {
         signal?.removeEventListener('abort', abortFromCaller)
         // Why: a superseded request must not retire the request that replaced it.
@@ -105,8 +129,22 @@ export const CODE_COMPLETION_METHODS = [
   })
 ]
 
-/** The backend that speaks the configured protocol; a fourth protocol must not compile silently. */
-function createBackend(protocol: NesBackendId, config: NesBackendConfig): NesBackend {
+/**
+ * The name of a failure, and nothing else: the message can carry the endpoint's path or the
+ * file's text, and the trace must not keep either.
+ */
+function errorName(error: unknown): string {
+  if (typeof error !== 'object' || error === null || !('name' in error)) {
+    return 'unknown'
+  }
+  const name: unknown = error.name
+  return typeof name === 'string' ? name : 'unknown'
+}
+
+/** The backend that speaks the configured protocol; a fourth protocol must not compile silently. */ function createBackend(
+  protocol: NesBackendId,
+  config: NesBackendConfig
+): NesBackend {
   switch (protocol) {
     case 'anthropic-messages':
       return createAnthropicMessagesBackend(config)

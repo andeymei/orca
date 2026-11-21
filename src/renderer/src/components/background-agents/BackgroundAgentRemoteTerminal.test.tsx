@@ -31,6 +31,7 @@ vi.mock('sonner', () => ({
 }))
 
 import { BackgroundAgentRemoteTerminal } from './BackgroundAgentRemoteTerminal'
+import { resetHostPlatformsForTests } from './background-agent-host-platform'
 
 const ENVIRONMENT_ID = 'env-remote'
 
@@ -38,7 +39,20 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.previewPtyId.current = null
   mocks.claimKeyEvent.current = null
-  mocks.callRuntimeRpc.mockResolvedValue({ terminal: { handle: 'handle-1' } })
+  resetHostPlatformsForTests()
+  // Why two answers: the panel asks the host what it runs before it runs the attach.
+  let creates = 0
+  mocks.callRuntimeRpc.mockImplementation(
+    async (_target: unknown, method: string): Promise<unknown> => {
+      if (method !== 'terminal.create') {
+        return undefined
+      }
+      creates += 1
+      return creates === 1
+        ? { terminal: { handle: 'probe-1', hostPlatform: 'linux' } }
+        : { terminal: { handle: 'handle-1' } }
+    }
+  )
   useAppStore.setState({
     activeWorkspaceExecutionHostId: `runtime:${ENVIRONMENT_ID}`
   })

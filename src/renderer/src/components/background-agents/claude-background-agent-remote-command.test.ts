@@ -16,21 +16,26 @@ import {
 
 const ENVIRONMENT_ID = 'env-remote'
 const AGENT_ID = 'aaaa1111'
+/** The nonce the panel stamps on this invocation's result line. */
+const NONCE = '0123456789abcdef'
 
-/** The lines the host's terminal holds while the command runs, and after it ends. */
-function terminalWith(lines: string[]): { terminal: { handle: string; tail: string[] } } {
-  return { terminal: { handle: 'handle-1', tail: lines } }
-}
-
-/** Answers the host's calls the way a host that ran the command would. */
-function installHost(lines: string[]): void {
+/**
+ * Answers the host's calls the way a host that ran the command would.
+ *
+ * The command carries the nonce of this invocation, so the answer has to carry it too: a result
+ * line of another invocation is not this one's answer.
+ */
+function installHost(lines: (nonce: string) => string[]): void {
+  let nonce = ''
   mocks.callRuntimeRpc.mockImplementation(
-    async (_target: unknown, method: string): Promise<unknown> => {
+    async (_target: unknown, method: string, params: unknown): Promise<unknown> => {
       if (method === 'terminal.create') {
+        const command = (params as { command?: string }).command ?? ''
+        nonce = /ORCA_CLAUDE_RESULT_([0-9a-f]+)/.exec(command)?.[1] ?? ''
         return { terminal: { handle: 'handle-1' } }
       }
       if (method === 'terminal.read') {
-        return terminalWith(lines)
+        return { terminal: { tail: lines(nonce) } }
       }
       return undefined
     }
@@ -43,27 +48,31 @@ beforeEach(() => {
 
 describe('the command a paired host runs', () => {
   it('quotes the prompt for the shell the host runs it in', () => {
-    expect(buildRemoteClaudeCommand('posix', ['--bg', '--', 'do it'])).toBe(
-      "claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_$?"
+    expect(buildRemoteClaudeCommand('posix', ['--bg', '--', 'do it'], NONCE)).toBe(
+      `claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_${NONCE}_$?`
     )
-    expect(buildRemoteClaudeCommand('powershell', ['--bg', '--', 'do it'])).toBe(
-      "& claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_$LASTEXITCODE"
+    expect(buildRemoteClaudeCommand('powershell', ['--bg', '--', 'do it'], NONCE)).toBe(
+      `& claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_${NONCE}_$LASTEXITCODE`
     )
-    expect(buildRemoteClaudeCommand('cmd', ['--bg', '--', 'do it'])).toBe(
-      'claude --bg -- "do it" & if errorlevel 1 (echo ORCA_CLAUDE_RESULT_1) else (echo ORCA_CLAUDE_RESULT_0)'
+    expect(buildRemoteClaudeCommand('cmd', ['--bg', '--', 'do it'], NONCE)).toBe(
+      `claude --bg -- "do it" & if errorlevel 1 (echo ORCA_CLAUDE_RESULT_${NONCE}_1) else (echo ORCA_CLAUDE_RESULT_${NONCE}_0)`
     )
   })
 
   it('keeps a prompt that carries the shell’s own characters in one argument', () => {
-    expect(buildRemoteClaudeCommand('posix', ['--bg', '--', "it's two"])).toBe(
-      `claude --bg -- 'it'"'"'s two'; echo ORCA_CLAUDE_RESULT_$?`
+    expect(buildRemoteClaudeCommand('posix', ['--bg', '--', "it's two"], NONCE)).toBe(
+      `claude --bg -- 'it'"'"'s two'; echo ORCA_CLAUDE_RESULT_${NONCE}_$?`
     )
   })
 })
 
 describe('starting an agent on a paired host', () => {
   it('runs the command in a terminal on that host and reports the id it printed', async () => {
-    installHost(["claude --bg -- 'do it'", 'backgrounded · cccc3333', 'ORCA_CLAUDE_RESULT_0'])
+    installHost((nonce) => [
+      "claude --bg -- 'do it'",
+      'backgrounded · cccc3333',
+      `ORCA_CLAUDE_RESULT_${nonce}_0`
+    ])
 
     const result = await dispatchRemoteClaudeBackgroundAgent({
       environmentId: ENVIRONMENT_ID,
@@ -76,19 +85,21 @@ describe('starting an agent on a paired host', () => {
     const [target, method, params] = mocks.callRuntimeRpc.mock.calls[0]
     expect(target).toEqual({ kind: 'environment', environmentId: ENVIRONMENT_ID })
     expect(method).toBe('terminal.create')
-    expect(params).toEqual({
+    expect(params).toMatchObject({
       // Why the floating scope: the app drops a paired host's floating inventory, so the command
       // does not appear as a second tab in this machine's tab bar.
       worktree: 'id:global-floating-terminal',
-      command: "claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_$?",
       cwd: '/w',
       startupCommandDelivery: 'fast',
       presentation: 'background'
     })
+    expect((params as { command: string }).command).toMatch(
+      /^claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_[0-9a-f]+_\$\?$/
+    )
   })
 
   it('pins the shell on a Windows host, so the quoted prompt means what it says', async () => {
-    installHost(['backgrounded · cccc3333', 'ORCA_CLAUDE_RESULT_0'])
+    installHost((nonce) => ['backgrounded · cccc3333', `ORCA_CLAUDE_RESULT_${nonce}_0`])
 
     await dispatchRemoteClaudeBackgroundAgent({
       environmentId: ENVIRONMENT_ID,
@@ -102,7 +113,10 @@ describe('starting an agent on a paired host', () => {
   })
 
   it('reads the id out of a line the terminal redrew', async () => {
-    installHost(['\u001b[32m⠋\u001b[0m backgrounded · cccc3333', 'ORCA_CLAUDE_RESULT_0'])
+    installHost((nonce) => [
+      '\u001b[32m\u280b\u001b[0m backgrounded · cccc3333',
+      `ORCA_CLAUDE_RESULT_${nonce}_0`
+    ])
 
     const result = await dispatchRemoteClaudeBackgroundAgent({
       environmentId: ENVIRONMENT_ID,
@@ -114,11 +128,29 @@ describe('starting an agent on a paired host', () => {
     expect(result).toEqual({ ok: true, id: 'cccc3333' })
   })
 
+  it('does not take a result line of another invocation for its own', async () => {
+    vi.useFakeTimers()
+    installHost(() => ['ORCA_CLAUDE_RESULT_ffffffffffffffff_0'])
+
+    const pending = dispatchRemoteClaudeBackgroundAgent({
+      environmentId: ENVIRONMENT_ID,
+      platform: 'linux',
+      cwd: '/w',
+      prompt: 'do it'
+    })
+    // Why the clock: the panel waits for its own result line, and the forged one is not it.
+    await vi.advanceTimersByTimeAsync(31_000)
+    const result = await pending
+    vi.useRealTimers()
+
+    expect(result.ok).toBe(false)
+  })
+
   it('says what the host refused, and closes the terminal it ran in', async () => {
-    installHost([
+    installHost((nonce) => [
       "claude --bg -- 'do it'",
       'Error: the model is not available',
-      'ORCA_CLAUDE_RESULT_1'
+      `ORCA_CLAUDE_RESULT_${nonce}_1`
     ])
 
     const result = await dispatchRemoteClaudeBackgroundAgent({
@@ -140,7 +172,7 @@ describe('starting an agent on a paired host', () => {
 
 describe('commanding an agent on a paired host', () => {
   it('stops the agent the host owns', async () => {
-    installHost(['claude stop aaaa1111', 'ORCA_CLAUDE_RESULT_0'])
+    installHost((nonce) => ['claude stop aaaa1111', `ORCA_CLAUDE_RESULT_${nonce}_0`])
 
     const result = await runRemoteClaudeAgentCommand({
       environmentId: ENVIRONMENT_ID,
@@ -151,13 +183,27 @@ describe('commanding an agent on a paired host', () => {
 
     expect(result).toEqual({ ok: true, id: AGENT_ID })
     const [, , params] = mocks.callRuntimeRpc.mock.calls[0]
-    expect(params).toMatchObject({
-      command: 'claude stop aaaa1111; echo ORCA_CLAUDE_RESULT_$?'
+    expect((params as { command: string }).command).toMatch(
+      /^claude stop aaaa1111; echo ORCA_CLAUDE_RESULT_[0-9a-f]+_\$\?$/
+    )
+  })
+
+  it('refuses an id that is not the CLI’s own, before it reaches the host', async () => {
+    installHost(() => [])
+
+    const result = await runRemoteClaudeAgentCommand({
+      environmentId: ENVIRONMENT_ID,
+      platform: 'linux',
+      verb: 'rm',
+      agentId: 'aaaa1111 & calc'
     })
+
+    expect(result).toEqual({ ok: false, message: 'not a background agent id' })
+    expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
   })
 
   it('reports a command the host refused', async () => {
-    installHost(['claude rm aaaa1111', 'no such agent', 'ORCA_CLAUDE_RESULT_1'])
+    installHost((nonce) => ['claude rm aaaa1111', 'no such agent', `ORCA_CLAUDE_RESULT_${nonce}_1`])
 
     const result = await runRemoteClaudeAgentCommand({
       environmentId: ENVIRONMENT_ID,

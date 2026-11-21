@@ -1,6 +1,7 @@
+import { translate } from '@/i18n/i18n'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import type { ClaudeBackgroundAgentCommandResult } from '../../../../shared/claude-background-agents'
-import { hostPlatformOf } from './background-agent-host-platform'
+import { readHostPlatform } from './background-agent-host-platform'
 import {
   dispatchRemoteClaudeBackgroundAgent,
   runRemoteClaudeAgentCommand
@@ -22,9 +23,19 @@ export async function dispatchBackgroundAgentOnHost(args: {
 }): Promise<ClaudeBackgroundAgentCommandResult> {
   const host = parseExecutionHostId(args.executionHostId)
   if (host?.kind === 'runtime') {
+    const platform = await readHostPlatform(host.environmentId)
+    if (!platform) {
+      return {
+        ok: false,
+        message: translate(
+          'auto.components.backgroundAgents.remoteHostUnknownPlatform',
+          'the host does not report its platform'
+        )
+      }
+    }
     return dispatchRemoteClaudeBackgroundAgent({
       environmentId: host.environmentId,
-      platform: hostPlatformOf(args.cwd),
+      platform,
       cwd: args.cwd,
       prompt: args.prompt,
       ...(args.signal ? { signal: args.signal } : {})
@@ -44,9 +55,19 @@ export async function stopBackgroundAgentOnHost(args: {
 }): Promise<ClaudeBackgroundAgentCommandResult> {
   const host = parseExecutionHostId(args.executionHostId)
   if (host?.kind === 'runtime') {
+    const platform = await readHostPlatform(host.environmentId)
+    if (!platform) {
+      return {
+        ok: false,
+        message: translate(
+          'auto.components.backgroundAgents.remoteHostUnknownPlatform',
+          'the host does not report its platform'
+        )
+      }
+    }
     return runRemoteClaudeAgentCommand({
       environmentId: host.environmentId,
-      platform: hostPlatformOf(args.cwd),
+      platform,
       verb: 'stop',
       agentId: args.id
     })
@@ -63,9 +84,19 @@ export async function removeBackgroundAgentOnHost(args: {
 }): Promise<ClaudeBackgroundAgentCommandResult> {
   const host = parseExecutionHostId(args.executionHostId)
   if (host?.kind === 'runtime') {
+    const platform = await readHostPlatform(host.environmentId)
+    if (!platform) {
+      return {
+        ok: false,
+        message: translate(
+          'auto.components.backgroundAgents.remoteHostUnknownPlatform',
+          'the host does not report its platform'
+        )
+      }
+    }
     return runRemoteClaudeAgentCommand({
       environmentId: host.environmentId,
-      platform: hostPlatformOf(args.cwd),
+      platform,
       verb: 'rm',
       agentId: args.id
     })

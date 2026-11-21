@@ -206,15 +206,22 @@
 
 ### 7.2 命令怎么拼
 
+- **平台是问来的，不是猜的**。路径不说明它属于哪台机器，而按错误的方言引号的命令不是命令。
+  `terminal.create` 的回包带 `hostPlatform`，所以面板先开一个**马上关掉**的空终端问宿主一次，
+  把答案按环境缓存下来（`background-agent-host-platform.ts`）。
+  宿主**不报**平台 ⇒ **不发命令**（fail closed）：宁可拒绝，也不猜。
 - 本机是 `claude --bg -- <prompt>`（`--` 之后全是 prompt），远端是同一条，只是后面多了一段「报退出码」。
 - **退出码**：三种 shell 各有各的写法 —— posix `echo ORCA_CLAUDE_RESULT_$?`，
   PowerShell `echo ORCA_CLAUDE_RESULT_$LASTEXITCODE`，
   cmd 用 `if errorlevel 1 (...) else (...)`（`%ERRORLEVEL%` 是**解析期**展开的，拿不到刚跑完那条命令的值）。
+- **标记带 nonce**：命令自己的输出可能打印那个标记，所以每次调用带一个自己独有的 nonce
+  （`ORCA_CLAUDE_RESULT_<nonce>_<退出码>`），**只有自己那一行**算数。
 - **引号**：用仓库自己的 `quoteStartupArg` / `quotePowerShellNativeArgument`，按宿主平台选方言
   （win32 ⇒ powershell，其余 ⇒ posix）。纯词的参数（`--bg`、`stop`、8 位十六进制的 id）**不引号** ——
   cmd 把带引号的程序名当名字的一部分。
 - **agent id**：CLI 打印 `backgrounded · <id>`。终端会重画这一行，所以 id 的正则不锚行首，
-  靠 id 自己的形状认。
+  靠 id 自己的形状认。id 要过**两道**检查：读出来时（它会变成宿主上的一个路径段），
+  以及作为命令词发出去**之前** —— 不合格的 id 根本不该走到宿主。
 
 ### 7.3 还开着的那个产品问题
 
@@ -244,7 +251,12 @@
   远端没回 handle ⇒ 抛错；`terminal.close` 用那个 handle。
 - **远端命令模块的单测**（注入一个假的 RPC 调用）：三种 shell 的命令拼法（引号 + 退出码那一段）；
   Windows 上钉住 `shell: 'powershell.exe'`；从终端输出里读出 `backgrounded · <id>`；
-  退出码非 0 ⇒ 报宿主自己的话；命令跑完终端被关掉。
+  退出码非 0 ⇒ 报宿主自己的话；命令跑完终端被关掉；
+  **别次调用的标记不算自己这次的回答**（nonce 挡住伪造）；
+  **不像 id 的 id 根本走不到宿主**（形状检查在到达宿主之前）；
+  **宿主关不掉那个终端 ⇒ 取消不能报成「已取消」**（命令还在跑，得说关不掉）。
+- **平台探针的单测**：attach 之前先问一次宿主（多一次 `terminal.create` + 一次 `terminal.close`），
+  宿主报 win32 ⇒ attach 那条命令钉 `shell: 'powershell.exe'`。
 - **活的验证**：跑一次对 `frp-yolocalc` 的真实查询，确认 `ctjt-service` 那 **81 个** agent 出现
   （其中在跑的也在），数量与远端 `claude agents --json --all` 一致。
 

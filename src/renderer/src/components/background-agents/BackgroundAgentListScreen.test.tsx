@@ -14,6 +14,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '../../store/index'
 import { makeWorktree } from '@/store/slices/worktrees/worktree.test-fixture'
 import BackgroundAgentListScreen from './BackgroundAgentListScreen'
+import { resetHostPlatformsForTests } from './background-agent-host-platform'
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal<typeof I18n>()),
@@ -79,13 +80,19 @@ function installApi(overrides: Partial<ClaudeAgentsApi> = {}): void {
 
 /** Answers the paired host's calls the way a host that ran the command would. */
 function installPairedHost(): void {
+  let nonce = ''
   runtimeRpcMocks.callRuntimeRpc.mockImplementation(
-    async (_target: unknown, method: string): Promise<unknown> => {
+    async (_target: unknown, method: string, params: unknown): Promise<unknown> => {
       if (method === 'terminal.create') {
-        return { terminal: { handle: 'handle-1' } }
+        const command = (params as { command?: string }).command ?? ''
+        nonce = /ORCA_CLAUDE_RESULT_([0-9a-f]+)/.exec(command)?.[1] ?? ''
+        // Why the platform: the panel asks the host what it runs, and quotes the command for it.
+        return { terminal: { handle: 'handle-1', hostPlatform: 'linux' } }
       }
       if (method === 'terminal.read') {
-        return { terminal: { tail: ['backgrounded · cccc3333', 'ORCA_CLAUDE_RESULT_0'] } }
+        return {
+          terminal: { tail: ['backgrounded · cccc3333', `ORCA_CLAUDE_RESULT_${nonce}_0`] }
+        }
       }
       return undefined
     }
@@ -147,6 +154,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
   runtimeRpcMocks.callRuntimeRpc.mockReset()
+  resetHostPlatformsForTests()
 })
 
 it('moves the selection with the arrow keys', async () => {
@@ -503,11 +511,15 @@ it('starts an agent on the paired host that owns the workspace', async () => {
   await type(view, 'do it')
   await press(view.getByLabelText('New background agent'), 'Enter')
 
-  const [target, method, params] = runtimeRpcMocks.callRuntimeRpc.mock.calls[0]
-  expect(target).toEqual({ kind: 'environment', environmentId: 'frp-yolocalc' })
-  expect(method).toBe('terminal.create')
-  expect(params).toMatchObject({
-    command: "claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_$?",
+  // Why two creates: the first asks the host what it runs, the second runs the command.
+  const creates = runtimeRpcMocks.callRuntimeRpc.mock.calls.filter(
+    (call) => call[1] === 'terminal.create'
+  )
+  expect(creates[0][0]).toEqual({ kind: 'environment', environmentId: 'frp-yolocalc' })
+  expect(creates[1][2]).toMatchObject({
+    command: expect.stringMatching(
+      /^claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_[0-9a-f]+_\$\?$/
+    ),
     cwd: '/w'
   })
   // Why: the command ran on that host, so this machine's own dispatch was never asked.

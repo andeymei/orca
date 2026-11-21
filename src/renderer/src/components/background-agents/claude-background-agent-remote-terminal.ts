@@ -1,10 +1,11 @@
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import { toRuntimeWorktreeSelector } from '@/runtime/rpc/targets/runtime-worktree-selector'
+import { translate } from '@/i18n/i18n'
 import { toRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 import { buildClaudeAttachStartup } from '../../../../shared/ai-vault/resume/ai-vault-attach-startup'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { RuntimeTerminalCreate } from '../../../../shared/runtime-terminal-create-contract'
-import { hostPlatformOf } from './background-agent-host-platform'
+import { readHostPlatform, WINDOWS_COMMAND_SHELL } from './background-agent-host-platform'
 
 /** A terminal on a paired host, as the panel previews it. */
 export type RemoteBackgroundAgentTerminal = {
@@ -26,8 +27,21 @@ export async function createRemoteBackgroundAgentTerminal(args: {
   agentId: string
   cwd: string | null
 }): Promise<RemoteBackgroundAgentTerminal> {
+  // Why the host's own platform: the attach command is quoted for one shell, and the host is the
+  // only one that knows which shell it runs.
+  const platform = await readHostPlatform(args.environmentId)
+  if (!platform) {
+    // Why the refusal: a host that reports no platform gets no command — one quoted for the wrong
+    // shell is not a command.
+    throw new Error(
+      translate(
+        'auto.components.backgroundAgents.remoteHostUnknownPlatform',
+        'the host does not report its platform'
+      )
+    )
+  }
   const startup = buildClaudeAttachStartup({
-    platform: hostPlatformOf(args.cwd),
+    platform,
     agentId: args.agentId,
     cwd: args.cwd
   })
@@ -42,6 +56,9 @@ export async function createRemoteBackgroundAgentTerminal(args: {
       worktree: toRuntimeWorktreeSelector(FLOATING_TERMINAL_WORKTREE_ID),
       command: startup.command,
       ...(startup.cwd ? { cwd: startup.cwd } : {}),
+      // Why the pinned shell: the attach command is quoted for one shell, and the host is the
+      // only one that knows which shell it runs.
+      ...(platform === 'win32' ? { shell: WINDOWS_COMMAND_SHELL } : {}),
       startupCommandDelivery: 'fast',
       // Why: the panel's preview is the only surface for this terminal; the host's own window
       // must not take focus for a background agent the user opened from a sidebar.

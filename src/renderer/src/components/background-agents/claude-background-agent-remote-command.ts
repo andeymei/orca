@@ -11,12 +11,15 @@ import {
 import { quotePowerShellNativeArgument } from '../../../../shared/powershell-native-argument'
 import {
   CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE,
+  CLAUDE_BACKGROUND_AGENT_ID_PATTERN,
   type ClaudeBackgroundAgentCommandResult
 } from '../../../../shared/claude-background-agents'
 import { stripAnsiEscapeSequences } from '../../../../shared/ansi-escape-sequences'
 import type { RuntimeTerminalCreate } from '../../../../shared/runtime-terminal-create-contract'
 import type { RuntimeTerminalRead } from '../../../../shared/runtime-terminal-contracts'
 import { delayUnlessAborted } from '../../../../shared/abort-aware-delay'
+import { createNonSecureContextUuid } from '../../../../shared/non-secure-context-uuid'
+import { WINDOWS_COMMAND_SHELL } from './background-agent-host-platform'
 
 /** How long the host's CLI may take before the panel stops waiting for its answer. */
 const REMOTE_CLAUDE_COMMAND_TIMEOUT_MS = 30_000
@@ -27,11 +30,28 @@ const REMOTE_CLAUDE_COMMAND_POLL_MS = 400
 /** The lines read from the host's terminal in one poll; the answer is at its end. */
 const REMOTE_CLAUDE_COMMAND_TAIL_LIMIT = 120
 
-/** The marker the command prints with its exit code once it is done. */
+/**
+ * The marker the command prints with its exit code once it is done.
+ *
+ * It carries a nonce of this invocation: the command's own output could print the marker, and a
+ * line the command made up must not pass for the command's answer.
+ */
 const REMOTE_CLAUDE_COMMAND_RESULT_PREFIX = 'ORCA_CLAUDE_RESULT_'
 
-/** The marker line, with the exit code the command ended with. */
-const REMOTE_CLAUDE_COMMAND_RESULT_PATTERN = /^ORCA_CLAUDE_RESULT_(\d+)$/
+/** The marker line of this invocation, with the exit code the command ended with. */
+function readResultPattern(nonce: string): RegExp {
+  return new RegExp(`^${REMOTE_CLAUDE_COMMAND_RESULT_PREFIX}${nonce}_(\\d+)$`)
+}
+
+/**
+ * A token that tells this invocation's result line apart from any other line that claims to be
+ * one. The command's own output could print the marker, and only this invocation's line counts.
+ *
+ * Why the hex: the nonce goes into a regular expression and into a shell word.
+ */
+function createResultNonce(): string {
+  return createNonSecureContextUuid().replaceAll('-', '')
+}
 
 /**
  * The id the CLI printed, read from a terminal stream.
@@ -41,12 +61,9 @@ const REMOTE_CLAUDE_COMMAND_RESULT_PATTERN = /^ORCA_CLAUDE_RESULT_(\d+)$/
  */
 const REMOTE_CLAUDE_DISPATCHED_ID_PATTERN = /backgrounded[^\w]{0,8}([0-9a-f]{8})/
 
-/** The shell a Windows host runs the command in; the panel pins it so the quoting is certain. */
-const WINDOWS_COMMAND_SHELL = 'powershell.exe'
-
 /** What a command on a paired host said. */
 export type RemoteClaudeCommandOutcome =
-  | { ok: true; exitCode: number; tail: string[] }
+  | { ok: true; exitCode: number; tail: string[]; nonce: string }
   | { ok: false; message: string }
 
 /**
@@ -71,31 +88,35 @@ function quoteRemoteArg(value: string, shell: AgentStartupShell): string {
  * Each shell reports its last command's status differently, and cmd expands `%ERRORLEVEL%` before
  * the command runs, so cmd asks with `if errorlevel` instead.
  */
-function buildResultCommand(shell: AgentStartupShell): string {
+function buildResultCommand(shell: AgentStartupShell, nonce: string): string {
+  // Why the separator: the nonce's own length is not fixed, so the exit code needs one.
+  const marker = `${REMOTE_CLAUDE_COMMAND_RESULT_PREFIX}${nonce}_`
   if (shell === 'cmd') {
-    return `if errorlevel 1 (echo ${REMOTE_CLAUDE_COMMAND_RESULT_PREFIX}1) else (echo ${REMOTE_CLAUDE_COMMAND_RESULT_PREFIX}0)`
+    return `if errorlevel 1 (echo ${marker}1) else (echo ${marker}0)`
   }
   if (shell === 'powershell') {
-    return `echo ${REMOTE_CLAUDE_COMMAND_RESULT_PREFIX}$LASTEXITCODE`
+    return `echo ${marker}$LASTEXITCODE`
   }
-  return `echo ${REMOTE_CLAUDE_COMMAND_RESULT_PREFIX}$?`
+  return `echo ${marker}$?`
 }
 
 /** The command a paired host runs, with the line that reports how it ended. */
 export function buildRemoteClaudeCommand(
   shell: AgentStartupShell,
-  cliArgs: readonly string[]
+  cliArgs: readonly string[],
+  /** Tells this invocation's result line apart from any other line that claims to be one. */
+  nonce: string
 ): string {
   const command = ['claude', ...cliArgs.map((arg) => quoteRemoteArg(arg, shell))].join(' ')
   // Why the call operator: PowerShell runs a quoted program name as a string, not as a program.
   const invocation = shell === 'powershell' ? `& ${command}` : command
-  return `${invocation}${commandSeparator(shell)}${buildResultCommand(shell)}`
+  return `${invocation}${commandSeparator(shell)}${buildResultCommand(shell, nonce)}`
 }
 
 /** The exit code the command printed, or null while it is still running. */
-function readExitCode(tail: readonly string[]): number | null {
+function readExitCode(tail: readonly string[], pattern: RegExp): number | null {
   for (let index = tail.length - 1; index >= 0; index -= 1) {
-    const match = REMOTE_CLAUDE_COMMAND_RESULT_PATTERN.exec(tail[index].trim())
+    const match = pattern.exec(tail[index].trim())
     if (match) {
       return Number(match[1])
     }
@@ -109,10 +130,8 @@ function readExitCode(tail: readonly string[]): number | null {
  * The lines after the marker are the shell's own prompt, so only what came between the command's
  * echo and the marker is the command's answer.
  */
-function readCommandAnswer(tail: readonly string[]): string {
-  const markerIndex = tail.findIndex((line) =>
-    REMOTE_CLAUDE_COMMAND_RESULT_PATTERN.test(line.trim())
-  )
+function readCommandAnswer(tail: readonly string[], pattern: RegExp): string {
+  const markerIndex = tail.findIndex((line) => pattern.test(line.trim()))
   const said = (markerIndex === -1 ? tail : tail.slice(0, markerIndex))
     .map((line) => line.trim())
     .filter((line) => line !== '')
@@ -170,6 +189,10 @@ async function closeRemoteCommandTerminal(args: {
 async function readRemoteCommandOutcome(args: {
   environmentId: string
   handle: string
+  /** The result line of this invocation alone. */
+  pattern: RegExp
+  /** The token that makes the result line this invocation's own. */
+  nonce: string
   signal?: AbortSignal
 }): Promise<RemoteClaudeCommandOutcome> {
   const deadline = Date.now() + REMOTE_CLAUDE_COMMAND_TIMEOUT_MS
@@ -193,9 +216,9 @@ async function readRemoteCommandOutcome(args: {
       throw error
     }
     const tail = read.terminal?.tail ?? []
-    const exitCode = readExitCode(tail)
+    const exitCode = readExitCode(tail, args.pattern)
     if (exitCode !== null) {
-      return { ok: true, exitCode, tail }
+      return { ok: true, exitCode, tail, nonce: args.nonce }
     }
     await delayUnlessAborted(
       REMOTE_CLAUDE_COMMAND_POLL_MS,
@@ -227,22 +250,46 @@ export async function runRemoteClaudeCommand(args: {
   signal?: AbortSignal
 }): Promise<RemoteClaudeCommandOutcome> {
   const shell = resolveStartupShell(args.platform)
+  const nonce = createResultNonce()
   const handle = await createRemoteCommandTerminal({
     environmentId: args.environmentId,
     platform: args.platform,
-    command: buildRemoteClaudeCommand(shell, args.cliArgs),
+    command: buildRemoteClaudeCommand(shell, args.cliArgs, nonce),
     cwd: args.cwd ?? null
   })
+  let outcome: RemoteClaudeCommandOutcome
   try {
-    return await readRemoteCommandOutcome({
+    outcome = await readRemoteCommandOutcome({
       environmentId: args.environmentId,
       handle,
+      pattern: readResultPattern(nonce),
+      nonce,
       ...(args.signal ? { signal: args.signal } : {})
     })
-  } finally {
+  } catch (error) {
     // Why: the command's terminal is the panel's own scratch space, not the user's.
     await closeRemoteCommandTerminal({ environmentId: args.environmentId, handle }).catch(() => {})
+    throw error
   }
+  // Why the close is checked: a terminal the host would not close keeps the command running there,
+  // so a cancelled dispatch must not read as cancelled while the command is still running.
+  const closed = await closeRemoteCommandTerminal({
+    environmentId: args.environmentId,
+    handle
+  }).then(
+    () => true,
+    () => false
+  )
+  if (!closed && !outcome.ok && outcome.message === CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE) {
+    return {
+      ok: false,
+      message: translate(
+        'auto.components.backgroundAgents.remoteHostCloseFailed',
+        'the host could not stop the command it started'
+      )
+    }
+  }
+  return outcome
 }
 
 /** Starts a background agent on a paired host and reports the id its CLI gave it. */
@@ -266,13 +313,15 @@ export async function dispatchRemoteClaudeBackgroundAgent(args: {
   const id = REMOTE_CLAUDE_DISPATCHED_ID_PATTERN.exec(
     stripAnsiEscapeSequences(run.tail.join('\n'))
   )?.[1]
-  if (id) {
+  // Why the shape check: the id becomes a path segment on the host, so only the CLI's own id
+  // shape may travel on.
+  if (id && CLAUDE_BACKGROUND_AGENT_ID_PATTERN.test(id)) {
     return { ok: true, id }
   }
   return {
     ok: false,
     message:
-      readCommandAnswer(run.tail) ||
+      readCommandAnswer(run.tail, readResultPattern(run.nonce)) ||
       translate(
         'auto.components.backgroundAgents.remoteHostNoAgentId',
         'the host did not report an agent id'
@@ -287,6 +336,17 @@ export async function runRemoteClaudeAgentCommand(args: {
   verb: 'stop' | 'rm'
   agentId: string
 }): Promise<ClaudeBackgroundAgentCommandResult> {
+  // Why the shape check: the id travels in a command word, and the host turns it into a path
+  // segment. Only the CLI's own id shape may travel on.
+  if (!CLAUDE_BACKGROUND_AGENT_ID_PATTERN.test(args.agentId)) {
+    return {
+      ok: false,
+      message: translate(
+        'auto.components.backgroundAgents.remoteHostBadAgentId',
+        'not a background agent id'
+      )
+    }
+  }
   const run = await runRemoteClaudeCommand({
     environmentId: args.environmentId,
     platform: args.platform,
@@ -299,7 +359,7 @@ export async function runRemoteClaudeAgentCommand(args: {
     return {
       ok: false,
       message:
-        readCommandAnswer(run.tail) ||
+        readCommandAnswer(run.tail, readResultPattern(run.nonce)) ||
         translate(
           'auto.components.backgroundAgents.remoteHostRefused',
           'the host refused the command'

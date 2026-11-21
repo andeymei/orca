@@ -77,10 +77,10 @@ type CompletionOutcome =
 
 /** The error's class name; its message can carry the request or the model's answer. */
 function errorName(error: unknown): string {
-  if (typeof error !== 'object' || error === null) {
+  if (typeof error !== 'object' || error === null || !('name' in error)) {
     return 'unknown'
   }
-  const name: unknown = Reflect.get(error, 'name')
+  const name: unknown = error.name
   return typeof name === 'string' ? name : 'unknown'
 }
 

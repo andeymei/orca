@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { MessageSquarePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -82,6 +82,32 @@ export function TerminalComposerOverlay({
   // The editor is seeded once, so a sent body needs a fresh field to start empty.
   const [fieldKey, setFieldKey] = useState(0)
   const { send } = useTerminalComposerSend({ managerRef, paneTransportsRef })
+  const composerRef = useRef<HTMLDivElement | null>(null)
+
+  /**
+   * Reserves the docked composer's height at the bottom of its pane.
+   *
+   * The composer is a sibling of the terminal inside the pane, so the terminal only ends above
+   * it if the pane knows how much room the composer took. The height is measured, never
+   * guessed: the editor grows with its content, and the terminal refits when the number moves.
+   */
+  useLayoutEffect(() => {
+    const composer = composerRef.current
+    const pane = composer?.closest<HTMLElement>('.pane')
+    if (!open || !composer || !pane) {
+      return
+    }
+    const reserve = (): void => {
+      pane.style.setProperty('--orca-pane-composer-height', `${composer.offsetHeight}px`)
+    }
+    reserve()
+    const observer = new ResizeObserver(reserve)
+    observer.observe(composer)
+    return () => {
+      observer.disconnect()
+      pane.style.removeProperty('--orca-pane-composer-height')
+    }
+  }, [open])
 
   /**
    * The host that owns this terminal, read from the pane's transport at the moment the
@@ -211,6 +237,14 @@ export function TerminalComposerOverlay({
     onPaths: handleDropPaths
   })
 
+  const setComposerNode = useCallback(
+    (node: HTMLDivElement | null) => {
+      composerRef.current = node
+      attachDropOwner(node)
+    },
+    [attachDropOwner]
+  )
+
   if (!open) {
     // The composer's layers sit above the terminal, below the native chat cover that owns
     // the pane while it is open.
@@ -240,8 +274,8 @@ export function TerminalComposerOverlay({
 
   return (
     <div
-      ref={attachDropOwner}
-      className="absolute inset-x-0 bottom-0 z-[5] rounded-lg border border-border bg-popover p-2 shadow-lg"
+      ref={setComposerNode}
+      className="pane-bottom-composer border-t border-border bg-background p-2"
     >
       <TerminalComposerField
         key={fieldKey}

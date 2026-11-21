@@ -497,7 +497,7 @@
   box-sizing: border-box;
   position: relative;
   width: calc(100% - 2 * var(--pane-padding-x, 4px));
-  height: calc(100% - 2 * var(--pane-padding-y, 4px));
+  height: calc(100% - 2 * var(--pane-padding-y, 4px) - var(--orca-pane-composer-height, 0px));
   margin-top: var(--pane-padding-y, 4px);
   margin-left: var(--pane-padding-x, 4px);
   /* Why (#10481): a blinking cursor otherwise invalidates paint all the way up
@@ -509,7 +509,10 @@
 /* Offset titled terminals and subtract the same height to prevent clipping. */
 .pane[data-has-title] .xterm-container {
   margin-top: var(--orca-pane-title-height);
-  height: calc(100% - var(--orca-pane-title-height) - var(--pane-padding-y, 4px));
+  height: calc(
+    100% - var(--orca-pane-title-height) - var(--pane-padding-y, 4px) -
+      var(--orca-pane-composer-height, 0px)
+  );
 }
 
 /* A pane-top banner takes real height: the terminal starts below it and refits. */
@@ -527,15 +530,28 @@
 
 .pane:has(> .pane-top-banner) .xterm-container {
   margin-top: calc(var(--pane-padding-y, 4px) + var(--orca-pane-top-banner-height, 0px));
-  height: calc(100% - 2 * var(--pane-padding-y, 4px) - var(--orca-pane-top-banner-height, 0px));
+  height: calc(
+    100% - 2 * var(--pane-padding-y, 4px) - var(--orca-pane-top-banner-height, 0px) -
+      var(--orca-pane-composer-height, 0px)
+  );
 }
 
 .pane[data-has-title]:has(> .pane-top-banner) .xterm-container {
   margin-top: calc(var(--orca-pane-title-height) + var(--orca-pane-top-banner-height, 0px));
   height: calc(
     100% - var(--orca-pane-title-height) - var(--orca-pane-top-banner-height, 0px) -
-      var(--pane-padding-y, 4px)
+      var(--pane-padding-y, 4px) - var(--orca-pane-composer-height, 0px)
   );
+}
+
+/* The composer is docked at the pane's bottom edge: it takes real height, so the terminal
+   ends above it and refits. The height it reserves is measured in the overlay, not guessed. */
+.pane-bottom-composer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
 }
 
 /* Ghostty-style URL hover: glued to the pane's true bottom-left corner. */

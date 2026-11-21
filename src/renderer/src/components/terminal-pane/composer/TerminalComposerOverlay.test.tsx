@@ -70,7 +70,7 @@ function makeWorktree(id: string, path: string): Worktree {
   }
 }
 
-function createOverlay(cwd = '/workspace', executionHostId = 'local') {
+function createOverlay(cwd = '/workspace', executionHostId = 'local', container?: HTMLElement) {
   const sendInput = vi.fn((_data: string, _inputKind: string) => true)
   const pane = { id: PANE_ID, leafId: LEAF_ID }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fake answers only the pane queries the send layer makes.
@@ -99,7 +99,8 @@ function createOverlay(cwd = '/workspace', executionHostId = 'local') {
       agent="claude"
       managerRef={managerRef}
       paneTransportsRef={paneTransportsRef}
-    />
+    />,
+    container ? { container } : undefined
   )
   return { ...view, sendInput }
 }
@@ -342,5 +343,24 @@ describe('a drop into the composer card', () => {
     // The composer is put away without sending, and the button that opens it is back.
     expect(useAppStore.getState().terminalComposerOpenByPaneKey[PANE_KEY]).not.toBe(true)
     expect(view.getByRole('button', { name: 'Send a message to the agent' })).toBeTruthy()
+  })
+
+  it('reserves its own height at the bottom of the pane, so the terminal ends above it', async () => {
+    // The composer measures itself: the pane needs the number to end the terminal above it.
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      return this.classList.contains('pane-bottom-composer') ? 96 : 0
+    })
+    const pane = document.createElement('div')
+    pane.className = 'pane'
+    const view = createOverlay('/workspace', 'local', pane)
+    expect(pane.style.getPropertyValue('--orca-pane-composer-height')).toBe('96px')
+
+    // Collapsing gives the height back, so the terminal takes the pane's whole height again.
+    await act(async () => {
+      fireEvent.click(view.getByRole('button', { name: 'Collapse the composer' }))
+    })
+    expect(pane.style.getPropertyValue('--orca-pane-composer-height')).toBe('')
   })
 })

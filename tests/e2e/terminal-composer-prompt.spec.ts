@@ -103,6 +103,53 @@ test('the terminal composer writes a multi-line prompt and then Enter', async ({
     .toBe(1)
 })
 
+test('the composer is docked at the bottom of the pane, and the terminal ends above it', async ({
+  orcaPage
+}) => {
+  await waitForSessionReady(orcaPage)
+  await ensureTerminalVisible(orcaPage)
+  await waitForActiveTerminalManager(orcaPage)
+
+  const tabId = await resolveActiveTabId(orcaPage)
+  if (!tabId) {
+    throw new Error('Expected an active terminal tab')
+  }
+
+  const isMac = await orcaPage.evaluate(() => navigator.userAgent.includes('Mac'))
+  await focusTerminalAndOpenComposer(orcaPage, tabId, isMac)
+
+  const editor = orcaPage.locator('[data-terminal-composer-editor="true"]')
+  await expect(editor).toBeVisible()
+
+  const geometry = await orcaPage.evaluate(() => {
+    const composer = document.querySelector<HTMLElement>('.pane-bottom-composer')
+    if (!composer) {
+      throw new Error('Expected the docked composer in the pane')
+    }
+    const pane = composer.closest<HTMLElement>('.pane')
+    const terminal = pane?.querySelector<HTMLElement>('.xterm-container')
+    if (!pane || !terminal) {
+      throw new Error('Expected the pane and its terminal')
+    }
+    const composerRect = composer.getBoundingClientRect()
+    const paneRect = pane.getBoundingClientRect()
+    const terminalRect = terminal.getBoundingClientRect()
+    return {
+      composerBottom: composerRect.bottom,
+      composerTop: composerRect.top,
+      paneBottom: paneRect.bottom,
+      terminalBottom: terminalRect.bottom,
+      terminalTop: terminalRect.top
+    }
+  })
+
+  // Docked: the composer's bottom edge is the pane's bottom edge, not a card floating over it.
+  expect(Math.abs(geometry.composerBottom - geometry.paneBottom)).toBeLessThanOrEqual(1)
+  // And it takes real height: the terminal ends where the composer starts, so nothing is covered.
+  expect(geometry.terminalBottom).toBeLessThanOrEqual(geometry.composerTop + 1)
+  expect(geometry.terminalTop).toBeLessThan(geometry.terminalBottom)
+})
+
 test('a dropped attachment lands in the workspace and its path reaches the PTY', async ({
   electronApp,
   orcaPage

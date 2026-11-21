@@ -54,7 +54,7 @@
 ## 4. 设计
 
 **一句话**：面板的名单改成**跟着工作区的宿主走**。本机宿主走现在的 CLI；`runtime:<envId>` 宿主
-**读那台主机上的 job 文件**，不跑任何命令。
+**读那台主机上的 job 文件**，命令（派发/停止/删除）也在那台主机上跑（§7）。
 
 ### 4.1 查询面（渲染层 → 主进程）
 
@@ -110,10 +110,10 @@
 
 - **远端宿主的行可以点开**：点开（或回车）**就地**显示那个 agent 在**远端**自己的终端 ——
   远端跑 `claude attach <id>`，面板预览那个远端终端（§6.1）。agent 在远端活着，交互就得在远端发生。
-  composer（派发）**隐藏**，停止/删除**不提供**。
+  composer（派发）、停止/删除**都提供** —— 它们在远端跑（§7）。
 - 提示语要跟着改：现在的 `listsThisMachineOnly` 说「This panel lists background agents running on this machine」——
   对 `runtime:` 宿主**已经不成立了**。改成两种：
-  - `runtime:` 宿主 ⇒ 新键，例如「Showing this project's agents on its host. Starting and stopping them there is not supported yet.」
+  - `runtime:` 宿主 ⇒ 新键：「Showing this project's agents on its host. Starting, stopping and deleting them run there too.」
   - `ssh:` 宿主 ⇒ 保留现在那句（那个宿主确实还答不了）。
 - 空状态文案不变（`No background agents found for this project` / `Open a project…`）—— 它对远端也准确。
 
@@ -190,14 +190,43 @@
 远端的 CLI 是 **2.1.322**，`claude attach --help` 在那台机器上是：
 `Usage: claude attach <id|name>` —— 吃的正是 `claude agents` 列出来的那个 id。
 
-## 7. 不在这次范围（明确不做）
+## 7. 远端命令面（派发 / 停止 / 删除）—— 已实现
 
-- **派发 / 停止 / 删除**：**没有一次性远端命令执行的 RPC**。唯一能跑命令的是 `terminal.create { command }`，
-  而它**一定**会发布一个真实终端 surface（`presentation: 'background'` 只是不聚焦）。要不要为一个后台命令
-  在远端弹一个 tab，是产品决定，不该夹在这次里。
+### 7.1 为什么只能走 terminal
+
+远端**没有**一次性命令执行的 RPC —— 能跑命令的只有 `terminal.create { command }`，
+和 §6.1 的 attach 是同一个机制。所以派发/停止/删除都是「在远端开一个终端跑一条命令」：
+
+1. `terminal.create` 打给那个环境：`worktree: 'id:global-floating-terminal'`、
+   `command: <拼好的 claude 命令>`、`cwd: <工作区在远端的路径>`、`presentation: 'background'`。
+   - floating 作用域的理由和 §6.1 一样：工作区的 tab 清单会被本机镜像，floating 那份镜像丢弃。
+   - Windows 上**钉住** `shell: 'powershell.exe'`：命令是按某一个方言引号的，方言得由宿主来跑。
+2. 轮询 `terminal.read { terminal: <handle> }` 读那个终端的输出，直到命令自己报出退出码。
+3. `terminal.close` 关掉那个终端 —— 命令的终端是面板自己的临时空间，不是用户的。
+
+### 7.2 命令怎么拼
+
+- 本机是 `claude --bg -- <prompt>`（`--` 之后全是 prompt），远端是同一条，只是后面多了一段「报退出码」。
+- **退出码**：三种 shell 各有各的写法 —— posix `echo ORCA_CLAUDE_RESULT_$?`，
+  PowerShell `echo ORCA_CLAUDE_RESULT_$LASTEXITCODE`，
+  cmd 用 `if errorlevel 1 (...) else (...)`（`%ERRORLEVEL%` 是**解析期**展开的，拿不到刚跑完那条命令的值）。
+- **引号**：用仓库自己的 `quoteStartupArg` / `quotePowerShellNativeArgument`，按宿主平台选方言
+  （win32 ⇒ powershell，其余 ⇒ posix）。纯词的参数（`--bg`、`stop`、8 位十六进制的 id）**不引号** ——
+  cmd 把带引号的程序名当名字的一部分。
+- **agent id**：CLI 打印 `backgrounded · <id>`。终端会重画这一行，所以 id 的正则不锚行首，
+  靠 id 自己的形状认。
+
+### 7.3 还开着的那个产品问题
+
+`terminal.create` **一定**会在远端发布一个真实终端 surface。面板这边看不到（floating 那份清单被镜像丢弃），
+但**远端自己的窗口**上会不会闪一个 tab，取决于宿主怎么摆 floating 终端。
+命令跑完就 `terminal.close`，所以那个 surface 只活几秒。
+
+## 8. 不在这次范围（明确不做）
+
 - **SSH 宿主**。
 
-## 8. 测试
+## 9. 测试
 
 - **远端 lister 的单测**（注入一个假的 RPC 调用）：
   - `template: 'claude'` 的 job **也出现**（`template` 只说明怎么起的）；只有没有 `sessionId` 的不出现。
@@ -207,16 +236,19 @@
   - 一个 job 读失败**不影响**其它 job。
 - **宿主路由的测试**：`executionHostId` 为 `local` ⇒ 走本地 lister；`runtime:<id>` ⇒ 走远端；
   `ssh:` ⇒ 0 个 + 说明。
-- **渲染层**：远端宿主下 composer 不渲染、行**可点**（点开 = 远端那个 agent 的终端）；
-  ctrl+x（停止/删除）在远端宿主下**不响应**；提示语是新的那句。
+- **渲染层**：远端宿主下 composer **渲染**、行**可点**（点开 = 远端那个 agent 的终端）；
+  ctrl+x（停止/删除）在远端宿主下**也响应**；提示语是新的那句。
 - **远端终端模块的单测**（注入一个假的 RPC 调用）：`terminal.create` 打给环境、
   `worktree` 是 **floating 作用域**（`id:global-floating-terminal`，不是工作区 id）、
   命令是 `claude attach '<id>'`、`presentation: 'background'`、返回 `remote:<env>@@<handle>`；
   远端没回 handle ⇒ 抛错；`terminal.close` 用那个 handle。
+- **远端命令模块的单测**（注入一个假的 RPC 调用）：三种 shell 的命令拼法（引号 + 退出码那一段）；
+  Windows 上钉住 `shell: 'powershell.exe'`；从终端输出里读出 `backgrounded · <id>`；
+  退出码非 0 ⇒ 报宿主自己的话；命令跑完终端被关掉。
 - **活的验证**：跑一次对 `frp-yolocalc` 的真实查询，确认 `ctjt-service` 那 **81 个** agent 出现
   （其中在跑的也在），数量与远端 `claude agents --json --all` 一致。
 
-## 9. 一条实现规则（探针踩出来的）
+## 10. 一条实现规则（探针踩出来的）
 
 **resolve 和 read 必须走 `callRuntimeEnvironment`**（app 的正常路由，持久 shared-control 连接），
 **不能**自己 dial 一次性 socket —— grant 绑设备，设备最后一条连接一关就被撤销。

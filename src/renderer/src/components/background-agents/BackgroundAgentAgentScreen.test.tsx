@@ -12,6 +12,10 @@ const terminalProps = vi.hoisted(() => {
   const props: { current: TerminalProps | null } = { current: null }
   return props
 })
+const remoteTerminalProps = vi.hoisted(() => {
+  const props: { current: TerminalProps | null } = { current: null }
+  return props
+})
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal<typeof I18n>()),
@@ -22,6 +26,13 @@ vi.mock('./background-agent-terminal', () => ({
   BackgroundAgentTerminal: (props: TerminalProps) => {
     terminalProps.current = props
     return <div data-agent-terminal-preview data-testid="background-agent-terminal-region" />
+  }
+}))
+vi.mock('./BackgroundAgentRemoteTerminal', () => ({
+  // Why: the remote terminal has its own tests; here it only stands in for the attach.
+  BackgroundAgentRemoteTerminal: (props: TerminalProps) => {
+    remoteTerminalProps.current = props
+    return <div data-agent-terminal-preview data-testid="background-agent-remote-terminal-region" />
   }
 }))
 
@@ -45,12 +56,14 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.stubGlobal('api', { claudeAgents: { list } })
   terminalProps.current = null
+  remoteTerminalProps.current = null
   vi.clearAllMocks()
   useAppStore.setState({
     backgroundAgentsScreen: { kind: 'agent', agentId: 'aaaa1111' },
     backgroundAgentsAgents: [AGENT],
     backgroundAgentsDetails: {},
-    backgroundAgentsAttachedPtyId: null
+    backgroundAgentsAttachedPtyId: null,
+    activeWorkspaceExecutionHostId: 'local'
   })
 })
 
@@ -72,6 +85,16 @@ it('gives the terminal the agent and its directory', () => {
   render(<BackgroundAgentAgentScreen agentId="aaaa1111" />)
   expect(terminalProps.current?.agentId).toBe('aaaa1111')
   expect(terminalProps.current?.cwd).toBe('/w')
+})
+
+it('shows the agent on the host that runs it', () => {
+  // Why: the agent lives on the paired host, so its terminal has to be opened there.
+  useAppStore.setState({ activeWorkspaceExecutionHostId: 'runtime:env-remote' })
+  const view = render(<BackgroundAgentAgentScreen agentId="aaaa1111" />)
+  expect(view.queryByTestId('background-agent-terminal-region')).toBeNull()
+  expect(view.getByTestId('background-agent-remote-terminal-region')).toBeTruthy()
+  expect(remoteTerminalProps.current?.agentId).toBe('aaaa1111')
+  expect(remoteTerminalProps.current?.cwd).toBe('/w')
 })
 
 it('follows the roster while the user sits in the terminal', async () => {

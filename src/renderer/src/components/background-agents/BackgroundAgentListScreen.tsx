@@ -76,9 +76,11 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
     [activeWorktreeId, activeWorkspaceExecutionHostId]
   )
   const executionHostKind = parseExecutionHostId(activeWorkspaceExecutionHostId)?.kind ?? 'local'
-  // Why read-only: opening an agent needs its remote PTY, and starting, stopping or deleting one
-  // needs a one-shot remote command, neither of which this version has.
-  const hostRosterIsReadOnly = executionHostKind === 'runtime'
+  // Why: a paired host can show its agent's own terminal, so its rows open.
+  const hostCanOpenAgents = executionHostKind !== 'ssh'
+  // Why read-only: starting, stopping or deleting an agent needs a one-shot remote command, and
+  // no such command exists yet.
+  const hostCanCommandAgents = executionHostKind === 'local'
   // Why: an SSH host cannot answer the listing at all, so this machine's roster is all there is.
   const hostNoticeKind = executionHostKind === 'local' ? null : executionHostKind
 
@@ -105,14 +107,14 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   useBackgroundAgentRosterRefresh()
 
   useEffect(() => {
-    // Why: the CLI's prompt box is ready to type into the moment the screen opens; a read-only
-    // host has no prompt, so the list itself takes the keys.
-    if (hostRosterIsReadOnly) {
+    // Why: the CLI's prompt box is ready to type into the moment the screen opens; a host with
+    // no prompt, so the list itself takes the keys.
+    if (!hostCanCommandAgents) {
       rootRef.current?.focus()
       return
     }
     composerRef.current?.focus()
-  }, [hostRosterIsReadOnly])
+  }, [hostCanCommandAgents])
 
   useEffect(() => {
     // Why: the elapsed column has no reader while the window is hidden.
@@ -164,7 +166,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   }
 
   const activateOrDispatch = async (): Promise<void> => {
-    if (hostRosterIsReadOnly) {
+    if (!hostCanOpenAgents) {
       return
     }
     const prompt = composer.trim()
@@ -184,7 +186,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
   const runSelectedCommand = async (): Promise<void> => {
     const row = selectedRow
     // Why: stopping or deleting an agent on another host has no command path in this version.
-    if (!row || hostRosterIsReadOnly) {
+    if (!row || !hostCanCommandAgents) {
       return
     }
     // Why: a finished agent has nothing left to stop, so the second Ctrl+X deletes it instead.
@@ -352,9 +354,9 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
             key={row.id}
             row={row}
             selected={selectedRow?.id === row.id}
-            disabled={hostRosterIsReadOnly}
+            disabled={!hostCanOpenAgents}
             onSelect={(picked) => {
-              if (!hostRosterIsReadOnly) {
+              if (hostCanOpenAgents) {
                 openBackgroundAgent(picked.id)
               }
             }}
@@ -450,14 +452,14 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
           )}
         </div>
       </div>
-      {hostRosterIsReadOnly ? null : (
+      {hostCanCommandAgents ? (
         <BackgroundAgentComposer
           value={composer}
           onChange={(event) => setComposer(event.target.value)}
           onKeyDown={handleComposerKeyDown}
           inputRef={composerRef}
         />
-      )}
+      ) : null}
     </div>
   )
 }

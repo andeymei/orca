@@ -6,7 +6,9 @@ import { installWindowVisibilityInterval } from '@/lib/window-activity/window-vi
 import { isAgentTerminalPreviewTarget } from '@/components/dashboard-popout/agent-terminal-preview-target'
 import { formatBackgroundAgentElapsed } from './background-agent-list-rows'
 import { BackgroundAgentTerminal } from './background-agent-terminal'
+import { BackgroundAgentRemoteTerminal } from './BackgroundAgentRemoteTerminal'
 import { useBackgroundAgentRosterRefresh } from './use-background-agent-roster-refresh'
+import { parseExecutionHostId } from '../../../../shared/execution-host'
 
 /** How often the elapsed column is recomputed. */
 const ELAPSED_TICK_INTERVAL_MS = 1000
@@ -21,6 +23,11 @@ export function BackgroundAgentAgentScreen({ agentId }: { agentId: string }): Re
   const t = useTranslate()
   const agent = useAppStore((state) => state.backgroundAgentsAgents.find((a) => a.id === agentId))
   const closeBackgroundAgent = useAppStore((state) => state.closeBackgroundAgent)
+  // Why: the agent's process lives on its own host, so a paired host's terminal is previewed
+  // there rather than started on this machine.
+  const isRemoteHost =
+    parseExecutionHostId(useAppStore((state) => state.activeWorkspaceExecutionHostId))?.kind ===
+    'runtime'
   const [now, setNow] = useState(() => Date.now())
   // Why: a finished agent leaves the roster, and the header still has to say which one it was.
   const [identity, setIdentity] = useState({ name: '', cwd: '' })
@@ -84,7 +91,19 @@ export function BackgroundAgentAgentScreen({ agentId }: { agentId: string }): Re
           <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{elapsed}</span>
         ) : null}
       </header>
-      <BackgroundAgentTerminal agentId={agentId} cwd={cwd || null} onBack={closeBackgroundAgent} />
+      {isRemoteHost ? (
+        <BackgroundAgentRemoteTerminal
+          agentId={agentId}
+          cwd={cwd || null}
+          onBack={closeBackgroundAgent}
+        />
+      ) : (
+        <BackgroundAgentTerminal
+          agentId={agentId}
+          cwd={cwd || null}
+          onBack={closeBackgroundAgent}
+        />
+      )}
     </div>
   )
 }

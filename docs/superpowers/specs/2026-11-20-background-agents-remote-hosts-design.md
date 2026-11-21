@@ -1,7 +1,7 @@
 # 远端工作区的 background agents —— 设计
 
 > 接 `2026-11-15-claude-background-agents-supervisor-design.md`。那份 spec 的 §8 写着「列表只答本机」；
-> 这份把那条限制拆掉（**只读**），并且**不需要升级远端**。
+> 这份把那条限制拆掉（**能列远端**，也能**就地打开远端 agent** 的终端），并且**不需要升级远端**。
 
 ## 1. 问题
 
@@ -108,11 +108,12 @@
 
 ### 4.5 UI
 
-- **远端宿主的名单是只读的**：行可以看，**不能点开**（attach 要远端 PTY，见 §6），
+- **远端宿主的行可以点开**：点开（或回车）**就地**显示那个 agent 在**远端**自己的终端 ——
+  远端跑 `claude attach <id>`，面板预览那个远端终端（§6.1）。agent 在远端活着，交互就得在远端发生。
   composer（派发）**隐藏**，停止/删除**不提供**。
 - 提示语要跟着改：现在的 `listsThisMachineOnly` 说「This panel lists background agents running on this machine」——
   对 `runtime:` 宿主**已经不成立了**。改成两种：
-  - `runtime:` 宿主 ⇒ 新键，例如「Showing this project's agents on its host. Opening, stopping and starting them there is not supported yet.」
+  - `runtime:` 宿主 ⇒ 新键，例如「Showing this project's agents on its host. Starting and stopping them there is not supported yet.」
   - `ssh:` 宿主 ⇒ 保留现在那句（那个宿主确实还答不了）。
 - 空状态文案不变（`No background agents found for this project` / `Open a project…`）—— 它对远端也准确。
 
@@ -134,17 +135,54 @@
 | `ssh:` 宿主                                      | v1 不支持，面板显示「答不了」的说明                                                                                                           |
 | 远端连不上 / 超时                                | `error` + 消息；保留上一次的名单（和本机一样的规矩）                                                                                          |
 
-## 6. 不在这次范围（明确不做）
+## 6. 远端 attach（就地内嵌）—— 已实现
 
-- **attach（点开 agent）**：要远端 PTY。`terminal.create` 打给环境是可行的（1.4.222 就有），但面板现在那个
-  内嵌终端走的是**本地** `pty.spawn` + 本地 sidecar，`window.api.pty.*` 不处理 `remote:<envId>@@<handle>` 的 PTY。
-  要做得把终端渲染换成远端 transport —— 那是自己的一块工作。
+### 6.1 做法
+
+远端那台机器上，agent 自己的进程就在那儿。所以**终端也要开在那台机器上**：
+
+1. 面板用 `terminal.create` 打给那个**环境**（不是本机）：
+   `worktree: 'id:<工作区 id>'`、`command: "claude attach '<agent id>'"`、`cwd: <agent 的 cwd>`、
+   `startupCommandDelivery: 'fast'`、`presentation: 'background'`。
+   - `presentation: 'background'` ⇒ 那个 surface **不抢焦点**，宿主窗口不会跳到它上面。
+     （`background` 只影响呈现，不影响它是个真实 surface —— 终端是真的在远端跑着。）
+   - `id:<工作区 id>` ⇒ 那个远端 PTY 归到该工作区（实测落在 `headless-terminals:<worktree>` 组）。
+2. 远端回一个 `handle`。把它编码成 `remote:<envId>@@<handle>`（`toRemoteRuntimePtyId`），
+   这正是 `terminalPreviewApiFor(ptyId)` 认的远端 PTY id。
+3. 面板用**已经存在**的 `AgentTerminalPreview` 预览它 —— 它认 `remote:` id，会走
+   `remoteRuntimeTerminalPreviewApi`（连远端的 multiplexer）。这就是本地 agent 那条路的同一块组件。
+4. 离开这个界面 ⇒ `terminal.close` 关掉那个远端终端。**agent 继续跑**（关掉的只是 attach 客户端），
+   再回来时重新 attach 一次。本机那条路会把 attach 留着（面板被切走时 PTY 不杀），
+   远端这条是「离开即关、回来即重连」。
+
+### 6.2 远端那条路已经有的东西
+
+`AgentTerminalPreview` + `remoteRuntimeTerminalPreviewApi` 本来就是给「远端 pane 的预览」写的，
+`remote:` id 的 connect/input/fit/ack 全都通。所以这块**没有新写终端渲染**，只是把本机那条
+`pty.spawn` + 本地 sidecar 换成远端的 `terminal.create` + 远端 preview。
+
+### 6.3 活的验证（2026-11-21，`frp-yolocalc`）
+
+在远端那台 Windows 机器上用它的 runtime 直接打一次 `terminal.create`（`presentation: 'background'`），
+再 `terminal.read` 那个 handle：
+
+- 返回 `surface: 'background'`、`hostPlatform: 'win32'`、`executionHostId: 'local'`；
+- 那个终端的**屏幕缓冲**里是 `4434800c` 这个 agent 的**真实 TUI**：它在问「llmgw 失败单测…怎么处理？」，
+  底下是 `Enter to select · Tab/Arrow keys to navigate · Esc to cancel`。
+  ⇒ `claude attach` 在远端确实接上了那个活着的 agent，而且它的输出**可读**（`source: 'screen'`）。
+- 验证完 `terminal.close` 清掉：远端 `terminal.list` 回到空，没有残留的 attach 进程。
+
+远端的 CLI 是 **2.1.322**，`claude attach --help` 在那台机器上是：
+`Usage: claude attach <id|name>` —— 吃的正是 `claude agents` 列出来的那个 id。
+
+## 7. 不在这次范围（明确不做）
+
 - **派发 / 停止 / 删除**：**没有一次性远端命令执行的 RPC**。唯一能跑命令的是 `terminal.create { command }`，
   而它**一定**会发布一个真实终端 surface（`presentation: 'background'` 只是不聚焦）。要不要为一个后台命令
   在远端弹一个 tab，是产品决定，不该夹在这次里。
 - **SSH 宿主**。
 
-## 7. 测试
+## 8. 测试
 
 - **远端 lister 的单测**（注入一个假的 RPC 调用）：
   - `template: 'claude'` 的 job **也出现**（`template` 只说明怎么起的）；只有没有 `sessionId` 的不出现。
@@ -154,11 +192,15 @@
   - 一个 job 读失败**不影响**其它 job。
 - **宿主路由的测试**：`executionHostId` 为 `local` ⇒ 走本地 lister；`runtime:<id>` ⇒ 走远端；
   `ssh:` ⇒ 0 个 + 说明。
-- **渲染层**：远端宿主下 composer 不渲染、行不可点；提示语是新的那句。
+- **渲染层**：远端宿主下 composer 不渲染、行**可点**（点开 = 远端那个 agent 的终端）；
+  ctrl+x（停止/删除）在远端宿主下**不响应**；提示语是新的那句。
+- **远端终端模块的单测**（注入一个假的 RPC 调用）：`terminal.create` 打给环境、命令是
+  `claude attach '<id>'`、`presentation: 'background'`、返回 `remote:<env>@@<handle>`；
+  远端没回 handle ⇒ 抛错；`terminal.close` 用那个 handle。
 - **活的验证**：跑一次对 `frp-yolocalc` 的真实查询，确认 `ctjt-service` 那 **81 个** agent 出现
   （其中在跑的也在），数量与远端 `claude agents --json --all` 一致。
 
-## 8. 一条实现规则（探针踩出来的）
+## 9. 一条实现规则（探针踩出来的）
 
 **resolve 和 read 必须走 `callRuntimeEnvironment`**（app 的正常路由，持久 shared-control 连接），
 **不能**自己 dial 一次性 socket —— grant 绑设备，设备最后一条连接一关就被撤销。

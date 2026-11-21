@@ -390,7 +390,7 @@ it('keeps this machine out of scope when the workspace runs elsewhere', async ()
   expect(view.queryAllByTestId('background-agent-row')).toHaveLength(0)
 })
 
-it('lists a paired runtime host’s agents read-only', async () => {
+it('lists a paired runtime host’s agents and opens them', async () => {
   const list = vi.fn(async (): Promise<ClaudeBackgroundAgentListResult> => ({
     status: 'ready',
     agents: ROSTER,
@@ -424,7 +424,7 @@ it('lists a paired runtime host’s agents read-only', async () => {
     executionHostId: 'runtime:frp-yolocalc'
   })
   expect(view.getByTestId('background-agents-remote-host-notice').textContent).toContain(
-    "Showing this project's agents on its host. Opening, stopping and starting them there is not supported yet."
+    "Showing this project's agents on its host. Starting and stopping them there is not supported yet."
   )
   expect(view.getByTestId('background-agents-list')).toBeTruthy()
   // The composer and the stop/delete hint are entries this version does not have for a remote host.
@@ -433,14 +433,28 @@ it('lists a paired runtime host’s agents read-only', async () => {
 
   const rows = view.getAllByTestId('background-agent-row')
   expect(rows).toHaveLength(2)
-  expect(rows[0].hasAttribute('disabled')).toBe(true)
+  // Why: the agent runs on that host, so its terminal is previewed there and the row opens.
+  expect(rows[0].hasAttribute('disabled')).toBe(false)
   await act(async () => {
     fireEvent.click(rows[0])
   })
-  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({ kind: 'list' })
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({
+    kind: 'agent',
+    agentId: 'aaaa1111'
+  })
 
+  await act(async () => {
+    useAppStore.setState({ backgroundAgentsScreen: { kind: 'list' } })
+  })
   await press(view.getByTestId('background-agents-list'), 'Enter')
-  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({ kind: 'list' })
+  expect(useAppStore.getState().backgroundAgentsScreen).toEqual({
+    kind: 'agent',
+    agentId: 'aaaa1111'
+  })
+
+  await act(async () => {
+    useAppStore.setState({ backgroundAgentsScreen: { kind: 'list' } })
+  })
   await press(view.getByTestId('background-agents-list'), 'x', { ctrlKey: true })
   expect(view.queryByText(/ctrl\+x again/)).toBeNull()
 })

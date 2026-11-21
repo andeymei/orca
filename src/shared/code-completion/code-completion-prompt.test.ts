@@ -153,8 +153,8 @@ describe('buildNesSystemPrompt', () => {
 
     expect(prompt).toContain('kind is insert or replace')
     expect(prompt).not.toContain('delete')
-    expect(prompt).toContain('may only add to the text its range covers')
-    expect(prompt).toContain('a replace whose text begins with the originalText it replaces')
+    expect(prompt).toContain("An edit's text replaces the text its range covers")
+    expect(prompt).toContain('an insert carries an empty originalText')
     expect(prompt).toContain("An edit's range must be on one line")
   })
 
@@ -169,7 +169,7 @@ describe('buildNesSystemPrompt', () => {
       "Count each file's lines separately",
       'The edit at the cursor must end at the cursor position',
       'originalText must be the exact text the range currently covers',
-      'An edit may only add to the text its range covers',
+      "An edit's text replaces the text its range covers",
       'label is a short human-readable intent',
       'When you have nothing to propose, answer {"edits":[]}'
     ]

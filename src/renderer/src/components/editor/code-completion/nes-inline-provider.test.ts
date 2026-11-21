@@ -91,10 +91,13 @@ describe('nes inline completion', () => {
     })
   })
 
-  it('returns null for a replace that rewrites the covered text', () => {
+  it('offers a replace that rewrites the covered text', () => {
     const model = createModel('const a = 1')
 
-    expect(nesInlineCompletionForEdit(makeEdit({ text: 'const a = 2' }), model)).toBeNull()
+    const completion = nesInlineCompletionForEdit(makeEdit({ text: 'const a = 2' }), model)
+
+    // Why: the suggestion replaces the text its range covers, which is what the model proposed.
+    expect(completion?.insertText).toBe('const a = 2')
   })
 
   it('returns null for a delete edit', () => {

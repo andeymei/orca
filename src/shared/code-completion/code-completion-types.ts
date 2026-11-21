@@ -142,8 +142,9 @@ function isApplicableNesEdit(edit: NesEdit, allowedPaths: ReadonlySet<string>): 
   if (!allowedPaths.has(edit.path)) {
     return false
   }
-  // Why: the editor draws an edit as an inline insertion only, so a plan must not carry the rest.
-  if (edit.range.startLine !== edit.range.endLine || !nesEditExtendsCoveredText(edit)) {
+  // Why: the editor draws an edit as an inline suggestion, so a range that spans lines can never
+  // be shown; the text it carries may rewrite what the range covers.
+  if (edit.range.startLine !== edit.range.endLine) {
     return false
   }
   if (edit.kind === 'insert') {

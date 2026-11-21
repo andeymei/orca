@@ -109,8 +109,16 @@ export function useMonacoNextEditSuggestions(params: {
 
     const refreshMarkers = (): void => {
       const position = editorInstance.getPosition()
+      const model = editorInstance.getModel()
+      const drawn = position && model ? editAtCursor() : null
+      // Why: the edit the cursor is on is the suggestion itself, so a marker would point at the
+      // line the user is already on.
+      const shown =
+        drawn && nesInlineCompletionForEdit(drawn, model) !== null
+          ? nesPlanStore.editsForPath(filePath).filter((edit) => edit !== drawn)
+          : nesPlanStore.editsForPath(filePath)
       markers = position
-        ? nesLocationMarkers(nesPlanStore.editsForPath(filePath), position).sort(
+        ? nesLocationMarkers(shown, position).sort(
             (left, right) => left.lineNumber - right.lineNumber
           )
         : []

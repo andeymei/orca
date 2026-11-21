@@ -28,7 +28,7 @@ export function buildNesSystemPrompt(options?: { autoImport?: boolean }): string
     `The cursor marker \`${NES_CURSOR_MARKER}\` starts at the cursor and occupies the ${NES_CURSOR_MARKER.length} columns after it, so a column past the marker is ${NES_CURSOR_MARKER.length} larger than the file's column.`,
     'The edit at the cursor must end at the cursor position, so the suggestion applies where the user is typing.',
     'originalText must be the exact text the range currently covers.',
-    'An edit may only add to the text its range covers: an insert, or a replace whose text begins with the originalText it replaces.',
+    "An edit's text replaces the text its range covers; an insert carries an empty originalText.",
     'label is a short human-readable intent.',
     'When you have nothing to propose, answer {"edits":[]}.'
   ]

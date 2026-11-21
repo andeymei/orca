@@ -144,7 +144,7 @@ describe('validateNesEditPlan', () => {
     expect(plan.edits).toEqual([])
   })
 
-  it('drops a replace that rewrites the text it covers', () => {
+  it('keeps a replace that rewrites the text it covers', () => {
     const plan = validateNesEditPlan(
       {
         edits: [
@@ -158,7 +158,8 @@ describe('validateNesEditPlan', () => {
       { allowedPaths: [FILE_PATH] }
     )
 
-    expect(plan.edits).toEqual([])
+    // Why: the suggestion replaces the text its range covers, which is what the model proposed.
+    expect(plan.edits).toHaveLength(1)
   })
 
   it('drops a replace that spans more than one line', () => {

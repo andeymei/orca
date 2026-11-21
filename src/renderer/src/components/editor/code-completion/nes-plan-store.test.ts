@@ -212,6 +212,7 @@ describe('nes location markers', () => {
       { lineNumber: 10, column: 12 }
     )
 
+    // Why: the list keeps the edit; the editor leaves out the one it draws as the suggestion.
     expect(markers.map((marker) => marker.edit.id)).toEqual(['rewriting-cursor-edit'])
   })
 

@@ -1,9 +1,6 @@
 import type { OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor'
-import {
-  nesEditExtendsCoveredText,
-  type NesEdit
-} from '../../../../../shared/code-completion/code-completion-types'
+import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 import { nesPlanStore } from './nes-plan-store'
 
 type MonacoApi = Parameters<OnMount>[1]
@@ -55,8 +52,8 @@ export function nesInlineCompletionForEdit(
   if (edit.range.startLine !== edit.range.endLine) {
     return null
   }
-  // Why: the classic ghost text renders an insertion only, so a rewrite would be an invisible suggestion.
-  if (!nesEditExtendsCoveredText(edit)) {
+  // Why: an edit with no text has nothing to show, and accepting it would only remove the text.
+  if (edit.text.length === 0) {
     return null
   }
   const range = model.validateRange({

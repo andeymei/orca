@@ -6,6 +6,7 @@ import { useAppStore } from '@/store/index'
 const mocks = vi.hoisted(() => ({
   callRuntimeRpc: vi.fn(),
   previewPtyId: { current: null as string | null },
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the ref starts null and the test assigns the claim function to it; a bare null would infer the property as null.
   claimKeyEvent: { current: null as ((event: KeyboardEvent) => boolean) | null }
 }))
 

@@ -142,13 +142,20 @@
 远端那台机器上，agent 自己的进程就在那儿。所以**终端也要开在那台机器上**：
 
 1. 面板用 `terminal.create` 打给那个**环境**（不是本机）：
-   `worktree: 'id:<工作区 id>'`、`command: "claude attach '<agent id>'"`、`cwd: <agent 的 cwd>`、
-   `startupCommandDelivery: 'fast'`、`presentation: 'background'`。
+   `worktree: 'id:global-floating-terminal'`、`command: "claude attach '<agent id>'"`、
+   `cwd: <agent 的 cwd>`、`startupCommandDelivery: 'fast'`、`presentation: 'background'`。
+   - **`worktree` 用 floating 作用域，不是那个工作区** —— 关键的一条。
+     远端是个 `--serve` 无头 runtime，`terminal.create` 会把终端写进**那个工作区的 tab 清单**
+     （`headless-terminals:<worktree>` 组）；而本机会把配对主机的 tab 清单**镜像进自己的 tab bar**
+     （`web-session-tabs-sync`），于是这个 agent 会在中间区域**多出一个终端**。
+     floating 作用域是镜像那一侧**明确丢弃**的（`apply-snapshot.ts`：floating 面板是本机自己的，
+     `tracking-decisions.ts`：`isHostMirroredWorktree` 排除它）—— 本机那条 agent 终端用的也正是它
+     （`pty.spawn` + `FLOATING_TERMINAL_WORKTREE_ID`）。所以两边一致：**只有面板里那一个**。
    - `presentation: 'background'` ⇒ 那个 surface **不抢焦点**，宿主窗口不会跳到它上面。
      （`background` 只影响呈现，不影响它是个真实 surface —— 终端是真的在远端跑着。）
-   - `id:<工作区 id>` ⇒ 那个远端 PTY 归到该工作区（实测落在 `headless-terminals:<worktree>` 组）。
 2. 远端回一个 `handle`。把它编码成 `remote:<envId>@@<handle>`（`toRemoteRuntimePtyId`），
-   这正是 `terminalPreviewApiFor(ptyId)` 认的远端 PTY id。
+   这正是 `terminalPreviewApiFor(ptyId)` 认的远端 PTY id。预览是按 handle 找终端的，
+   所以用哪个作用域都无所谓。
 3. 面板用**已经存在**的 `AgentTerminalPreview` 预览它 —— 它认 `remote:` id，会走
    `remoteRuntimeTerminalPreviewApi`（连远端的 multiplexer）。这就是本地 agent 那条路的同一块组件。
 4. 离开这个界面 ⇒ `terminal.close` 关掉那个远端终端。**agent 继续跑**（关掉的只是 attach 客户端），
@@ -163,13 +170,17 @@
 
 ### 6.3 活的验证（2026-11-21，`frp-yolocalc`）
 
-在远端那台 Windows 机器上用它的 runtime 直接打一次 `terminal.create`（`presentation: 'background'`），
+在远端那台 Windows 机器上用它的 runtime 直接打一次 `terminal.create`
+（`worktree: 'id:global-floating-terminal'`、`presentation: 'background'`），
 再 `terminal.read` 那个 handle：
 
 - 返回 `surface: 'background'`、`hostPlatform: 'win32'`、`executionHostId: 'local'`；
 - 那个终端的**屏幕缓冲**里是 `4434800c` 这个 agent 的**真实 TUI**：它在问「llmgw 失败单测…怎么处理？」，
   底下是 `Enter to select · Tab/Arrow keys to navigate · Esc to cancel`。
   ⇒ `claude attach` 在远端确实接上了那个活着的 agent，而且它的输出**可读**（`source: 'screen'`）。
+- `session.tabs.list` 显示它落在 **`headless-terminals:global-floating-terminal`** 组里 ——
+  也就是 floating 作用域，**不是**那个工作区的组。这就是「中间区域不多一个终端」的根据：
+  桌面端镜像的是工作区的清单，而 floating 那份它明确丢弃。
 - 验证完 `terminal.close` 清掉：远端 `terminal.list` 回到空，没有残留的 attach 进程。
 
 远端的 CLI 是 **2.1.322**，`claude attach --help` 在那台机器上是：
@@ -194,8 +205,9 @@
   `ssh:` ⇒ 0 个 + 说明。
 - **渲染层**：远端宿主下 composer 不渲染、行**可点**（点开 = 远端那个 agent 的终端）；
   ctrl+x（停止/删除）在远端宿主下**不响应**；提示语是新的那句。
-- **远端终端模块的单测**（注入一个假的 RPC 调用）：`terminal.create` 打给环境、命令是
-  `claude attach '<id>'`、`presentation: 'background'`、返回 `remote:<env>@@<handle>`；
+- **远端终端模块的单测**（注入一个假的 RPC 调用）：`terminal.create` 打给环境、
+  `worktree` 是 **floating 作用域**（`id:global-floating-terminal`，不是工作区 id）、
+  命令是 `claude attach '<id>'`、`presentation: 'background'`、返回 `remote:<env>@@<handle>`；
   远端没回 handle ⇒ 抛错；`terminal.close` 用那个 handle。
 - **活的验证**：跑一次对 `frp-yolocalc` 的真实查询，确认 `ctjt-service` 那 **81 个** agent 出现
   （其中在跑的也在），数量与远端 `claude agents --json --all` 一致。

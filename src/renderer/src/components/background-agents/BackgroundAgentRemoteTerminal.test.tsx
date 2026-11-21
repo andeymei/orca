@@ -24,15 +24,13 @@ vi.mock('sonner', () => ({
 import { BackgroundAgentRemoteTerminal } from './BackgroundAgentRemoteTerminal'
 
 const ENVIRONMENT_ID = 'env-remote'
-const WORKTREE_ID = 'repo1::/w'
 
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.previewPtyId.current = null
   mocks.callRuntimeRpc.mockResolvedValue({ terminal: { handle: 'handle-1' } })
   useAppStore.setState({
-    activeWorkspaceExecutionHostId: `runtime:${ENVIRONMENT_ID}`,
-    activeWorktreeId: WORKTREE_ID
+    activeWorkspaceExecutionHostId: `runtime:${ENVIRONMENT_ID}`
   })
 })
 
@@ -52,7 +50,7 @@ it('previews the agent’s terminal on the host that runs it', async () => {
     { kind: 'environment', environmentId: ENVIRONMENT_ID },
     'terminal.create',
     expect.objectContaining({
-      worktree: `id:${WORKTREE_ID}`,
+      worktree: 'id:global-floating-terminal',
       command: "claude attach 'aaaa1111'",
       presentation: 'background'
     }),

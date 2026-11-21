@@ -14,7 +14,6 @@ import {
 } from './claude-background-agent-remote-terminal'
 
 const ENVIRONMENT_ID = 'env-remote'
-const WORKTREE_ID = 'repo::D:\\ctjt\\code\\ctjt-service'
 const AGENT_ID = 'aaaa1111'
 const WINDOWS_CWD = 'D:\\ctjt\\code\\ctjt-platform\\ctjt-service'
 
@@ -28,7 +27,6 @@ describe('the terminal that shows a paired host’s agent', () => {
 
     const terminal = await createRemoteBackgroundAgentTerminal({
       environmentId: ENVIRONMENT_ID,
-      worktreeId: WORKTREE_ID,
       agentId: AGENT_ID,
       cwd: WINDOWS_CWD
     })
@@ -38,7 +36,9 @@ describe('the terminal that shows a paired host’s agent', () => {
     expect(target).toEqual({ kind: 'environment', environmentId: ENVIRONMENT_ID })
     expect(method).toBe('terminal.create')
     expect(params).toEqual({
-      worktree: `id:${WORKTREE_ID}`,
+      // Why the floating scope: the app drops a paired host's floating inventory, so the agent
+      // does not appear as a second tab in this machine's tab bar.
+      worktree: 'id:global-floating-terminal',
       command: "claude attach 'aaaa1111'",
       cwd: WINDOWS_CWD,
       startupCommandDelivery: 'fast',
@@ -53,7 +53,6 @@ describe('the terminal that shows a paired host’s agent', () => {
     await expect(
       createRemoteBackgroundAgentTerminal({
         environmentId: ENVIRONMENT_ID,
-        worktreeId: WORKTREE_ID,
         agentId: AGENT_ID,
         cwd: null
       })

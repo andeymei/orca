@@ -2,6 +2,7 @@ import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import { toRuntimeWorktreeSelector } from '@/runtime/rpc/targets/runtime-worktree-selector'
 import { toRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
 import { buildClaudeAttachStartup } from '../../../../shared/ai-vault/resume/ai-vault-attach-startup'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { RuntimeTerminalCreate } from '../../../../shared/runtime-terminal-create-contract'
 
 /** A terminal on a paired host, as the panel previews it. */
@@ -32,8 +33,6 @@ function hostPlatformOf(cwd: string | null): NodeJS.Platform {
  */
 export async function createRemoteBackgroundAgentTerminal(args: {
   environmentId: string
-  /** The workspace's worktree on the host; the host resolves it by this id. */
-  worktreeId: string
   agentId: string
   cwd: string | null
 }): Promise<RemoteBackgroundAgentTerminal> {
@@ -46,7 +45,11 @@ export async function createRemoteBackgroundAgentTerminal(args: {
     { kind: 'environment', environmentId: args.environmentId },
     'terminal.create',
     {
-      worktree: toRuntimeWorktreeSelector(args.worktreeId),
+      // Why the floating scope: a terminal made for a workspace joins that workspace's tab
+      // inventory, and this app mirrors a paired host's inventory into its own tab bar — the
+      // agent would show up there a second time. The floating scope is the one the mirror drops,
+      // and it is what this machine's own agent terminal uses.
+      worktree: toRuntimeWorktreeSelector(FLOATING_TERMINAL_WORKTREE_ID),
       command: startup.command,
       ...(startup.cwd ? { cwd: startup.cwd } : {}),
       startupCommandDelivery: 'fast',

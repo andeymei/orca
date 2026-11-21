@@ -45,7 +45,6 @@ export function BackgroundAgentRemoteTerminal({
     const state = useAppStore.getState()
     const host = parseExecutionHostId(state.activeWorkspaceExecutionHostId)
     const environmentId = host?.kind === 'runtime' ? host.environmentId : null
-    const worktreeId = state.activeWorktreeId ?? ''
     if (!environmentId) {
       return
     }
@@ -53,7 +52,6 @@ export function BackgroundAgentRemoteTerminal({
       try {
         const terminal = await createRemoteBackgroundAgentTerminal({
           environmentId,
-          worktreeId,
           agentId,
           cwd
         })

@@ -2003,6 +2003,10 @@ Expected: FAIL，报模块不存在。
 `refactor-review-tab.tsx`：
 
 - 左侧 `refactor-proposal-tree.tsx`，右侧当前选中的 hunk 的 `RefactorHunkView`。
+- **「查看完整文件」切换**（spec §9.2 要求）：切到整文件视角时，右区显示整个文件的 `DiffViewer`——
+  `originalContent` 用 `file.originalContent`（基准文本），
+  `modifiedContent` 用 `applyRefactorHunks(file.originalContent, file.hunks)`（Task 2 的函数，渲染层可用）。
+  也就是说整文件视角显示的是**该方案改完之后的全文**，不是别的方案的结果。
 - 顶部：文件名、「接受全部方案」、「丢弃」按钮、进度文案。
 - 用 Task 9 的 `pollRefactorJob` 轮询状态；`state === 'done'` 后用 `fetchRefactorPlan` 取 plan 并写进 store。
 - 「接受全部方案」把 plan 里所有 hunk 标为接受，然后调 `applyRefactor`，成功后关掉这个 tab（用现成的关闭编辑 tab 的 store action）。

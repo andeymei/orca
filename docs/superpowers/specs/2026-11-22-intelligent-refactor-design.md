@@ -377,13 +377,16 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 5 个方法，都注册在 `src/main/runtime/rpc/methods/refactor/refactor-methods.ts`，
 `permission: 'workspace'`。
 
-| 方法               | 入参                                              | 出参                                    |
-| ------------------ | ------------------------------------------------- | --------------------------------------- |
-| `refactor.propose` | `{ worktreeId, filePath, content, instruction? }` | `{ jobId }`                             |
-| `refactor.status`  | `{ jobId }`                                       | `{ state, progress, warnings[] }`       |
-| `refactor.plan`    | `{ jobId }`                                       | `{ plan } \| null`                      |
-| `refactor.apply`   | `{ jobId, acceptedHunkIds[] }`                    | `{ applied: [{ path, hunksApplied }] }` |
-| `refactor.discard` | `{ jobId }`                                       | `{ discarded: boolean }`                |
+| 方法               | 入参                                                | 出参                                                                  |
+| ------------------ | --------------------------------------------------- | --------------------------------------------------------------------- |
+| `refactor.propose` | `{ worktree, relativePath, content, instruction? }` | `{ jobId }`                                                           |
+| `refactor.status`  | `{ jobId }`                                         | `{ state, progress, warnings[] }`                                     |
+| `refactor.plan`    | `{ jobId }`                                         | `{ plan } \| null`                                                    |
+| `refactor.apply`   | `{ jobId, acceptedHunkIds[] }`                      | `{ applied: [{ path, hunksApplied }], refusals: [{ path, reason }] }` |
+| `refactor.discard` | `{ jobId }`                                         | `{ discarded: boolean }`                                              |
+
+`worktree` 是 worktree 选择器字符串（与运行时文件 API 的 `worktreeSelector` 同一个），
+`relativePath` 是相对工作区的路径。
 
 `state` 取值：`running` | `done` | `failed` | `cancelled`。
 
@@ -393,11 +396,14 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 ### 10.1 触发入口
 
 - 编辑器文件头（`src/renderer/src/components/editor/EditorPanelHeader.tsx`）上的「智能重构」按钮。
-- 命令面板里的同名命令。
 
-两者都作用于当前激活的文件。发起时的缓冲区内容从
+它作用于当前激活的文件。发起时的缓冲区内容从
 `src/renderer/src/components/editor/editor-panel-draft-selector.ts` 的
 `createEditorPanelDraftSelector` 取（`EditorPanel.tsx` 已经在用同一个选择器）。
+
+**本期不做命令面板入口**：仓库里的 cmdk 弹层是「文件快速打开」（`src/renderer/src/components/QuickOpen.tsx`），
+不是应用级命令注册表；要在那里挂一条「智能重构」命令，得先建一套应用命令注册表，那是另一个特性。
+触发入口就一个：文件头按钮。
 
 ## 11. 改动清单
 

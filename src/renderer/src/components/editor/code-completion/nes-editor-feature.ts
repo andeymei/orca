@@ -47,8 +47,6 @@ export type NesFeatureParams = {
   contextSuffixChars: number
   displayDeadlineMs: number
   completionModel: string
-  /** How many edits carry a gutter marker. */
-  onMarkersChanged: (count: number) => void
   /** The edit the cursor cannot show, when the plan holds one the user should look at. */
   onNextEditChanged: (
     next: NesNextEdit | null | ((previous: NesNextEdit | null) => NesNextEdit | null)
@@ -131,7 +129,6 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
       filePath,
       modelKey,
       collection,
-      onMarkersChanged: params.onMarkersChanged,
       onNextEditChanged: params.onNextEditChanged
     })
   }
@@ -313,7 +310,6 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
       renameWatcher.dispose()
       collection.clear()
       handlersByEditor.delete(editorInstance)
-      params.onMarkersChanged(0)
       params.onNextEditChanged(null)
     }
   }

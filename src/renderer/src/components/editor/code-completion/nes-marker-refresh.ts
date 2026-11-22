@@ -21,7 +21,6 @@ export function refreshNesMarkers(input: {
   /** The key the plan store binds the model under. */
   modelKey: string
   collection: editor.IEditorDecorationsCollection
-  onMarkersChanged: (count: number) => void
   onNextEditChanged: (
     next: NesNextEdit | null | ((previous: NesNextEdit | null) => NesNextEdit | null)
   ) => void
@@ -39,7 +38,6 @@ export function refreshNesMarkers(input: {
     ? nesLocationMarkers(shown, position).sort((left, right) => left.lineNumber - right.lineNumber)
     : []
   input.collection.set(nesMarkerDecorations(markers))
-  input.onMarkersChanged(markers.length)
   const notice = nesNextEditNotice({
     drawn,
     drawnIsDrawable,

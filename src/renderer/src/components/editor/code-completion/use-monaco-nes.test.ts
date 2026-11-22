@@ -178,7 +178,9 @@ function renderHookFor(
 
 /** The hook's own view, for the tests that read what it reports. */
 function renderHookView(model: monaco.editor.ITextModel): {
-  result: () => { markerCount: number; nextEdit: NesNextEdit | null }
+  result: () => { enabled: boolean; nextEdit: NesNextEdit | null }
+  /** The decorations the markers are drawn as. */
+  markerCounts: () => number[]
   unmount: () => void
 } {
   const fakeEditor = createFakeEditor(model)
@@ -196,7 +198,11 @@ function renderHookView(model: monaco.editor.ITextModel): {
       editorInstance: fakeEditor.editorInstance
     })
   )
-  return { result: () => view.result.current, unmount: view.unmount }
+  return {
+    result: () => view.result.current,
+    markerCounts: fakeEditor.markerCounts,
+    unmount: view.unmount
+  }
 }
 
 afterEach(() => {
@@ -258,7 +264,7 @@ describe('useMonacoNextEditSuggestions', () => {
     unmount()
   })
 
-  it('reports the markers the plan left, so the editor can open the glyph margin for them', async () => {
+  it('draws the markers the plan left and reports the feature as on, so the editor reserves the glyph margin', async () => {
     const model = createModel('const a = 1\nconst b = 2')
     requestNesPlanMock.mockResolvedValue({
       edits: [
@@ -271,11 +277,14 @@ describe('useMonacoNextEditSuggestions', () => {
       ]
     })
 
-    const { result, unmount } = renderHookView(model)
+    const { result, markerCounts, unmount } = renderHookView(model)
 
     await waitFor(() => {
-      expect(result().markerCount).toBe(1)
+      expect(markerCounts().at(-1)).toBe(1)
     })
+    // Why: the margin has to be there before the first marker is, or the text moves sideways
+    // every time a marker comes and goes.
+    expect(result().enabled).toBe(true)
     unmount()
   })
 

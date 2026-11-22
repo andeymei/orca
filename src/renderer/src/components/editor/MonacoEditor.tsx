@@ -249,7 +249,7 @@ export default function MonacoEditor({
   )
 
   // Why: the glyph margin is off by default, so the `@ai` glyphs and the next-edit markers would
-  // draw nothing without it.
+  // draw nothing without it. The margin is put back when the editor goes away.
   useEffect(() => {
     if (!mountedEditor) {
       return
@@ -260,9 +260,19 @@ export default function MonacoEditor({
     }
   }, [mountedEditor])
 
+  // Why: the glyph margin is a column on the left of the text, so turning it on or off moves
+  // every line sideways. It is turned on once, when something that draws in it is present, and
+  // stays on for as long as the editor lives: the width must not change while the user types.
+  const glyphMarginOn = useRef(false)
   useEffect(() => {
-    mountedEditor?.updateOptions({ glyphMargin: glyphs.length > 0 || nes.markerCount > 0 })
-  }, [glyphs.length, nes.markerCount, mountedEditor])
+    if (!mountedEditor) {
+      return
+    }
+    if (nes.enabled || glyphs.length > 0) {
+      glyphMarginOn.current = true
+    }
+    mountedEditor.updateOptions({ glyphMargin: glyphMarginOn.current })
+  }, [mountedEditor, nes.enabled, glyphs.length])
 
   const handleMount = useMonacoEditorMount({
     fileId,

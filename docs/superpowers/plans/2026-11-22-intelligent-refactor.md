@@ -21,7 +21,10 @@
 - 不默认加测试。本计划列出的测试都是纯逻辑、会在改动被回退时失效、且硬编码期望值的。
 - 测试用 `pnpm test <path> --maxWorkers=2`，不要裸跑 vitest。
 - 类型检查 `pnpm tc:node`（main + shared）与 `pnpm tc:web`（renderer）。
-- 提交前必须跑 `pnpm check:changed`（基线 `origin/main`），不得 `--no-verify`。
+- 提交前必须跑 `pnpm check:changed`，不得 `--no-verify`。
+  **基线用 `pnpm check:changed --base=9127b3837e`**（本分支起点，merge-base 就是它）。
+  不要用默认的 `origin/main`：origin/main 停在 `f90dab5edf`，不含本分支历史里那个 NES 大提交，
+  changed 集合会混进别人的几千个文件，vitest 的 "related" 步骤要跑 19 分钟。
 - 改了 RPC 方法后必须跑 `pnpm generate:rpc-params-catalog` 并提交生成物。
 - 不在本计划内新增仓库根目录条目。
 

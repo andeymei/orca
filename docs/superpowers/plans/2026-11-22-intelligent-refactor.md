@@ -163,7 +163,7 @@ Expected: FAIL，报模块 `./refactor-types` 不存在。
 
 在 `src/shared/refactor/refactor-manifest.ts` 写 `RefactorManifestProposal` 与 `RefactorManifest`，`files` 用 `z.array(z.string().min(1))`。
 
-在 `src/shared/rpc-contract/refactor-params.ts` 写上面列出的七个 schema 与类型。`RefactorProposeParams` 的 `worktree` 用 `z.string().min(1)`。
+在 `src/shared/rpc-contract/refactor-params.ts` 写上面列出的**八个** schema 与类型。`RefactorProposeParams` 的 `worktree` 用 `z.string().min(1)`。
 
 - [ ] **Step 4: 跑测试确认它通过**
 

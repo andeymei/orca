@@ -1,4 +1,8 @@
 import { computeRefactorHunks } from '../../shared/refactor/refactor-hunk-computation'
+import {
+  REFACTOR_MAX_FILES_PER_PROPOSAL,
+  REFACTOR_MAX_PROPOSALS
+} from '../../shared/refactor/refactor-limits'
 import type { RefactorManifest } from '../../shared/refactor/refactor-manifest'
 import type {
   RefactorFileProposal,
@@ -44,6 +48,8 @@ type ProposalDraft = {
   files: string[]
   /** True when the manifest was missing and the draft was rebuilt from the scratch tree. */
   restored: boolean
+  /** True when the manifest named the proposal but not the files it changes. */
+  filesFromTree: boolean
 }
 
 type ProposalOutcome =
@@ -66,28 +72,71 @@ async function draftsFromScratchTree(
       title: entry.id,
       rationale: '',
       files: entry.files,
-      restored: true
+      restored: true,
+      filesFromTree: false
     })
   }
   return drafts
 }
 
-function draftsFromManifest(manifest: RefactorManifest, warnings: string[]): ProposalDraft[] {
+/**
+ * The drafts of a manifest that names its proposals.
+ *
+ * Why the tree is read: the manifest is an index, and an index that leaves out a page is still an
+ * index — the tree knows which files the proposal wrote.
+ */
+async function draftsFromManifest(
+  manifest: RefactorManifest,
+  input: RefactorPlanInput,
+  warnings: string[]
+): Promise<ProposalDraft[]> {
+  const treeFiles = await scratchFilesByProposal(input, manifest)
   const drafts: ProposalDraft[] = []
   for (const proposal of manifest.proposals) {
     if (proposal.id === REFACTOR_SOURCE_DIRECTORY_NAME) {
       warnings.push(SOURCE_IGNORED_WARNING)
       continue
     }
+    const files = proposal.files
+    if (files === undefined) {
+      drafts.push({
+        id: proposal.id,
+        title: proposal.title,
+        rationale: proposal.rationale,
+        files: treeFiles.get(proposal.id) ?? [],
+        restored: false,
+        filesFromTree: true
+      })
+      continue
+    }
     drafts.push({
       id: proposal.id,
       title: proposal.title,
       rationale: proposal.rationale,
-      files: proposal.files,
-      restored: false
+      files,
+      restored: false,
+      filesFromTree: false
     })
   }
   return drafts
+}
+
+/**
+ * The file list of every proposal directory in the scratch tree.
+ *
+ * Why it is read only when the manifest needs it: the tree is the fallback for a manifest that
+ * names no files, and walking it costs a directory read.
+ */
+async function scratchFilesByProposal(
+  input: RefactorPlanInput,
+  manifest: RefactorManifest
+): Promise<Map<string, string[]>> {
+  const needsTree = manifest.proposals.some((proposal) => proposal.files === undefined)
+  if (!needsTree) {
+    return new Map()
+  }
+  const entries = await input.listScratchProposals()
+  return new Map(entries.map((entry) => [entry.id, entry.files]))
 }
 
 async function evaluateProposal(
@@ -104,6 +153,13 @@ async function evaluateProposal(
   // Two proposals under one id cannot be told apart in the review UI.
   if (claimedIds.has(draft.id)) {
     return { kept: false, warning: `方案 ${draft.id} 的编号重复，已丢弃` }
+  }
+  // The agent may write more files than the limit allows; the plan does not grow past it.
+  if (draft.files.length > REFACTOR_MAX_FILES_PER_PROPOSAL) {
+    return {
+      kept: false,
+      warning: `方案 ${draft.id} 的文件数超出上限（最多 ${REFACTOR_MAX_FILES_PER_PROPOSAL} 个），已丢弃`
+    }
   }
   // Every read-free check runs before anything is read: a proposal that gets dropped must not
   // leave its disk content behind for the staleness check to compare against.
@@ -180,14 +236,23 @@ export async function buildRefactorPlan(input: RefactorPlanInput): Promise<Refac
   const drafts =
     input.manifest === null
       ? await draftsFromScratchTree(input, warnings)
-      : draftsFromManifest(input.manifest, warnings)
+      : await draftsFromManifest(input.manifest, input, warnings)
+
+  // The limit holds on both paths: the manifest names its proposals, and the tree names its
+  // directories — neither may grow the plan past what the review tab can show.
+  const withinLimit = drafts.slice(0, REFACTOR_MAX_PROPOSALS)
+  for (const dropped of drafts.slice(REFACTOR_MAX_PROPOSALS)) {
+    warnings.push(
+      `方案 ${dropped.id} 超出方案数量上限（最多 ${REFACTOR_MAX_PROPOSALS} 个），已丢弃`
+    )
+  }
 
   const proposals: RefactorProposal[] = []
   const diskContents = new Map<string, string>()
   const claimedPaths = new Map<string, string>()
   const claimedIds = new Set<string>()
 
-  for (const draft of drafts) {
+  for (const draft of withinLimit) {
     if (input.signal?.aborted === true) {
       warnings.push('重构任务已取消')
       break
@@ -205,6 +270,9 @@ export async function buildRefactorPlan(input: RefactorPlanInput): Promise<Refac
     }
     if (draft.restored) {
       warnings.push(`方案 ${draft.id} 是从暂存目录还原的，agent 未给出理由`)
+    }
+    if (draft.filesFromTree) {
+      warnings.push(`方案 ${draft.id} 在清单里没有列出文件，已按暂存目录还原`)
     }
   }
 

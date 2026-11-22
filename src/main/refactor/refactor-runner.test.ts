@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, realpath, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import {
   classifyRefactorResult,
   decideRefactorTurnOutcome,
   parseRefactorToolProgress,
+  readRefactorManifest,
   refactorFaultDetail,
   refactorTurnCancelledFirst
 } from './refactor-runner'
 import { resolveRefactorGateRoots } from './refactor-write-gate'
 import { buildRefactorPrompt } from '../../shared/refactor/refactor-prompt'
+import {
+  REFACTOR_MAX_FILES_PER_PROPOSAL,
+  REFACTOR_MAX_PROPOSALS
+} from '../../shared/refactor/refactor-limits'
 
 const roots = await resolveRefactorGateRoots({
   scratchRoot: '/repo/.orca/refactor/job-1',
@@ -41,6 +46,68 @@ describe('buildRefactorPrompt', () => {
 
   it('carries the user instruction into the prompt', () => {
     expect(prompt.user).toMatch(/用户指令：\s*把重复的校验提出来/)
+  })
+
+  it('says the file list is required, so the agent does not leave it out', () => {
+    expect(prompt.system).toMatch(/`files` 是必填项/)
+  })
+
+  it('names the same limits the plan builder enforces', () => {
+    expect(prompt.system).toContain(
+      `最多 ${REFACTOR_MAX_PROPOSALS} 个方案，每个方案最多 ${REFACTOR_MAX_FILES_PER_PROPOSAL} 个文件`
+    )
+    expect(prompt.system).toContain('最多 5 个方案，每个方案最多 5 个文件')
+  })
+})
+
+describe('readRefactorManifest', () => {
+  /** A scratch root that holds the manifest the agent wrote. */
+  async function scratchRootWithManifest(manifest: unknown): Promise<string> {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'refactor-manifest-'))
+    await writeFile(path.join(root, 'manifest.json'), JSON.stringify(manifest), 'utf8')
+    return root
+  }
+
+  it('keeps the proposals that fit and drops only the one that does not', async () => {
+    const root = await scratchRootWithManifest({
+      proposals: [
+        { id: 'p1', title: '提取校验', rationale: '两处规则相同。', files: ['src/foo.ts'] },
+        { id: 'p2', rationale: '这个方案没有标题。' }
+      ]
+    })
+    const read = await readRefactorManifest(root)
+    expect(read.manifest?.proposals).toHaveLength(1)
+    expect(read.manifest?.proposals[0].title).toBe('提取校验')
+    expect(read.manifest?.proposals[0].rationale).toBe('两处规则相同。')
+    expect(read.warnings).toHaveLength(1)
+    expect(read.warnings[0]).toContain('p2')
+  })
+
+  it('keeps a proposal that names no file, so the plan can take its files from the tree', async () => {
+    const root = await scratchRootWithManifest({
+      proposals: [{ id: 'p1', title: '提取校验', rationale: '两处规则相同。' }]
+    })
+    const read = await readRefactorManifest(root)
+    expect(read.manifest?.proposals).toHaveLength(1)
+    expect(read.manifest?.proposals[0].title).toBe('提取校验')
+    expect(read.manifest?.proposals[0].rationale).toBe('两处规则相同。')
+    expect(read.manifest?.proposals[0].files).toBeUndefined()
+    expect(read.warnings).toEqual([])
+  })
+
+  it('fails the whole manifest when it holds no proposals array', async () => {
+    const root = await scratchRootWithManifest({ note: '这个清单没有方案。' })
+    const read = await readRefactorManifest(root)
+    expect(read.manifest).toBeNull()
+    expect(read.warnings).toEqual(['清单的形状不符合约定'])
+  })
+
+  it('fails the whole manifest when it is not JSON', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'refactor-manifest-'))
+    await writeFile(path.join(root, 'manifest.json'), '{ not json', 'utf8')
+    const read = await readRefactorManifest(root)
+    expect(read.manifest).toBeNull()
+    expect(read.warnings).toEqual(['清单不是合法的 JSON'])
   })
 })
 

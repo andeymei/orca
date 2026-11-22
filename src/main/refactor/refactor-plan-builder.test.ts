@@ -389,4 +389,170 @@ describe('buildRefactorPlan', () => {
     expect(result.plan.proposals).toHaveLength(0)
     expect(result.warnings.some((warning) => warning.includes('已取消'))).toBe(true)
   })
+
+  it('takes the file list of a proposal the manifest does not name from the scratch tree', async () => {
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [{ id: 'p1', title: '提取校验', rationale: '两处规则相同。' }]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\nb\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [{ id: 'p1', files: ['src/foo.ts'] }],
+      scratchFiles: async () => 'a\nB\n'
+    })
+    expect(result.plan.proposals).toHaveLength(1)
+    expect(result.plan.proposals[0].rationale).toBe('两处规则相同。')
+    expect(result.plan.proposals[0].files.map((file) => file.path)).toEqual(['src/foo.ts'])
+    expect(result.warnings.some((warning) => warning.includes('没有列出文件'))).toBe(true)
+  })
+
+  it('does not say the agent gave no reason when the manifest named the proposal', async () => {
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [{ id: 'p1', title: '提取校验', rationale: '两处规则相同。' }]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\nb\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [{ id: 'p1', files: ['src/foo.ts'] }],
+      scratchFiles: async () => 'a\nB\n'
+    })
+    expect(result.warnings.some((warning) => warning.includes('agent 未给出理由'))).toBe(false)
+  })
+
+  it('keeps a proposal whose file list is empty, even when the tree holds files for it', async () => {
+    // An empty list is the agent saying it changed nothing; only a missing one is a gap.
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [{ id: 'p1', title: 'a', rationale: 'r', files: [] }]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [{ id: 'p1', files: ['src/foo.ts'] }],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.plan.proposals).toHaveLength(0)
+    expect(result.warnings.some((warning) => warning.includes('没有文件'))).toBe(true)
+  })
+
+  it('drops the proposals past the limit and names the one it dropped', async () => {
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [
+          { id: 'p1', title: 'a', rationale: 'r', files: ['src/a.ts'] },
+          { id: 'p2', title: 'a', rationale: 'r', files: ['src/b.ts'] },
+          { id: 'p3', title: 'a', rationale: 'r', files: ['src/c.ts'] },
+          { id: 'p4', title: 'a', rationale: 'r', files: ['src/d.ts'] },
+          { id: 'p5', title: 'a', rationale: 'r', files: ['src/e.ts'] },
+          { id: 'p6', title: 'a', rationale: 'r', files: ['src/f.ts'] }
+        ]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual([
+      'p1',
+      'p2',
+      'p3',
+      'p4',
+      'p5'
+    ])
+    const limitWarnings = result.warnings.filter((warning) => warning.includes('超出方案数量上限'))
+    expect(limitWarnings).toHaveLength(1)
+    expect(limitWarnings[0]).toContain('p6')
+  })
+
+  it('drops the proposals past the limit on the scratch tree path too', async () => {
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: null,
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [
+        { id: 'p1', files: ['src/a.ts'] },
+        { id: 'p2', files: ['src/b.ts'] },
+        { id: 'p3', files: ['src/c.ts'] },
+        { id: 'p4', files: ['src/d.ts'] },
+        { id: 'p5', files: ['src/e.ts'] },
+        { id: 'p6', files: ['src/f.ts'] }
+      ],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual([
+      'p1',
+      'p2',
+      'p3',
+      'p4',
+      'p5'
+    ])
+    const limitWarnings = result.warnings.filter((warning) => warning.includes('超出方案数量上限'))
+    expect(limitWarnings).toHaveLength(1)
+    expect(limitWarnings[0]).toContain('p6')
+  })
+
+  it('drops a proposal that names more files than the limit', async () => {
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [
+          {
+            id: 'p1',
+            title: 'a',
+            rationale: 'r',
+            files: ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts', 'src/f.ts']
+          }
+        ]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.plan.proposals).toHaveLength(0)
+    expect(result.warnings.some((warning) => warning.includes('文件数超出上限'))).toBe(true)
+  })
+
+  it('drops a proposal of the scratch tree that names more files than the limit', async () => {
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: null,
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [
+        {
+          id: 'p1',
+          files: ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts', 'src/f.ts']
+        }
+      ],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.plan.proposals).toHaveLength(0)
+    expect(result.warnings.some((warning) => warning.includes('文件数超出上限'))).toBe(true)
+  })
 })

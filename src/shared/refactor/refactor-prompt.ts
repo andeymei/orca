@@ -1,3 +1,5 @@
+import { REFACTOR_MAX_FILES_PER_PROPOSAL, REFACTOR_MAX_PROPOSALS } from './refactor-limits'
+
 const MANIFEST_SHAPE =
   '{"proposals":[{"id":"p1","title":"…","rationale":"…","files":["src/foo.ts"]}]}'
 
@@ -26,7 +28,9 @@ export function buildRefactorPrompt(input: {
     '',
     '`rationale` 说清为什么这么改，不是改了什么。',
     '',
-    '最多 5 个方案，每个方案最多 5 个文件；两个方案不能改同一个文件。',
+    '`files` 是必填项：每个方案都要列出它改动的文件；清单里没有 `files` 的方案不会显示。',
+    '',
+    `最多 ${REFACTOR_MAX_PROPOSALS} 个方案，每个方案最多 ${REFACTOR_MAX_FILES_PER_PROPOSAL} 个文件；两个方案不能改同一个文件。`,
     '',
     '不要在回答里贴文件内容或 JSON，一切通过写文件产出。'
   ].join('\n')

@@ -107,4 +107,13 @@ describe('RefactorManifest', () => {
     })
     expect(parsed.success).toBe(true)
   })
+
+  it('accepts a proposal that names no file', () => {
+    // The agent writes the files and the index; an index that names a proposal without naming
+    // its files is still an index.
+    const parsed = RefactorManifest.safeParse({
+      proposals: [{ id: 'p1', title: 't', rationale: 'r' }]
+    })
+    expect(parsed.success).toBe(true)
+  })
 })

@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto'
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk'
 import { openClaudeStreamJsonConnection } from '../claude/claude-stream-json-connection'
 import { readNodeFileWithinLimit } from '../../shared/file-content/node-bounded-file-reader'
-import { RefactorManifest } from '../../shared/refactor/refactor-manifest'
+import {
+  RefactorManifestDocument,
+  RefactorManifestProposal,
+  type RefactorManifest
+} from '../../shared/refactor/refactor-manifest'
 import type { RefactorStatusResult } from '../../shared/rpc-contract/refactor-params'
 import {
   refactorToolAllowed,
@@ -48,7 +52,17 @@ export type RefactorTurnResult = {
   warnings: string[]
 }
 
-async function readRefactorManifest(scratchRoot: string): Promise<{
+/**
+ * The manifest the agent wrote.
+ *
+ * Why it is read one proposal at a time: a proposal that does not fit the shape is dropped on its
+ * own, and the others keep their titles and their reasons — a manifest with one broken proposal
+ * still says what the agent wanted to do.
+ *
+ * Why the whole document is still checked: a manifest without a `proposals` array holds nothing
+ * that can be kept, so it fails as a whole.
+ */
+export async function readRefactorManifest(scratchRoot: string): Promise<{
   manifest: RefactorManifest | null
   warnings: string[]
 }> {
@@ -67,11 +81,32 @@ async function readRefactorManifest(scratchRoot: string): Promise<{
   } catch {
     return { manifest: null, warnings: ['清单不是合法的 JSON'] }
   }
-  const parsed = RefactorManifest.safeParse(parsedJson)
-  if (!parsed.success) {
+  const document = RefactorManifestDocument.safeParse(parsedJson)
+  if (!document.success) {
     return { manifest: null, warnings: ['清单的形状不符合约定'] }
   }
-  return { manifest: parsed.data, warnings: [] }
+  const proposals: RefactorManifestProposal[] = []
+  const warnings: string[] = []
+  for (const [index, raw] of document.data.proposals.entries()) {
+    const proposal = RefactorManifestProposal.safeParse(raw)
+    if (!proposal.success) {
+      warnings.push(`清单里的${describeManifestProposal(raw, index)}不符合约定，已丢弃`)
+      continue
+    }
+    proposals.push(proposal.data)
+  }
+  return { manifest: { proposals }, warnings }
+}
+
+/**
+ * The name of a proposal that did not parse.
+ *
+ * Why the id: the user has to know which proposal was dropped, and the id is what the plan and
+ * the review tab name a proposal by.
+ */
+function describeManifestProposal(raw: unknown, index: number): string {
+  const identifier = RefactorManifestProposal.pick({ id: true }).safeParse(raw)
+  return identifier.success ? `方案 ${identifier.data.id}` : `第 ${index + 1} 个方案`
 }
 
 /**

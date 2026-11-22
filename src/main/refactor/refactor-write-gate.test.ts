@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isPathInsideScratch,
+  isPathInsideWorkspace,
   refactorToolAllowed,
   refactorToolTargetPath
 } from './refactor-write-gate'
@@ -23,6 +24,12 @@ describe('isPathInsideScratch', () => {
 
   it('rejects a sibling directory that shares the prefix', () => {
     expect(isPathInsideScratch(scratchRoot, '/repo/.orca/refactor/job-1x/p1/foo.ts')).toBe(false)
+  })
+
+  it('rejects a path that escapes once the trailing space is stripped', () => {
+    expect(isPathInsideScratch(scratchRoot, '/repo/.orca/refactor/job-1/.. /../evil.ts')).toBe(
+      false
+    )
   })
 })
 
@@ -257,6 +264,28 @@ describe('refactorToolAllowed', () => {
       })
     ).toBe(true)
   })
+
+  it('denies a write whose escape only appears once the trailing space is stripped', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '/repo/.. /../evil.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies a read whose escape only appears once the trailing space is stripped', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: { file_path: '/repo/.. /../evil.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
 })
 
 describe('refactorToolTargetPath', () => {
@@ -266,5 +295,11 @@ describe('refactorToolTargetPath', () => {
 
   it('reads the bare path key', () => {
     expect(refactorToolTargetPath({ path: '/repo/src/foo.ts' })).toBe('/repo/src/foo.ts')
+  })
+})
+
+describe('isPathInsideWorkspace', () => {
+  it('rejects a path that escapes once the trailing space is stripped', () => {
+    expect(isPathInsideWorkspace('/repo', '/repo/.. /../evil.ts')).toBe(false)
   })
 })

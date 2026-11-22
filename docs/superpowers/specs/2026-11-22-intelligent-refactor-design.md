@@ -421,6 +421,7 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 | `src/shared/refactor/refactor-manifest.ts`         | agent 写出的清单的 zod 契约                             |
 | `src/shared/refactor/refactor-prompt.ts`           | agent 的 system / user prompt                           |
 | `src/shared/rpc-contract/refactor-params.ts`       | RPC 参数与结果契约                                      |
+| `src/shared/tab-types.ts`                          | `TabContentType` 加 `'refactor-review'` 成员            |
 
 ### 11.2 main
 
@@ -462,7 +463,7 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 | 层            | 测什么                                                      | 位置                                                    |
 | ------------- | ----------------------------------------------------------- | ------------------------------------------------------- |
 | shared 纯函数 | hunk 计算、hunk 应用、清单校验、方案冲突丢弃                | `src/shared/refactor/*.test.ts`                         |
-| main          | 写闸门的路径裁决（`..`、绝对路径、符号链接、大小写）        | `src/main/refactor/refactor-write-gate.test.ts`         |
+| main          | 写闸门的路径裁决（`..`、绝对路径、大小写、末尾点/空格）     | `src/main/refactor/refactor-write-gate.test.ts`         |
 | main          | plan builder：清单缺字段、暂存文件不存在、方案共享文件      | `src/main/refactor/refactor-plan-builder.test.ts`       |
 | renderer      | 审查树的勾选集合展开（方案/文件/代码块三级 → hunk id 集合） | `src/renderer/src/components/editor/refactor/*.test.ts` |
 | 组件          | 审查 tab 的 fixture 截图（`pnpm fixtures:shot`）            | `refactor-review-tab.fixture.tsx`                       |
@@ -476,8 +477,10 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 - **agent 不遵守产出契约**：它可能不写 `manifest.json`、可能把文件写到别的目录、可能改了工作区里的
   真实文件。写闸门是第一道防线（越界的写直接被拒）；清单缺失时按目录结构兜底还原方案列表，
   并在界面上标记"agent 未给出理由"。
-- **agent 改了真实文件**：写闸门只拦 Write/Edit 工具。agent 若用 `Bash` 里的 `mv`/`cp` 就能绕过——
-  所以 `Bash` 根本不给。
+- **agent 改了真实文件**：写闸门只认 Write/Edit/MultiEdit 三个写工具，其余工具一律拒绝。
+  就算闸门漏了，`Bash` / `PowerShell`（能 `mv`/`cp`）、`Task`/`Agent`（能派生子 agent）
+  根本不进模型的上下文（`disallowedTools`），模型看不见就用不着。
+  剩下的风险是**子 agent 的工具调用未必走同一个闸门**，所以 `Task`/`Agent` 也一并去掉。
 - **暂存目录污染仓库**：`.orca/refactor/` 需要进 `.gitignore`。应用在发起任务时检查工作区是不是
   git 仓库，是的话把 `.orca/refactor/` 追加到仓库本地的 exclude 文件（`git rev-parse --git-path
   info/exclude` 问 Git 要路径——linked worktree 里 `.git` 是个文件，而 `info/` 在 common dir）。

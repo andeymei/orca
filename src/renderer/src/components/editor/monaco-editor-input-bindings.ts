@@ -10,6 +10,7 @@ import { formatNativeChatQuote } from '../native-chat/selection-quotes/native-ch
 import { getDiffCommentPopoverLeft } from '../diff-comments/diff-comment-popover-position'
 import {
   installEditorAcceptAiSuggestionShortcut,
+  installEditorAcceptNextAiSuggestionShortcut,
   installEditorAddReviewNoteShortcut,
   installEditorAiSuggestionPreviewShortcut,
   installEditorSaveShortcut,
@@ -67,6 +68,12 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
     () => nesShortcutHandlersFor(editorInstance)?.accept(),
     () => nesShortcutHandlersFor(editorInstance)?.jump(),
     () => nesShortcutHandlersFor(editorInstance)?.hasNextLocation() ?? false
+  )
+  const cleanupAcceptNextAiSuggestionShortcut = installEditorAcceptNextAiSuggestionShortcut(
+    editorDomNode,
+    () => nesShortcutHandlersFor(editorInstance)?.decide() ?? 'pass-through',
+    () => nesShortcutHandlersFor(editorInstance)?.acceptWord(),
+    () => nesShortcutHandlersFor(editorInstance)?.acceptLine()
   )
   const cleanupAiSuggestionPreviewShortcut = installEditorAiSuggestionPreviewShortcut(
     editorDomNode,
@@ -182,6 +189,7 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
       cleanupSaveShortcut()
       cleanupFindShortcut()
       cleanupAcceptAiSuggestionShortcut()
+      cleanupAcceptNextAiSuggestionShortcut()
       cleanupAiSuggestionPreviewShortcut()
       cleanupAddReviewNoteShortcut()
       pasteCaptureNode.removeEventListener('paste', onLargeTextPaste, { capture: true })

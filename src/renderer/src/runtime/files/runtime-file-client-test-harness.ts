@@ -62,6 +62,7 @@ export const runtimeEnvironmentCall: RuntimeRpcStub = vi.fn()
 export const runtimeEnvironmentTransportCall: RuntimeRpcStub = vi.fn()
 export const runtimeEnvironmentSubscribe: RuntimeSubscribeStub = vi.fn()
 export const runtimeCall: PreloadStub = vi.fn()
+export const runtimeCancelCall: PreloadStub = vi.fn()
 
 /** Registers the stubbed window.api fs/runtime surface shared by the runtime file client suites. */
 export function installRuntimeFileClientEnvironment(): void {
@@ -101,6 +102,7 @@ export function installRuntimeFileClientEnvironment(): void {
     runtimeEnvironmentTransportCall.mockReset()
     runtimeEnvironmentSubscribe.mockReset()
     runtimeCall.mockReset()
+    runtimeCancelCall.mockReset()
     runtimeEnvironmentTransportCall.mockImplementation((args: { method: string }) => {
       if (args.method === 'status.get') {
         return Promise.resolve({
@@ -146,7 +148,7 @@ export function installRuntimeFileClientEnvironment(): void {
           uploadExternalFileToRuntime: fsUploadExternalFileToRuntime,
           grantRuntimeFilePreview: fsGrantRuntimeFilePreview
         },
-        runtime: { call: runtimeCall },
+        runtime: { call: runtimeCall, cancelCall: runtimeCancelCall },
         runtimeEnvironments: {
           cancelSubscription: vi.fn().mockResolvedValue(undefined),
           call: runtimeEnvironmentTransportCall,

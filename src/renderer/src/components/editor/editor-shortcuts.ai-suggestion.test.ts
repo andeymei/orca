@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   installEditorAcceptAiSuggestionShortcut,
+  installEditorAcceptNextAiSuggestionShortcut,
   installEditorAiSuggestionPreviewShortcut
 } from './editor-shortcuts'
 import type { NesTabDecision } from './code-completion/nes-key-routing'
@@ -117,6 +118,57 @@ describe('installEditorAcceptAiSuggestionShortcut', () => {
     expect(event.defaultPrevented).toBe(false)
     expect(onJump).not.toHaveBeenCalled()
     expect(onAccept).not.toHaveBeenCalled()
+  })
+})
+
+describe('installEditorAcceptNextAiSuggestionShortcut', () => {
+  function installPartShortcut(decision: NesTabDecision): {
+    target: HTMLElement
+    onAcceptWord: ReturnType<typeof vi.fn>
+    onAcceptLine: ReturnType<typeof vi.fn>
+  } {
+    const target = createTarget()
+    const onAcceptWord = vi.fn()
+    const onAcceptLine = vi.fn()
+    disposers.push(
+      installEditorAcceptNextAiSuggestionShortcut(
+        target,
+        () => decision,
+        onAcceptWord,
+        onAcceptLine
+      )
+    )
+    return { target, onAcceptWord, onAcceptLine }
+  }
+
+  it('takes the next word when a suggestion is showing', () => {
+    const { target, onAcceptWord, onAcceptLine } = installPartShortcut('accept-suggestion')
+
+    const event = pressKey(target, 'ArrowRight', { ctrlKey: true })
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(onAcceptWord).toHaveBeenCalledOnce()
+    expect(onAcceptLine).not.toHaveBeenCalled()
+  })
+
+  it('takes the next line on the line chord', () => {
+    const { target, onAcceptWord, onAcceptLine } = installPartShortcut('accept-suggestion')
+
+    const event = pressKey(target, 'ArrowRight', { ctrlKey: true, shiftKey: true })
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(onAcceptLine).toHaveBeenCalledOnce()
+    expect(onAcceptWord).not.toHaveBeenCalled()
+  })
+
+  it('leaves the arrow to the editor when no suggestion is showing', () => {
+    const { target, onAcceptWord, onAcceptLine } = installPartShortcut('pass-through')
+
+    const event = pressKey(target, 'ArrowRight', { ctrlKey: true })
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(onAcceptWord).not.toHaveBeenCalled()
+    expect(onAcceptLine).not.toHaveBeenCalled()
   })
 })
 

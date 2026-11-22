@@ -1,0 +1,297 @@
+import {
+  NES_IMPORT_LABEL_PREFIX,
+  validateNesEditPlan,
+  type NesEdit,
+  type NesEditPlan,
+  type NesRequest
+} from '../../shared/code-completion/code-completion-types'
+import { NES_CURSOR_MARKER } from '../../shared/code-completion/code-completion-prompt'
+import { nesAllowedPaths } from './completion-backend'
+
+/** The spec caps a completion answer; a longer one is dropped as a parse failure. */
+const NES_COMPLETION_OUTPUT_LIMIT = 8000
+
+/** The file line the shown text of a path starts at; the model counts from it. */
+export function nesStartLineFor(request: NesRequest, path: string): number {
+  const relatedFile = request.relatedFiles.find((candidate) => candidate.path === path)
+  return relatedFile ? relatedFile.startLine : request.prefixStartLine
+}
+
+/** The plan with absolute line numbers; the model's line numbers count from what it saw. */
+export function translateNesEditLines(plan: NesEditPlan, request: NesRequest): NesEditPlan {
+  const cursorLine = request.cursorLine - request.prefixStartLine + 1
+  return {
+    edits: plan.edits.map((edit) => {
+      // Why: an import belongs at the top of its own file — the rule is per file, not per current file.
+      if (isNesImportEdit(edit)) {
+        return {
+          ...edit,
+          // The import lands on line 1, so it must not join the file's first line.
+          text: edit.text.endsWith('\n') ? edit.text : `${edit.text}\n`,
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }
+        }
+      }
+      const offset = nesStartLineFor(request, edit.path) - 1
+      const currentFile = edit.path === request.filePath
+      return {
+        ...edit,
+        range: {
+          ...edit.range,
+          startLine: edit.range.startLine + offset,
+          endLine: edit.range.endLine + offset,
+          startColumn:
+            currentFile && edit.range.startLine === cursorLine
+              ? nesColumnWithoutCursorMarker(edit.range.startColumn, request)
+              : edit.range.startColumn,
+          endColumn:
+            currentFile && edit.range.endLine === cursorLine
+              ? nesColumnWithoutCursorMarker(edit.range.endColumn, request)
+              : edit.range.endColumn
+        }
+      }
+    })
+  }
+}
+
+// Why: the model counts the cursor marker as text, so every column after it is too far right.
+function nesColumnWithoutCursorMarker(column: number, request: NesRequest): number {
+  if (column < request.cursorColumn + NES_CURSOR_MARKER.length) {
+    return column
+  }
+  return column - NES_CURSOR_MARKER.length
+}
+
+/**
+ * The range an edit really covers, found from the text the model quoted.
+ *
+ * A small model counts the lines of a long file badly, but it quotes the text it wants to change
+ * accurately. The text decides where the edit lands; the line the model named is only used when
+ * the text cannot be found. A model that echoed the cursor marker into the text it quoted means
+ * "the text up to the cursor", and that part is what the edit covers.
+ */
+export function repairNesEditRanges(plan: NesEditPlan, request: NesRequest): NesEditPlan {
+  return {
+    edits: plan.edits.map((edit) => {
+      const covered = nesTextBeforeMarker(edit.originalText)
+      const text = nesTextWithoutMarker(edit.text)
+      const shown = nesShownContent(request, edit.path)
+      const located =
+        covered.length > 0 && shown
+          ? locateNesText(shown.content, covered, shown.cursorOffset)
+          : null
+      if (!located || !shown) {
+        return { ...edit, originalText: covered, text }
+      }
+      return {
+        ...edit,
+        // Why: the editor compares the covered text with the buffer, so it must be the text the
+        // buffer holds — not the text the model quoted.
+        originalText: located.text,
+        // Why: the range starts at the code, so the replacement must not carry the indentation the
+        // model put in front of it.
+        text: located.text === covered ? text : stripLeadingWhitespace(text),
+        range: {
+          startLine: shown.startLine + located.startLine - 1,
+          startColumn: located.startColumn,
+          endLine: shown.startLine + located.endLine - 1,
+          endColumn: located.endColumn
+        }
+      }
+    })
+  }
+}
+
+/** The text the model was shown for a path, and the file line that text starts at. */
+function nesShownContent(
+  request: NesRequest,
+  path: string
+): { content: string; startLine: number; cursorOffset: number } | null {
+  if (path === request.filePath) {
+    return {
+      content: request.prefix + request.suffix,
+      startLine: request.prefixStartLine,
+      cursorOffset: request.prefix.length
+    }
+  }
+  const related = request.relatedFiles.find((file) => file.path === path)
+  return related
+    ? { content: related.content, startLine: related.startLine, cursorOffset: 0 }
+    : null
+}
+
+/** The text the model quoted up to the cursor; the marker itself is not part of the file. */
+function nesTextBeforeMarker(text: string): string {
+  const marker = text.indexOf(NES_CURSOR_MARKER)
+  return marker === -1 ? text : text.slice(0, marker)
+}
+
+/** The text the model quoted without the marker, which is not part of the file. */
+function nesTextWithoutMarker(text: string): string {
+  return text.split(NES_CURSOR_MARKER).join('')
+}
+
+/**
+ * Where the quoted text sits in the file, as the range it covers.
+ *
+ * A model that quotes a line with the wrong indentation still means that line, so the text is
+ * looked for without the whitespace in front of it before the edit is given up on.
+ */
+function locateNesText(
+  content: string,
+  needle: string,
+  cursorOffset: number
+): NesLocatedText | null {
+  const exact = findNearestNesText(content, needle, cursorOffset)
+  if (exact) {
+    return exact
+  }
+  const trimmed = needle.trimStart()
+  if (trimmed.length === 0 || trimmed === needle) {
+    return null
+  }
+  return findNearestNesText(content, trimmed, cursorOffset)
+}
+
+/** Where the quoted text sits in the file, and the text the file holds there. */
+type NesLocatedText = {
+  startLine: number
+  startColumn: number
+  endLine: number
+  endColumn: number
+  text: string
+}
+
+/**
+ * The occurrence of the text nearest the cursor, because the same line can appear twice and the
+ * edit belongs where the developer is typing.
+ */
+function findNearestNesText(
+  content: string,
+  needle: string,
+  cursorOffset: number
+): NesLocatedText | null {
+  const first = content.indexOf(needle)
+  if (first === -1) {
+    return null
+  }
+  let best = first
+  let bestDistance = Math.abs(first - cursorOffset)
+  for (
+    let index = content.indexOf(needle, first + 1);
+    index !== -1;
+    index = content.indexOf(needle, index + 1)
+  ) {
+    const distance = Math.abs(index - cursorOffset)
+    if (distance < bestDistance) {
+      best = index
+      bestDistance = distance
+    }
+  }
+  const start = nesPositionInContent(content, best)
+  const end = nesPositionInContent(content, best + needle.length)
+  return {
+    startLine: start.line,
+    startColumn: start.column,
+    endLine: end.line,
+    endColumn: end.column,
+    text: content.slice(best, best + needle.length)
+  }
+}
+
+/** The whitespace a model put in front of the text it quoted; the range starts at the code. */
+function stripLeadingWhitespace(text: string): string {
+  return text.replace(/^[ \t]+/, '')
+}
+
+/** The line and column an offset sits at, counted from the first line of the content. */
+function nesPositionInContent(content: string, offset: number): { line: number; column: number } {
+  let line = 1
+  let lineStart = 0
+  for (let index = 0; index < offset; index += 1) {
+    if (content[index] === '\n') {
+      line += 1
+      lineStart = index + 1
+    }
+  }
+  return { line, column: offset - lineStart + 1 }
+}
+
+/** The edit that adds an import; its label carries the marker the prompt asked for. */
+function isNesImportEdit(edit: NesEdit): boolean {
+  if (edit.kind !== 'insert') {
+    return false
+  }
+  // Why: the label says the edit is an import only when the model followed the convention; the
+  // text it wrote says so in every case, and an import belongs at the top of the file either way.
+  return (
+    edit.label.startsWith(NES_IMPORT_LABEL_PREFIX) ||
+    /^\s*import\s+(static\s+)?[\w.]/.test(edit.text)
+  )
+}
+
+/** The plan a model answer carries, in the file's own line numbers. */
+export function planFromCompletionText(text: string, input: NesRequest): NesEditPlan | null {
+  const parsed = parseNesPlanJson(text)
+  if (!parsed) {
+    return null
+  }
+  // Why: the model counts the lines of a long file badly and quotes the text it wants to change
+  // accurately, so the quoted text decides where the edit lands. The shape of the edit and the
+  // rules it has to obey are checked on the repaired edit, not on the model's guess.
+  return validateNesEditPlan(parsed, {
+    allowedPaths: nesAllowedPaths(input),
+    repair: (plan) => repairNesEditRanges(translateNesEditLines(plan, input), input)
+  })
+}
+
+/** The plan a model answer carries, or null when the answer is not JSON. */
+export function parseNesPlanText(
+  text: string,
+  allowedPaths: readonly string[]
+): NesEditPlan | null {
+  const parsed = parseNesPlanJson(text)
+  return parsed ? validateNesEditPlan(parsed, { allowedPaths }) : null
+}
+
+/** The answer of a model, as JSON; null when it is not JSON at all. */
+function parseNesPlanJson(text: string): unknown {
+  const answer = text.slice(0, NES_COMPLETION_OUTPUT_LIMIT)
+  try {
+    return JSON.parse(answer)
+  } catch {
+    // Why: a small model writes a quote inside a string as two quotes, and the answer it meant
+    // is the one the editor would have drawn. A JSON string cannot hold a bare quote, so the
+    // pair is always the model trying to write an escaped one.
+    try {
+      return JSON.parse(repairJsonStringQuotes(answer))
+    } catch {
+      return null
+    }
+  }
+}
+
+/** Rewrites the doubled quotes a model writes inside a JSON string as escaped ones. */
+export function repairJsonStringQuotes(text: string): string {
+  let out = ''
+  let inString = false
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (character === '\\' && inString && index + 1 < text.length) {
+      out += character + text[index + 1]
+      index += 1
+      continue
+    }
+    if (character === '"') {
+      if (inString && text[index + 1] === '"') {
+        out += '\\"'
+        index += 1
+        continue
+      }
+      inString = !inString
+      out += character
+      continue
+    }
+    out += character
+  }
+  return out
+}

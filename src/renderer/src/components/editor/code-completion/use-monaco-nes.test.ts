@@ -3,6 +3,11 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
+import {
+  DEFAULT_CONTEXT_PREFIX_CHARS,
+  DEFAULT_CONTEXT_SUFFIX_CHARS,
+  DEFAULT_DISPLAY_DEADLINE_MS
+} from '../../../../../shared/code-completion/code-completion-settings'
 import { ensureNesInlineCompletionsProvider } from './nes-inline-provider'
 import type { NesNextEdit } from './nes-next-edit'
 import { nesPlanStore } from './nes-plan-store'
@@ -161,6 +166,10 @@ function renderHookFor(
       enabled: true,
       triggerDelayMs: options.triggerDelayMs ?? 0,
       enabledExtensions: ['ts'],
+      contextPrefixChars: DEFAULT_CONTEXT_PREFIX_CHARS,
+      contextSuffixChars: DEFAULT_CONTEXT_SUFFIX_CHARS,
+      displayDeadlineMs: DEFAULT_DISPLAY_DEADLINE_MS,
+      completionModel: 'test-model',
       editorInstance: fakeEditor.editorInstance
     })
   )
@@ -180,6 +189,10 @@ function renderHookView(model: monaco.editor.ITextModel): {
       enabled: true,
       triggerDelayMs: 0,
       enabledExtensions: ['ts'],
+      contextPrefixChars: DEFAULT_CONTEXT_PREFIX_CHARS,
+      contextSuffixChars: DEFAULT_CONTEXT_SUFFIX_CHARS,
+      displayDeadlineMs: DEFAULT_DISPLAY_DEADLINE_MS,
+      completionModel: 'test-model',
       editorInstance: fakeEditor.editorInstance
     })
   )

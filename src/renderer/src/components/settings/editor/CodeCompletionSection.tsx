@@ -3,14 +3,22 @@ import type React from 'react'
 import { GENERAL_SETTING_ANCHORS } from '../general/general-setting-anchors'
 import type { GlobalSettings } from '../../../../../shared/global-settings-types'
 import {
+  DEFAULT_CONTEXT_PREFIX_CHARS,
+  DEFAULT_CONTEXT_SUFFIX_CHARS,
+  DEFAULT_DISPLAY_DEADLINE_MS,
   DEFAULT_TRIGGER_DELAY_MS,
+  MAX_CONTEXT_CHARS,
+  MAX_DISPLAY_DEADLINE_MS,
   MAX_TRIGGER_DELAY_MS,
+  MIN_CONTEXT_CHARS,
   getDefaultCodeCompletionSettings,
   type CodeCompletionSettings
 } from '../../../../../shared/code-completion/code-completion-settings'
 import {
   NES_BACKEND_IDS,
-  type NesBackendId
+  NES_RESPONSE_MODES,
+  type NesBackendId,
+  type NesResponseMode
 } from '../../../../../shared/code-completion/code-completion-types'
 import type { CodeCompletionCredentialsStatus } from '../../../../../shared/code-completion/code-completion-credentials-status'
 import { SearchableSetting } from '../section-layout/SearchableSetting'
@@ -100,6 +108,14 @@ export function CodeCompletionSection({
     )
   }
 
+  const responseModeLabels: Record<NesResponseMode, string> = {
+    inline: t('auto.components.settings.editor.CodeCompletionSection.inline-mode', 'Inline'),
+    plan: t('auto.components.settings.editor.CodeCompletionSection.plan-mode', 'Next edit')
+  }
+
+  // Why: the fill-in-the-middle endpoint answers with text, so it cannot answer a plan of edits.
+  const planModeAvailable = completion.protocol !== 'openai-completions-fim'
+
   return (
     <SearchableSetting
       id={GENERAL_SETTING_ANCHORS.codeCompletion}
@@ -137,6 +153,40 @@ export function CodeCompletionSection({
             value={completion.protocol}
             onChange={(protocol) => commit({ protocol })}
             options={NES_BACKEND_IDS.map((id) => ({ value: id, label: protocolLabels[id] }))}
+          />
+        }
+      />
+
+      <SettingsRow
+        className="border-t border-border"
+        label={t(
+          'auto.components.settings.editor.CodeCompletionSection.response-mode',
+          'What to ask for'
+        )}
+        description={
+          planModeAvailable
+            ? t(
+                'auto.components.settings.editor.CodeCompletionSection.response-mode-description',
+                'Inline asks for the text to insert at the cursor, which the model can answer without counting lines. Next edit asks for a plan of changes and can propose them anywhere in the file.'
+              )
+            : t(
+                'auto.components.settings.editor.CodeCompletionSection.response-mode-fim-description',
+                'The fill-in-the-middle endpoint answers with text, so it always answers inline.'
+              )
+        }
+        control={
+          <SettingsSegmentedControl
+            ariaLabel={t(
+              'auto.components.settings.editor.CodeCompletionSection.response-mode',
+              'What to ask for'
+            )}
+            value={completion.responseMode}
+            onChange={(responseMode) => commit({ responseMode })}
+            options={NES_RESPONSE_MODES.map((mode) => ({
+              value: mode,
+              label: responseModeLabels[mode],
+              disabled: mode === 'plan' && !planModeAvailable
+            }))}
           />
         }
       />
@@ -203,6 +253,66 @@ export function CodeCompletionSection({
         suffix={t('auto.components.settings.editor.CodeCompletionSection.2a22a3771c', 'ms')}
         value={completion.triggerDelayMs}
         onChange={(triggerDelayMs) => commit({ triggerDelayMs })}
+      />
+
+      <NumberField
+        className="border-t border-border"
+        label={t(
+          'auto.components.settings.editor.CodeCompletionSection.context-prefix',
+          'Context before the cursor'
+        )}
+        description={t(
+          'auto.components.settings.editor.CodeCompletionSection.context-prefix-description',
+          'How much of the file before the cursor is sent. More context costs time and tokens.'
+        )}
+        defaultValue={DEFAULT_CONTEXT_PREFIX_CHARS}
+        min={MIN_CONTEXT_CHARS}
+        max={MAX_CONTEXT_CHARS}
+        step={500}
+        integer
+        suffix={t('auto.components.settings.editor.CodeCompletionSection.chars', 'chars')}
+        value={completion.contextPrefixChars}
+        onChange={(contextPrefixChars) => commit({ contextPrefixChars })}
+      />
+
+      <NumberField
+        className="border-t border-border"
+        label={t(
+          'auto.components.settings.editor.CodeCompletionSection.context-suffix',
+          'Context after the cursor'
+        )}
+        description={t(
+          'auto.components.settings.editor.CodeCompletionSection.context-suffix-description',
+          'How much of the file after the cursor is sent.'
+        )}
+        defaultValue={DEFAULT_CONTEXT_SUFFIX_CHARS}
+        min={MIN_CONTEXT_CHARS}
+        max={MAX_CONTEXT_CHARS}
+        step={500}
+        integer
+        suffix={t('auto.components.settings.editor.CodeCompletionSection.chars', 'chars')}
+        value={completion.contextSuffixChars}
+        onChange={(contextSuffixChars) => commit({ contextSuffixChars })}
+      />
+
+      <NumberField
+        className="border-t border-border"
+        label={t(
+          'auto.components.settings.editor.CodeCompletionSection.display-deadline',
+          'Answer deadline'
+        )}
+        description={t(
+          'auto.components.settings.editor.CodeCompletionSection.display-deadline-description',
+          'How long an answer may take before it is no longer shown. Zero waits as long as the endpoint takes.'
+        )}
+        defaultValue={DEFAULT_DISPLAY_DEADLINE_MS}
+        min={0}
+        max={MAX_DISPLAY_DEADLINE_MS}
+        step={500}
+        integer
+        suffix={t('auto.components.settings.editor.CodeCompletionSection.2a22a3771c', 'ms')}
+        value={completion.displayDeadlineMs}
+        onChange={(displayDeadlineMs) => commit({ displayDeadlineMs })}
       />
 
       <SettingsSwitchRow

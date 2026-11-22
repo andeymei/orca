@@ -116,6 +116,16 @@ const STATIC_TITLE_COPY = {
     translate('keybindings.title.editorAcceptAiSuggestion', 'Accept AI Suggestion'),
   'editor.nextAiSuggestion': () =>
     translate('keybindings.title.editorNextAiSuggestion', 'Go to Next AI Suggestion'),
+  'editor.acceptNextAiSuggestionWord': () =>
+    translate(
+      'keybindings.title.editorAcceptNextAiSuggestionWord',
+      'Accept Next Word of AI Suggestion'
+    ),
+  'editor.acceptNextAiSuggestionLine': () =>
+    translate(
+      'keybindings.title.editorAcceptNextAiSuggestionLine',
+      'Accept Next Line of AI Suggestion'
+    ),
   'sourceControl.sendReviewNotes': () =>
     translate('keybindings.title.e9da9f872a', 'Send review notes to agent'),
   'fileExplorer.undo': () => translate('keybindings.title.fileExplorerUndo', 'Undo file operation'),

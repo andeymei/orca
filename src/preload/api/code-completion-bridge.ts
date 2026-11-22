@@ -6,6 +6,10 @@ import {
   CODE_COMPLETION_SUGGESTION_CHANNELS,
   type CodeCompletionSuggestionReport
 } from '../../shared/code-completion/code-completion-suggestion-outcome'
+import {
+  CODE_COMPLETION_METRIC_CHANNELS,
+  type CodeCompletionMetricReport
+} from '../../shared/code-completion/code-completion-metrics'
 
 export const codeCompletionApi = {
   getStatus: (): Promise<CodeCompletionCredentialsStatus> =>
@@ -15,5 +19,7 @@ export const codeCompletionApi = {
   clearApiKey: (): Promise<CodeCompletionCredentialsStatus> =>
     ipcRenderer.invoke(CODE_COMPLETION_CREDENTIAL_CHANNELS.clearApiKey),
   reportSuggestionOutcome: (report: CodeCompletionSuggestionReport): Promise<void> =>
-    ipcRenderer.invoke(CODE_COMPLETION_SUGGESTION_CHANNELS.reportSuggestionOutcome, report)
+    ipcRenderer.invoke(CODE_COMPLETION_SUGGESTION_CHANNELS.reportSuggestionOutcome, report),
+  recordMetric: (report: CodeCompletionMetricReport): Promise<void> =>
+    ipcRenderer.invoke(CODE_COMPLETION_METRIC_CHANNELS.recordMetric, report)
 } satisfies PreloadApi['codeCompletion']

@@ -2,7 +2,8 @@ import {
   NES_IMPORT_LABEL_PREFIX,
   NES_MAX_EDITS,
   NES_MAX_EDITS_PER_FILE,
-  type NesPromptInput
+  type NesPromptInput,
+  type NesRequest
 } from './code-completion-types'
 
 export const NES_CURSOR_MARKER = '<<<CURSOR>>>'
@@ -63,4 +64,34 @@ export function buildNesUserPrompt(input: NesPromptInput): string {
     }
   }
   return sections.join('\n')
+}
+
+/**
+ * The prompt of the inline mode: the model is a completion engine, so it answers with the text
+ * to insert and nothing else.
+ *
+ * Why so little: every field the model has to fill is a field it can get wrong. A line number it
+ * miscounts puts the edit in the wrong place, and a range it names wrong is an edit the editor
+ * cannot draw at all. Asking only for text leaves nothing to get wrong.
+ */
+export function buildNesInlineSystemPrompt(): string {
+  return [
+    'You are a code completion engine.',
+    `The user sends a file with ${NES_CURSOR_MARKER} marking the cursor.`,
+    'Reply with ONLY the text to insert at the cursor: usually the rest of the current line or statement, or a short block when the cursor sits in an empty body.',
+    "Stop where the cursor's statement ends: never write code that belongs after it, and never repeat code that is already before or after the cursor.",
+    'No explanation and no markdown fences.',
+    'Reply with nothing if unsure.'
+  ].join(' ')
+}
+
+/**
+ * The user's half of the inline prompt: the file, the language, and the text around the cursor.
+ *
+ * Why the cursor is marked rather than described: a model that has to count lines to find the
+ * cursor answers about the wrong line, and the answer is then about text the user never typed.
+ */
+export function buildNesInlineUserPrompt(input: NesRequest): string {
+  const language = input.languageId ? ` (${input.languageId})` : ''
+  return `File: ${input.relativePath}${language}\n\n${input.prefix}${NES_CURSOR_MARKER}${input.suffix}`
 }

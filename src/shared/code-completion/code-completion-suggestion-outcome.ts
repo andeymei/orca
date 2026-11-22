@@ -27,6 +27,8 @@ export type CodeCompletionSuggestionOutcome =
   | 'no_edit_at_cursor'
   /** The editor offered the suggestion to Monaco. */
   | 'shown'
+  /** The text around the cursor looked like a secret, so nothing was sent. */
+  | 'blocked'
 
 export type CodeCompletionSuggestionReport = {
   /** What became of the plan. */

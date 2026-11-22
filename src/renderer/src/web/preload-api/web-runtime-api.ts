@@ -13,6 +13,8 @@ export function createWebRuntimeApi(): NonNullable<Partial<PreloadApi>['runtime'
     syncWindowGraph: async (_graph: RuntimeSyncWindowGraph) => getRemoteRuntimeStatus(),
     getStatus: () => getRemoteRuntimeStatus(),
     call: ({ method, params }) => callRuntimeEnvelope(method, params),
+    // Why: the web client talks to a remote runtime, which cancels a call by closing its socket.
+    cancelCall: () => {},
     subscribe: async ({ method, params }, callback) => {
       const environment = requireActiveEnvironment()
       const subscription = await getClientForEnvironment(environment).subscribe(method, params, {

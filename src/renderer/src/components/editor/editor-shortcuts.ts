@@ -184,6 +184,42 @@ export function installEditorAcceptAiSuggestionShortcut(
 }
 
 /**
+ * The chords that take a part of the suggestion: the next word and the next line.
+ *
+ * Why the chords are only taken while a suggestion shows: without one they belong to the editor,
+ * and the arrow moves the cursor to the end of a word. A held chord keeps taking the next word,
+ * which is what the key means on its own.
+ */
+export function installEditorAcceptNextAiSuggestionShortcut(
+  target: HTMLElement,
+  decide: () => NesTabDecision,
+  onAcceptWord: () => void,
+  onAcceptLine: () => void
+): () => void {
+  const handleKeyDown = (event: KeyboardEvent): void => {
+    const isWord = editorShortcutMatches('editor.acceptNextAiSuggestionWord', event)
+    const isLine = !isWord && editorShortcutMatches('editor.acceptNextAiSuggestionLine', event)
+    if (!isWord && !isLine) {
+      return
+    }
+    // Why: without a suggestion on screen the chord belongs to the editor.
+    if (decide() !== 'accept-suggestion') {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    if (isWord) {
+      onAcceptWord()
+      return
+    }
+    onAcceptLine()
+  }
+
+  target.addEventListener('keydown', handleKeyDown, true)
+  return () => target.removeEventListener('keydown', handleKeyDown, true)
+}
+
+/**
  * The held Alt that previews the predicted change. The modifier is only watched, never consumed,
  * because other chords need it.
  */

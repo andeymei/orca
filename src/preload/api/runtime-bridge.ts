@@ -15,8 +15,15 @@ export const runtimeApi = {
   syncWindowGraph: (graph: RuntimeRendererSyncWindowGraph): Promise<RuntimeSyncWindowGraphResult> =>
     ipcRenderer.invoke('runtime:syncWindowGraph', graph),
   getStatus: (): Promise<RuntimeStatus> => ipcRenderer.invoke('runtime:getStatus'),
-  call: (args: { method: string; params?: unknown }): Promise<RuntimeRpcResponse<unknown>> =>
-    ipcRenderer.invoke('runtime:call', args),
+  call: (args: {
+    method: string
+    params?: unknown
+    /** Names the call so the renderer can cancel it; without one the call runs to its end. */
+    requestId?: string
+  }): Promise<RuntimeRpcResponse<unknown>> => ipcRenderer.invoke('runtime:call', args),
+  cancelCall: (args: { requestId: string }): void => {
+    ipcRenderer.send('runtime:cancelCall', args)
+  },
   subscribe: async (
     args: { method: string; params?: unknown },
     callback: (response: RuntimeRpcResponse<unknown>) => void

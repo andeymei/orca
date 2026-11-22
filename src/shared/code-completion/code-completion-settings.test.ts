@@ -32,11 +32,15 @@ const DEFAULT_EXTENSIONS = [
 const DEFAULT_SETTINGS = {
   enabled: true,
   protocol: 'anthropic-messages',
+  responseMode: 'inline',
   baseUrl: '',
   model: '',
   triggerDelayMs: 500,
   autoImport: true,
-  enabledExtensions: DEFAULT_EXTENSIONS
+  enabledExtensions: DEFAULT_EXTENSIONS,
+  contextPrefixChars: 6000,
+  contextSuffixChars: 2000,
+  displayDeadlineMs: 4000
 }
 
 describe('code completion settings', () => {

@@ -27,9 +27,17 @@ function boundTerminalFitRestore(pending: Promise<boolean>): Promise<boolean> {
   return Promise.race([pending, deadline]).finally(() => clearTimeout(timer))
 }
 
+/** The key of one call: the window that made it and the name it gave it. */
+function pendingCallKey(senderId: number, requestId: string): string {
+  return `${senderId}:${requestId}`
+}
+
 export function registerRuntimeHandlers(runtime: OrcaRuntimeService): void {
   const pendingTerminalFitRestores = new Map<string, Promise<boolean>>()
   const desktopSenders = new DesktopRuntimeSenderLifecycle(runtime)
+  // Why: a call the renderer gave up on must stop working. A request that keeps running holds a
+  // concurrency slot and spends tokens on an answer nobody will read.
+  const pendingCalls = new Map<string, AbortController>()
   ipcMain.removeHandler('runtime:syncWindowGraph')
   ipcMain.removeHandler('runtime:getStatus')
   ipcMain.removeHandler('runtime:call')
@@ -87,30 +95,47 @@ export function registerRuntimeHandlers(runtime: OrcaRuntimeService): void {
     'runtime:call',
     async (
       event,
-      args: { method: string; params?: unknown }
+      args: { method: string; params?: unknown; requestId?: string }
     ): Promise<RuntimeRpcResponse<unknown>> => {
       if (event.senderFrame !== event.sender.mainFrame) {
         throw new Error('Runtime RPC call must originate from the current main frame')
       }
-      return new RpcDispatcher({ runtime, methods: ALL_RPC_METHODS }).dispatch(
-        {
-          id: 'desktop-ipc',
-          authToken: 'desktop-ipc',
-          // The renderer ships with this main process, so it always speaks the current contract.
-          orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
-          method: args.method,
-          params: args.params
-        },
-        {
-          clientId: 'desktop-renderer',
-          caller: DESKTOP_RPC_CALLER,
-          clientKind: 'runtime',
-          connectionId: desktopSenders.connectionIdFor(event.sender),
-          clientCapabilities: DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES
+      const controller = new AbortController()
+      const callKey = args.requestId ? pendingCallKey(event.sender.id, args.requestId) : null
+      if (callKey) {
+        pendingCalls.set(callKey, controller)
+      }
+      try {
+        return await new RpcDispatcher({ runtime, methods: ALL_RPC_METHODS }).dispatch(
+          {
+            id: 'desktop-ipc',
+            authToken: 'desktop-ipc',
+            // The renderer ships with this main process, so it always speaks the current contract.
+            orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION,
+            method: args.method,
+            params: args.params
+          },
+          {
+            clientId: 'desktop-renderer',
+            caller: DESKTOP_RPC_CALLER,
+            clientKind: 'runtime',
+            connectionId: desktopSenders.connectionIdFor(event.sender),
+            clientCapabilities: DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES,
+            signal: controller.signal
+          }
+        )
+      } finally {
+        if (callKey) {
+          pendingCalls.delete(callKey)
         }
-      )
+      }
     }
   )
+
+  ipcMain.on('runtime:cancelCall', (event, args: { requestId: string }) => {
+    // Why the sender's own id is part of the key: one window must not cancel another's call.
+    pendingCalls.get(pendingCallKey(event.sender.id, args.requestId))?.abort()
+  })
 
   ipcMain.handle(
     'runtime:subscribe',

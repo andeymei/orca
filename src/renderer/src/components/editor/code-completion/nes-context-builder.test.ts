@@ -3,11 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { editor as monacoEditor } from 'monaco-editor/esm/vs/editor/editor.api.js'
 import 'monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js'
 import {
-  buildNesContext,
-  NES_CHARS_PER_TOKEN,
-  NES_PREFIX_TOKEN_BUDGET,
-  NES_SUFFIX_TOKEN_BUDGET
-} from './nes-context-builder'
+  DEFAULT_CONTEXT_PREFIX_CHARS,
+  DEFAULT_CONTEXT_SUFFIX_CHARS
+} from '../../../../../shared/code-completion/code-completion-settings'
+import { buildNesContext } from './nes-context-builder'
 
 const OPTIONS = { filePath: '/repo/src/app.ts', relativePath: 'src/app.ts' }
 const models: monacoEditor.ITextModel[] = []
@@ -43,7 +42,7 @@ describe('buildNesContext', () => {
 
     const context = buildNesContext(model, { lineNumber: 4000, column: line.length + 1 }, OPTIONS)
 
-    expect(context.prefix.length).toBeLessThanOrEqual(NES_PREFIX_TOKEN_BUDGET * NES_CHARS_PER_TOKEN)
+    expect(context.prefix.length).toBeLessThanOrEqual(DEFAULT_CONTEXT_PREFIX_CHARS)
     expect(context.prefixStartLine).toBeGreaterThan(1)
 
     const shortModel = createModel('const a = 1\nconst b = 2')
@@ -79,12 +78,12 @@ describe('buildNesContext', () => {
     const context = buildNesContext(model, { lineNumber: 1, column: 3 }, OPTIONS)
 
     expect(tailLines).toContain(context.suffix.split('\n').at(-1))
-    expect(context.suffix.length).toBeLessThanOrEqual(NES_SUFFIX_TOKEN_BUDGET * NES_CHARS_PER_TOKEN)
+    expect(context.suffix.length).toBeLessThanOrEqual(DEFAULT_CONTEXT_SUFFIX_CHARS)
     expect(context.suffix.length).toBeLessThan(tailLines.join('\n').length)
   })
 
   it('never cuts the prefix except at the cursor', () => {
-    const longLine = 'x'.repeat(NES_PREFIX_TOKEN_BUDGET * NES_CHARS_PER_TOKEN + 4000)
+    const longLine = 'x'.repeat(DEFAULT_CONTEXT_PREFIX_CHARS + 4000)
     const model = createModel(`${longLine}\nconst tail = 1`)
 
     const context = buildNesContext(model, { lineNumber: 1, column: longLine.length + 1 }, OPTIONS)

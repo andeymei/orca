@@ -40,7 +40,14 @@ export type RuntimeApi = {
       graph: RuntimeRendererSyncWindowGraph
     ) => Promise<RuntimeSyncWindowGraphResult>
     getStatus: () => Promise<RuntimeStatus>
-    call: (args: { method: string; params?: unknown }) => Promise<RuntimeRpcResponse<unknown>>
+    call: (args: {
+      method: string
+      params?: unknown
+      /** Names the call so the renderer can cancel it; without one the call runs to its end. */
+      requestId?: string
+    }) => Promise<RuntimeRpcResponse<unknown>>
+    /** Stops a call the renderer no longer waits for, so it holds nothing and spends nothing. */
+    cancelCall: (args: { requestId: string }) => void
     subscribe: (
       args: { method: string; params?: unknown },
       callback: (response: RuntimeRpcResponse<unknown>) => void

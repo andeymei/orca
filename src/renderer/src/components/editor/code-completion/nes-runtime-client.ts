@@ -6,8 +6,8 @@ import {
 } from '../../../../../shared/code-completion/code-completion-types'
 
 /**
- * How long the renderer waits for the runtime. It outlasts the runtime's own window, so the
- * runtime's answer arrives rather than this side's deadline.
+ * How long the renderer waits for the runtime when no deadline is set. It outlasts the runtime's
+ * own window, so the runtime's answer arrives rather than this side's deadline.
  */
 const NES_REQUEST_TIMEOUT_MS = 35_000
 
@@ -19,11 +19,25 @@ export async function requestNesPlan(
   if (options.signal?.aborted) {
     return null
   }
-  const timeoutMs = options.timeoutMs ?? NES_REQUEST_TIMEOUT_MS
+  // Why zero means the long wait: a deadline of zero is the deadline turned off, and the
+  // runtime's own timeout still bounds the request.
+  const timeoutMs =
+    options.timeoutMs !== undefined && options.timeoutMs > 0
+      ? options.timeoutMs
+      : NES_REQUEST_TIMEOUT_MS
+  // Why a controller of its own: the deadline and the caller's abort both have to reach the
+  // runtime, so the request in the main process stops working instead of running on to its end
+  // while holding a slot and spending tokens.
+  const controller = new AbortController()
+  const stop = (): void => {
+    controller.abort()
+  }
+  options.signal?.addEventListener('abort', stop, { once: true })
+  const timer = timeoutMs > 0 ? setTimeout(stop, timeoutMs) : null
   try {
     const response = await settleBeforeDeadline(
       callRuntimeRpc<CodeCompletionPlanResult>({ kind: 'local' }, 'codeCompletion.plan', input, {
-        signal: options.signal,
+        signal: controller.signal,
         timeoutMs
       }),
       timeoutMs,
@@ -38,6 +52,11 @@ export async function requestNesPlan(
     // Why: a failed request is "no suggestion"; the user has nothing to dismiss.
     console.error('[code-completion] The plan request failed.', { error: errorName(error) })
     return null
+  } finally {
+    if (timer) {
+      clearTimeout(timer)
+    }
+    options.signal?.removeEventListener('abort', stop)
   }
 }
 

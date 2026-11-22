@@ -1,39 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { editor, KeyCode } from 'monaco-editor/esm/vs/editor/editor.api.js'
-import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
-import { buildNesContext } from './nes-context-builder'
-import { applyNesEdit, previewNesEdit } from './nes-edit-application'
-import { fireNesInlineCompletionsChanged, nesInlineCompletionForEdit } from './nes-inline-provider'
-import { decideNesTabAction, type NesTabDecision } from './nes-key-routing'
-import {
-  createNesMarkerDecorations,
-  nesLocationMarkers,
-  nesMarkerDecorations,
-  type NesLocationMarker
-} from './nes-location-markers'
+import { useEffect, useState } from 'react'
+import type { editor } from 'monaco-editor'
 import { nesPlanStore } from './nes-plan-store'
-import { nesNextEditNotice, type NesNextEdit } from './nes-next-edit'
-import { nesSuggestionOutcome, reportNesSuggestionOutcome } from './nes-suggestion-outcome'
-import { requestNesPlan } from './nes-runtime-client'
+import type { NesNextEdit } from './nes-next-edit'
+import { startNesFeature } from './nes-editor-feature'
 
-/** What the editor's shortcut installers call; the hook publishes them for its own editor. */
-export type NesShortcutHandlers = {
-  decide: () => NesTabDecision
-  accept: () => void
-  jump: () => void
-  preview: (active: boolean) => void
-  /** Whether the plan predicts a location the cursor is not on; the jump chord needs its own answer. */
-  hasNextLocation: () => boolean
-}
-
-const handlersByEditor = new WeakMap<editor.IStandaloneCodeEditor, NesShortcutHandlers>()
-
-/** The handlers of the editor that owns the feature, or null when the feature is off there. */
-export function nesShortcutHandlersFor(
-  editorInstance: editor.IStandaloneCodeEditor
-): NesShortcutHandlers | null {
-  return handlersByEditor.get(editorInstance) ?? null
-}
+export { nesShortcutHandlersFor, type NesShortcutHandlers } from './nes-editor-feature'
 
 /**
  * The trigger of the next-edit suggestion: it watches the editor, asks for a plan and keeps the
@@ -46,6 +17,14 @@ export function useMonacoNextEditSuggestions(params: {
   triggerDelayMs: number
   /** The extensions the feature is on for; a file outside the list is skipped whole. */
   enabledExtensions: readonly string[]
+  /** How much of the file before the cursor is sent. */
+  contextPrefixChars: number
+  /** How much of the file after the cursor is sent. */
+  contextSuffixChars: number
+  /** How long an answer may take before it is no longer shown; zero waits as long as it can. */
+  displayDeadlineMs: number
+  /** The model the endpoint answers with; the counters are kept per model. */
+  completionModel: string
   /** The live editor — the hook needs its model, its cursor and its decoration collection. */
   editorInstance: editor.IStandaloneCodeEditor | null
 }): {
@@ -54,10 +33,18 @@ export function useMonacoNextEditSuggestions(params: {
   /** The edit the cursor cannot show, when the plan holds one the user should look at. */
   nextEdit: NesNextEdit | null
 } {
-  const { filePath, relativePath, enabled, triggerDelayMs, enabledExtensions, editorInstance } =
-    params
-  // Why: the request cannot be cancelled end to end, so a late answer is dropped by its generation.
-  const generationRef = useRef(0)
+  const {
+    filePath,
+    relativePath,
+    enabled,
+    triggerDelayMs,
+    enabledExtensions,
+    contextPrefixChars,
+    contextSuffixChars,
+    displayDeadlineMs,
+    completionModel,
+    editorInstance
+  } = params
   // Why: the glyph margin is off by default, so the editor has to be told that a marker is in it.
   const [markerCount, setMarkerCount] = useState(0)
   // Why: the plan can hold an edit the cursor cannot show, and a marker alone reads as nothing
@@ -82,9 +69,6 @@ export function useMonacoNextEditSuggestions(params: {
     }
   }, [modelKey, filePath, enabled, extensionsKey])
 
-  // The cleanup below clears the timer unconditionally; the rule cannot see that once a
-  // subscription shares the effect with it.
-  // oxlint-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     if (!editorInstance || !modelKey || !filePath || !enabled) {
       return
@@ -92,259 +76,36 @@ export function useMonacoNextEditSuggestions(params: {
     if (!isExtensionEnabled(filePath, extensionsKey)) {
       return
     }
-
-    let timer: ReturnType<typeof setTimeout> | null = null
-    let previewRelease: (() => void) | null = null
-    let markers: NesLocationMarker[] = []
-    const collection = createNesMarkerDecorations(editorInstance, markers)
-
-    const releasePreview = (): void => {
-      previewRelease?.()
-      previewRelease = null
-    }
-
-    const cancelScheduledTick = (): void => {
-      if (timer !== null) {
-        clearTimeout(timer)
-        timer = null
-      }
-    }
-
-    const refreshMarkers = (): void => {
-      const position = editorInstance.getPosition()
-      const model = editorInstance.getModel()
-      const drawn = position && model ? editAtCursor() : null
-      const drawnIsDrawable = Boolean(
-        drawn && model && nesInlineCompletionForEdit(drawn, model) !== null
-      )
-      // Why: the edit the cursor is on is the suggestion itself, so a marker would point at the
-      // line the user is already on.
-      const shown = drawnIsDrawable
-        ? nesPlanStore.editsForPath(filePath).filter((edit) => edit !== drawn)
-        : nesPlanStore.editsForPath(filePath)
-      markers = position
-        ? nesLocationMarkers(shown, position).sort(
-            (left, right) => left.lineNumber - right.lineNumber
-          )
-        : []
-      collection.set(nesMarkerDecorations(markers))
-      setMarkerCount(markers.length)
-      setNextEdit((previous) => {
-        const notice = nesNextEditNotice({
-          drawn,
-          drawnIsDrawable,
-          markers,
-          cursor: position
-        })
-        // Why: the notice is rebuilt on every cursor move, so an unchanged one must keep its
-        // identity or the editor re-renders on every keypress.
-        if (
-          previous &&
-          notice &&
-          previous.kind === notice.kind &&
-          previous.lineNumber === notice.lineNumber &&
-          previous.label === notice.label
-        ) {
-          return previous
-        }
-        return notice
-      })
-    }
-
-    const editAtCursor = (): NesEdit | null => {
-      const model = editorInstance.getModel()
-      const position = editorInstance.getPosition()
-      if (!model || !position) {
-        return null
-      }
-      return nesPlanStore.editAt(model.uri.toString(), position)
-    }
-
-    const dropPlan = (): void => {
-      // Why: the plan must not outlive the user's decision, and an answer in flight predates it.
-      generationRef.current += 1
-      releasePreview()
-      nesPlanStore.remove(filePath)
-      fireNesInlineCompletionsChanged()
-      refreshMarkers()
-    }
-
-    const decide = (): NesTabDecision => {
-      const model = editorInstance.getModel()
-      const edit = editAtCursor()
-      // Why: the provider owns the rules of what it can draw, so it decides whether a suggestion shows.
-      const hasInlineSuggestion =
-        model !== null && edit !== null && nesInlineCompletionForEdit(edit, model) !== null
-      return decideNesTabAction({ hasInlineSuggestion, hasOtherLocations: markers.length > 0 })
-    }
-
-    const accept = (): void => {
-      const model = editorInstance.getModel()
-      const edit = editAtCursor()
-      if (!model || !edit) {
-        return
-      }
-      // Why: the edit no longer matches this buffer, so keeping it would leave a marker that can never land.
-      if (!applyNesEdit(model, editorInstance, edit)) {
-        dropPlan()
-        return
-      }
-      // Why: the accepted edit is gone from the plan, and the next tick asks for a fresh one.
-      dropPlan()
-      // Why: Monaco's ghost text must not outlive the text we applied.
-      void editorInstance.getAction('editor.action.inlineSuggest.hide')?.run()
-    }
-
-    const jump = (marker: NesLocationMarker): void => {
-      // Why: the edit's range end is where the edit becomes the anchor, so the ghost text shows there.
-      editorInstance.setPosition({
-        lineNumber: marker.edit.range.endLine,
-        column: marker.edit.range.endColumn
-      })
-    }
-
-    const jumpToNextLocation = (): void => {
-      const position = editorInstance.getPosition()
-      const next = position ? nextMarkerAfter(markers, position) : null
-      if (next) {
-        jump(next)
-      }
-    }
-
-    const preview = (active: boolean): void => {
-      if (!active) {
-        releasePreview()
-        return
-      }
-      const model = editorInstance.getModel()
-      const edit = editAtCursor()
-      if (!model || !edit) {
-        return
-      }
-      // Why: a fresh press replaces the widget an earlier one left behind.
-      releasePreview()
-      previewRelease = previewNesEdit(model, editorInstance, edit)
-    }
-
-    const tick = async (): Promise<void> => {
-      const model = editorInstance.getModel()
-      const position = editorInstance.getPosition()
-      if (!model || !position) {
-        return
-      }
-      if (editorInstance.getOption(editor.EditorOption.readOnly)) {
-        return
-      }
-      const generation = generationRef.current + 1
-      generationRef.current = generation
-      const context = buildNesContext(model, position, {
-        filePath,
-        relativePath: relativePath ?? filePath
-      })
-      const plan = await requestNesPlan({
-        ...context,
-        // Why: the related files cost a search and several thousand tokens on every request, and
-        // the model answered the same either way — the suggestion is about the file being typed.
-        relatedFiles: [],
-        recentEdits: []
-      })
-      // Why: the user typed again while the request was in flight, so the answer is about older text.
-      if (generationRef.current !== generation) {
-        return
-      }
-      if (plan) {
-        nesPlanStore.setPlan(filePath, plan)
-      } else {
-        // Why: the markers re-read the stored plan, so a failed request must not leave the old one.
-        nesPlanStore.remove(filePath)
-      }
-      fireNesInlineCompletionsChanged()
-      refreshMarkers()
-      // Why: a request that failed is reported by the main process, which knows why it failed;
-      // reporting it here as "the model had nothing to propose" would say the opposite.
-      if (plan) {
-        const { outcome, editCount } = nesSuggestionOutcome({ plan, model, modelKey, position })
-        reportNesSuggestionOutcome({ outcome, editCount, file: relativePath ?? filePath })
-      }
-    }
-
-    const scheduleTick = (): void => {
-      cancelScheduledTick()
-      timer = setTimeout(() => {
-        timer = null
-        void tick().catch((error: unknown) => {
-          // Why: a message can carry the endpoint's path, so the log keeps the error's name only.
-          console.error(
-            '[code-completion] The plan tick failed.',
-            error instanceof Error ? error.name : 'unknown'
-          )
-        })
-      }, triggerDelayMs)
-    }
-
-    const contentSubscription = editorInstance.onDidChangeModelContent(scheduleTick)
-    const cursorSubscription = editorInstance.onDidChangeCursorPosition(() => {
-      // Why: the marker list drops the edit under the cursor, so it follows the cursor.
-      refreshMarkers()
-      // Why: a cursor move leaves the text alone, so the plan the request made still applies to
-      // it. Asking again would cost a request per arrow key and cancel the answer in flight.
+    const feature = startNesFeature({
+      editorInstance,
+      modelKey,
+      filePath,
+      relativePath,
+      triggerDelayMs,
+      extensionsKey,
+      contextPrefixChars,
+      contextSuffixChars,
+      displayDeadlineMs,
+      completionModel,
+      onMarkersChanged: setMarkerCount,
+      onNextEditChanged: (next) => setNextEdit(next)
     })
-    const keySubscription = editorInstance.onKeyDown((event) => {
-      if (event.keyCode !== KeyCode.Escape) {
-        return
-      }
-      // Why: an Esc that closes a widget, or lands with no suggestion showing, is not a rejection.
-      if (decide() !== 'accept-suggestion') {
-        return
-      }
-      // Why: a tick still waiting would ask again for the same buffer and undo the rejection.
-      cancelScheduledTick()
-      dropPlan()
-    })
-    const mouseSubscription = editorInstance.onMouseDown((event) => {
-      if (event.target.type !== editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-        return
-      }
-      // Why: a right click asks for a context menu, so only the left button jumps.
-      if (!event.event.leftButton) {
-        return
-      }
-      const lineNumber = event.target.position?.lineNumber
-      if (!lineNumber) {
-        return
-      }
-      const marker = markers.find((candidate) => candidate.lineNumber === lineNumber)
-      if (marker) {
-        jump(marker)
-      }
-    })
-
-    // Why: the content sync lands before this effect subscribes, so opening a file would never ask.
-    scheduleTick()
-
-    handlersByEditor.set(editorInstance, {
-      decide,
-      accept,
-      jump: jumpToNextLocation,
-      preview,
-      hasNextLocation: () => markers.length > 0
-    })
-
     return () => {
-      // Why: an answer that arrives after the editor moved on must not reach the store.
-      generationRef.current += 1
-      cancelScheduledTick()
-      contentSubscription.dispose()
-      cursorSubscription.dispose()
-      keySubscription.dispose()
-      mouseSubscription.dispose()
-      releasePreview()
-      collection.clear()
-      handlersByEditor.delete(editorInstance)
-      setMarkerCount(0)
-      setNextEdit(null)
+      feature.dispose()
     }
-  }, [editorInstance, modelKey, filePath, relativePath, enabled, triggerDelayMs, extensionsKey])
+  }, [
+    editorInstance,
+    modelKey,
+    filePath,
+    relativePath,
+    enabled,
+    triggerDelayMs,
+    extensionsKey,
+    contextPrefixChars,
+    contextSuffixChars,
+    displayDeadlineMs,
+    completionModel
+  ])
 
   return { markerCount, nextEdit }
 }
@@ -353,23 +114,4 @@ function isExtensionEnabled(filePath: string, extensionsKey: string): boolean {
   const extension = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase()
   // Why: an empty list splits into one empty entry, and a file without an extension would match it.
   return extensionsKey.split(',').some((entry) => entry !== '' && entry.toLowerCase() === extension)
-}
-
-/** The location after the cursor; the list cycles, so the last one leads back to the first. */
-function nextMarkerAfter(
-  markers: readonly NesLocationMarker[],
-  position: { lineNumber: number; column: number }
-): NesLocationMarker | null {
-  if (markers.length === 0) {
-    return null
-  }
-  const after = markers.find((marker) => isAfterCursor(marker.edit, position))
-  return after ?? markers[0]
-}
-
-function isAfterCursor(edit: NesEdit, position: { lineNumber: number; column: number }): boolean {
-  if (edit.range.endLine !== position.lineNumber) {
-    return edit.range.endLine > position.lineNumber
-  }
-  return edit.range.endColumn > position.column
 }

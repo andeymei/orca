@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { NesEditPlan, NesRequest } from '../../shared/code-completion/code-completion-types'
 import { createAnthropicMessagesBackend } from './anthropic-messages-backend'
-import { repairNesEditRanges, translateNesEditLines } from './completion-backend'
+import { repairNesEditRanges, translateNesEditLines } from './completion-plan-reading'
 import { createOpenAiChatBackend } from './openai-chat-backend'
 import { createOpenAiFimBackend } from './openai-fim-backend'
 
@@ -27,7 +27,9 @@ const CONFIG = {
   model: 'test-model',
   apiKey: 'test-key',
   maxTokens: 512,
-  autoImport: false
+  autoImport: false,
+  // Why: the plan mode is what these tests ask for, and the mode is part of the backend's identity.
+  responseMode: 'plan' as const
 }
 
 /** What the model answers: line numbers count from the text it was shown. */
@@ -357,7 +359,7 @@ describe('completion backends', () => {
     expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 })
     expect(result.plan?.edits).toEqual([
       {
-        id: 'fim-cursor',
+        id: 'inline-cursor',
         path: FILE_PATH,
         kind: 'insert',
         range: { startLine: 41, startColumn: 1, endLine: 41, endColumn: 1 },
@@ -367,7 +369,38 @@ describe('completion backends', () => {
       }
     ])
     const body = requestBody(fetchImpl.mock.calls[0])
-    expect(body.prompt).toBe('const a = 1\n<<<CURSOR>>>\nconst b = 2')
+    // Why the prefix alone: the endpoint continues the text it is given, so the answer belongs
+    // after the prompt. A prompt that carried the file's tail would ask for the wrong text.
+    expect(body.prompt).toBe('const a = 1\n')
+  })
+
+  it('asks the inline mode for the text at the cursor and returns it as one edit', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([anthropicTextEvent('const c = 3\n')])
+    )
+    const backend = createAnthropicMessagesBackend(
+      { ...CONFIG, responseMode: 'inline' },
+      { fetchImpl }
+    )
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.plan?.edits).toEqual([
+      {
+        id: 'inline-cursor',
+        path: FILE_PATH,
+        kind: 'insert',
+        range: { startLine: 41, startColumn: 1, endLine: 41, endColumn: 1 },
+        originalText: '',
+        text: 'const c = 3',
+        label: 'Completion'
+      }
+    ])
+    const body = requestBody(fetchImpl.mock.calls[0])
+    expect(body.system).toContain('Reply with ONLY the text to insert at the cursor')
+    expect(body.messages).toEqual([
+      { role: 'user', content: expect.stringContaining('<<<CURSOR>>>') }
+    ])
   })
 
   it('returns null when the endpoint answers 401', async () => {

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   installRuntimeFileClientEnvironment,
-  runtimeCall
+  runtimeCall,
+  runtimeCancelCall
 } from '@/runtime/files/runtime-file-client-test-harness'
 import type { NesRequest } from '../../../../../shared/code-completion/code-completion-types'
 import { requestNesPlan } from './nes-runtime-client'
@@ -47,10 +48,9 @@ describe('requestNesPlan', () => {
     const plan = await requestNesPlan(REQUEST)
 
     expect(plan?.edits).toEqual([EDIT])
-    expect(runtimeCall).toHaveBeenCalledWith({
-      method: 'codeCompletion.plan',
-      params: REQUEST
-    })
+    expect(runtimeCall).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'codeCompletion.plan', params: REQUEST })
+    )
   })
 
   it('returns null when the runtime answers no plan', async () => {
@@ -106,6 +106,25 @@ describe('requestNesPlan', () => {
 
     expect(await request).toBeNull()
     expect(console.error).not.toHaveBeenCalled()
+  })
+
+  it('stops the call when the deadline passes', async () => {
+    runtimeCall.mockReturnValue(new Promise(() => undefined))
+
+    expect(await requestNesPlan(REQUEST, { timeoutMs: 5 })).toBeNull()
+    // Why: a request nobody waits for must stop working, or it holds a slot and spends tokens.
+    expect(runtimeCancelCall).toHaveBeenCalled()
+  })
+
+  it('stops the call when the caller aborts', async () => {
+    const controller = new AbortController()
+    runtimeCall.mockReturnValue(new Promise(() => undefined))
+
+    const request = requestNesPlan(REQUEST, { signal: controller.signal })
+    controller.abort()
+
+    expect(await request).toBeNull()
+    expect(runtimeCancelCall).toHaveBeenCalled()
   })
 
   it('logs a genuine failure with the name of the error only', async () => {

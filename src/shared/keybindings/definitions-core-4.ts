@@ -155,5 +155,24 @@ export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
     // Why: F8 is the sibling of the F7 "go to next change" this repo already binds.
     defaultBindings: platformBindings(['F8']),
     allowBareKeybindings: true
+  },
+  {
+    id: 'editor.acceptNextAiSuggestionWord',
+    title: 'Accept Next Word of AI Suggestion',
+    group: 'Editors',
+    scope: 'editor',
+    searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'accept', 'word'],
+    // Why the arrow: the key moves the cursor to the end of a word, so the suggestion takes the
+    // word the cursor is on. The chord is only taken while a suggestion is showing, and the
+    // editor's own word motion keeps it otherwise.
+    defaultBindings: platformBindings(['Mod+ArrowRight'])
+  },
+  {
+    id: 'editor.acceptNextAiSuggestionLine',
+    title: 'Accept Next Line of AI Suggestion',
+    group: 'Editors',
+    scope: 'editor',
+    searchKeywords: ['shortcut', 'editor', 'ai', 'suggestion', 'accept', 'line'],
+    defaultBindings: platformBindings(['Mod+Shift+ArrowRight'])
   }
 ]

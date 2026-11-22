@@ -3,7 +3,12 @@ import {
   CodeCompletionPlan,
   type CodeCompletionPlanResult
 } from '../../../../../shared/rpc-contract/code-completion-params'
-import type { NesBackendId } from '../../../../../shared/code-completion/code-completion-types'
+import {
+  NES_INLINE_MAX_TOKENS,
+  NES_PLAN_MAX_TOKENS,
+  type NesBackendId,
+  type NesResponseMode
+} from '../../../../../shared/code-completion/code-completion-types'
 import { createCompletionService } from '../../../../code-completion/completion-service'
 import { createAnthropicMessagesBackend } from '../../../../code-completion/anthropic-messages-backend'
 import { createOpenAiChatBackend } from '../../../../code-completion/openai-chat-backend'
@@ -14,10 +19,15 @@ import { recordCompletionUsage } from '../../../../code-completion/completion-us
 import { startSpan } from '../../../../observability/tracer'
 
 /**
- * How many tokens a completion answer may take. A reasoning model spends the first part of its
- * budget thinking, so a small cap leaves it no room to answer at all.
+ * How many tokens a completion answer may take.
+ *
+ * Why two numbers: an inline answer is a short snippet, and a plan names up to five edits with
+ * their ranges. A reasoning model also spends the first part of its budget thinking, so a cap
+ * that leaves it no room to answer at all is worse than a generous one.
  */
-const NES_COMPLETION_MAX_TOKENS = 8000
+function nesMaxTokens(responseMode: NesResponseMode): number {
+  return responseMode === 'inline' ? NES_INLINE_MAX_TOKENS : NES_PLAN_MAX_TOKENS
+}
 
 /**
  * The plan request each client has in flight for each file it is editing. A newer request for the
@@ -39,12 +49,19 @@ export const CODE_COMPLETION_METHODS = [
     handler: async (params, { runtime, signal, clientId }): Promise<CodeCompletionPlanResult> => {
       // Why: the store holds the desktop's own settings; the client projection omits this block.
       const settings = runtime.requireStore().getSettings().codeCompletion
+      // Why: the fill-in-the-middle endpoint answers with text, so it can only answer the inline
+      // mode, whatever the setting says.
+      const responseMode: NesResponseMode =
+        settings?.protocol === 'openai-completions-fim'
+          ? 'inline'
+          : (settings?.responseMode ?? 'inline')
       // Why: a request that shows nothing leaves the user without an answer, so the outcome of
       // every request lands in the trace: the model, the time it took and what came back.
       const span = startSpan('codeCompletion.plan', {
         attributes: {
           model: settings?.model ?? '',
           protocol: settings?.protocol ?? '',
+          response_mode: responseMode,
           // Why: the file names the request, and a trace that cannot name it cannot say which
           // buffer the user was waiting for.
           file: params.relativePath
@@ -70,14 +87,17 @@ export const CODE_COMPLETION_METHODS = [
         span.end()
         return { plan: null }
       }
+      // Why: the fill-in-the-middle endpoint answers with text, so it can only answer the inline
+      // mode, whatever the setting says.
       const service = createCompletionService({
         resolveBackend: () =>
           createBackend(settings.protocol, {
             baseUrl: settings.baseUrl,
             model: settings.model,
             apiKey,
-            maxTokens: NES_COMPLETION_MAX_TOKENS,
-            autoImport: settings.autoImport
+            maxTokens: nesMaxTokens(responseMode),
+            autoImport: settings.autoImport,
+            responseMode
           })
       })
       const requestKey = planRequestKey(clientId, params.filePath)

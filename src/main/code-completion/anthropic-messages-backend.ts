@@ -1,14 +1,11 @@
 import { z } from 'zod'
-import {
-  buildNesSystemPrompt,
-  buildNesUserPrompt
-} from '../../shared/code-completion/code-completion-prompt'
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import {
   completionTokenCount,
   emptyCompletionUsage,
   nesBackendIdentity,
-  planFromCompletionText,
+  nesPlanFromAnswer,
+  nesPromptPair,
   type CompletionBackendOptions,
   type CompletionUsage,
   type NesBackend,
@@ -56,6 +53,7 @@ export function createAnthropicMessagesBackend(
     identity,
     planCapable: true,
     async plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
+      const prompts = nesPromptPair(config, input)
       const request = (withThinkingControl: boolean): Parameters<typeof postCompletionJson>[0] => ({
         url: completionEndpointUrl(config.baseUrl, ANTHROPIC_MESSAGES_PATH),
         headers: {
@@ -66,11 +64,11 @@ export function createAnthropicMessagesBackend(
         body: {
           model: config.model,
           max_tokens: config.maxTokens,
-          system: buildNesSystemPrompt({ autoImport: config.autoImport }),
+          system: prompts.system,
           messages: [
             {
               role: 'user',
-              content: buildNesUserPrompt({ ...input, autoImport: config.autoImport })
+              content: prompts.user
             }
           ],
           stream: true,
@@ -83,16 +81,16 @@ export function createAnthropicMessagesBackend(
       })
 
       if (identitiesRefusingThinking.has(identity)) {
-        return (await requestPlan(request(false), input)).result
+        return (await requestPlan(request(false), config, input)).result
       }
-      const first = await requestPlan(request(true), input)
+      const first = await requestPlan(request(true), config, input)
       if (first.ok || !first.refused) {
         return first.result
       }
       // Why: the endpoint refused the request, so the control is the likely reason; ask again
       // without it and stop asking for it from now on.
       identitiesRefusingThinking.add(identity)
-      return (await requestPlan(request(false), input)).result
+      return (await requestPlan(request(false), config, input)).result
     }
   }
 }
@@ -104,6 +102,7 @@ type PlanRequestResult =
 
 async function requestPlan(
   request: Parameters<typeof postCompletionJson>[0],
+  config: NesBackendConfig,
   input: NesRequest
 ): Promise<PlanRequestResult> {
   const response = await postCompletionJson(request)
@@ -122,7 +121,7 @@ async function requestPlan(
       result: { plan: null, usage: emptyCompletionUsage(), failure: 'unparsed' }
     }
   }
-  const plan = planFromCompletionText(anthropicStreamText(events), input)
+  const plan = nesPlanFromAnswer(config, anthropicStreamText(events), input)
   return {
     ok: true,
     result: {

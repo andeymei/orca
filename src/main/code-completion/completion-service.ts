@@ -1,4 +1,5 @@
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
+import { findCodeCompletionSecretAround } from '../../shared/code-completion/code-completion-secret-scan'
 import { PrioritySemaphore } from '../../shared/priority-semaphore'
 import { emptyCompletionUsage, type NesBackend, type NesBackendResult } from './completion-backend'
 import { completionCache, completionCacheKey, type CompletionCache } from './completion-cache'
@@ -24,6 +25,8 @@ export type CompletionPlanOutcome =
   | 'abandoned'
   | 'no_backend'
   | 'cached'
+  /** The text around the cursor looked like a secret, so nothing was sent. */
+  | 'blocked'
 
 export type CompletionServiceResult = NesBackendResult & {
   readonly outcome: CompletionPlanOutcome
@@ -50,6 +53,13 @@ export function createCompletionService(options: {
       const backend = options.resolveBackend()
       if (!backend) {
         return { plan: null, usage: emptyCompletionUsage(), outcome: 'no_backend' }
+      }
+      // Why: the text goes to a provider, which is somebody else's computer. A key or a token
+      // near the cursor would go with it, and the person who typed it never meant that.
+      const secret = findCodeCompletionSecretAround(input.prefix, input.suffix, input.relativePath)
+      if (secret) {
+        console.warn('[code-completion] The text near the cursor holds a secret; nothing was sent.')
+        return { plan: null, usage: emptyCompletionUsage(), outcome: 'blocked' }
       }
       const key = completionCacheKey({
         filePath: input.filePath,

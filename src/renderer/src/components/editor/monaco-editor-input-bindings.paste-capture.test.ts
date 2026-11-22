@@ -13,6 +13,7 @@ vi.mock('./editor-shortcuts', () => ({
   installMonacoEditorFindShortcut: () => () => undefined,
   installEditorAddReviewNoteShortcut: () => () => undefined,
   installEditorAcceptAiSuggestionShortcut: () => () => undefined,
+  installEditorAcceptNextAiSuggestionShortcut: () => () => undefined,
   installEditorAiSuggestionPreviewShortcut: () => () => undefined
 }))
 

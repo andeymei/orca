@@ -29,12 +29,8 @@ import { useMonacoContentSyncBridge } from './use-monaco-content-sync-bridge'
 import { useMonacoMarkdownAnnotations } from './markdown-source-tools/monaco/use-monaco-markdown-annotations'
 import { useMonacoEditorDecorations } from './use-monaco-editor-decorations'
 import { useMonacoEditorMount } from './use-monaco-editor-mount'
-import {
-  nesShortcutHandlersFor,
-  useMonacoNextEditSuggestions
-} from './code-completion/use-monaco-nes'
-import { NesNextEditNotice } from './code-completion/nes-next-edit-notice'
-import { DEFAULT_TRIGGER_DELAY_MS } from '../../../../shared/code-completion/code-completion-settings'
+import { useMonacoNesFeature } from './code-completion/use-monaco-nes-feature'
+import { NesNextEditNoticeHost } from './code-completion/nes-next-edit-notice-host'
 import {
   useMonacoAiInstructions,
   type AiInstructionGlyphClick
@@ -49,8 +45,6 @@ import {
 } from '@/lib/monaco-languages/plugin-syntax-editor-options'
 import { useMonacoTheme } from '@/hooks/use-monaco-theme'
 import { useEditorModelRekeyCarry } from './model-lifetime/identity/editor-model-rekey-carry'
-
-const NO_ENABLED_EXTENSIONS: readonly string[] = []
 
 type MonacoEditorProps = {
   fileId: string
@@ -223,14 +217,11 @@ export default function MonacoEditor({
     conflictDecorationsEnabled
   })
 
-  const codeCompletion = settings?.codeCompletion
-  const nes = useMonacoNextEditSuggestions({
+  const nes = useMonacoNesFeature({
     filePath,
     relativePath,
-    // Why: a mirror of another tab's record must not ask for plans of its own.
-    enabled: Boolean(codeCompletion?.enabled) && !passiveMirror,
-    triggerDelayMs: codeCompletion?.triggerDelayMs ?? DEFAULT_TRIGGER_DELAY_MS,
-    enabledExtensions: codeCompletion?.enabledExtensions ?? NO_ENABLED_EXTENSIONS,
+    settings,
+    passiveMirror,
     editorInstance: mountedEditor
   })
 
@@ -402,16 +393,7 @@ export default function MonacoEditor({
 
       {toastNode}
       {nes.nextEdit && (
-        <NesNextEditNotice
-          nextEdit={nes.nextEdit}
-          onJump={() => {
-            // Why: the jump chord is the one that moves to the next location, so the notice
-            // lands the user exactly where the model meant.
-            if (mountedEditor) {
-              nesShortcutHandlersFor(mountedEditor)?.jump()
-            }
-          }}
-        />
+        <NesNextEditNoticeHost editorInstance={mountedEditor} nextEdit={nes.nextEdit} />
       )}
       <MonacoGutterContextMenu
         open={gutterMenuOpen}

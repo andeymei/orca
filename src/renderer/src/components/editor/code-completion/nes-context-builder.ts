@@ -1,9 +1,8 @@
 import type { editor, IPosition } from 'monaco-editor'
-
-/** The budgets the model sees, in tokens. */
-export const NES_PREFIX_TOKEN_BUDGET = 4000
-export const NES_SUFFIX_TOKEN_BUDGET = 1000
-export const NES_CHARS_PER_TOKEN = 4
+import {
+  DEFAULT_CONTEXT_PREFIX_CHARS,
+  DEFAULT_CONTEXT_SUFFIX_CHARS
+} from '../../../../../shared/code-completion/code-completion-settings'
 
 export type NesContextInput = {
   prefix: string
@@ -21,13 +20,20 @@ export type NesContextInput = {
 export function buildNesContext(
   model: editor.ITextModel,
   position: IPosition,
-  options: { filePath: string; relativePath: string }
+  options: {
+    filePath: string
+    relativePath: string
+    /** How much of the file before the cursor is sent. */
+    prefixChars?: number
+    /** How much of the file after the cursor is sent. */
+    suffixChars?: number
+  }
 ): NesContextInput {
   const lineCount = model.getLineCount()
   const cursorLine = Math.min(Math.max(position.lineNumber, 1), lineCount)
   const cursorColumn = Math.min(Math.max(position.column, 1), model.getLineMaxColumn(cursorLine))
-  const prefixBudget = NES_PREFIX_TOKEN_BUDGET * NES_CHARS_PER_TOKEN
-  const suffixBudget = NES_SUFFIX_TOKEN_BUDGET * NES_CHARS_PER_TOKEN
+  const prefixBudget = options.prefixChars ?? DEFAULT_CONTEXT_PREFIX_CHARS
+  const suffixBudget = options.suffixChars ?? DEFAULT_CONTEXT_SUFFIX_CHARS
   const prefixStartLine = findPrefixStartLine(model, cursorLine, cursorColumn, prefixBudget)
   // Why: the prefix is cut at the cursor and nowhere else, so every line the model sees keeps its own columns.
   const prefix = model.getValueInRange({

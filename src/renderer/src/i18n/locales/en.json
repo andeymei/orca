@@ -14301,7 +14301,19 @@
             "62a1f4af68": "save an API key",
             "4c769faa40": "set the endpoint",
             "d4579c57ce": "choose a model",
-            "9e5354b432": "Where the completion request is sent. Required: the base URL without the path Orca appends — Anthropic Messages takes https://api.anthropic.com and appends /v1/messages, OpenAI Chat takes https://api.openai.com/v1 and appends /chat/completions, and OpenAI FIM takes https://api.openai.com/v1 and appends /completions."
+            "9e5354b432": "Where the completion request is sent. Required: the base URL without the path Orca appends — Anthropic Messages takes https://api.anthropic.com and appends /v1/messages, OpenAI Chat takes https://api.openai.com/v1 and appends /chat/completions, and OpenAI FIM takes https://api.openai.com/v1 and appends /completions.",
+            "inline-mode": "Inline",
+            "plan-mode": "Next edit",
+            "response-mode": "What to ask for",
+            "response-mode-description": "Inline asks for the text to insert at the cursor, which the model can answer without counting lines. Next edit asks for a plan of changes and can propose them anywhere in the file.",
+            "response-mode-fim-description": "The fill-in-the-middle endpoint answers with text, so it always answers inline.",
+            "context-prefix": "Context before the cursor",
+            "context-prefix-description": "How much of the file before the cursor is sent. More context costs time and tokens.",
+            "chars": "chars",
+            "context-suffix": "Context after the cursor",
+            "context-suffix-description": "How much of the file after the cursor is sent.",
+            "display-deadline": "Answer deadline",
+            "display-deadline-description": "How long an answer may take before it is no longer shown. Zero waits as long as the endpoint takes."
           },
           "code": {
             "completion": {
@@ -17927,6 +17939,9 @@
           "open": "Open with default app",
           "downloadOpen": "Download & open with default app",
           "openFailed": "No app on this computer opened this file."
+        },
+        "codeCompletion": {
+          "rename-label": "Rename {{value0}} to {{value1}}"
         }
       },
       "diff": {
@@ -24474,7 +24489,9 @@
       "1524825c2c": "Toggle workspace board",
       "d286d1ab85": "Clear pane title",
       "editorAcceptAiSuggestion": "Accept AI Suggestion",
-      "editorNextAiSuggestion": "Go to Next AI Suggestion"
+      "editorNextAiSuggestion": "Go to Next AI Suggestion",
+      "editorAcceptNextAiSuggestionWord": "Accept Next Word of AI Suggestion",
+      "editorAcceptNextAiSuggestionLine": "Accept Next Line of AI Suggestion"
     },
     "group": {
       "global": "Global",

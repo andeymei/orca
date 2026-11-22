@@ -97,6 +97,23 @@ export const NES_BACKEND_IDS = [
 
 export type NesBackendId = (typeof NES_BACKEND_IDS)[number]
 
+/**
+ * The shape the model answers with.
+ *
+ * `inline` asks for the text to insert at the cursor and for nothing else, so the model never
+ * counts a line or names a range — the two things it is worst at. `plan` asks for a plan of
+ * edits, which can propose a change anywhere in the file, but hands the model the counting too.
+ */
+export const NES_RESPONSE_MODES = ['inline', 'plan'] as const
+
+export type NesResponseMode = (typeof NES_RESPONSE_MODES)[number]
+
+/** An inline answer is a short snippet, so it needs a few tokens and not a plan's worth. */
+export const NES_INLINE_MAX_TOKENS = 96
+
+/** A plan names up to five edits with their ranges, so it needs room to write them out. */
+export const NES_PLAN_MAX_TOKENS = 8000
+
 export type NesRequest = {
   filePath: string
   relativePath: string

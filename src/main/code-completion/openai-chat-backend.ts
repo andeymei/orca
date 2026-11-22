@@ -1,15 +1,12 @@
 import { z } from 'zod'
-import {
-  buildNesSystemPrompt,
-  buildNesUserPrompt
-} from '../../shared/code-completion/code-completion-prompt'
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import {
   completionTokenCount,
   emptyCompletionUsage,
   nesBackendIdentity,
+  nesPlanFromAnswer,
+  nesPromptPair,
   planFromCompletionStream,
-  planFromCompletionText,
   type CompletionBackendOptions,
   type CompletionUsage,
   type NesBackend,
@@ -40,6 +37,7 @@ export function createOpenAiChatBackend(
     identity: nesBackendIdentity('openai-chat', config),
     planCapable: true,
     plan(input: NesRequest, signal: AbortSignal): Promise<NesBackendResult> {
+      const prompts = nesPromptPair(config, input)
       return planFromCompletionStream(
         {
           url: completionEndpointUrl(config.baseUrl, OPENAI_CHAT_PATH),
@@ -51,10 +49,10 @@ export function createOpenAiChatBackend(
             model: config.model,
             max_tokens: config.maxTokens,
             messages: [
-              { role: 'system', content: buildNesSystemPrompt({ autoImport: config.autoImport }) },
+              { role: 'system', content: prompts.system },
               {
                 role: 'user',
-                content: buildNesUserPrompt({ ...input, autoImport: config.autoImport })
+                content: prompts.user
               }
             ],
             stream: true,
@@ -64,7 +62,7 @@ export function createOpenAiChatBackend(
           fetchImpl: options?.fetchImpl
         },
         openAiChatStreamText,
-        (text) => planFromCompletionText(text, input),
+        (text) => nesPlanFromAnswer(config, text, input),
         openAiChatStreamUsage
       )
     }

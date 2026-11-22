@@ -52,11 +52,15 @@ describe('updateSettings codeCompletion', () => {
     expect(operations.state.settings.codeCompletion).toEqual({
       enabled: true,
       protocol: 'anthropic-messages',
+      responseMode: 'inline',
       baseUrl: '',
       model: '',
       triggerDelayMs: 500,
       autoImport: true,
-      enabledExtensions: DEFAULT_EXTENSIONS
+      enabledExtensions: DEFAULT_EXTENSIONS,
+      contextPrefixChars: 6000,
+      contextSuffixChars: 2000,
+      displayDeadlineMs: 4000
     })
   })
 
@@ -67,22 +71,30 @@ describe('updateSettings codeCompletion', () => {
       codeCompletion: {
         enabled: false,
         protocol: 'openai-chat',
+        responseMode: 'plan',
         baseUrl: 'https://api.test',
         model: 'a-model',
         triggerDelayMs: 250,
         autoImport: false,
-        enabledExtensions: ['ts']
+        enabledExtensions: ['ts'],
+        contextPrefixChars: 6000,
+        contextSuffixChars: 2000,
+        displayDeadlineMs: 4000
       }
     })
 
     expect(operations.state.settings.codeCompletion).toEqual({
       enabled: false,
       protocol: 'openai-chat',
+      responseMode: 'plan',
       baseUrl: 'https://api.test',
       model: 'a-model',
       triggerDelayMs: 250,
       autoImport: false,
-      enabledExtensions: ['ts']
+      enabledExtensions: ['ts'],
+      contextPrefixChars: 6000,
+      contextSuffixChars: 2000,
+      displayDeadlineMs: 4000
     })
   })
 })

@@ -1,5 +1,10 @@
 import { ipcMain } from 'electron'
 import { CODE_COMPLETION_SUGGESTION_CHANNELS } from '../../shared/code-completion/code-completion-suggestion-outcome'
+import {
+  CODE_COMPLETION_METRIC_CHANNELS,
+  type CodeCompletionMetricEvent
+} from '../../shared/code-completion/code-completion-metrics'
+import { recordCompletionMetric } from '../code-completion/completion-metrics'
 import { startSpan } from '../observability/tracer'
 
 /**
@@ -27,6 +32,50 @@ export function registerCodeCompletionSuggestionHandlers(): void {
       span.end()
     }
   )
+
+  ipcMain.handle(CODE_COMPLETION_METRIC_CHANNELS.recordMetric, (_event, report: unknown) => {
+    const metric = readMetricReport(report)
+    if (!metric) {
+      return
+    }
+    return recordCompletionMetric(metric)
+  })
+}
+
+/** What became of a suggestion, as the renderer reported it. */
+function readMetricReport(report: unknown): {
+  event: CodeCompletionMetricEvent
+  model: string
+  latencyMs?: number
+} | null {
+  if (!isRecord(report)) {
+    return null
+  }
+  const event = report.event
+  const model = report.model
+  if (!isCodeCompletionMetricEvent(event) || typeof model !== 'string') {
+    return null
+  }
+  const latencyMs = report.latencyMs
+  return {
+    event,
+    model,
+    ...(typeof latencyMs === 'number' ? { latencyMs } : {})
+  }
+}
+
+/** The events the metric file knows; anything else is not a metric. */
+const CODE_COMPLETION_METRIC_EVENTS: readonly CodeCompletionMetricEvent[] = [
+  'shown',
+  'accepted',
+  'partial',
+  'kept',
+  'undone',
+  'stale'
+]
+
+function isCodeCompletionMetricEvent(value: unknown): value is CodeCompletionMetricEvent {
+  return typeof value === 'string' && CODE_COMPLETION_METRIC_EVENTS.some((event) => event === value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

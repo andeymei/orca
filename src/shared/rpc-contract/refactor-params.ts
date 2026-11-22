@@ -17,7 +17,8 @@ export const RefactorJobIdParams = z.object({
 })
 
 export const RefactorStatusResult = z.object({
-  state: z.enum(['running', 'done', 'failed', 'cancelled']),
+  /** Why: a timeout is worth retrying on its own, so it cannot hide inside 'failed'. */
+  state: z.enum(['running', 'done', 'failed', 'timed_out', 'cancelled']),
   progress: z.string(),
   warnings: z.array(z.string())
 })

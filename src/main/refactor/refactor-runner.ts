@@ -7,19 +7,26 @@ import { RefactorManifest } from '../../shared/refactor/refactor-manifest'
 import type { RefactorStatusResult } from '../../shared/rpc-contract/refactor-params'
 import { refactorToolAllowed, refactorToolTargetPath } from './refactor-write-gate'
 import type { RefactorAgentLaunch } from './refactor-agent-launch'
+import { createRefactorToolHook } from './refactor-tool-hook'
+import {
+  classifyRefactorResult,
+  decideRefactorTurnOutcome,
+  refactorTurnCancelledFirst
+} from './refactor-turn-verdict'
+
+export {
+  classifyRefactorResult,
+  decideRefactorTurnOutcome,
+  refactorTurnCancelledFirst,
+  type RefactorResultFrame,
+  type RefactorTurnVerdict
+} from './refactor-turn-verdict'
 
 /** A turn that runs longer than this is killed: the agent gets no second chance at the same file. */
 export const REFACTOR_TURN_TIMEOUT_MS = 300_000
 
 /** The manifest is agent-authored input, so it is read under a cap. */
 const REFACTOR_MANIFEST_MAX_BYTES = 1024 * 1024
-
-const REFACTOR_ERROR_SUBTYPES = new Set([
-  'error_during_execution',
-  'error_max_turns',
-  'error_max_budget_usd',
-  'error_max_structured_output_retries'
-])
 
 const WRITE_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit'])
 
@@ -34,14 +41,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+/**
+ * Why no text for an unknown tool or a missing path: a progress line that names a file the tool
+ * never touched is worse than no line at all.
+ */
 function refactorToolProgressText(
   toolName: string,
   toolInput: Record<string, unknown>,
   workspaceRoot: string
-): string {
+): string | null {
   const target = refactorToolTargetPath(toolInput)
   if (!target) {
-    return `正在使用 ${toolName}`
+    return null
   }
   const relative = path.relative(workspaceRoot, path.resolve(workspaceRoot, target))
   if (toolName === 'Read') {
@@ -50,7 +61,7 @@ function refactorToolProgressText(
   if (WRITE_TOOL_NAMES.has(toolName)) {
     return `正在写入 ${relative}`
   }
-  return `正在使用 ${toolName}`
+  return null
 }
 
 export function parseRefactorToolProgress(
@@ -74,25 +85,12 @@ export function parseRefactorToolProgress(
       continue
     }
     const toolInput = isRecord(block.input) ? block.input : {}
-    return refactorToolProgressText(toolName, toolInput, workspaceRoot)
+    const text = refactorToolProgressText(toolName, toolInput, workspaceRoot)
+    if (text !== null) {
+      return text
+    }
   }
   return null
-}
-
-function classifyRefactorResult(message: Record<string, unknown>): {
-  state: 'done' | 'failed'
-  warnings: string[]
-} {
-  const subtype = typeof message.subtype === 'string' ? message.subtype : ''
-  const stopReason = typeof message.stop_reason === 'string' ? message.stop_reason : ''
-  const failed = REFACTOR_ERROR_SUBTYPES.has(subtype) || message.is_error === true
-  if (!failed) {
-    return { state: 'done', warnings: [] }
-  }
-  // A success subtype with is_error means the turn ended on an API error, not on a broken subtype.
-  const detail = REFACTOR_ERROR_SUBTYPES.has(subtype) ? subtype : 'api_error'
-  const stop = stopReason.length > 0 ? `（停止原因：${stopReason}）` : ''
-  return { state: 'failed', warnings: [`这一轮以错误结束：${detail}${stop}`] }
 }
 
 async function readRefactorManifest(scratchRoot: string): Promise<{
@@ -136,6 +134,41 @@ function assertRefactorWorkspaceRoot(workspaceRoot: string, launchCwd: string): 
   }
 }
 
+/**
+ * The prompt names a relative scratch root while the gate and the manifest read use an absolute
+ * one; when they are not the same directory every relative write is refused and the manifest is
+ * read from a tree nobody wrote.
+ */
+function assertRefactorScratchRoot(workspaceRoot: string, scratchRoot: string): void {
+  const relative = path.relative(path.resolve(workspaceRoot), path.resolve(scratchRoot))
+  const [firstSegment] = relative.split(path.sep)
+  if (firstSegment === '..' || path.isAbsolute(relative)) {
+    throw new Error(
+      `refactor scratch root ${scratchRoot} is outside the workspace root ${workspaceRoot}`
+    )
+  }
+}
+
+/**
+ * The SDK auto-approves a tool whose bare name sits in `allowedTools` and never calls
+ * `canUseTool`, and a bypass permission mode approves everything; in both cases the gate is
+ * never consulted, so the launch is refused instead of running ungated.
+ */
+function assertRefactorLaunchGates(launch: RefactorAgentLaunch): void {
+  const permissionMode = launch.options.permissionMode
+  if (permissionMode !== 'default') {
+    throw new Error(
+      `refactor launch permission mode ${String(permissionMode)} would skip the tool gate`
+    )
+  }
+  const bareTools = (launch.options.allowedTools ?? []).filter(
+    (tool) => tool.length > 0 && !tool.includes('(')
+  )
+  if (bareTools.length > 0) {
+    throw new Error(`refactor launch auto-approves bare tools: ${bareTools.join(', ')}`)
+  }
+}
+
 export async function runRefactorTurn(input: {
   launch: RefactorAgentLaunch
   scratchRoot: string
@@ -146,6 +179,24 @@ export async function runRefactorTurn(input: {
 }): Promise<RefactorTurnResult> {
   const { launch, scratchRoot, workspaceRoot, prompt, onProgress, signal } = input
   assertRefactorWorkspaceRoot(workspaceRoot, launch.cwd)
+  assertRefactorScratchRoot(workspaceRoot, scratchRoot)
+  assertRefactorLaunchGates(launch)
+
+  // The gate hangs on a hook because an allow rule in a settings tier approves a tool before the
+  // canUseTool callback is consulted.
+  const gatedLaunch: RefactorAgentLaunch = {
+    ...launch,
+    options: {
+      ...launch.options,
+      hooks: {
+        ...launch.options.hooks,
+        PreToolUse: [
+          ...(launch.options.hooks?.PreToolUse ?? []),
+          ...createRefactorToolHook({ scratchRoot, workspaceRoot })
+        ]
+      }
+    }
+  }
 
   let order = 0
   let progress = ''
@@ -208,9 +259,10 @@ export async function runRefactorTurn(input: {
     settle()
   }, REFACTOR_TURN_TIMEOUT_MS)
 
+  const closeWarnings: string[] = []
   let connection: Awaited<ReturnType<typeof openClaudeStreamJsonConnection>> | null = null
   try {
-    connection = await openClaudeStreamJsonConnection(launch, {
+    connection = await openClaudeStreamJsonConnection(gatedLaunch, {
       onMessage,
       canUseTool,
       onFault,
@@ -234,34 +286,33 @@ export async function runRefactorTurn(input: {
     clearTimeout(timer)
     signal.removeEventListener('abort', onAbort)
     // Closing drains the reader, so a result frame the exit raced with still reaches onMessage.
-    await connection?.close()
+    try {
+      const proven = await connection?.close()
+      if (proven === false) {
+        closeWarnings.push('子进程未确认退出')
+        const exitVerdict = connection?.exitVerdict
+        if (exitVerdict && exitVerdict.root !== 'exited') {
+          closeWarnings.push(`根进程未退出：${exitVerdict.root}，后代树：${exitVerdict.tree}`)
+        }
+      }
+    } catch (error) {
+      // A connection that will not close is another matter; it must not discard the verdict.
+      closeWarnings.push(`关闭连接失败：${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
-  const cancelledFirst = cancelOrder >= 0 && (resultOrder < 0 || cancelOrder < resultOrder)
-  let state: RefactorStatusResult['state']
-  let warnings: string[]
-  if (cancelledFirst) {
-    state = 'cancelled'
-    warnings = ['任务已取消']
-  } else if (resultOrder >= 0) {
-    state = resultState
-    warnings = resultWarnings
-  } else if (timedOut) {
-    state = 'failed'
-    warnings = ['任务超时']
-  } else if (faultMessage) {
-    state = 'failed'
-    warnings = [`这一轮没有正常结束：${faultMessage}`]
-  } else {
-    state = 'failed'
-    warnings = ['这一轮没有结束']
-  }
+  const outcome = decideRefactorTurnOutcome({
+    result: resultOrder >= 0 ? { state: resultState, warnings: resultWarnings } : null,
+    cancelled: refactorTurnCancelledFirst({ cancelOrder, resultOrder }),
+    timedOut,
+    fault: faultMessage.length > 0 ? faultMessage : null
+  })
 
   const manifest = await readRefactorManifest(scratchRoot)
   return {
-    state,
+    state: outcome.state,
     manifest: manifest.manifest,
     progress,
-    warnings: [...warnings, ...manifest.warnings]
+    warnings: [...outcome.warnings, ...closeWarnings, ...manifest.warnings]
   }
 }

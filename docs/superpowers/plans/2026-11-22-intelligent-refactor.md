@@ -1288,6 +1288,9 @@ git commit -m "feat(refactor): assemble the plan from the scratch files"
     - `get(jobId: string): RefactorJob | null`
     - `update(jobId: string, patch: Partial<Pick<RefactorJob, 'state' | 'progress' | 'warnings' | 'plan' | 'diskContents' | 'baselines'>>): void`
     - `remove(jobId: string): void`
+  - **模块底部导出单例** `export const refactorJobRegistry = createRefactorJobRegistry()`。
+    Task 8 的五个 RPC 方法共用它——每个方法各建一个注册表的话，
+    `refactor.propose` 建好的 job 在 `refactor.status` 里根本查不到。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -1603,6 +1606,7 @@ writeFileExplorerFile(
   13. 每一步都要尊重 job 的 `controller.signal`。
 
 - `refactor.status`：从注册表取 job，返回 `{ state, progress, warnings }`。job 不存在时返回 `{ state: 'failed', progress: '', warnings: ['任务不存在'] }`。
+  **五个方法共用 Task 7 的模块级单例 `refactorJobRegistry`**，不要各建各的。
 
 - `refactor.plan`：从注册表取 job，返回 `{ plan: job.plan }`。
 

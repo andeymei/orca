@@ -1699,7 +1699,13 @@ git commit -m "feat(refactor): track the refactoring jobs"
 - Consumes: Task 1 的全部 RPC 参数与结果 schema；Task 5 的 `runRefactorTurn` 与 `buildRefactorPrompt`；Task 6 的 `buildRefactorPlan`；Task 7 的注册表；Task 2 的 `applyRefactorHunks`
 - Produces:
   - `REFACTOR_METHODS`：注册 5 个方法 `refactor.propose` / `refactor.status` / `refactor.plan` / `refactor.apply` / `refactor.discard`，`permission: 'workspace'`
-  - `src/main/refactor/refactor-apply.ts` 导出 `applyRefactorSelection(input: { plan: RefactorPlan; diskContents: ReadonlyMap<string, string>; acceptedHunkIds: readonly string[]; readCurrent: (path: string) => Promise<string | null>; write: (path: string, content: string, precondition: { expectedSignature: string; allowMissing: boolean }) => Promise<boolean> }): Promise<{ applied: { path: string; hunksApplied: number }[]; refusals: { path: string; reason: string }[] }>`
+  - `src/main/refactor/refactor-apply.ts` 导出 `applyRefactorSelection(input: { plan: RefactorPlan; diskContents: ReadonlyMap<string, string>; acceptedHunkIds: readonly string[]; readCurrent: (path: string) => Promise<RefactorFileReadResult>; write: (path: string, content: string, precondition: { expectedSignature: string; allowMissing: boolean }) => Promise<boolean>; signal?: AbortSignal }): Promise<{ applied: { path: string; hunksApplied: number }[]; refusals: { path: string; reason: string }[] }>`
+    —— **`readCurrent` 返回一个可区分的结果，不是一个 `string | null`**：
+    `RefactorFileReadResult` = `{ status: 'read'; content: string }` | `{ status: 'missing' }` | `{ status: 'unreadable'; reason: string }`。
+    原因是"读不到"有两种：**文件没了**（`missing`）和**文件读不了**（`unreadable`：超过 2 MB 上限、不是普通文件、权限错误）。
+    两者都说成"文件已被删除"是撒谎——一个 3 MB 的源文件会被报成被删了。
+    `signal` 是新增的：`refactor.apply` 必须观察调用方的 `ctx.signal`，
+    取消后**不再开始新的写入**（已经发出去的写无法撤回），没写的文件进 `refusals`，理由说清是取消。
   - `src/main/refactor/refactor-scratch.ts` 导出 `refactorScratchRoot(workspaceRoot: string, jobId: string): string` 与 `refactorScratchRelativeRoot(jobId: string): string`（`.orca/refactor/<jobId>`）
   - `src/main/refactor/refactor-scratch-cleanup.ts` 导出
     `cleanExpiredRefactorScratch(input: { scratchParentRoot: string; excludeJobId?: string; now?: number; maxAgeMs?: number }): Promise<string[]>`
@@ -1837,9 +1843,13 @@ Expected: FAIL，报模块不存在。
 2. 按文件分组：遍历 plan 的每个 proposal 的每个 file，收集该文件里**被接受**的 hunk。
 3. 没有被接受的 hunk 的文件跳过。
 4. 对每个要写的文件：
-   - `current = await readCurrent(path)`；读不到（`null`）→ 记 refusal"文件已被删除"，跳过。
+   - `current = await readCurrent(path)`；`status === 'missing'` → 记 refusal"文件已被删除"，跳过；
+     `status === 'unreadable'` → 记 refusal**它自己的理由**（"文件过大，无法安全读取"之类），跳过。
+     **"读不到"有两种，"文件已被删除"只回答其中一种**——把一个 3 MB 的源文件报成被删了是撒谎。
    - **陈旧判定**：`disk = diskContents.get(path)`。当 `current !== disk` **且** `current !== file.originalContent` 时 → 记 refusal"文件在评审期间被改动过，请重新生成重构建议"，跳过。
      两条都放行，是因为磁盘上可能仍是建 plan 时的内容（用户没存盘），也可能已经变成用户存盘的基准文本（用户存了盘）。只有两者都不符才说明有人真的改过它。
+   - **取消检查**：`signal?.aborted` 为真时**不再开始新的写入**（已经发出去的写无法撤回），
+     当前文件和后面的文件都记 refusal"重构任务已取消，该文件未写入"，然后停。
    - `newContent = applyRefactorHunks(file.originalContent, acceptedHunks)`。**用基准文本算，不是用 `current`**——diff 是对着基准文本的，重构结果也必须从基准文本算起。
    - `await write(path, newContent, precondition)`；写失败记 refusal"写入失败"。
 5. 返回 `{ applied, refusals }`。
@@ -1898,6 +1908,10 @@ writeFileExplorerFile(
        所以必须在解析之前查。
      - `isPathInsideWorkspace(target.worktree.path, path.resolve(target.worktree.path, params.relativePath))`
        （Task 3 的导出）——解析之后仍然要确认落点在工作区内。
+       **Windows 的盘符相对路径（`C:foo`）在这个检查里被拒**：它按另一个盘的当前目录解析，
+       命中的不是本工作区的任何文件。前两道检查放它过去，所以这一道是承重的。
+       这个判定在**所有平台**上都得一致（POSIX 上 `C:foo` 只是工作区里的一个怪文件名，
+       但它同样不是用户要的路径），否则同一条规则没法用一条测试钉住。
        任一条不过就**直接拒绝这次请求**（抛错），不要先建暂存目录再报错。
   4. `jobId` 用 `crypto.randomUUID()`。
   5. `scratchRoot = refactorScratchRoot(target.worktree.path, jobId)`，用 `fs.mkdir(scratchRoot, { recursive: true })` 建出来。
@@ -2192,9 +2206,15 @@ git commit -m "feat(refactor): expose the refactoring runtime methods"
     不是方法名：`{ kind: 'local' }` 或 `{ kind: 'environment', environmentId }`。
     本特性只支持本地工作区，所以**一律用 `{ kind: 'local' }`**。
     它已经把 RPC 信封拆开了：成功时返回 `result`，失败时**抛错**——
-    所以 `proposeRefactor` 那个"失败返回 null"就是在这里 catch 之后返回 null。
+    所以 `proposeRefactor` 是在这里 catch 之后把错误变成 `RefactorProposeOutcome`。
 - Produces:
-  - `proposeRefactor(input: { worktreeId: string; relativePath: string; content: string; instruction?: string }): Promise<string | null>` —— 返回 jobId；**失败时返回 `null`**，不要抛到 UI（发起失败的原因由调用方用 toast 告诉用户）
+  - `type RefactorProposeOutcome = { jobId: string } | { failure: 'refused'; reason: string } | { failure: 'unreachable' }`
+  - `proposeRefactor(input: { worktreeId: string; relativePath: string; content: string; instruction?: string }): Promise<RefactorProposeOutcome>` —— 返回 jobId 或**失败的原因**，不要把异常抛到 UI
+    - **为什么是"结果"而不是 `null`**：调用方开的是 tab 加 toast，**发起失败的时候没有 tab 可以显示错误**，
+      所以理由必须跟着答案一起回来，不能躺在栈上等一个没人接的 catch。
+      `'refused'` 是运行时自己拒绝的（例如远端工作区），`reason` 带着运行时给的那句话；
+      `'unreachable'` 是请求本身没成功（超时、解析失败、传输断了）。
+      用 `RuntimeRpcCallError` 把运行时自己的拒绝理由带出来，不要自己编一句通用文案。
     - 入参是**工作区 id**，但 RPC 的 `worktree` 参数要的是 **runtime 选择器**：
       客户端内部用 `toRuntimeWorktreeSelector(worktreeId)` 转换
       （`src/renderer/src/runtime/rpc/targets/runtime-worktree-selector.ts:7-13`，加 `id:` 前缀）。
@@ -2289,7 +2309,8 @@ import { toRuntimeWorktreeSelector } from '@/runtime/rpc/targets/runtime-worktre
 `RefactorApplyResult.safeParse`，解析失败就当"没有结果"。
 
 失败的处理照 NES 的做法：请求失败时 `console.error` 并把错误转成"没有结果"，不让异常冒到 UI。
-`proposeRefactor` 失败返回 `null`；`fetchRefactorPlan` 失败返回 `null`；
+`proposeRefactor` 失败返回 `{ failure: 'unreachable' }`（运行时自己拒绝的返回 `{ failure: 'refused', reason }`）；
+`fetchRefactorPlan` 失败返回 `null`；
 `discardRefactor` 失败返回 `false`；`applyRefactor` 失败要**抛出去**——
 用户点了"接受"，静默失败是最糟的结果，调用方必须能告诉用户"没写成功"。
 
@@ -2663,8 +2684,10 @@ git commit -m "feat(refactor): show one diff per refactoring hunk"
 - Produces:
   - `RefactorReviewTab` 组件，props：`{ jobId: string; worktreeId: string; relativePath: string }`
   - `openRefactorReviewTab(input: { worktreeId: string; relativePath: string; content: string; instruction?: string }): Promise<void>` —— 发起任务、拿到 jobId、开 tab。
-    **发起失败（`proposeRefactor` 返回 `null`）时用 toast 报错，并且不要开 tab**——
+    **发起失败（`proposeRefactor` 返回 `failure`）时用 toast 报错，并且不要开 tab**——
     远端工作区、路径不合法、没有 Claude 登录态都属于这一类。开了空 tab 只会让人以为界面坏了。
+    `'refused'` 时**把运行时给的那句 `reason` 告诉用户**（别自己编一句通用文案）；
+    `'unreachable'` 时说一句"发起失败"就够。
   - 虚拟 tab 的 id 用合成 id（如 `${worktreeId}::refactor-review:${jobId}`），`filePath` 填这个合成 id
     ——虚拟 tab 没有磁盘上的文件，`isVirtualEditorFile` 靠这一点区分它。照抄
     `src/renderer/src/lib/source-control/graph/git-graph-tab.ts` 里 `openGitGraph`（:120-158）的写法：

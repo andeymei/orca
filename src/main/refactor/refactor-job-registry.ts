@@ -9,7 +9,10 @@ export type RefactorJob = {
   plan: RefactorPlan | null
   /** The disk content of each file at the moment the plan was built, for the staleness check. */
   diskContents: Map<string, string>
-  /** The target file's baseline (the editor buffer), keyed by the file's identity on disk. */
+  /**
+   * The target file's baseline (the editor buffer), under every key the file answers to:
+   * its canonical path, the path it was named by, and its inode.
+   */
   baselines: Map<string, string>
   /** The original worktree selector, replayed when the accepted changes are written back. */
   worktree: string

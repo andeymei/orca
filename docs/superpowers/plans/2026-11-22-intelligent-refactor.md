@@ -1639,9 +1639,15 @@ describe('the refactor job registry', () => {
       jobId: 'job-1',
       scratchRoot: '/repo/.orca/refactor/job-1',
       worktree: 'wt-1',
-      baselines: new Map([['src/foo.ts', 'a\n']])
+      // The keys are the file's identity on disk: the path it was named by, the path the
+      // filesystem calls it, and its inode.
+      baselines: new Map([
+        ['/repo/src/foo.ts', 'a\n'],
+        ['inode:16777225-13181744224', 'a\n']
+      ])
     })
-    expect(job.baselines.get('src/foo.ts')).toBe('a\n')
+    expect(job.baselines.get('/repo/src/foo.ts')).toBe('a\n')
+    expect(job.baselines.get('inode:16777225-13181744224')).toBe('a\n')
   })
 
   it('returns null for an unknown job', () => {
@@ -1924,20 +1930,28 @@ writeFileExplorerFile(
      把这个约定钉住，别让两个函数各走各的。
   6. 写基准副本：`fs.writeFile(path.join(scratchRoot, '_source', params.relativePath), params.content)`，父目录先 `mkdir recursive`。
   7. **建 job**（Task 7 的注册表），建的时候就把目标文件的**基准文本**带上：
-     `baselines: new Map([[<目标文件的规范路径>, params.content]])`。
+     `baselines: new Map([[<目标文件的规范路径>, params.content], ...])`——
+     同一份缓冲区要放在**这个文件回答的每一个键**下面（见下面「基准表的键」）。
      其它文件的基准文本就是它们当时的磁盘内容。
      顺序很重要：基准在发起那一刻就已知，所以要在建 job 时就给，不能等 job 建好再补——
      那时候注册表里还没有这个 job，也没有地方放它。
      **基准表的键是文件的身份，不是路径的写法**：清单里的路径可能把同一个文件写成不同的样子
      （`src\foo.ts`、`src/foo.ts`、`src/Foo.ts`），而**它们是不是同一个文件只有文件系统知道**——
      macOS 和 Windows 上 `src/Foo.ts` 与 `src/foo.ts` 是一个文件，Linux 上是两个。
-     所以键用 `fs.promises.realpath`（**不是 `realpathSync`**：同步的那个保留给定的写法，
-     在不区分大小写的卷上分不开两个拼法）算出来的规范路径。
-     查不到就是**另一个文件**，退回它自己的磁盘内容——这时用户的缓冲区不参与，是对的。
-     **查不到退回磁盘并不总是"安全"的**：在不区分大小写的卷上，写法不同往往还是同一个文件，
-     退回磁盘就等于拿保存过的版本当基准，用户没保存的修改会在**部分接受**时被悄悄抹掉
-     （`applyRefactorHunks` 只让基准决定用户**没有**接受的那几段）。
-     这就是为什么必须按身份查，而不是按键查。
+     一个文件回答**两个**问题，键就得同时带上两个答案：
+     - **路径**回答"是不是同一个名字"：用 `fs.promises.realpath`（**不是 `realpathSync`**：
+       同步的那个保留给定的写法，在不区分大小写的卷上分不开两个拼法）算出来的规范路径，
+       外加发起时用的那个绝对路径。编辑器用"改名保存"换掉文件时，路径没变而 inode 变了，
+       只有路径键能认出来。
+     - **inode**（`stat` 的 `dev` + `ino`）回答"是不是同一个文件"：硬链接的另一个名字路径不同、
+       inode 相同，只有 inode 键能认出来。不区分大小写的卷上两种拼法也落到同一个 inode。
+       两个键都存、都查，命中任意一个就算同一个文件；只用其中一个，另一个方向的漏查就会
+       重新变成"用户没保存的修改被悄悄抹掉"。
+       查不到就是**另一个文件**，退回它自己的磁盘内容——这时用户的缓冲区不参与，是对的。
+       **查不到退回磁盘并不总是"安全"的**：在不区分大小写的卷上，写法不同往往还是同一个文件，
+       退回磁盘就等于拿保存过的版本当基准，用户没保存的修改会在**部分接受**时被悄悄抹掉
+       （`applyRefactorHunks` 只让基准决定用户**没有**接受的那几段）。
+       这就是为什么必须按身份查，而不是按键查。
   8. 把 `.orca/refactor/` 加进仓库本地的 exclude 文件（见下面「暂存目录不进版本库」）。
   9. 清理过期暂存目录（见下面「暂存目录清理」），并把被清理掉的 job 从注册表里摘掉。
   10. **立刻返回** `{ jobId }`。
@@ -1995,7 +2009,9 @@ writeFileExplorerFile(
       turn 是 `'done'` 才建 plan 并把 job 标成 `'done'`；turn 是 `'failed'` / `'timed_out'` / `'cancelled'` 就直接把那个状态
       和 turn 的 warnings 写进 job，**不要建 plan**（没有可信的产出）。
       把所有结束方式都当成 `'done'` 会让用户面对一个空白的审查界面。
-      建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
+      建 plan 时传的 `readBaseline` 是 `(path) => 按身份查 baselines ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。
+      「按身份查」的意思是：把这个路径的**每一个键**（规范路径、原路径、inode）都试一遍，
+      命中任意一个就算命中（见上面第 7 步的「基准表的键」）；`readDiskContent` 是 `(path) => 磁盘内容`。
       `listScratchProposals` 要**连每个方案目录里的文件一起返回**：
       `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())`
       拿到目录名后，对每个目录再递归列一次文件，组成 `{ id: 目录名, files: [...] }`。

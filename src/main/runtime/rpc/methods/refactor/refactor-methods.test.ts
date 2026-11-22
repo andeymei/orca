@@ -331,6 +331,37 @@ describe('the refactoring RPC methods', () => {
     expect(await readBaseline('src/bar.ts')).not.toBe('the user buffer\n')
   })
 
+  it('gives the buffer to a hardlinked twin of the file', async () => {
+    // A hardlink is another name of one file: the same inode, another path. The buffer is
+    // the user's edit of that file, so the twin is the same file.
+    const root = await workspaceRoot()
+    const target = path.join(root, 'src', 'foo.ts')
+    await fs.link(target, path.join(root, 'src', 'twin.ts'))
+    const baselines = await refactorBaselineMap({
+      workspaceRoot: root,
+      relativePath: 'src/foo.ts',
+      content: 'the user buffer\n'
+    })
+    const readBaseline = refactorBaselineReader({ baselines, workspaceRoot: root })
+    expect(await readBaseline('src/twin.ts')).toBe('the user buffer\n')
+  })
+
+  it('gives the buffer to a file that was replaced under it', async () => {
+    // An editor that saves by renaming leaves the path alone and the inode different. The
+    // buffer belongs to the path the user is editing, so the inode alone would lose it.
+    const root = await workspaceRoot()
+    const target = path.join(root, 'src', 'foo.ts')
+    const baselines = await refactorBaselineMap({
+      workspaceRoot: root,
+      relativePath: 'src/foo.ts',
+      content: 'the user buffer\n'
+    })
+    await fs.rm(target)
+    await fs.writeFile(target, 'the saved version\n')
+    const readBaseline = refactorBaselineReader({ baselines, workspaceRoot: root })
+    expect(await readBaseline('src/foo.ts')).toBe('the user buffer\n')
+  })
+
   it('refuses an apply on a job whose turn never produced a plan', async () => {
     // A turn that timed out or was cancelled has no plan; the apply must say so rather than
     // report an empty success.

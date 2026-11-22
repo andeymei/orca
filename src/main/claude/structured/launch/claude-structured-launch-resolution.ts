@@ -75,6 +75,7 @@ export type ClaudeStructuredSdkOptions = Pick<
   | 'forkSession'
   | 'allowedTools'
   | 'disallowedTools'
+  | 'hooks'
 > &
   ClaudePermissionOptions
 

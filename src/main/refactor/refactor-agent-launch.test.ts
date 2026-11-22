@@ -44,6 +44,16 @@ describe('resolveRefactorAgentLaunch', () => {
     for (const tool of ['Bash', 'PowerShell', 'Task', 'Agent', 'WebFetch', 'WebSearch']) {
       expect(launch.options.disallowedTools).toContain(tool)
     }
+    // Spelled out so a name dropped from the constant cannot pass unnoticed.
+    expect(launch.options.disallowedTools).toEqual([
+      'Bash',
+      'PowerShell',
+      'Task',
+      'Agent',
+      'NotebookEdit',
+      'WebFetch',
+      'WebSearch'
+    ])
   })
 
   it('refuses reads and writes outside the working directory at the cli level', async () => {

@@ -1418,6 +1418,25 @@ Expected: FAIL，报模块不存在。
 
 precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignature, allowMissing }`。`expectedSignature` 用 `getDiskBaselineSignature(content)`（`src/shared/file-write/disk-baseline-signature.ts`）——它对**内容**求签名，与 `files.writeIfUnchanged` 的前置条件语义一致（`src/main/ipc/filesystem/local-disk-write-precondition.ts` 就是拿它跟磁盘内容比的）。
 
+签名要对着**当前磁盘内容**算（也就是 `readCurrent` 返回的那份），不是对着要写进去的新内容。
+`getDiskBaselineSignature` 永远返回 `<hex>-<hex>-<hex>` 形状的非空串，长度远小于 RPC 参数的 64 字符上限。
+
+写回的运行时 API（`src/main/runtime/files/file-mutations.ts:51-59`）：
+
+```ts
+writeFileExplorerFile(
+  worktreeSelector: string,
+  relativePath: string,
+  content: string,
+  expectedSshConnectionGeneration?: number,
+  expectedSshTargetId?: string,
+  expectedExecutionHostId?: string,
+  diskPrecondition?: FileWriteDiskPrecondition
+): Promise<FileWriteResult>
+```
+
+本地工作区那三个可选参数传 `undefined` 即可；传 `undefined` 与不传是同一件事。
+
 **写盘会连带保存用户的未保存修改**：因为 `newContent` 是从基准文本 B 算出来的，而 B 含用户那些还没存盘的编辑。这不是副作用而是语义的一部分（重构基于用户眼前的内容，落盘理应包含它），但界面必须写明这一点。
 
 - [ ] **Step 4: 实现 RPC 方法**

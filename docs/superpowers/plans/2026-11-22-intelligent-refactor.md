@@ -2691,12 +2691,16 @@ Expected: FAIL，报模块不存在。
 
 - [ ] **Step 3: 实现方案树与 tab**
 
-`refactor-proposal-tree.tsx`：渲染「方案 → 文件 → 代码块」三级，每级一个复选框：
+`refactor-proposal-tree.tsx`：**Task 11 已经把它做好并提交了**（在 `src/renderer/src/components/editor/refactor/`），
+本任务**直接用它，不要重写**。它渲染「方案 → 文件 → 代码块」三级，每级一个复选框：
 
 - 方案级勾选 = 该方案所有 hunk 全选 / 全不选。
 - 文件级勾选 = 该文件所有 hunk 全选 / 全不选。
 - 代码块级勾选 = 单个 hunk。
 - 每个方案节点显示 `title` 与 `rationale`；`rationale` 为空串时显示"未给出理由"。
+- 部分接受的节点显示半选状态；点击代码块的标题会让右区切到那一个代码块
+  （通过 store 的 `setSelection` 改 `selectedHunkId` / `selectedFilePath`）。
+- **spec §8.1 的"部分接受"警告不在这个组件里**，那是本任务的事（见下面的「部分接受警告」）。
 
 `refactor-review-tab.tsx`：
 

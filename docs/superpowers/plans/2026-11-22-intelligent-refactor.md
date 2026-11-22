@@ -1469,7 +1469,7 @@ git commit -m "feat(refactor): track what the user accepts in the review"
 
 **Interfaces:**
 
-- Consumes: Task 1 的 `RefactorHunk`；`DiffViewer`（`src/renderer/src/components/editor/diff/monaco-view/DiffViewer.tsx`）；`detectLanguage`（`src/shared/editor-language/editor-language-detect.ts`）
+- Consumes: Task 1 的 `RefactorHunk`；`DiffViewer`（**从 `src/renderer/src/components/editor/editor-lazy-views.ts` 导入**，不要直接从 `diff/monaco-view/DiffViewer` 导入——仓库里同一个模块套第二层 lazy 会造成独立的边界和重挂载，参见该文件的注释）；`detectLanguage`（`src/shared/editor-language/editor-language-detect.ts`，签名 `detectLanguage(filePath: string, content?: string): string`）
 - Produces:
   - `RefactorHunkView` 组件，props：`{ hunk: RefactorHunk; filePath: string; relativePath: string; accepted: boolean; sideBySide: boolean; onToggleAccepted: () => void; disabled?: boolean }`
 

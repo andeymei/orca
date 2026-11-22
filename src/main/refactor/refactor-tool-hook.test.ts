@@ -47,6 +47,11 @@ describe('createRefactorToolHook', () => {
     expect(matchers[0].hooks).toHaveLength(1)
   })
 
+  it('blocks the tool when the hook cannot answer, so the gate never fails open', () => {
+    const matchers = createRefactorToolHook({ scratchRoot, workspaceRoot })
+    expect(matchers[0].onFailure).toBe('block')
+  })
+
   it('allows a read inside the workspace', async () => {
     expect(denyReason(await runHook('Read', { file_path: '/repo/src/foo.ts' }))).toBeNull()
   })
@@ -61,6 +66,13 @@ describe('createRefactorToolHook', () => {
     const reason = denyReason(await runHook('Write', { file_path: '/repo/src/foo.ts' }))
     expect(reason).not.toBeNull()
     expect(reason).not.toBe('')
+  })
+
+  it('names the tool, the refused path and the scratch root in the reason', async () => {
+    const reason = denyReason(await runHook('Write', { file_path: '/repo/src/foo.ts' }))
+    expect(reason).toContain('Write')
+    expect(reason).toContain('/repo/src/foo.ts')
+    expect(reason).toContain(scratchRoot)
   })
 
   it('denies a read outside the workspace', async () => {

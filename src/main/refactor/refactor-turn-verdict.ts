@@ -45,6 +45,19 @@ export function classifyRefactorResult(result: RefactorResultFrame): RefactorTur
 }
 
 /**
+ * Why the cause: the SDK's own refusal (a CLI that cannot honor `onFailure: 'block'`, so the gate
+ * could not be enforced) reaches the runner as the cause of the exit error, and it is the
+ * diagnosis the turn's warning has to carry.
+ */
+export function refactorFaultDetail(error: Error): string {
+  const cause: unknown = error.cause
+  if (cause instanceof Error && cause.message.length > 0 && cause.message !== error.message) {
+    return `${error.message}：${cause.message}`
+  }
+  return error.message
+}
+
+/**
  * Which terminal event ended the turn. A cancellation that arrives after the result frame does
  * not roll back a turn that already finished.
  */

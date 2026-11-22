@@ -3,6 +3,7 @@ import {
   classifyRefactorResult,
   decideRefactorTurnOutcome,
   parseRefactorToolProgress,
+  refactorFaultDetail,
   refactorTurnCancelledFirst
 } from './refactor-runner'
 import { buildRefactorPrompt } from '../../shared/refactor/refactor-prompt'
@@ -274,6 +275,21 @@ describe('decideRefactorTurnOutcome', () => {
         fault: null
       })
     ).toEqual({ state: 'failed', warnings: ['这一轮没有结束'] })
+  })
+})
+
+describe('refactorFaultDetail', () => {
+  it('carries the diagnosis the SDK refused the session with', () => {
+    const detail = refactorFaultDetail(
+      new Error('claude stream-json exited', {
+        cause: new Error('The process answering initialize does not honor onFailure')
+      })
+    )
+    expect(detail).toContain('does not honor onFailure')
+  })
+
+  it('says the error itself when there is no cause', () => {
+    expect(refactorFaultDetail(new Error('the CLI died'))).toBe('the CLI died')
   })
 })
 

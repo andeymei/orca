@@ -9,17 +9,22 @@ import { refactorToolAllowed, refactorToolTargetPath } from './refactor-write-ga
 import type { RefactorAgentLaunch } from './refactor-agent-launch'
 import { createRefactorToolHook } from './refactor-tool-hook'
 import {
+  closeRefactorTurnConnection,
+  type RefactorTurnConnection,
+  type RefactorTurnConnectionFactory
+} from './refactor-turn-connection'
+import {
   classifyRefactorResult,
   decideRefactorTurnOutcome,
+  refactorFaultDetail,
   refactorTurnCancelledFirst
 } from './refactor-turn-verdict'
 
 export {
   classifyRefactorResult,
   decideRefactorTurnOutcome,
-  refactorTurnCancelledFirst,
-  type RefactorResultFrame,
-  type RefactorTurnVerdict
+  refactorFaultDetail,
+  refactorTurnCancelledFirst
 } from './refactor-turn-verdict'
 
 /** A turn that runs longer than this is killed: the agent gets no second chance at the same file. */
@@ -135,12 +140,22 @@ function assertRefactorWorkspaceRoot(workspaceRoot: string, launchCwd: string): 
 }
 
 /**
+ * A relative scratch root is resolved against the workspace root: the prompt names the scratch
+ * root relative to the workspace, so that is the base it means.
+ */
+function resolveRefactorScratchRoot(workspaceRoot: string, scratchRoot: string): string {
+  return path.isAbsolute(scratchRoot)
+    ? path.resolve(scratchRoot)
+    : path.resolve(workspaceRoot, scratchRoot)
+}
+
+/**
  * The prompt names a relative scratch root while the gate and the manifest read use an absolute
  * one; when they are not the same directory every relative write is refused and the manifest is
  * read from a tree nobody wrote.
  */
 function assertRefactorScratchRoot(workspaceRoot: string, scratchRoot: string): void {
-  const relative = path.relative(path.resolve(workspaceRoot), path.resolve(scratchRoot))
+  const relative = path.relative(path.resolve(workspaceRoot), scratchRoot)
   const [firstSegment] = relative.split(path.sep)
   if (firstSegment === '..' || path.isAbsolute(relative)) {
     throw new Error(
@@ -176,8 +191,11 @@ export async function runRefactorTurn(input: {
   prompt: { system: string; user: string }
   onProgress?: (text: string) => void
   signal: AbortSignal
+  /** The seam the tests drive; the real connection is opened when it is absent. */
+  openConnection?: RefactorTurnConnectionFactory
 }): Promise<RefactorTurnResult> {
-  const { launch, scratchRoot, workspaceRoot, prompt, onProgress, signal } = input
+  const { launch, workspaceRoot, prompt, onProgress, signal } = input
+  const scratchRoot = resolveRefactorScratchRoot(workspaceRoot, input.scratchRoot)
   assertRefactorWorkspaceRoot(workspaceRoot, launch.cwd)
   assertRefactorScratchRoot(workspaceRoot, scratchRoot)
   assertRefactorLaunchGates(launch)
@@ -236,7 +254,7 @@ export async function runRefactorTurn(input: {
   }
 
   const onFault = (error: Error): void => {
-    faultMessage = error.message
+    faultMessage = refactorFaultDetail(error)
     settle()
   }
 
@@ -245,7 +263,7 @@ export async function runRefactorTurn(input: {
     if (exit?.expected === true) {
       return
     }
-    faultMessage = error.message
+    faultMessage = refactorFaultDetail(error)
     settle()
   }
 
@@ -260,9 +278,11 @@ export async function runRefactorTurn(input: {
   }, REFACTOR_TURN_TIMEOUT_MS)
 
   const closeWarnings: string[] = []
-  let connection: Awaited<ReturnType<typeof openClaudeStreamJsonConnection>> | null = null
+  const openConnection: RefactorTurnConnectionFactory =
+    input.openConnection ?? openClaudeStreamJsonConnection
+  let connection: RefactorTurnConnection | null = null
   try {
-    connection = await openClaudeStreamJsonConnection(gatedLaunch, {
+    connection = await openConnection(gatedLaunch, {
       onMessage,
       canUseTool,
       onFault,
@@ -281,24 +301,12 @@ export async function runRefactorTurn(input: {
     })
     await finished.promise
   } catch (error) {
-    faultMessage = error instanceof Error ? error.message : String(error)
+    faultMessage = error instanceof Error ? refactorFaultDetail(error) : String(error)
   } finally {
     clearTimeout(timer)
     signal.removeEventListener('abort', onAbort)
     // Closing drains the reader, so a result frame the exit raced with still reaches onMessage.
-    try {
-      const proven = await connection?.close()
-      if (proven === false) {
-        closeWarnings.push('子进程未确认退出')
-        const exitVerdict = connection?.exitVerdict
-        if (exitVerdict && exitVerdict.root !== 'exited') {
-          closeWarnings.push(`根进程未退出：${exitVerdict.root}，后代树：${exitVerdict.tree}`)
-        }
-      }
-    } catch (error) {
-      // A connection that will not close is another matter; it must not discard the verdict.
-      closeWarnings.push(`关闭连接失败：${error instanceof Error ? error.message : String(error)}`)
-    }
+    closeWarnings.push(...(await closeRefactorTurnConnection(connection)))
   }
 
   const outcome = decideRefactorTurnOutcome({

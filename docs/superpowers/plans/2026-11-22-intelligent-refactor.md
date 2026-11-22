@@ -260,9 +260,14 @@ git commit -m "feat(refactor): define the shared refactoring contracts"
 
 - Consumes: Task 1 的 `RefactorHunk` 类型
 - Produces:
-  - `computeRefactorHunks(original: string, modified: string): RefactorHunk[]` —— 位于 `refactor-hunk-computation.ts`
+  - `computeRefactorHunks(original: string, modified: string, idPrefix?: string): RefactorHunk[]` —— 位于 `refactor-hunk-computation.ts`
   - `applyRefactorHunks(original: string, hunks: readonly RefactorHunk[]): string` —— 位于 `refactor-hunk-application.ts`
   - hunk 的 `id` 形如 `h1`、`h2`，按 `originalStartLine` 升序编号。
+    **`idPrefix` 是可选的，默认空串**（原来的行为不变），但**整个方案里的 hunk id 必须全局唯一**——
+    接受集合 `acceptedHunkIds` 是一个扁平的 `Set<string>`，应用时按 id 逐文件匹配，
+    两个文件都出现 `h1` 的话，用户在 A 文件勾了 `h1`，B 文件的 `h1` 也会被一起接受。
+    所以 Task 6 的 builder 传**文件相对路径**做前缀：id 形如 `src/a.ts:h1`。
+    （前缀只在末尾跟 `hN` 这段是唯一的，不需要再解析；id 只做相等比较。）
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -359,6 +364,12 @@ import type { RefactorHunk } from './refactor-types'
 相邻合并是必须的：`diffLines` 把"删一段 + 加一段"报成两段变更，若不合并，"接受其一"会产出坏代码。
 
 注意 `diffLines` 的每段文本自带行尾，行数用该段文本按 `\n` 切分的长度计算（末尾多出的空元素不计）。
+
+**hunk 的 id 要能带前缀**：`computeRefactorHunks(original, modified, idPrefix?)`，
+id 是 `${idPrefix}h1`、`${idPrefix}h2`……，`idPrefix` 默认空串（行为与原来一样）。
+前缀是必需的，因为**接受集合是扁平的 `Set<string>`**：一个方案改两个文件时，
+两个文件各自都有 `h1`，用户在 A 文件勾 `h1` 会把 B 文件的 `h1` 一起接受。
+Task 6 的 builder 传文件相对路径做前缀（`src/a.ts:h1`）。
 
 - [ ] **Step 4: 实现 hunk 应用**
 
@@ -1303,9 +1314,10 @@ git commit -m "feat(refactor): drive the agent turn that writes the refactored f
 - Produces:
   - `buildRefactorPlan(input: { jobId: string; sourcePath: string; manifest: RefactorManifest | null; scratchRoot: string; workspaceRoot: string; readBaseline: (relativePath: string) => Promise<string | null>; readDiskContent: (relativePath: string) => Promise<string | null>; scratchFiles: (proposalId: string, relativePath: string) => Promise<string | null>; listScratchProposals: () => Promise<{ id: string; files: string[] }[]> }): Promise<{ plan: RefactorPlan; warnings: string[]; diskContents: Map<string, string> }>`
     - `listScratchProposals` 返回暂存目录下每个**一级子目录**及其中的文件：
-      `{ id: 目录名, files: 目录里的文件相对工作区的路径 }`。`files` 必须是工作区相对路径
-      （与 manifest 里的 `files` 同一坐标系），这样 `scratchFiles(id, file)` 读到的就是
-      `<scratchRoot>/<id>/<file>`。
+      `{ id: 目录名, files: 目录里的文件相对「方案目录」的路径 }`。
+      暂存目录内部那层结构照搬工作区的相对路径，所以 `<scratchRoot>/p1/src/foo.ts` → `files: ['src/foo.ts']`，
+      `scratchFiles(id, file)` 读到的就是 `<scratchRoot>/<id>/<file>`。
+      **注意不是相对工作区根**（那是 `.orca/refactor/<jobId>/p1/src/foo.ts`，多了一层，拼出来读不到）。
       **必须连文件一起返回**：只返回目录名的话，"清单缺失时从目录还原方案"这条兜底路径无从下手——
       builder 知道有个方案目录叫 `p1`，却不知道它里面有哪些文件。
       结果里**含 `_source`**（发起时写下的基准副本），由 builder 负责排除。
@@ -1457,6 +1469,20 @@ describe('buildRefactorPlan', () => {
 })
 ```
 
+审查之后补的用例（每一条都要能打掉对应的实现）：
+
+- **hunk id 在整个方案里唯一**：一个方案改两个文件，两个文件各有 hunk 时，
+  两个 hunk 的 id 不许相同（断言 `id` 形如 `src/a.ts:h1` / `src/b.ts:h1`）。
+  这条打掉的是"每个文件各自从 `h1` 开始编号"。
+- **大小写不同的同一个文件算冲突**：`p1` 改 `src/Foo.ts`、`p2` 改 `src/foo.ts` → 只留 `p1`，并有警告。
+- **重复的方案 id**：清单里两个 id 相同的方案 → 后一个被丢掉并有警告。
+- **清单里 id 为 `_source` 的方案被忽略**，并留下一条 warning（不是静默丢弃）。
+- **被丢弃的方案不留痕迹**：两个方案冲突时，被丢弃那个方案的**另一个**文件
+  也不能进 `diskContents`（断言 `diskContents.has('src/other.ts')` 为 false）。
+  只断言被丢弃方案与保留方案共用的那个文件是不够的——那条值两个方案都会写。
+- **"agent 未给出理由"只对保留下来的方案发**：清单缺失时若某个重建方案被丢弃，
+  warnings 里就不该出现这条。
+
 - [ ] **Step 2: 跑测试确认它失败**
 
 Run: `pnpm test src/main/refactor/refactor-plan-builder.test.ts --maxWorkers=2`
@@ -1475,39 +1501,50 @@ Expected: FAIL，报模块不存在。
      路径解析还会把 `.. ` 和后面的 `..` 抵消掉（`.. /../evil` 解析后看着在根内，实际落在根外），
      所以必须在解析之前查。
 - `buildRefactorPlan`：
-  1. 遍历 manifest 的 proposals，维护一个 `claimedPaths: Set<string>`。
+  1. 遍历 manifest 的 proposals，维护一个 `claimedPaths: Map<string, string>`（**小写的路径 → 拥有它的方案 id**）。
+     **键要小写**：macOS 与 Windows 默认不区分大小写，`src/Foo.ts` 与 `src/foo.ts` 是同一个文件；
+     按原样比较的话两个方案会各自"拥有"同一个文件，最后一次写把前一次静默盖掉。
+     误判成冲突的代价是丢掉一个方案，漏判成冲突的代价是用户的文件被静默覆盖——所以往严的一边偏。
   2. **一个方案要么整个留下，要么整个丢掉**——不要半留半丢，否则审查界面里会出现一个缺文件的方案。
      所以先把这个方案的所有文件校验完，再一次性提交到 `claimedPaths`。
-  3. 每个 proposal 的每个 file，依次：
+  3. **方案 id 也要占坑**：同一个 id 出现两次时，后一个丢掉并给警告——
+     审查界面按 id 认方案，两个同 id 的方案没法区分。
+  4. 每个 proposal 的每个 file，依次：
      a. 过 `isSafeRelativeRefactorPath`——不过就记 warning 并丢掉整个 proposal。
-     b. 若 `claimedPaths` 已含该 path，记 warning（"方案 X 与方案 Y 改同一个文件，已丢弃后者"）并丢掉整个 proposal。
+     b. 若 `claimedPaths` 已含该 path（小写比较），记 warning（"方案 X 与方案 Y 改同一个文件，已丢弃后者"）并丢掉整个 proposal。
      **这个检查放在读文件之前**：先读完再发现冲突，`diskContents` 里已经多了一条被丢弃方案的磁盘内容。
      c. 读暂存文件 `scratchFiles(proposal.id, path)`；读不到（`null`）就记 warning 并丢掉整个 proposal。
      d. 读基准文本 `readBaseline(path)`；读不到就记 warning 并丢掉整个 proposal。
      e. 读磁盘内容 `readDiskContent(path)`；读不到就记 warning 并丢掉整个 proposal。
-  4. 这个方案的所有文件都过了，才把它们的路径加进 `claimedPaths`，并把每个文件变成
-     `{ path, originalContent: baseline, hunks }`，其中 `hunks = computeRefactorHunks(baseline, scratchContent)`；
+  5. 这个方案的所有文件都过了，才把它们的路径加进 `claimedPaths`，并把每个文件变成
+     `{ path, originalContent: baseline, hunks }`，其中 `hunks = computeRefactorHunks(baseline, scratchContent, `${path}:`)`；
      磁盘内容存进 `diskContents`（path → D）。
-  5. **空 hunks 的方案也要保留**——内容没变的方案不是错误，只是没有可接受的东西。
-  6. manifest 为 `null` 时：调 `listScratchProposals()`，**排除 id 为 `_source` 的那一项**，
+     **第三个参数是 hunk id 的前缀**：接受集合 `acceptedHunkIds` 是一个扁平的 `Set<string>`，
+     不加前缀的话两个文件都会出现 `h1`，用户在 A 文件勾了 `h1`，B 文件的 `h1` 也被一起接受。
+  6. **空 hunks 的方案也要保留**——内容没变的方案不是错误，只是没有可接受的东西。
+  7. manifest 为 `null` 时：调 `listScratchProposals()`，**排除 id 为 `_source` 的那一项**，
      其余每一项当作一个方案：`id` 用目录名，`files` 用它返回的文件列表，
      `title` 用目录名，`rationale` 留空串，并在 warnings 里写"agent 未给出理由"。
      之后走与上面一样的校验流程（路径安全、暂存文件可读、基准可读、磁盘可读、同文件冲突）。
      **必须排除 `_source`**——它是发起时写下的基准副本，不是某个方案的重构产物；
      把它当成方案会在审查界面里多出一个叫 `_source` 的空方案。
-  7. 返回 `{ plan: { jobId, sourcePath, proposals }, warnings, diskContents }`。
+     **排除它的时候要留一条 warning**（"方案 _source 是基准副本，已忽略"）——
+     别的丢弃都有警告，只有它悄悄消失的话，用户会以为计划里没有那个东西。
+     **"agent 未给出理由"这条警告只对保留下来的方案发**——被丢掉的方案已经不在计划里了，
+     再提它没有理由只会让人困惑。
+  8. 返回 `{ plan: { jobId, sourcePath, proposals }, warnings, diskContents }`。
 
 **基准文本 B 与磁盘内容 D 是两回事**：B 是用户眼前（编辑器缓冲区）的内容，D 是磁盘上的内容。用户有未保存修改时 B ≠ D。`diskContents` 里的 D 只给接受时的陈旧判定用，不进 plan。
 
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor/refactor-plan-builder.test.ts --maxWorkers=2`
-Expected: PASS，9 个用例全过（3 个路径安全 + 6 个 builder）。
+Expected: PASS，9 个 brief 用例 + 6 个审查补的用例全过。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add src/main/refactor/refactor-plan-builder.ts src/main/refactor/refactor-plan-builder.test.ts
+git add src/main/refactor/refactor-plan-builder.ts src/main/refactor/refactor-plan-builder.test.ts src/shared/refactor/refactor-hunk-computation.ts src/shared/refactor/refactor-hunk-computation.test.ts
 git commit -m "feat(refactor): assemble the plan from the scratch files"
 ```
 
@@ -1902,8 +1939,15 @@ writeFileExplorerFile(
       建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
       `listScratchProposals` 要**连每个方案目录里的文件一起返回**：
       `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())`
-      拿到目录名后，对每个目录再递归列一次文件，得到相对**工作区**的路径列表，组成
-      `{ id: 目录名, files: [...] }`。只返回目录名是不够的——清单缺失时 builder 要靠它还原方案，
+      拿到目录名后，对每个目录再递归列一次文件，组成 `{ id: 目录名, files: [...] }`。
+      **每个文件路径是相对「方案目录」`<scratchRoot>/<id>/` 的**，
+      也就是暂存目录内部那层结构照搬工作区的相对路径：
+      `<scratchRoot>/p1/src/foo.ts` → `files: ['src/foo.ts']`。
+      这样 `scratchFiles('p1', 'src/foo.ts')` 读到的正是 `<scratchRoot>/p1/src/foo.ts`。
+      **别写成相对工作区根的路径**（那会得到 `.orca/refactor/<jobId>/p1/src/foo.ts`）——
+      拼出来多了一层目录，兜底路径里的每个方案都会读不到自己的文件，
+      最后变成"清单缺失 → 一个方案都没有"。
+      只返回目录名是不够的——清单缺失时 builder 要靠它还原方案，
       知道有 `p1` 这个目录却不知道里面有哪些文件，兜底路径就无从下手。
       `scratchFiles` 读暂存文件时**必须带大小上限**：用 `readNodeFileWithinLimit(filePath, maxBytes)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限抛 `NodeFileReadTooLargeError`。
       **`scratchFiles(proposalId, relativePath)` 必须先确认拼出来的路径还在暂存目录里**：
@@ -2092,6 +2136,11 @@ git commit -m "feat(refactor): expose the refactoring runtime methods"
 **Interfaces:**
 
 - Consumes: Task 1 的 RPC 参数与结果类型；`callRuntimeRpc`（`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`）
+  - `callRuntimeRpc<TResult>(target, method, params?, options?)` 的第一个参数是 **target**，
+    不是方法名：`{ kind: 'local' }` 或 `{ kind: 'environment', environmentId }`。
+    本特性只支持本地工作区，所以**一律用 `{ kind: 'local' }`**。
+    它已经把 RPC 信封拆开了：成功时返回 `result`，失败时**抛错**——
+    所以 `proposeRefactor` 那个"失败返回 null"就是在这里 catch 之后返回 null。
 - Produces:
   - `proposeRefactor(input: { worktreeId: string; relativePath: string; content: string; instruction?: string }): Promise<string | null>` —— 返回 jobId；**失败时返回 `null`**，不要抛到 UI（发起失败的原因由调用方用 toast 告诉用户）
     - 入参是**工作区 id**，但 RPC 的 `worktree` 参数要的是 **runtime 选择器**：

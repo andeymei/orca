@@ -64,7 +64,9 @@
     - `RefactorStatusResult`：`{ state: 'running' | 'done' | 'failed' | 'cancelled'; progress: string; warnings: string[] }`
     - `RefactorPlanResult`：`{ plan: RefactorPlan | null }`
     - `RefactorApplyParams`：`{ jobId: string; acceptedHunkIds: string[] }`
-    - `RefactorApplyResult`：`{ applied: { path: string; hunksApplied: number }[] }`
+    - `RefactorApplyResult`：`{ applied: { path: string; hunksApplied: number }[]; refusals: { path: string; reason: string }[] }`
+      —— `refusals` 承载"文件在评审期间被改动过"这类拒绝，spec §8.2 要求把原因告诉用户，
+      RPC 边界上必须有这个通道，否则用户只看到一个静默的空操作。
     - `RefactorDiscardResult`：`{ discarded: boolean }`
 
 - [ ] **Step 1: 写失败的测试**
@@ -140,6 +142,38 @@ describe('RefactorPlan', () => {
     })
     expect(parsed.success).toBe(false)
   })
+
+  it('rejects a hunk whose start line is zero', () => {
+    const parsed = RefactorPlan.safeParse({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      proposals: [
+        {
+          id: 'p1',
+          title: 't',
+          rationale: 'r',
+          files: [
+            {
+              path: 'src/foo.ts',
+              originalContent: '',
+              hunks: [
+                {
+                  id: 'h1',
+                  originalStartLine: 0,
+                  originalLineCount: 1,
+                  modifiedStartLine: 1,
+                  modifiedLineCount: 1,
+                  originalText: '',
+                  modifiedText: 'x'
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    })
+    expect(parsed.success).toBe(false)
+  })
 })
 
 describe('RefactorManifest', () => {
@@ -160,6 +194,10 @@ Expected: FAIL，报模块 `./refactor-types` 不存在。
 - [ ] **Step 3: 实现契约**
 
 在 `src/shared/refactor/refactor-types.ts` 写四个 zod 对象并导出同名 `z.infer` 类型。`rationale` 用 `z.string()`（允许空），`id` / `title` / `path` / `jobId` 用 `z.string().min(1)`。
+
+行号与行数用 `.int()`：行号按定义就是整数，仓库里既有的行号契约也是 `.int().positive()`
+（见 `src/shared/rpc-contract/code-completion-params.ts`）。同一个提交里 `hunksApplied` 已经用了
+`.int().nonnegative()`，行号却不带 `.int()` 是不一致的；小数行号会让渲染层切错行。
 
 在 `src/shared/refactor/refactor-manifest.ts` 写 `RefactorManifestProposal` 与 `RefactorManifest`，`files` 用 `z.array(z.string().min(1))`。
 
@@ -874,7 +912,8 @@ git commit -m "feat(refactor): assemble the plan from the scratch files"
 
 - Consumes: Task 1 的 `RefactorStatusResult` 的 `state` 取值
 - Produces:
-  - `RefactorJob`：`{ jobId: string; state: 'running' | 'done' | 'failed' | 'cancelled'; progress: string; warnings: string[]; plan: RefactorPlan | null; diskContents: Map<string, string>; baselines: Map<string, string>; worktree: string; controller: AbortController; scratchRoot: string }`
+  - `RefactorJob`：`{ jobId: string; state: RefactorStatusResult['state']; progress: string; warnings: string[]; plan: RefactorPlan | null; diskContents: Map<string, string>; baselines: Map<string, string>; worktree: string; controller: AbortController; scratchRoot: string }`
+    - `state` 用 `RefactorStatusResult['state']` 的索引访问，不要把 `'running' | 'done' | 'failed' | 'cancelled'` 重抄一遍——两份拷贝会漂。
     - `baselines` 是每个文件的**基准文本 B**（目标文件是编辑器缓冲区，其余文件是当时的磁盘内容）。
     - `diskContents` 是每个文件在**建 plan 那一刻**的磁盘内容 D，供接受时做陈旧判定。
     - `worktree` 是原始的 worktree 选择器字符串，写回时要用。
@@ -1119,7 +1158,7 @@ precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignatu
 
 - `refactor.plan`：从注册表取 job，返回 `{ plan: job.plan }`。
 
-- `refactor.apply`：从注册表取 job（没有 plan 就返回空 applied），调 `applyRefactorSelection`，把 job 上的 `diskContents` 传进去。写回用 `runtime.writeFileExplorerFile(worktree, relativePath, content, ...sshArgs, diskPrecondition)`。`worktree` 用 job 上存的原始 `worktree` 选择器字符串。
+- `refactor.apply`：从注册表取 job（没有 plan 就返回空 applied），调 `applyRefactorSelection`，把 job 上的 `diskContents` 传进去。**返回值里的 `refusals` 原样带回 RPC 结果**——spec §8.2 要求把"文件在评审期间被改动过"告诉用户，这个通道就是 `RefactorApplyResult.refusals`。写回用 `runtime.writeFileExplorerFile(worktree, relativePath, content, ...sshArgs, diskPrecondition)`。`worktree` 用 job 上存的原始 `worktree` 选择器字符串。
 
 - `refactor.discard`：job 还在 running 就 `controller.abort()`；然后删掉 `scratchRoot` 目录（`fs.rm(scratchRoot, { recursive: true, force: true })`），从注册表 `remove`，返回 `{ discarded: true }`。
 

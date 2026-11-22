@@ -34,6 +34,17 @@
   单个任务只跑自己路径的测试、类型检查与 lint；整轮门禁由控制者在分支末尾统一跑。
 - 改了 RPC 方法后必须跑 `pnpm generate:rpc-params-catalog` 并提交生成物。
 - 不在本计划内新增仓库根目录条目。
+- **UI 走设计系统**（`docs/STYLEGUIDE.md`）：
+  - 先用 `src/renderer/src/components/ui/` 里的原语，不要自己重造。
+    审查 tab 要用到的是 `button`、`checkbox`（方案/文件/代码块三级勾选）、
+    `collapsible`（树的展开收起）、`badge`（状态）、`sonner`（toast）。
+  - 按钮语义：`default` 是唯一的肯定动作，`secondary` 挨着它，`outline` 给工具栏，
+    `ghost` 给图标按钮和行触发器。**「丢弃」是 ghost、不带颜色**——退路不该看起来像破坏性操作。
+  - 图标只用 `lucide-react`，默认 `size-4`，颜色继承文字。
+  - 滚动条用 `.scrollbar-sleek`（不要自己写第四种）。
+  - 文案不能夸大：进行中说中性的话（「正在生成」），结果动词只在真发生时用。
+  - toast 只放瞬时结果；用户需要读、需要重试的错误就内联显示。
+  - 原语根节点保留 `data-slot`，用 `cn()` 合并并把调用方的 `className` 放在最后。
 
 ## Review Focus
 

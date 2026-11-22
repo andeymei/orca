@@ -213,6 +213,50 @@ describe('refactorToolAllowed', () => {
       })
     ).toBe(false)
   })
+
+  it('allows an edit inside the scratch root', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Edit',
+        toolInput: { file_path: '/repo/.orca/refactor/job-1/p1/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(true)
+  })
+
+  it('denies an edit outside the scratch root', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Edit',
+        toolInput: { file_path: '/repo/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('allows a write to the scratch root itself', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: scratchRoot },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(true)
+  })
+
+  it('allows a grep rooted at the workspace root', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Grep',
+        toolInput: { pattern: 'needle', path: workspaceRoot },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(true)
+  })
 })
 
 describe('refactorToolTargetPath', () => {

@@ -24,8 +24,9 @@ function inodeKey(dev: number, ino: number): string {
  * two ways, so the spelling is not the name either. Either kind of key alone loses one of
  * those cases, and losing it costs the user's unsaved edits.
  *
- * The path it was named by is the key that survives the file being gone: a file deleted
- * between the two moments still answers to the spelling it was asked for.
+ * The path it was named by is the key that survives the file being gone, as long as the
+ * manifest spells it the same way: a file deleted between the two moments still answers to
+ * the spelling it was asked for, and a different spelling misses and the proposal is dropped.
  *
  * `fs.promises.realpath` and not `realpathSync`: the synchronous one keeps the case it was
  * given, so the two spellings stay apart on a case-insensitive volume, while the

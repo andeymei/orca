@@ -362,6 +362,20 @@ describe('the refactoring RPC methods', () => {
     expect(await readBaseline('src/foo.ts')).toBe('the user buffer\n')
   })
 
+  it('stores the buffer under the path as well as under the inode', async () => {
+    // The inode alone would not do: an editor that saves by renaming leaves the name alone
+    // and changes the inode, and a filesystem that hands the freed inode to the next file
+    // would make the inode answer for a file that is not this one. The name has to be a key
+    // of its own, whatever the allocator does.
+    const root = await workspaceRoot()
+    const baselines = await refactorBaselineMap({
+      workspaceRoot: root,
+      relativePath: 'src/foo.ts',
+      content: 'the user buffer\n'
+    })
+    expect([...baselines.keys()]).toContain(path.join(root, 'src', 'foo.ts'))
+  })
+
   it('refuses an apply on a job whose turn never produced a plan', async () => {
     // A turn that timed out or was cancelled has no plan; the apply must say so rather than
     // report an empty success.

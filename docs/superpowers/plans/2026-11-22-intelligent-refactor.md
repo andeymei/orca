@@ -984,9 +984,15 @@ git commit -m "feat(refactor): drive the agent turn that writes the refactored f
 
 - Consumes: Task 1 的 `RefactorPlan` / `RefactorManifest` / `RefactorHunk`；Task 2 的 `computeRefactorHunks`
 - Produces:
-  - `buildRefactorPlan(input: { jobId: string; sourcePath: string; manifest: RefactorManifest | null; scratchRoot: string; workspaceRoot: string; readBaseline: (relativePath: string) => Promise<string | null>; readDiskContent: (relativePath: string) => Promise<string | null>; scratchFiles: (proposalId: string, relativePath: string) => Promise<string | null>; listScratchProposals: () => Promise<string[]> }): Promise<{ plan: RefactorPlan; warnings: string[]; diskContents: Map<string, string> }>`
-    - `listScratchProposals` 返回暂存目录下的**一级子目录名**（含 `_source`，由 builder 负责排除）。
-      它是注入的，所以"清单缺失时从目录还原方案"这条兜底路径可测，builder 本身不碰 fs。
+  - `buildRefactorPlan(input: { jobId: string; sourcePath: string; manifest: RefactorManifest | null; scratchRoot: string; workspaceRoot: string; readBaseline: (relativePath: string) => Promise<string | null>; readDiskContent: (relativePath: string) => Promise<string | null>; scratchFiles: (proposalId: string, relativePath: string) => Promise<string | null>; listScratchProposals: () => Promise<{ id: string; files: string[] }[]> }): Promise<{ plan: RefactorPlan; warnings: string[]; diskContents: Map<string, string> }>`
+    - `listScratchProposals` 返回暂存目录下每个**一级子目录**及其中的文件：
+      `{ id: 目录名, files: 目录里的文件相对工作区的路径 }`。`files` 必须是工作区相对路径
+      （与 manifest 里的 `files` 同一坐标系），这样 `scratchFiles(id, file)` 读到的就是
+      `<scratchRoot>/<id>/<file>`。
+      **必须连文件一起返回**：只返回目录名的话，"清单缺失时从目录还原方案"这条兜底路径无从下手——
+      builder 知道有个方案目录叫 `p1`，却不知道它里面有哪些文件。
+      结果里**含 `_source`**（发起时写下的基准副本），由 builder 负责排除。
+      它是注入的，所以这条兜底路径可测，builder 本身不碰 fs。
   - `diskContents` 是每个文件在**建 plan 那一刻**的磁盘内容（D）。它不进 plan（plan 只带渲染 diff 用的基准文本 B），由 job 留在主进程侧，供接受时做陈旧判定。
   - `isSafeRelativeRefactorPath(relativePath: string): boolean` —— 清单里的路径必须在工作区内。
     **委托给仓库既有的 `isSafeMobileRelativePath`**（`src/main/runtime/files/mobile-file-kind.ts`），
@@ -1078,7 +1084,7 @@ describe('buildRefactorPlan', () => {
     expect(result.warnings.length).toBeGreaterThan(0)
   })
 
-  it('keeps a proposal whose scratch file is missing but marks the warning', async () => {
+  it('drops a proposal whose scratch file is missing and warns about it', async () => {
     const result = await buildRefactorPlan({
       jobId: 'job-1',
       sourcePath: 'src/foo.ts',
@@ -1105,7 +1111,10 @@ describe('buildRefactorPlan', () => {
       workspaceRoot,
       readBaseline: async () => 'a\n',
       readDiskContent: async () => 'a\n',
-      listScratchProposals: async () => ['_source', 'p1'],
+      listScratchProposals: async () => [
+        { id: '_source', files: ['src/foo.ts'] },
+        { id: 'p1', files: ['src/foo.ts'] }
+      ],
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
@@ -1126,26 +1135,33 @@ Expected: FAIL，报模块不存在。
 - `isSafeRelativeRefactorPath(relativePath)`：直接 `return isSafeMobileRelativePath(relativePath)`，从 `src/main/runtime/files/mobile-file-kind.ts` 导入。它拒绝绝对路径、Windows 盘符前缀，以及任何 `..` / `.` / 空路径段——比本任务要求的更严，正好覆盖。不要自己重写这段检查。
 - `buildRefactorPlan`：
   1. 遍历 manifest 的 proposals，维护一个 `claimedPaths: Set<string>`。
-  2. 每个 proposal 的每个 file：先过 `isSafeRelativeRefactorPath`，不过就记 warning 并跳过整个 proposal。
-  3. 读暂存文件 `scratchFiles(proposal.id, path)`；读不到（`null`）就记 warning 并跳过整个 proposal。
-  4. 读基准文本 `readBaseline(path)`；读不到就记 warning 并跳过整个 proposal。
-  5. 读磁盘内容 `readDiskContent(path)`，存进 `diskContents`（path → D）。读不到就记 warning 并跳过整个 proposal。
-  6. 若 `claimedPaths` 已含该 path，记 warning（"方案 X 与方案 Y 改同一个文件，已丢弃后者"）并跳过整个 proposal。
-  7. 否则 `claimedPaths.add(path)`，用 `computeRefactorHunks(baseline, scratchContent)` 算出 hunks，把 `{ path, originalContent: baseline, hunks }` 放进 proposal 的 `files`。
-  8. **空 hunks 的方案也要保留**——内容没变的方案不是错误，只是没有可接受的东西。
-  9. manifest 为 `null` 时：调 `listScratchProposals()` 拿到一级子目录名，**排除 `_source`**，
-     其余每个目录名当作 proposalId，目录里的文件当作它的 files，`title` 用目录名，`rationale` 留空串，
-     并在 warnings 里写"agent 未给出理由"。
+  2. **一个方案要么整个留下，要么整个丢掉**——不要半留半丢，否则审查界面里会出现一个缺文件的方案。
+     所以先把这个方案的所有文件校验完，再一次性提交到 `claimedPaths`。
+  3. 每个 proposal 的每个 file，依次：
+     a. 过 `isSafeRelativeRefactorPath`——不过就记 warning 并丢掉整个 proposal。
+     b. 若 `claimedPaths` 已含该 path，记 warning（"方案 X 与方案 Y 改同一个文件，已丢弃后者"）并丢掉整个 proposal。
+     **这个检查放在读文件之前**：先读完再发现冲突，`diskContents` 里已经多了一条被丢弃方案的磁盘内容。
+     c. 读暂存文件 `scratchFiles(proposal.id, path)`；读不到（`null`）就记 warning 并丢掉整个 proposal。
+     d. 读基准文本 `readBaseline(path)`；读不到就记 warning 并丢掉整个 proposal。
+     e. 读磁盘内容 `readDiskContent(path)`；读不到就记 warning 并丢掉整个 proposal。
+  4. 这个方案的所有文件都过了，才把它们的路径加进 `claimedPaths`，并把每个文件变成
+     `{ path, originalContent: baseline, hunks }`，其中 `hunks = computeRefactorHunks(baseline, scratchContent)`；
+     磁盘内容存进 `diskContents`（path → D）。
+  5. **空 hunks 的方案也要保留**——内容没变的方案不是错误，只是没有可接受的东西。
+  6. manifest 为 `null` 时：调 `listScratchProposals()`，**排除 id 为 `_source` 的那一项**，
+     其余每一项当作一个方案：`id` 用目录名，`files` 用它返回的文件列表，
+     `title` 用目录名，`rationale` 留空串，并在 warnings 里写"agent 未给出理由"。
+     之后走与上面一样的校验流程（路径安全、暂存文件可读、基准可读、磁盘可读、同文件冲突）。
      **必须排除 `_source`**——它是发起时写下的基准副本，不是某个方案的重构产物；
      把它当成方案会在审查界面里多出一个叫 `_source` 的空方案。
-  10. 返回 `{ plan: { jobId, sourcePath, proposals }, warnings, diskContents }`。
+  7. 返回 `{ plan: { jobId, sourcePath, proposals }, warnings, diskContents }`。
 
 **基准文本 B 与磁盘内容 D 是两回事**：B 是用户眼前（编辑器缓冲区）的内容，D 是磁盘上的内容。用户有未保存修改时 B ≠ D。`diskContents` 里的 D 只给接受时的陈旧判定用，不进 plan。
 
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor/refactor-plan-builder.test.ts --maxWorkers=2`
-Expected: PASS，7 个用例全过。
+Expected: PASS，8 个用例全过（3 个路径安全 + 5 个 builder）。
 
 - [ ] **Step 5: 提交**
 
@@ -1405,7 +1421,12 @@ precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignatu
   7. 清理过期暂存目录（见下面「暂存目录清理」）。
   8. 建 job（Task 7 的注册表），**立刻返回** `{ jobId }`。
   9. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `state: 'done'`、`plan` 与 `diskContents`。
-     建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。`listScratchProposals` 是 `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name)`。
+     建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
+     `listScratchProposals` 要**连每个方案目录里的文件一起返回**：
+     `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())`
+     拿到目录名后，对每个目录再递归列一次文件，得到相对**工作区**的路径列表，组成
+     `{ id: 目录名, files: [...] }`。只返回目录名是不够的——清单缺失时 builder 要靠它还原方案，
+     知道有 `p1` 这个目录却不知道里面有哪些文件，兜底路径就无从下手。
      `scratchFiles` 读暂存文件时**必须带大小上限**：用 `readNodeFileWithinLimit(filePath, maxBytes)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限抛 `NodeFileReadTooLargeError`。
      上限取 **2 MB**（与运行时 `files.formatText` 的 `z.string().max(2 * 1024 * 1024)` 一致）。
      agent 写的文件是外部输入，不设上限就是让 agent 用一个巨型文件把主进程内存吃光；

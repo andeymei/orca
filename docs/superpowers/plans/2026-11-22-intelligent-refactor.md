@@ -1858,7 +1858,11 @@ writeFileExplorerFile(
 ): Promise<FileWriteResult>
 ```
 
-本地工作区那三个可选参数传 `undefined` 即可；传 `undefined` 与不传是同一件事。
+**`expectedExecutionHostId` 不能传 `undefined`**：`assertRuntimeFileMutationExpectation`
+（`src/main/runtime/files/file-mutation-expectation.ts:16-22`）在 `expectedExecutionHostId` 为空时
+直接抛 "Remote file changes require a newer Orca client."——传 `undefined` 会让**每一次写都失败**。
+本地工作区也要把 `target.executionHostId`（`'local'`）传进去；
+`expectedSshTargetId` 与 `expectedSshConnectionGeneration` 本地没有，可以传 `undefined`。
 
 **写盘会连带保存用户的未保存修改**：因为 `newContent` 是从基准文本 B 算出来的，而 B 含用户那些还没存盘的编辑。这不是副作用而是语义的一部分（重构基于用户眼前的内容，落盘理应包含它），但界面必须写明这一点。
 

@@ -800,7 +800,10 @@ git commit -m "feat(refactor): keep the agent's writes inside the scratch direct
       （文档写明"A name is listed even where a platform or setting turns its tool off"）。
   - **`options.allowedTools` 一律不给**（保持 `undefined`）。SDK 对 `allowedTools` 的定义是"自动放行、不再询问"，
     而 `canUseTool` 是"每次工具执行前调用"——把 `Write`/`Edit` 列进 `allowedTools`，CLI 可能就绕过闸门直接放行写操作。
-    不给这个选项，所有工具调用都走 `canUseTool`，写闸门是唯一裁决者。
+    不给这个选项，所有工具调用都走 `canUseTool`。
+    **注意这还不够**：设置层里的 allow 规则同样会遮蔽 `canUseTool`
+    （SDK 原话："Allow rules from settings files can also shadow the callback"），
+    所以闸门的最终形态是 Task 5 的 PreToolUse hook，`canUseTool` 只是第二层。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -881,10 +884,14 @@ Expected: FAIL，报模块不存在。
 
 - [ ] **Step 3: 加上 SDK 选项字段**
 
-在 `claude-structured-launch-resolution.ts` 的 `ClaudeStructuredSdkOptions` 的 Pick 列表里加 `'allowedTools'` 与 `'disallowedTools'`。
-SDK 的 `Options` 上确实有这两个字段（`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:1660` 与 `:1680`），
-类型都是 `string[]`——所以 `disallowedTools` 要写 `[...REFACTOR_DISALLOWED_TOOLS]`（展开成新数组），
+在 `claude-structured-launch-resolution.ts` 的 `ClaudeStructuredSdkOptions` 的 Pick 列表里加 `'allowedTools'` 与 `'disallowedTools'`，
+**外加 `'hooks'`**（Task 5 的闸门要挂成 PreToolUse hook，见 Task 5）。
+SDK 的 `Options` 上确实有这三个字段（`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:1660` 与 `:1680`，
+`hooks` 在 `:1807`），`allowedTools` / `disallowedTools` 类型都是 `string[]`——
+所以 `disallowedTools` 要写 `[...REFACTOR_DISALLOWED_TOOLS]`（展开成新数组），
 不能直接把 `readonly string[]` 赋过去。
+`hooks` 的类型是 `Partial<Record<HookEvent, HookCallbackMatcher[]>>`，
+它在 SDK 的 `Options` 上是可选的，加进 Pick 不会影响任何既有启动。
 
 - [ ] **Step 4: 实现启动解析**
 
@@ -945,7 +952,9 @@ export const REFACTOR_PERMISSION_SETTINGS = {
 **managed 那一层照旧从磁盘读**（SDK 文档："the managed-settings policy tier is still read from disk"）。
 机器上如果被 IT 托管过、`managed-settings.json` 里有 `permissions.allow: ["Write"]`，
 那条 allow 规则会让写操作不再经过 `canUseTool` —— 闸门就绕过了。
-`blockWritesOutsideWorkingDirectories` 的 "No allow rule lifts it" 正是为这种情况准备的。
+**`blockWritesOutsideWorkingDirectories` 挡不住这个**：它的 "No allow rule lifts it" 说的是
+"工作目录之外的写"这条封锁抬不起来，而用户的真实源码**就在工作目录里面**（工作目录 = 工作区根）。
+真正兜住这件事的是 Task 5 的 PreToolUse hook（allow 规则遮不住 hook）。
 
 四处选项各有理由，缺一个闸门就失效：
 
@@ -980,8 +989,10 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
 **Files:**
 
 - Create: `src/main/refactor/refactor-runner.ts`
+- Create: `src/main/refactor/refactor-tool-hook.ts`
 - Create: `src/shared/refactor/refactor-prompt.ts`
 - Test: `src/main/refactor/refactor-runner.test.ts`
+- Test: `src/main/refactor/refactor-tool-hook.test.ts`
 
 **Interfaces:**
 
@@ -1024,6 +1035,10 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
     - `parseRefactorToolProgress(message: Record<string, unknown>, workspaceRoot: string): string | null` —— 从一条 SDK 消息里抽出进度文案；没有工具调用时返回 `null`。
       **第二个参数是工作区根**：进度文案里要显示**相对工作区**的路径，而工具入参给的是绝对路径。
       单独导出是为了能脱开 SDK 单测。
+    - `src/main/refactor/refactor-tool-hook.ts` 导出
+      `createRefactorToolHook(input: { scratchRoot: string; workspaceRoot: string }): HookCallbackMatcher[]`
+      —— 闸门挂成 SDK 的 **PreToolUse hook**（这是唯一不被设置层 allow 规则遮蔽的裁决点，见下）。
+      返回值直接塞进 `launch.options.hooks.PreToolUse`。
     - `REFACTOR_TURN_TIMEOUT_MS = 300_000`
 
 - [ ] **Step 1: 写失败的测试**
@@ -1113,6 +1128,18 @@ describe('parseRefactorToolProgress', () => {
   断**整句**（例如用正则匹配"只能写"与暂存根同现的那一句），
   否则删掉"禁止写暂存目录以外"这句话、只要别处还出现过那个路径，测试照样通过。
   断言要能在那句话被删掉时真的失败。
+
+另开一个 `src/main/refactor/refactor-tool-hook.test.ts`，钉住 hook 本身：
+
+- 放行的工具（`Read` 工作区内的路径）→ hook 返回**不**带 `permissionDecision: 'deny'` 的结果。
+- 越界的写（`Write` 到暂存目录之外）→ 返回 `deny`，且 `permissionDecisionReason` 非空
+  （理由不给用户看就是静默拒绝，agent 只会换个写法再试）。
+- 越界的读（`Read` 工作区之外）→ 返回 `deny`。
+- 未知工具（`Bash`）→ 返回 `deny`。
+- `tool_input` 不是对象（`null` / 字符串 / 数组）→ **返回 `deny`**，
+  裁决函数拿不到路径就没法证明它落在允许范围内，所以失败即拒绝。
+- 裁决函数抛异常 → **返回 `deny`**（失败即拒绝，不要让异常冒到 CLI 那边变成放行）。
+  这条要用一个会抛异常的输入打掉它，不许靠"回调里没有抛异常的路径"蒙混过去。
 
 - [ ] **Step 2: 跑测试确认它失败**
 
@@ -1212,21 +1239,45 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      把异常写进 warnings 然后**照常返回已经算好的 verdict**——
      连接关不掉是另一件事（进程可能还活着），它不该抹掉这一轮到底成功没成功的结论。
      `close()` 返回 false 也要写一条 warning（"子进程未确认退出"），它同样是"没拿到退出证明"。
-  9. **判定逻辑要能被测试直接钉住**：把"这一轮怎么结束的"抽成**纯函数**并导出，
-     transport（开连接、发帧、等结果）留在 `runRefactorTurn` 里。
-     没有这一步，"排空再判定"这种一行重排就能把成功的 turn 全报成失败的地方，
-     没有任何一个测试会响。
-     两个纯函数：
-     - `classifyRefactorResult(result: SDKResultMessage): { state: 'done' | 'failed'; warnings: string[] }`
-       —— 收成功帧与四种错误帧，返回 `'done'` 或 `'failed'` 及 warnings。
-     - `decideRefactorTurnOutcome(input: { result: { state: 'done' | 'failed'; warnings: string[] } | null; cancelled: boolean; timedOut: boolean; fault: string | null }): { state: RefactorStatusResult['state']; warnings: string[] }`
-       —— 决定最终 state 与 warnings。**取消优先于结果**：取消先到就是 `'cancelled'`；
-       结果先到就采信结果（后来的取消不回滚一个已完成的 turn）；
-       结果没有而超时了就 `'timed_out'`；再没有而崩溃了就 `'failed'`。
+  9. **闸门必须挂成 PreToolUse hook，不能只挂在 `canUseTool` 上**。
+     SDK 文档原话："Bare allowedTools entries auto-approve the whole tool before the callback is
+     consulted. To gate every tool call, use a PreToolUse hook instead; or remove the bare names
+     from allowedTools so they fall through to canUseTool. **Allow rules from settings files can also
+     shadow the callback.**"
+     也就是说设置层里的 `permissions.allow: ["Write"]` 会让写操作**根本不再调用 `canUseTool`**，
+     而 `settingSources: []` 关不掉 managed 层（它照旧从磁盘读），
+     `blockWritesOutsideWorkingDirectories` 又只管"工作目录之外"——用户的真实源码就在工作区根底下。
+     所以机器上若被 IT 托管过，闸门会被整个绕开。
+     **实测结论**（本机 claude 2.1.319 + SDK 0.3.318）：
+     设置里带 `permissions.allow: ["Write"]` 时，PreToolUse hook 照样被调用，
+     hook 的 `deny` 照样把写操作挡住；走 SDK 的 `options.hooks`（进程内回调）也一样。
+     hook 跑在权限判定之前，allow 规则遮不住它。
+     实现要求：
+     - `refactor-tool-hook.ts` 里注册一个 PreToolUse 回调，`matcher` 不设（匹配所有工具），
+       拿 `tool_name` / `tool_input` 走**同一个** `refactorToolAllowed`，
+       不允许就返回 `{ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: ... } }`。
+     - **失败即拒绝**：回调里抛异常时返回 deny，不要让异常冒到 CLI 那边变成"放行"。
+     - hook 的 `tool_input` 是 `unknown`，要先判断它是不是对象再交给裁决函数。
+     - `canUseTool` 保留为第二层，两者共用同一个裁决函数。
+     - 在 `runRefactorTurn` 里把 hook 挂上去：`launch.options` 是只读的，
+       所以用 `{ ...launch, options: { ...launch.options, hooks: { PreToolUse: createRefactorToolHook({ scratchRoot, workspaceRoot }) } } }`
+       组成新的 launch 再传给 `openClaudeStreamJsonConnection`——
+       连接层会把 `launch.options` 整个展开进 SDK 的 query options，hook 因此能到达 CLI。
+  10. **判定逻辑要能被测试直接钉住**：把"这一轮怎么结束的"抽成**纯函数**并导出，
+      transport（开连接、发帧、等结果）留在 `runRefactorTurn` 里。
+      没有这一步，"排空再判定"这种一行重排就能把成功的 turn 全报成失败的地方，
+      没有任何一个测试会响。
+      两个纯函数：
+  - `classifyRefactorResult(result: SDKResultMessage): { state: 'done' | 'failed'; warnings: string[] }`
+    —— 收成功帧与四种错误帧，返回 `'done'` 或 `'failed'` 及 warnings。
+  - `decideRefactorTurnOutcome(input: { result: { state: 'done' | 'failed'; warnings: string[] } | null; cancelled: boolean; timedOut: boolean; fault: string | null }): { state: RefactorStatusResult['state']; warnings: string[] }`
+    —— 决定最终 state 与 warnings。**取消优先于结果**：取消先到就是 `'cancelled'`；
+    结果先到就采信结果（后来的取消不回滚一个已完成的 turn）；
+    结果没有而超时了就 `'timed_out'`；再没有而崩溃了就 `'failed'`。
 
 - [ ] **Step 5: 跑测试确认它通过**
 
-Run: `pnpm test src/main/refactor/refactor-runner.test.ts --maxWorkers=2`
+Run: `pnpm test src/main/refactor --maxWorkers=2`
 Expected: PASS。
 
 - [ ] **Step 6: 类型检查与提交**

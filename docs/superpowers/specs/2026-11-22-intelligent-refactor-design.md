@@ -199,26 +199,28 @@ export const RefactorHunk = z.object({
   而 `canUseTool` 是"每次工具执行前调用"——把 `Write`/`Edit` 列进 `allowedTools`，
   CLI 可能就绕过写闸门直接放行写操作，agent 就能改用户的真实源码。
   闸门必须是唯一裁决者，所以一个工具都不许被预先自动放行。
-- `options.disallowedTools = ['Bash','Task']`（脱离路径模型的两个逃逸口，从模型上下文里去掉）。
+- `options.disallowedTools = ['Bash','PowerShell','Task','Agent','NotebookEdit','WebFetch','WebSearch']`
+  （脱离路径模型的两个逃逸口，从模型上下文里去掉；`Task` 是 `Agent` 的旧拼法，SDK 的
+  `LEGACY_TOOL_NAME_ALIASES` 把它映射到 `Agent`，两个名字都列）。
 - `options.settingSources = []`（SDK 隔离模式，不加载用户/项目/本地的 Claude 设置；
   否则用户自己写的 `permissions.allow: ["Write"]` 同样会被自动放行）。
 - `options.settings = { permissions: { blockReadsOutsideWorkingDirectories: true, blockWritesOutsideWorkingDirectories: true, disableBypassPermissionsMode: 'disable', disableAutoMode: 'disable' } }`
-  —— CLI 自己那层围栏。SDK 文档写明这两条 "true in any settings source wins. **No allow rule lifts it.**"，
-  而且 "in every permission mode"。它们堵的是两件 `settingSources: []` 堵不住的事：
-  ① **managed 设置层照旧从磁盘读**（"the managed-settings policy tier is still read from disk"），
-  机器上若被 IT 托管过且 `managed-settings.json` 里有 `permissions.allow: ["Write"]`，
-  那条 allow 规则会让写操作不再经过 `canUseTool`——闸门就被绕过了；
+  —— CLI 自己那层围栏。它堵住两件 `settingSources: []` 堵不住的事：
+  ① **managed 设置层照旧从磁盘读**（"the managed-settings policy tier is still read from disk"）；
   ② CLI 在 `default` 模式下对只读工具可能不询问，于是 `canUseTool` 根本不会被调用，
   我们的读围栏（读只在工作区内）形同虚设，agent 能读到 `~/.ssh/id_rsa`。
-  工作目录就是工作区根，暂存目录在工作区根底下，所以闸门放行的读写不受这两条影响。
+  **读**这一侧 `blockReadsOutsideWorkingDirectories` 是完全封死的：
+  SDK 文档写明 "in every permission mode; true in any settings source wins.
+  **No allow rule lifts it.**"。
+  **写**这一侧它挡不住——工作目录就是工作区根，而用户的真实源码就在工作区根底下。
 
-`allowedTools` / `disallowedTools` 目前不在 `ClaudeStructuredSdkOptions` 里，需要加进这个 Pick
-类型。SDK 支持这两个字段，且 `claude-structured-launch-args.ts` 的 `OWNED_FLAGS` 已经把它们挡在
+`allowedTools` / `disallowedTools` / `hooks` 目前不在 `ClaudeStructuredSdkOptions` 里，需要加进这个
+Pick 类型。SDK 支持这三个字段，且 `claude-structured-launch-args.ts` 的 `OWNED_FLAGS` 已经把它们挡在
 用户自定义参数之外——这块策略所有权本来就是我们的，只是还没接线。
 
 ### 6.2 写闸门
 
-`handlers.canUseTool` 回调逐个工具调用裁决：
+闸门裁决**每一个**工具调用，规则只有一个函数：`refactorToolAllowed`。
 
 - `Read` / `Grep` / `Glob`：放行（限制在工作区内）。
 - `Write` / `Edit` / `MultiEdit`：**目标路径必须落在 `.orca/refactor/<jobId>/` 之内**，否则拒绝。
@@ -232,6 +234,42 @@ export const RefactorHunk = z.object({
 路径裁决必须做**规范化后再比较**（resolve 相对路径、消除 `..`），不能只做字符串前缀匹配。
 另外要逐段拒绝**末尾带点或空格**的分量：Win32 在识别 `.` / `..` 之前先剥掉它们，
 `.. ` 对操作系统就是"上一级目录"，而 Node 的 `path.win32.resolve` 不剥。
+
+#### 6.2.1 闸门挂在 hook 上，不是只挂在 `canUseTool` 上
+
+`handlers.canUseTool` **不足以**当唯一裁决者。SDK 文档写得很直白：
+
+> "Bare allowedTools entries auto-approve the whole tool before the callback is consulted.
+> To gate every tool call, use a PreToolUse hook instead; or remove the bare names from allowedTools
+> so they fall through to canUseTool. **Allow rules from settings files can also shadow the callback.**"
+
+也就是说设置层里的 `permissions.allow`（无论来自 user / project / local 还是照旧从磁盘读的
+managed 层）会让写操作**根本不再调用 `canUseTool`**。而 `settingSources: []` 关不掉 managed 层，
+`blockWritesOutsideWorkingDirectories` 也只管"工作目录之外"，管不到工作区里的真实源码。
+于是机器上若被 IT 托管过（`managed-settings.json` 里有 `permissions.allow: ["Write"]`），
+闸门就被绕过了——而这正是整个设计要防的那件事。
+
+所以闸门**用 PreToolUse hook 实现**：`options.hooks.PreToolUse` 里注册一个回调，
+拿 `tool_name` / `tool_input` 走同一个 `refactorToolAllowed`，
+不允许就返回 `permissionDecision: 'deny'` 并带上原因。
+hook 在权限判定之前跑，**allow 规则遮不住它**——这一点是实测过的：
+设置里带 `permissions.allow: ["Write"]` 时，hook 照样被调用，hook 的 deny 照样把写操作挡住
+（见 6.2.2）。`canUseTool` 保留为第二层，两者共用同一个裁决函数。
+
+hook 必须**失败即拒绝**：回调里抛异常时返回 deny，不要让异常冒到 CLI 那边变成"放行"。
+`matcher` 不设（匹配所有工具），因为 `refactorToolAllowed` 对未知工具本来就是拒绝。
+
+#### 6.2.2 这条结论是实测的，不是读文档读来的
+
+用仓库里的 SDK（`@anthropic-ai/claude-agent-sdk` 0.3.318）配本机的 `claude` 2.1.319 实测：
+
+1. 设置里带 `permissions.allow: ["Write"]`，CLI 的 PreToolUse hook **照样被调用**，
+   hook 的 `deny` 把写操作挡住了（文件没生成）。
+2. 同样的设置下走 SDK 的 `options.hooks`（进程内回调），hook **照样被调用**，
+   `deny` 照样挡住写入；此时 `allowedTools: ['Write']` 也开着——
+   这正是会让 `canUseTool` 被遮蔽的那份配置。
+
+结论：hook 这条路是通的，且是 SDK 自己推荐的"gating every tool call"的方式。
 
 ### 6.3 prompt
 
@@ -256,7 +294,8 @@ SDK 的每条消息都带 `tool_use` 块。运行器把工具名翻成一句进�
 
 结构化路径本身没有 turn 超时，重构任务自己加：
 
-- 硬上限 **5 分钟**，超时即中止并把 job 标记为失败。
+- 硬上限 **5 分钟**，超时即中止并把 job 标记为 `timed_out`（不是 `failed`——超值得单独重试，
+  报错得先看错误信息，混在一起用户分不出该重试哪一个）。
 - `refactor.discard` 中止进行中的 turn，并关闭子进程（走 `openClaudeStreamJsonConnection` 的
   `close()`，那套关闭证明 ladder 是现成的）。对已结束的任务，它删除暂存目录并把 job 从注册表里摘掉。
 - 任务结束后暂存目录**保留**（用户还要看 diff），但下次发起新任务时清理超过一天的旧目录。
@@ -436,16 +475,17 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 
 ### 11.2 main
 
-| 文件                                                                       | 作用                                                                                                |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/main/refactor/refactor-job-registry.ts`                               | job 状态、取消句柄、警告                                                                            |
-| `src/main/refactor/refactor-agent-launch.ts`                               | 解析 Claude 可执行文件 / 账号 / env，拼 SDK 启动参数                                                |
-| `src/main/refactor/refactor-write-gate.ts`                                 | `canUseTool` 写闸门                                                                                 |
-| `src/main/refactor/refactor-runner.ts`                                     | 驱动一次 agent turn，超时与取消                                                                     |
-| `src/main/refactor/refactor-plan-builder.ts`                               | 读清单 + 读暂存文件 + 读基准文本 → 组装 RefactorPlan                                                |
-| `src/main/refactor/refactor-scratch-cleanup.ts`                            | 清理过期暂存目录                                                                                    |
-| `src/main/runtime/rpc/methods/refactor/refactor-methods.ts`                | 5 个 RPC 方法                                                                                       |
-| `src/main/claude/structured/launch/claude-structured-launch-resolution.ts` | `ClaudeStructuredSdkOptions` 加 `allowedTools` / `disallowedTools`（`settingSources` 已在 Pick 里） |
+| 文件                                                                       | 作用                                                                                                          |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `src/main/refactor/refactor-job-registry.ts`                               | job 状态、取消句柄、警告                                                                                      |
+| `src/main/refactor/refactor-agent-launch.ts`                               | 解析 Claude 可执行文件 / 账号 / env，拼 SDK 启动参数                                                          |
+| `src/main/refactor/refactor-write-gate.ts`                                 | 写闸门的裁决函数（工具名 + 入参 → 放行还是拒绝）                                                              |
+| `src/main/refactor/refactor-tool-hook.ts`                                  | 把裁决函数挂成 SDK 的 PreToolUse hook（`canUseTool` 会被设置层的 allow 规则遮蔽）                             |
+| `src/main/refactor/refactor-runner.ts`                                     | 驱动一次 agent turn，超时与取消                                                                               |
+| `src/main/refactor/refactor-plan-builder.ts`                               | 读清单 + 读暂存文件 + 读基准文本 → 组装 RefactorPlan                                                          |
+| `src/main/refactor/refactor-scratch-cleanup.ts`                            | 清理过期暂存目录                                                                                              |
+| `src/main/runtime/rpc/methods/refactor/refactor-methods.ts`                | 5 个 RPC 方法                                                                                                 |
+| `src/main/claude/structured/launch/claude-structured-launch-resolution.ts` | `ClaudeStructuredSdkOptions` 加 `allowedTools` / `disallowedTools` / `hooks`（`settingSources` 已在 Pick 里） |
 
 ### 11.3 renderer
 
@@ -471,13 +511,14 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 按仓库规矩（`docs/agents-md-refs/test-antipatterns.md`）：测试必须**在改动被回退时会失败**，
 且**坐在拥有该行为的那一层**。
 
-| 层            | 测什么                                                      | 位置                                                    |
-| ------------- | ----------------------------------------------------------- | ------------------------------------------------------- |
-| shared 纯函数 | hunk 计算、hunk 应用、清单校验、方案冲突丢弃                | `src/shared/refactor/*.test.ts`                         |
-| main          | 写闸门的路径裁决（`..`、绝对路径、大小写、末尾点/空格）     | `src/main/refactor/refactor-write-gate.test.ts`         |
-| main          | plan builder：清单缺字段、暂存文件不存在、方案共享文件      | `src/main/refactor/refactor-plan-builder.test.ts`       |
-| renderer      | 审查树的勾选集合展开（方案/文件/代码块三级 → hunk id 集合） | `src/renderer/src/components/editor/refactor/*.test.ts` |
-| 组件          | 审查 tab 的 fixture 截图（`pnpm fixtures:shot`）            | `refactor-review-tab.fixture.tsx`                       |
+| 层            | 测什么                                                         | 位置                                                    |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------- |
+| shared 纯函数 | hunk 计算、hunk 应用、清单校验、方案冲突丢弃                   | `src/shared/refactor/*.test.ts`                         |
+| main          | 写闸门的路径裁决（`..`、绝对路径、大小写、末尾点/空格）        | `src/main/refactor/refactor-write-gate.test.ts`         |
+| main          | 闸门挂成 PreToolUse hook：放行、拒绝、异常时拒绝（失败即拒绝） | `src/main/refactor/refactor-tool-hook.test.ts`          |
+| main          | plan builder：清单缺字段、暂存文件不存在、方案共享文件         | `src/main/refactor/refactor-plan-builder.test.ts`       |
+| renderer      | 审查树的勾选集合展开（方案/文件/代码块三级 → hunk id 集合）    | `src/renderer/src/components/editor/refactor/*.test.ts` |
+| 组件          | 审查 tab 的 fixture 截图（`pnpm fixtures:shot`）               | `refactor-review-tab.fixture.tsx`                       |
 
 **不测**：模型返回什么、agent 实际写了什么、端到端的重构质量。这些是模型能力，不是代码行为。
 
@@ -515,7 +556,9 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 - **重构 agent 不加载项目的 CLAUDE.md 与用户设置**。为了保证写闸门是写操作的唯一裁决者，
   这次运行用 SDK 的隔离模式（`settingSources: []`）：不加载 `user` / `project` / `local`
   三层设置文件。代价是 agent 看不到项目自己的约定，重构质量会打折扣；
-  收益是用户的 `permissions.allow` 规则无法把写操作自动放行、绕过闸门。
+  收益是用户的 `permissions.allow` 规则无法把写操作自动放行、绕过闸门
+  （**注意：managed 层不归 `settingSources` 管**，它照旧从磁盘读——
+  所以真正的保障是 §6.2.1 的 PreToolUse hook，不是隔离模式）。
   （SDK 文档：`Pass [] to disable filesystem settings (SDK isolation mode)`，
   `Must include 'project' to load CLAUDE.md files`。）
   将来要让 agent 读到项目约定，正确做法是由应用自己读 CLAUDE.md 并放进 prompt，

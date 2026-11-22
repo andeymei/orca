@@ -2465,6 +2465,7 @@ Expected: FAIL，报模块不存在。
 
 ```tsx
 import { defineFixture } from '../../../component-fixtures/component-fixture'
+import '@/lib/editor/monaco/monaco-setup'
 
 export const withProposals = defineFixture({
   width: 1280,

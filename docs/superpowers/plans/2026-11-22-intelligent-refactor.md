@@ -1764,9 +1764,13 @@ writeFileExplorerFile(
 所以要问 Git 要路径：用 `gitExecFileAsync(['rev-parse', '--git-path', 'info/exclude'], { cwd: worktreePath })`
 （`src/main/git/command-runner/git-exec-file.ts:187`），拿 `stdout` 拼成绝对路径再追加。
 
-- 命令失败（不是 git 仓库的 folder workspace）→ 跳过这步，不算错误。
+- 命令失败（不是 git 仓库的 folder workspace）→ **catch 掉跳过这步**，不要让它把整个 propose 拖垮。
+  `gitExecFileAsync` 在命令非零退出时会抛错（`src/main/git/command-runner/git-exec-file.ts`），
+  而 `rev-parse --git-path` 在非 git 目录里正是非零退出。
 - 追加前先读一遍该文件，**已存在 `.orca/refactor/` 这行就跳过**，不要重复追加。
 - 文件不存在就直接写（`info/exclude` 是 Git 自己保证存在的，父目录也在 common dir 里）。
+- **整步都不能让 propose 失败**：暂存目录没被 exclude 只是让 `git status` 多几行未跟踪文件，
+  而让用户发不起重构是更大的问题。任何异常都跳过这步。
 
 **暂存目录清理**：发起新任务时调 `cleanExpiredRefactorScratch({ scratchParentRoot: path.join(workspaceRoot, '.orca', 'refactor'), excludeJobId: jobId })`。
 当前 job 的目录不动（`excludeJobId`），父目录不存在就当没有暂存目录（不是错误）。

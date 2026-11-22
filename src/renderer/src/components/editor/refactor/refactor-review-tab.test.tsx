@@ -3,9 +3,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { RefactorHunk, RefactorPlan } from '../../../../../shared/refactor/refactor-types'
+import type * as RefactorRuntimeClient from './refactor-runtime-client'
 import { refactorReviewStore } from './refactor-review-store'
 import { RefactorReviewTab } from './refactor-review-tab'
 import { openRefactorReviewTab } from './refactor-review-tab-open'
+import { RefactorApplyTimeoutError } from './refactor-runtime-client'
 
 type JobStatus = {
   state: 'running' | 'done' | 'failed' | 'timed_out' | 'cancelled'
@@ -59,13 +61,17 @@ vi.mock('@/store/index', () => ({
   )
 }))
 
-vi.mock('./refactor-runtime-client', () => ({
-  applyRefactor: mocks.applyRefactor,
-  discardRefactor: mocks.discardRefactor,
-  fetchRefactorStatus: mocks.fetchRefactorStatus,
-  fetchRefactorPlan: mocks.fetchRefactorPlan,
-  proposeRefactor: mocks.proposeRefactor
-}))
+vi.mock('./refactor-runtime-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof RefactorRuntimeClient>()
+  return {
+    ...actual,
+    applyRefactor: mocks.applyRefactor,
+    discardRefactor: mocks.discardRefactor,
+    fetchRefactorStatus: mocks.fetchRefactorStatus,
+    fetchRefactorPlan: mocks.fetchRefactorPlan,
+    proposeRefactor: mocks.proposeRefactor
+  }
+})
 
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), {
@@ -263,6 +269,16 @@ describe('the refactor review tab', () => {
     await waitFor(() =>
       expect(mocks.state.closeFile).toHaveBeenCalledWith('wt-1::refactor-review:job-1')
     )
+  })
+
+  it('says the outcome may be partial when the apply deadline passes', async () => {
+    mocks.applyRefactor.mockRejectedValue(new RefactorApplyTimeoutError())
+    renderTab()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
+    await waitFor(() => expect(screen.getByText(/may have been written/)).toBeTruthy())
+    // The shared deadline message would read as "nothing happened", which is not what the runtime knows.
+    expect(screen.queryByText('The refactoring request timed out.')).toBeNull()
   })
 
   it('keeps the tab open and says why when the write is refused', async () => {

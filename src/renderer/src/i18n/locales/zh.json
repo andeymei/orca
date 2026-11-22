@@ -16580,6 +16580,7 @@
           "acceptAll": "接受全部方案",
           "acceptWholeProposal": "接受该方案全部改动",
           "applyAccepted": "应用已接受",
+          "applyTimedOut": "重构超时了。部分改动可能已经写入，请先检查这些文件再重试。",
           "cancelled": "重构已取消",
           "discard": "丢弃",
           "discardFailed": "未能丢弃，重构任务可能仍在运行。",

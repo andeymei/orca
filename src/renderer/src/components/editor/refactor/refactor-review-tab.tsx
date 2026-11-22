@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { useTranslate } from '@/i18n/use-translate'
+import { useTranslate, type Translate } from '@/i18n/use-translate'
 import { joinPath } from '@/lib/path'
 import { recomputeOn } from '@/lib/recompute-on'
 import { useAppStore } from '@/store/index'
@@ -26,7 +26,8 @@ import {
   applyRefactor,
   discardRefactor,
   fetchRefactorPlan,
-  fetchRefactorStatus
+  fetchRefactorStatus,
+  RefactorApplyTimeoutError
 } from './refactor-runtime-client'
 
 export type RefactorReviewTabProps = {
@@ -159,20 +160,9 @@ export function RefactorReviewTab({
       toast.success(writtenLabel(result.applied.length, t))
       closeTab()
     } catch (error) {
-      setFailure(
-        error instanceof Error && error.message.length > 0
-          ? error.message
-          : t(
-              'auto.components.editor.RefactorReviewTab.writeFailed',
-              'The changes could not be written. Try again.'
-            )
-      )
-      toast.error(
-        t(
-          'auto.components.editor.RefactorReviewTab.writeFailed',
-          'The changes could not be written. Try again.'
-        )
-      )
+      const message = applyFailureMessage(error, t)
+      setFailure(message)
+      toast.error(message)
     } finally {
       setWriting(false)
     }
@@ -331,4 +321,27 @@ export function RefactorReviewTab({
  */
 function workspaceFilePath(workspaceRoot: string | undefined, relativePath: string): string {
   return workspaceRoot ? joinPath(workspaceRoot, relativePath) : relativePath
+}
+
+/**
+ * What the tab says when a write did not finish.
+ *
+ * Why the timeout has its own words: the runtime stops starting further writes when the request
+ * is cancelled, so the files it never reached do not come back — the user has to be told that the
+ * outcome is unknown, not that the write failed.
+ */
+function applyFailureMessage(error: unknown, t: Translate): string {
+  if (error instanceof RefactorApplyTimeoutError) {
+    return t(
+      'auto.components.editor.RefactorReviewTab.applyTimedOut',
+      'The refactoring timed out. Some of the changes may have been written; check the files before trying again.'
+    )
+  }
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message
+  }
+  return t(
+    'auto.components.editor.RefactorReviewTab.writeFailed',
+    'The changes could not be written. Try again.'
+  )
 }

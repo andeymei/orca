@@ -17961,6 +17961,7 @@
           "acceptAll": "Accept all proposals",
           "acceptWholeProposal": "Accept every change in this proposal",
           "applyAccepted": "Apply accepted changes",
+          "applyTimedOut": "The refactoring timed out. Some of the changes may have been written; check the files before trying again.",
           "cancelled": "Refactoring cancelled",
           "discard": "Discard",
           "discardFailed": "The job could not be discarded and may still be running.",

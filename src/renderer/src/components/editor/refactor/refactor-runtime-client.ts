@@ -19,6 +19,20 @@ const REFACTOR_DISCARD_TIMEOUT_MS = 35_000
 
 const REFACTOR_TIMEOUT_MESSAGE = 'The refactoring request timed out.'
 
+/**
+ * The apply deadline passed.
+ *
+ * Why its own type: the runtime stops starting further writes when the request is cancelled, so
+ * the files it never reached do not come back as refusals — the caller has to say that the
+ * outcome is unknown, not that the write failed.
+ */
+export class RefactorApplyTimeoutError extends Error {
+  constructor() {
+    super(REFACTOR_TIMEOUT_MESSAGE)
+    this.name = 'RefactorApplyTimeoutError'
+  }
+}
+
 /** Why a request could not start a job. */
 export type RefactorProposeFailure =
   /** The runtime refused in its own words; the user reads them. */
@@ -135,7 +149,9 @@ export async function applyRefactor(
     response = await callRefactorRpc<RefactorApplyResult>(
       'refactor.apply',
       { jobId, acceptedHunkIds: [...acceptedHunkIds] },
-      REFACTOR_APPLY_TIMEOUT_MS
+      REFACTOR_APPLY_TIMEOUT_MS,
+      // Why its own error: a write that ran out of time may have written some of its files.
+      () => new RefactorApplyTimeoutError()
     )
   } catch (error) {
     console.error('[refactor] The apply request failed.', { error: errorName(error) })
@@ -178,7 +194,8 @@ export async function discardRefactor(jobId: string): Promise<boolean> {
 async function callRefactorRpc<TResult>(
   method: string,
   params: unknown,
-  timeoutMs: number
+  timeoutMs: number,
+  timeoutError: () => Error = () => new Error(REFACTOR_TIMEOUT_MESSAGE)
 ): Promise<TResult> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -189,7 +206,8 @@ async function callRefactorRpc<TResult>(
         signal: controller.signal,
         timeoutMs
       }),
-      timeoutMs
+      timeoutMs,
+      timeoutError
     )
     answered = true
     return response
@@ -210,10 +228,11 @@ async function callRefactorRpc<TResult>(
  */
 function settleBeforeDeadline<TResult>(
   call: Promise<TResult>,
-  timeoutMs: number
+  timeoutMs: number,
+  timeoutError: () => Error
 ): Promise<TResult> {
   return new Promise<TResult>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(REFACTOR_TIMEOUT_MESSAGE)), timeoutMs)
+    const timer = setTimeout(() => reject(timeoutError()), timeoutMs)
     call.then(
       (value) => {
         clearTimeout(timer)

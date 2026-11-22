@@ -2695,8 +2695,16 @@ Expected: FAIL，报模块不存在。
   `modifiedContent` 用 `applyRefactorHunks(file.originalContent, file.hunks)`（Task 2 的函数，渲染层可用）。
   也就是说整文件视角显示的是**该方案改完之后的全文**，不是别的方案的结果。
 - 顶部：文件名、「接受全部方案」、「丢弃」按钮、进度文案。
-- **tab 卸载时调 `refactorReviewStore.remove(jobId)`**（Task 11 的 store 是按 jobId 存 Map 的模块级单例，
-  不删就会随着每次重构一直长）。「丢弃」按钮关 tab 时也会走到这里。
+- **清 store 的时机**：Task 11 的 store 是按 jobId 存 Map 的模块级单例，不删就会随着每次重构一直长；
+  但**不能在组件卸载时无条件删**——编辑器面板是按 `activeFile` 分派的
+  （`src/renderer/src/components/editor/EditorContent.tsx`），用户切到别的 tab 时这个组件就卸载了，
+  切回来时计划已经被删掉，审查界面是空的。
+  正确的判据是**这个 job 还有没有开着的 tab**：卸载时读
+  `useAppStore.getState().openFiles`，若还有哪个文件的 `refactorReview?.jobId === jobId`，
+  说明用户只是切走了，**保留** store 里的计划；一个都没有了（tab 真被关掉了），才
+  `refactorReviewStore.remove(jobId)`。
+  （`useAppStore.getState()` 是这个仓库现成的写法，`src/renderer/src/store/index.ts:173` 就是这么用的。）
+  「丢弃」按钮关 tab 时会走到同一条路径。
 - 用 Task 9 的 `pollRefactorJob` 轮询状态；`state === 'done'` 后用 `fetchRefactorPlan` 取 plan 并写进 store。
 - **`state` 是 `'failed'` / `'timed_out'` 或 `'cancelled'` 时**：把 `warnings` **内联显示在 tab 里**（不是 toast——
   用户得能读、能理解、能重试），并停止轮询。轮询器在状态不是 `'running'` 时就会停，所以

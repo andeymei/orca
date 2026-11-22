@@ -834,7 +834,9 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
         闸门把相对路径按 `workspaceRoot` 解析，而 SDK 把相对路径按进程的 cwd 解析——
         两者不一致时，闸门可能批准一个 SDK 根本不会写的位置，而 SDK 真正写的地方在暂存目录之外。
         传同一个值就没有这个缺口。
-    - `parseRefactorToolProgress(message: Record<string, unknown>): string | null` —— 从一条 SDK 消息里抽出进度文案；没有工具调用时返回 `null`。单独导出是为了能脱开 SDK 单测。
+    - `parseRefactorToolProgress(message: Record<string, unknown>, workspaceRoot: string): string | null` —— 从一条 SDK 消息里抽出进度文案；没有工具调用时返回 `null`。
+      **第二个参数是工作区根**：进度文案里要显示**相对工作区**的路径，而工具入参给的是绝对路径。
+      单独导出是为了能脱开 SDK 单测。
     - `REFACTOR_TURN_TIMEOUT_MS = 300_000`
 
 - [ ] **Step 1: 写失败的测试**
@@ -872,28 +874,34 @@ describe('buildRefactorPrompt', () => {
 })
 
 describe('parseRefactorToolProgress', () => {
-  it('names the file a write tool is writing', () => {
-    const text = parseRefactorToolProgress({
-      type: 'assistant',
-      message: {
-        content: [
-          {
-            type: 'tool_use',
-            name: 'Write',
-            input: { file_path: '/repo/.orca/refactor/job-1/p1/src/foo.ts' }
-          }
-        ]
-      }
-    })
-    expect(text).toContain('src/foo.ts')
+  it('names the file a write tool is writing, relative to the workspace', () => {
+    const text = parseRefactorToolProgress(
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              name: 'Write',
+              input: { file_path: '/repo/.orca/refactor/job-1/p1/src/foo.ts' }
+            }
+          ]
+        }
+      },
+      '/repo'
+    )
+    expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
   })
 
   it('returns null for a message with no tool use', () => {
     expect(
-      parseRefactorToolProgress({
-        type: 'assistant',
-        message: { content: [{ type: 'text', text: 'hi' }] }
-      })
+      parseRefactorToolProgress(
+        {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'hi' }] }
+        },
+        '/repo'
+      )
     ).toBeNull()
   })
 })
@@ -926,11 +934,12 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
 
 在 `refactor-runner.ts`：
 
-- `parseRefactorToolProgress(message: Record<string, unknown>): string | null` —— 从 SDK 消息里找 `message.content` 数组中的 `type === 'tool_use'` 的块，用 `name` 与 `input` 拼一句中文进度：
-  - `Write` / `Edit` → `正在写入 <相对路径>`
+- `parseRefactorToolProgress(message: Record<string, unknown>, workspaceRoot: string): string | null` —— 从 SDK 消息里找 `message.content` 数组中的 `type === 'tool_use'` 的块，用 `name` 与 `input` 拼一句中文进度：
+  - `Write` / `Edit` / `MultiEdit` → `正在写入 <相对路径>`
   - `Read` → `正在读取 <相对路径>`
   - 其它工具名 → `正在使用 <name>`
-  - 路径取 `input.file_path`，相对路径用 `path.relative(workspaceRoot, p)`；取不到就只用工具名。
+  - 路径取 `input.file_path`，显示时用 `path.relative(workspaceRoot, p)`（所以要传 workspaceRoot）；
+    取不到路径就只用工具名。
   - 没有 tool_use 就返回 `null`。
 
 - `runRefactorTurn`：

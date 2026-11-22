@@ -83,8 +83,7 @@ export function createRefactorReviewStore(): RefactorReviewStore {
   /**
    * The selection of the job, created empty when the job was never reviewed.
    *
-   * Why one entry per job: the accepted set is handed out, so a shared empty set would let one
-   * job's hunks leak into another's.
+   * Why one entry per job: the copy keeps a caller from changing the store without a notification.
    */
   const selectionOf = (jobId: string): RefactorReviewSelection => {
     const existing = selections.get(jobId)

@@ -141,6 +141,19 @@ describe('the refactor review store', () => {
     expect(store.getSelection('job-1').acceptedHunkIds.has('h2')).toBe(false)
   })
 
+  it('keeps its own copy of the selection it was given', () => {
+    const store = createRefactorReviewStore()
+    store.setPlan('job-1', plan)
+    const acceptedHunkIds = new Set(['h1'])
+    store.setSelection('job-1', {
+      acceptedHunkIds,
+      selectedHunkId: 'h1',
+      selectedFilePath: 'src/foo.ts'
+    })
+    acceptedHunkIds.add('h2')
+    expect(store.getSelection('job-1').acceptedHunkIds.has('h2')).toBe(false)
+  })
+
   it('gives back every hunk of a file when the file is unticked', () => {
     const store = createRefactorReviewStore()
     store.setPlan('job-1', plan)

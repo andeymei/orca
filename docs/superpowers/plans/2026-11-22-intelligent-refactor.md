@@ -978,6 +978,10 @@ Expected: FAIL，报模块不存在。
 - 每个方案一个子目录：`<scratchRelativeRoot>/<proposalId>/<相对路径>`。
 - 必须把方案索引写到 `<scratchRelativeRoot>/manifest.json`，形状是
   `{"proposals":[{"id":"p1","title":"…","rationale":"…","files":["src/foo.ts"]}]}`。
+  `files` 里是**相对工作区根**的路径，不带 `./` 前缀、不带暂存目录前缀——
+  清单里的路径会被拼成 `<scratchRelativeRoot>/<proposalId>/<路径>` 去读暂存文件，
+  所以它必须正好是相对工作区根的那一份。
+  （带 `./` 前缀的路径会被路径检查拒掉，整个方案连带被丢弃。）
 - `rationale` 说清**为什么**这么改，不是改了什么。
 - 最多 5 个方案，每个方案最多 5 个文件；两个方案不能改同一个文件。
 - **不要**在回答里贴文件内容或 JSON，一切通过写文件产出。

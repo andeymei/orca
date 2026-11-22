@@ -832,7 +832,12 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
 - Produces:
   - `src/shared/refactor/refactor-prompt.ts` 导出 `buildRefactorPrompt(input: { relativePath: string; sourceRelativePath: string; scratchRelativeRoot: string; instruction?: string }): { system: string; user: string }`
   - `src/main/refactor/refactor-runner.ts` 导出：
-    - `RefactorTurnResult`：`{ manifest: RefactorManifest | null; progress: string; warnings: string[] }`
+    - `RefactorTurnResult`：`{ state: RefactorStatusResult['state']; manifest: RefactorManifest | null; progress: string; warnings: string[] }`
+      —— `state` 用 `RefactorStatusResult['state']` 的索引访问，不要把 `'running' | 'done' | 'failed' | 'cancelled'`
+      重抄一遍（Task 7 的注册表也用这个类型）。
+      **这一轮是怎么结束的必须体现在 `state` 里**：Task 8 拿它直接 `update` job 的状态。
+      没有它的话，超时、SDK 报错、进程崩溃都会变成"正常结束"——用户看到的是"agent 什么都没产出"，
+      而不是"agent 报错了"。
     - `runRefactorTurn(input: { launch: RefactorAgentLaunch; scratchRoot: string; workspaceRoot: string; prompt: { system: string; user: string }; onProgress?: (text: string) => void; signal: AbortSignal }): Promise<RefactorTurnResult>`
       - **`workspaceRoot` 必须等于 `launch.cwd`**（传 `launch.cwd` 进去，不要另传一个）。
         闸门把相对路径按 `workspaceRoot` 解析，而 SDK 把相对路径按进程的 cwd 解析——
@@ -970,19 +975,21 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      system 与 user 合成一条，是因为 SDK 的用户消息只有 `content` 一个入口；两段之间用一个空行分隔。
   4. 监听 SDK 消息（`handlers.onMessage`）：收到 `tool_use` 就更新进度并 `onProgress?.(text)`；收到 `type === 'result'` 就结束等待。
      **结果帧要分成功与失败**：`SDKResultMessage = SDKResultSuccess | SDKResultError`。
-     成功的帧是 `subtype: 'success'`；失败的帧是
+     成功的帧是 `subtype: 'success'` → `state: 'done'`；
+     失败的帧是
      `subtype: 'error_during_execution' | 'error_max_turns' | 'error_max_budget_usd' | 'error_max_structured_output_retries'`，
-     带 `is_error` 和 `stop_reason`。失败的那一种要结束等待并把 `subtype` 与 `stop_reason`
+     带 `is_error` 和 `stop_reason` → `state: 'failed'`，并把 `subtype` 与 `stop_reason`
      写进 `warnings` —— 否则这一轮报错会被当成正常结束，用户看到的是"agent 什么都没产出"，
      而不是"agent 报错了"。失败时如果暂存目录里已经有文件，仍然照常读清单（可能有部分产出），
      但警告里必须说明这一轮是失败结束的。
      **也要接 `handlers.onFault` 与 `handlers.onExit`**：CLI 崩了或被杀掉的时候不会有 `result` 帧，
      只等 `result` 就会一路挂到 5 分钟超时才罢休。两者任一触发就结束等待，
-     并把错误信息写进 `warnings`（`onExit` 的 `expected` 为 false 时说明是非预期退出，更该写明）。
+     `state: 'failed'`，并把错误信息写进 `warnings`（`onExit` 的 `expected` 为 false 时说明是非预期退出，更该写明）。
   5. 结束后读 `<scratchRoot>/manifest.json`，用 `RefactorManifest.safeParse` 解析；解析失败返回 `manifest: null` 并在 `warnings` 里写明原因。
      读它也要带大小上限（清单是 agent 写的外部输入）：用 `readNodeFileWithinLimit(path, 1 * 1024 * 1024)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限按"解析失败"处理。
-  6. 超时：`REFACTOR_TURN_TIMEOUT_MS = 300_000`（5 分钟）。到点中止并关连接。
-  7. `signal` 触发时同样中止并关连接，返回 `warnings: ['任务已取消']`。
+  6. 超时：`REFACTOR_TURN_TIMEOUT_MS = 300_000`（5 分钟）。到点中止并关连接，
+     **`state: 'failed'`**，warnings 写明"任务超时"。
+  7. `signal` 触发时同样中止并关连接，**`state: 'cancelled'`**，`warnings: ['任务已取消']`。
   8. 无论成功失败都要关闭连接（`close()` 走现成的退出证明 ladder）。
 
 - [ ] **Step 5: 跑测试确认它通过**
@@ -1520,7 +1527,11 @@ writeFileExplorerFile(
   8. 把 `.orca/refactor/` 加进仓库本地的 exclude 文件（见下面「暂存目录不进版本库」）。
   9. 清理过期暂存目录（见下面「暂存目录清理」）。
   10. **立刻返回** `{ jobId }`。
-  11. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `state: 'done'`、`plan` 与 `diskContents`。
+  11. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `plan` 与 `diskContents`。
+      **job 的 `state` 直接取 turn 的 `state`**（Task 5 的 `RefactorTurnResult.state`）：
+      turn 是 `'done'` 才建 plan 并把 job 标成 `'done'`；turn 是 `'failed'` / `'cancelled'` 就直接把那个状态
+      和 turn 的 warnings 写进 job，**不要建 plan**（没有可信的产出）。
+      把所有结束方式都当成 `'done'` 会让用户面对一个空白的审查界面。
       建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
       `listScratchProposals` 要**连每个方案目录里的文件一起返回**：
       `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())`

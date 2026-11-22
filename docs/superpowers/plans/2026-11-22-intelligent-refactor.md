@@ -713,7 +713,7 @@ import { describe, expect, it } from 'vitest'
 import { REFACTOR_DISALLOWED_TOOLS, resolveRefactorAgentLaunch } from './refactor-agent-launch'
 
 describe('resolveRefactorAgentLaunch', () => {
-  it('runs the agent in the workspace with only read and write tools', async () => {
+  it('runs the agent in the workspace without bypassing the permission gate', async () => {
     const launch = await resolveRefactorAgentLaunch({
       cwd: '/repo',
       deps: {
@@ -751,7 +751,10 @@ Expected: FAIL，报模块不存在。
 
 - [ ] **Step 3: 加上 SDK 选项字段**
 
-在 `claude-structured-launch-resolution.ts` 的 `ClaudeStructuredSdkOptions` 的 Pick 列表里加 `'allowedTools'` 与 `'disallowedTools'`（SDK 的 `Options` 上有这两个字段）。
+在 `claude-structured-launch-resolution.ts` 的 `ClaudeStructuredSdkOptions` 的 Pick 列表里加 `'allowedTools'` 与 `'disallowedTools'`。
+SDK 的 `Options` 上确实有这两个字段（`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:1660` 与 `:1680`），
+类型都是 `string[]`——所以 `disallowedTools` 要写 `[...REFACTOR_DISALLOWED_TOOLS]`（展开成新数组），
+不能直接把 `readonly string[]` 赋过去。
 
 - [ ] **Step 4: 实现启动解析**
 

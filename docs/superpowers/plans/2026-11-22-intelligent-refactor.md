@@ -2074,7 +2074,7 @@ Expected: FAIL，报模块不存在。
 
 - 只在 `mode === 'edit'` 的文件上出现。
 - 点击时取当前激活文件的**缓冲区内容**（用 `createEditorPanelDraftSelector`，见 `src/renderer/src/components/editor/editor-panel-draft-selector.ts`），调 `openRefactorReviewTab`。
-- 按钮在没有 Claude 登录态时也要能点（由后端报错后在 tab 里显示）。
+- 按钮在没有 Claude 登录态时也要能点——发起失败由 toast 报出来（失败就不开 tab，见 Interfaces）。
 
 - [ ] **Step 5: 跑测试与截图**
 

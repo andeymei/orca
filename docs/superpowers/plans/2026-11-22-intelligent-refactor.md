@@ -571,6 +571,32 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
 ```ts
 import { describe, expect, it } from 'vitest'
 import { parseRefactorToolProgress } from './refactor-runner'
+import { buildRefactorPrompt } from '../../shared/refactor/refactor-prompt'
+
+describe('buildRefactorPrompt', () => {
+  const prompt = buildRefactorPrompt({
+    relativePath: 'src/foo.ts',
+    sourceRelativePath: '_source/src/foo.ts',
+    scratchRelativeRoot: '.orca/refactor/job-1',
+    instruction: '把重复的校验提出来'
+  })
+
+  it('names the scratch directory the agent may write to', () => {
+    expect(prompt.system).toContain('.orca/refactor/job-1')
+  })
+
+  it('tells the agent the source copy outranks the file on disk', () => {
+    expect(prompt.system).toContain('_source/src/foo.ts')
+  })
+
+  it('requires the manifest to be written', () => {
+    expect(prompt.system).toContain('manifest.json')
+  })
+
+  it('carries the user instruction into the prompt', () => {
+    expect(prompt.user).toContain('把重复的校验提出来')
+  })
+})
 
 describe('parseRefactorToolProgress', () => {
   it('names the file a write tool is writing', () => {
@@ -1256,7 +1282,7 @@ git commit -m "feat(refactor): call the refactoring runtime from the renderer"
 
 **Interfaces:**
 
-- Consumes: Task 1 的 `RefactorPlan`
+- Consumes: 无（tab 只存 jobId 与路径，不存 plan）
 - Produces:
   - `OpenFile['mode']` 新增 `'refactor-review'`
   - `EditorTabView` 新增成员 `{ mode: 'refactor-review'; refactorReview?: { jobId: string; worktree: string; relativePath: string } }`

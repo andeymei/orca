@@ -1311,8 +1311,10 @@ git commit -m "feat(refactor): track the refactoring jobs"
 - Create: `src/main/runtime/rpc/methods/refactor/refactor-methods.ts`
 - Create: `src/main/refactor/refactor-apply.ts`
 - Create: `src/main/refactor/refactor-scratch.ts`
+- Create: `src/main/refactor/refactor-scratch-cleanup.ts`
 - Modify: `src/main/runtime/rpc/methods/rpc-method-registry.ts`
 - Test: `src/main/refactor/refactor-apply.test.ts`
+- Test: `src/main/refactor/refactor-scratch-cleanup.test.ts`
 
 **Interfaces:**
 
@@ -1321,6 +1323,10 @@ git commit -m "feat(refactor): track the refactoring jobs"
   - `REFACTOR_METHODS`：注册 5 个方法 `refactor.propose` / `refactor.status` / `refactor.plan` / `refactor.apply` / `refactor.discard`，`permission: 'workspace'`
   - `src/main/refactor/refactor-apply.ts` 导出 `applyRefactorSelection(input: { plan: RefactorPlan; diskContents: ReadonlyMap<string, string>; acceptedHunkIds: readonly string[]; readCurrent: (path: string) => Promise<string | null>; write: (path: string, content: string, precondition: { expectedSignature: string; allowMissing: boolean }) => Promise<boolean> }): Promise<{ applied: { path: string; hunksApplied: number }[]; refusals: { path: string; reason: string }[] }>`
   - `src/main/refactor/refactor-scratch.ts` 导出 `refactorScratchRoot(workspaceRoot: string, jobId: string): string` 与 `refactorScratchRelativeRoot(jobId: string): string`（`.orca/refactor/<jobId>`）
+  - `src/main/refactor/refactor-scratch-cleanup.ts` 导出
+    `cleanExpiredRefactorScratch(input: { scratchParentRoot: string; excludeJobId?: string; now?: number; maxAgeMs?: number }): Promise<string[]>`
+    —— 删掉暂存根目录下**修改时间超过一天**的子目录，返回被删掉的目录名。
+    `now` 与 `maxAgeMs` 是注入的（默认 `Date.now()` 与 `24 * 60 * 60 * 1000`），所以"哪些算过期"是可测的。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -1433,6 +1439,8 @@ describe('applyRefactorSelection', () => {
 
 Run: `pnpm test src/main/refactor/refactor-apply.test.ts --maxWorkers=2`
 Expected: FAIL，报模块不存在。
+
+（暂存目录清理的测试写在 Step 5，实现写在 Step 6。）
 
 - [ ] **Step 3: 实现落地逻辑**
 
@@ -1560,9 +1568,95 @@ writeFileExplorerFile(
 - 追加前先读一遍该文件，**已存在 `.orca/refactor/` 这行就跳过**，不要重复追加。
 - 文件不存在就直接写（`info/exclude` 是 Git 自己保证存在的，父目录也在 common dir 里）。
 
-**暂存目录清理**：发起新任务时，扫 `<worktree>/.orca/refactor/` 下的子目录，把**修改时间超过一天**的删掉（`fs.readdir` + `fs.stat` + `fs.rm`）。当前 job 的目录不动。
+**暂存目录清理**：发起新任务时调 `cleanExpiredRefactorScratch({ scratchParentRoot: path.join(workspaceRoot, '.orca', 'refactor'), excludeJobId: jobId })`。
+当前 job 的目录不动（`excludeJobId`），父目录不存在就当没有暂存目录（不是错误）。
 
-- [ ] **Step 5: 注册方法并重新生成目录**
+- [ ] **Step 5: 写暂存目录清理的测试**
+
+`src/main/refactor/refactor-scratch-cleanup.test.ts`（用真实临时目录，`os.tmpdir()` 下的随机目录）：
+
+```ts
+import { afterEach, describe, expect, it } from 'vitest'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { cleanExpiredRefactorScratch } from './refactor-scratch-cleanup'
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const now = 1_700_000_000_000
+const roots: string[] = []
+
+async function scratchRoot(): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'refactor-scratch-'))
+  roots.push(root)
+  return root
+}
+
+async function jobDir(root: string, name: string, ageMs: number): Promise<string> {
+  const dir = path.join(root, name)
+  await fs.mkdir(dir, { recursive: true })
+  await fs.writeFile(path.join(dir, 'file.ts'), 'x')
+  const when = new Date(now - ageMs)
+  await fs.utimes(dir, when, when)
+  return dir
+}
+
+describe('cleanExpiredRefactorScratch', () => {
+  afterEach(async () => {
+    for (const root of roots.splice(0)) {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('removes a scratch directory older than a day', async () => {
+    const root = await scratchRoot()
+    const old = await jobDir(root, 'old-job', DAY_MS + 1000)
+    const removed = await cleanExpiredRefactorScratch({ scratchParentRoot: root, now })
+    expect(removed).toEqual(['old-job'])
+    await expect(fs.stat(old)).rejects.toThrow()
+  })
+
+  it('keeps a scratch directory from today', async () => {
+    const root = await scratchRoot()
+    const fresh = await jobDir(root, 'fresh-job', 1000)
+    const removed = await cleanExpiredRefactorScratch({ scratchParentRoot: root, now })
+    expect(removed).toEqual([])
+    await expect(fs.stat(fresh)).resolves.toBeTruthy()
+  })
+
+  it('keeps the current job even when it looks old', async () => {
+    const root = await scratchRoot()
+    await jobDir(root, 'current-job', DAY_MS + 1000)
+    const removed = await cleanExpiredRefactorScratch({
+      scratchParentRoot: root,
+      excludeJobId: 'current-job',
+      now
+    })
+    expect(removed).toEqual([])
+  })
+
+  it('does nothing when there is no scratch directory yet', async () => {
+    const root = await scratchRoot()
+    const removed = await cleanExpiredRefactorScratch({
+      scratchParentRoot: path.join(root, 'missing'),
+      now
+    })
+    expect(removed).toEqual([])
+  })
+})
+```
+
+- [ ] **Step 6: 实现暂存目录清理**
+
+在 `refactor-scratch-cleanup.ts`：
+
+- `fs.readdir(scratchParentRoot, { withFileTypes: true })`，只取目录；父目录不存在就返回 `[]`（不是错误）。
+- 对每个目录 `fs.stat` 拿 `mtimeMs`；`now - mtimeMs > maxAgeMs` 就 `fs.rm(dir, { recursive: true, force: true })`。
+- 名字等于 `excludeJobId` 的跳过。
+- 返回被删掉的目录名。
+- **`mtime` 是目录自己的修改时间**——agent 在里面写文件会更新它，所以"最近还在用的任务"不会被误删。
+
+- [ ] **Step 7: 注册方法并重新生成目录**
 
 在 `src/main/runtime/rpc/methods/rpc-method-registry.ts` 里 import `REFACTOR_METHODS` 并展开进 `ALL_RPC_METHODS`。
 
@@ -1574,12 +1668,12 @@ pnpm generate:rpc-params-catalog
 
 把生成物一起提交。
 
-- [ ] **Step 6: 跑测试确认它通过**
+- [ ] **Step 8: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor --maxWorkers=2`
 Expected: PASS。
 
-- [ ] **Step 7: 类型检查与提交**
+- [ ] **Step 9: 类型检查与提交**
 
 ```bash
 pnpm tc:node

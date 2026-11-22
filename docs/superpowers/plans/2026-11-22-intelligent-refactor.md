@@ -2330,6 +2330,7 @@ Expected: FAIL，报模块不存在。
 
 ```tsx
 import { defineFixture } from '../../../component-fixtures/component-fixture'
+import '@/lib/editor/monaco/monaco-setup'
 
 export const twoHunks = defineFixture({
   width: 1280,
@@ -2338,6 +2339,9 @@ export const twoHunks = defineFixture({
 ```
 
 导入路径是 `'../../../component-fixtures/component-fixture'`（从 `components/editor/refactor/` 往上三级到 `src/renderer/src/`）。
+**`import '@/lib/editor/monaco/monaco-setup'` 也要带上**——`DiffViewer` 自己不装 Monaco 的 worker 与语言，
+仓库里带 Monaco 的 fixture（`src/renderer/src/components/editor/code-completion/nes-ghost-text.fixture.tsx`）
+都是自己 import 这一行的；不 import 的话截图里 diff 区域是空的。
 **用具名导出**：注册表把模块的每个导出各自当成一个 fixture，名字就是 `<组件 id>:<导出名>`
 （`src/renderer/src/component-fixtures/component-fixture-registry.ts:31-44`）。
 

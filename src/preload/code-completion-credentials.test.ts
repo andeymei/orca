@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CODE_COMPLETION_CREDENTIAL_CHANNELS } from '../shared/code-completion/code-completion-credential-channels'
+import { CODE_COMPLETION_SUGGESTION_CHANNELS } from '../shared/code-completion/code-completion-suggestion-outcome'
 import { codeCompletionApi } from './api/code-completion-bridge'
 
 const invoke = vi.hoisted(() => vi.fn(async () => ({ configured: true, protection: null })))
 vi.mock('electron', () => ({ ipcRenderer: { invoke } }))
 
 describe('Code completion credential bridge', () => {
-  it('exposes only status and write operations', async () => {
+  it('exposes only status, write and report operations', async () => {
     expect(await codeCompletionApi.getStatus()).toEqual({ configured: true, protection: null })
     await codeCompletionApi.saveApiKey('fake-key')
     await codeCompletionApi.clearApiKey()
@@ -15,7 +16,24 @@ describe('Code completion credential bridge', () => {
       [CODE_COMPLETION_CREDENTIAL_CHANNELS.saveApiKey, 'fake-key'],
       [CODE_COMPLETION_CREDENTIAL_CHANNELS.clearApiKey]
     ])
-    expect(Object.keys(codeCompletionApi)).toEqual(['getStatus', 'saveApiKey', 'clearApiKey'])
+    expect(Object.keys(codeCompletionApi)).toEqual([
+      'getStatus',
+      'saveApiKey',
+      'clearApiKey',
+      'reportSuggestionOutcome'
+    ])
+  })
+
+  it('reports what became of a plan on its own channel', async () => {
+    await codeCompletionApi.reportSuggestionOutcome({
+      outcome: 'shown',
+      editCount: 1,
+      file: 'a.ts'
+    })
+    expect(invoke.mock.calls.at(-1)).toEqual([
+      CODE_COMPLETION_SUGGESTION_CHANNELS.reportSuggestionOutcome,
+      { outcome: 'shown', editCount: 1, file: 'a.ts' }
+    ])
   })
 
   it('pins the channel names the main-process handlers register', () => {

@@ -1,7 +1,7 @@
 import type { CodeCompletionCredentialsStatus } from '../../shared/code-completion/code-completion-credentials-status'
 import type { CodeCompletionSuggestionReport } from '../../shared/code-completion/code-completion-suggestion-outcome'
 
-export type CodeCompletionCredentialsApi = {
+export type CodeCompletionApi = {
   getStatus: () => Promise<CodeCompletionCredentialsStatus>
   saveApiKey: (key: string) => Promise<CodeCompletionCredentialsStatus>
   clearApiKey: () => Promise<CodeCompletionCredentialsStatus>

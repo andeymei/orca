@@ -22,7 +22,7 @@ import type { AppApi, E2EApi, PlatformApi } from './api/app-api'
 import type { AutomationsApi } from './api/automation-api'
 import type { BrowserApi } from './api/browser/browser-api'
 import type { CliApi } from './api/cli-install-api'
-import type { CodeCompletionCredentialsApi } from './api/code-completion-api'
+import type { CodeCompletionApi } from './api/code-completion-api'
 import type { CrashReportsApi, FeedbackApi } from './api/crash-report-api'
 import type { DashboardApi, TerminalPreviewApi } from './api/dashboard-api'
 import type { DocPreviewApi } from './api/doc-preview-api'
@@ -162,7 +162,7 @@ export type PreloadApi = {
   }
   minimaxCredentials: MinimaxCredentialsApi
   zcodePlanCredentials: ZcodePlanCredentialsApi
-  codeCompletion: CodeCompletionCredentialsApi
+  codeCompletion: CodeCompletionApi
   grokAccounts: GrokAccountsApi
   cursorAccounts: CursorAccountsApi
   ssh: SshApi

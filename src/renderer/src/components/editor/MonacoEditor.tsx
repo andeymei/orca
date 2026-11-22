@@ -29,7 +29,11 @@ import { useMonacoContentSyncBridge } from './use-monaco-content-sync-bridge'
 import { useMonacoMarkdownAnnotations } from './markdown-source-tools/monaco/use-monaco-markdown-annotations'
 import { useMonacoEditorDecorations } from './use-monaco-editor-decorations'
 import { useMonacoEditorMount } from './use-monaco-editor-mount'
-import { useMonacoNextEditSuggestions } from './code-completion/use-monaco-nes'
+import {
+  nesShortcutHandlersFor,
+  useMonacoNextEditSuggestions
+} from './code-completion/use-monaco-nes'
+import { NesNextEditNotice } from './code-completion/nes-next-edit-notice'
 import { DEFAULT_TRIGGER_DELAY_MS } from '../../../../shared/code-completion/code-completion-settings'
 import {
   useMonacoAiInstructions,
@@ -220,7 +224,7 @@ export default function MonacoEditor({
   })
 
   const codeCompletion = settings?.codeCompletion
-  const nesMarkerCount = useMonacoNextEditSuggestions({
+  const nes = useMonacoNextEditSuggestions({
     filePath,
     relativePath,
     // Why: a mirror of another tab's record must not ask for plans of its own.
@@ -266,8 +270,8 @@ export default function MonacoEditor({
   }, [mountedEditor])
 
   useEffect(() => {
-    mountedEditor?.updateOptions({ glyphMargin: glyphs.length > 0 || nesMarkerCount > 0 })
-  }, [glyphs.length, nesMarkerCount, mountedEditor])
+    mountedEditor?.updateOptions({ glyphMargin: glyphs.length > 0 || nes.markerCount > 0 })
+  }, [glyphs.length, nes.markerCount, mountedEditor])
 
   const handleMount = useMonacoEditorMount({
     fileId,
@@ -397,6 +401,18 @@ export default function MonacoEditor({
       />
 
       {toastNode}
+      {nes.nextEdit && (
+        <NesNextEditNotice
+          nextEdit={nes.nextEdit}
+          onJump={() => {
+            // Why: the jump chord is the one that moves to the next location, so the notice
+            // lands the user exactly where the model meant.
+            if (mountedEditor) {
+              nesShortcutHandlersFor(mountedEditor)?.jump()
+            }
+          }}
+        />
+      )}
       <MonacoGutterContextMenu
         open={gutterMenuOpen}
         onOpenChange={setGutterMenuOpen}

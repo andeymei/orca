@@ -12,6 +12,7 @@ import {
   type NesLocationMarker
 } from './nes-location-markers'
 import { nesPlanStore } from './nes-plan-store'
+import { nesNextEditNotice, type NesNextEdit } from './nes-next-edit'
 import { nesSuggestionOutcome, reportNesSuggestionOutcome } from './nes-suggestion-outcome'
 import { requestNesPlan } from './nes-runtime-client'
 
@@ -47,13 +48,21 @@ export function useMonacoNextEditSuggestions(params: {
   enabledExtensions: readonly string[]
   /** The live editor — the hook needs its model, its cursor and its decoration collection. */
   editorInstance: editor.IStandaloneCodeEditor | null
-}): number {
+}): {
+  /** The edits that carry a gutter marker. */
+  markerCount: number
+  /** The edit the cursor cannot show, when the plan holds one the user should look at. */
+  nextEdit: NesNextEdit | null
+} {
   const { filePath, relativePath, enabled, triggerDelayMs, enabledExtensions, editorInstance } =
     params
   // Why: the request cannot be cancelled end to end, so a late answer is dropped by its generation.
   const generationRef = useRef(0)
   // Why: the glyph margin is off by default, so the editor has to be told that a marker is in it.
   const [markerCount, setMarkerCount] = useState(0)
+  // Why: the plan can hold an edit the cursor cannot show, and a marker alone reads as nothing
+  // happened, so the notice names the place.
+  const [nextEdit, setNextEdit] = useState<NesNextEdit | null>(null)
   // Why: the provider asks the store by the model's own URI, so the binding has to carry that key.
   const modelKey = editorInstance?.getModel()?.uri.toString() ?? null
   // Why: the list arrives as an array, so a fresh one would restart the feature every render.
@@ -105,12 +114,14 @@ export function useMonacoNextEditSuggestions(params: {
       const position = editorInstance.getPosition()
       const model = editorInstance.getModel()
       const drawn = position && model ? editAtCursor() : null
+      const drawnIsDrawable = Boolean(
+        drawn && model && nesInlineCompletionForEdit(drawn, model) !== null
+      )
       // Why: the edit the cursor is on is the suggestion itself, so a marker would point at the
       // line the user is already on.
-      const shown =
-        drawn && model && nesInlineCompletionForEdit(drawn, model) !== null
-          ? nesPlanStore.editsForPath(filePath).filter((edit) => edit !== drawn)
-          : nesPlanStore.editsForPath(filePath)
+      const shown = drawnIsDrawable
+        ? nesPlanStore.editsForPath(filePath).filter((edit) => edit !== drawn)
+        : nesPlanStore.editsForPath(filePath)
       markers = position
         ? nesLocationMarkers(shown, position).sort(
             (left, right) => left.lineNumber - right.lineNumber
@@ -118,6 +129,26 @@ export function useMonacoNextEditSuggestions(params: {
         : []
       collection.set(nesMarkerDecorations(markers))
       setMarkerCount(markers.length)
+      setNextEdit((previous) => {
+        const notice = nesNextEditNotice({
+          drawn,
+          drawnIsDrawable,
+          markers,
+          cursor: position
+        })
+        // Why: the notice is rebuilt on every cursor move, so an unchanged one must keep its
+        // identity or the editor re-renders on every keypress.
+        if (
+          previous &&
+          notice &&
+          previous.kind === notice.kind &&
+          previous.lineNumber === notice.lineNumber &&
+          previous.label === notice.label
+        ) {
+          return previous
+        }
+        return notice
+      })
     }
 
     const editAtCursor = (): NesEdit | null => {
@@ -311,10 +342,11 @@ export function useMonacoNextEditSuggestions(params: {
       collection.clear()
       handlersByEditor.delete(editorInstance)
       setMarkerCount(0)
+      setNextEdit(null)
     }
   }, [editorInstance, modelKey, filePath, relativePath, enabled, triggerDelayMs, extensionsKey])
 
-  return markerCount
+  return { markerCount, nextEdit }
 }
 
 function isExtensionEnabled(filePath: string, extensionsKey: string): boolean {

@@ -4,6 +4,7 @@ import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 import { ensureNesInlineCompletionsProvider } from './nes-inline-provider'
+import type { NesNextEdit } from './nes-next-edit'
 import { nesPlanStore } from './nes-plan-store'
 import { nesShortcutHandlersFor, useMonacoNextEditSuggestions } from './use-monaco-nes'
 
@@ -168,7 +169,7 @@ function renderHookFor(
 
 /** The hook's own view, for the tests that read what it reports. */
 function renderHookView(model: monaco.editor.ITextModel): {
-  count: () => number
+  result: () => { markerCount: number; nextEdit: NesNextEdit | null }
   unmount: () => void
 } {
   const fakeEditor = createFakeEditor(model)
@@ -182,7 +183,7 @@ function renderHookView(model: monaco.editor.ITextModel): {
       editorInstance: fakeEditor.editorInstance
     })
   )
-  return { count: () => view.result.current, unmount: view.unmount }
+  return { result: () => view.result.current, unmount: view.unmount }
 }
 
 afterEach(() => {
@@ -257,10 +258,62 @@ describe('useMonacoNextEditSuggestions', () => {
       ]
     })
 
-    const { count, unmount } = renderHookView(model)
+    const { result, unmount } = renderHookView(model)
 
     await waitFor(() => {
-      expect(count()).toBe(1)
+      expect(result().markerCount).toBe(1)
+    })
+    unmount()
+  })
+
+  it('names the edit the cursor cannot show, so a plan elsewhere is never invisible', async () => {
+    const model = createModel('const a = 1\nconst b = 2')
+    requestNesPlanMock.mockResolvedValue({
+      edits: [
+        makeEdit({
+          kind: 'insert',
+          range: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 1 },
+          originalText: '',
+          text: 'const c = 3',
+          label: 'add the third constant'
+        })
+      ]
+    })
+
+    const { result, unmount } = renderHookView(model)
+
+    await waitFor(() => {
+      expect(result().nextEdit).toEqual({
+        kind: 'elsewhere',
+        lineNumber: 2,
+        label: 'add the third constant'
+      })
+    })
+    unmount()
+  })
+
+  it('names a rewrite at the cursor, which a ghost text cannot draw', async () => {
+    const model = createModel('const a = 1')
+    requestNesPlanMock.mockResolvedValue({
+      edits: [
+        makeEdit({
+          kind: 'replace',
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 12 },
+          originalText: 'const a = 1',
+          text: 'const b = 1',
+          label: 'rename the constant'
+        })
+      ]
+    })
+
+    const { result, unmount } = renderHookView(model)
+
+    await waitFor(() => {
+      expect(result().nextEdit).toEqual({
+        kind: 'rewrite',
+        lineNumber: 1,
+        label: 'rename the constant'
+      })
     })
     unmount()
   })

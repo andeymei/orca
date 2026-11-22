@@ -22458,6 +22458,11 @@
     },
     "dictation": {
       "stoppedAfterSilenceSeconds": "Stopped after {{seconds}} seconds of silence"
+    },
+    "codeCompletion": {
+      "nextEdit": "Next edit",
+      "rewriteHere": "Rewrite here",
+      "holdAltToPreview": "hold Alt to preview"
     }
   },
   "dashboardPopout": {

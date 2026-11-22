@@ -29,7 +29,7 @@ export function createMiniMaxCredentialsApi(): NonNullable<
   }
 }
 
-export function createCodeCompletionCredentialsApi(): PreloadApi['codeCompletion'] {
+export function createCodeCompletionApi(): PreloadApi['codeCompletion'] {
   // The completion key lives in the desktop host's keyring, so this bridge stores nothing
   // and has no protection to claim either way.
   const notConfigured = { configured: false, protection: null }

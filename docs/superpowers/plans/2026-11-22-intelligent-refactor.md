@@ -1273,6 +1273,9 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      - `refactor-tool-hook.ts` 里注册一个 PreToolUse 回调，`matcher` 不设（匹配所有工具），
        拿 `tool_name` / `tool_input` 走**同一个** `refactorToolAllowed`，
        不允许就返回 `{ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: ... } }`。
+     - **回调的入参是 `HookInput`（一个联合类型）**，只有 `PreToolUseHookInput` 变体上才有
+       `tool_name` / `tool_input`。所以要先判 `input.hook_event_name === 'PreToolUse'`，
+       不是就放行（注册在 PreToolUse 下时轮不到别的变体，但类型上要收窄）。
      - **失败即拒绝**：回调里抛异常时返回 deny，不要让异常冒到 CLI 那边变成"放行"。
      - hook 的 `tool_input` 是 `unknown`，要先判断它是不是对象再交给裁决函数。
      - `canUseTool` 保留为第二层，两者共用同一个裁决函数。

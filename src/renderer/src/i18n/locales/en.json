@@ -17181,7 +17181,7 @@
           "3c6e71df22": "Text diff is unavailable for this file in branch compare.",
           "6c4f1a8d2e": "Check details are unavailable.",
           "resolveConflictGuidance": "Resolve the conflict in Git or restore one side before reopening it.",
-          "refactorReviewUnavailable": "重构审查不可用"
+          "refactorReviewUnavailable": "The refactoring review is unavailable"
         },
         "EditorPanelHeader": {
           "fb8331694e": "Open Preview to the Side",
@@ -17873,7 +17873,8 @@
           "branchChangesBase": "Branch Changes (base)",
           "commitWithSubject": "Commit {{ref}}: {{subject}}",
           "commit": "Commit {{ref}}",
-          "commitDiffFallback": "Commit diff"
+          "commitDiffFallback": "Commit diff",
+          "refactorReview": "{{name}} (refactoring)"
         },
         "conflictMarkers": {
           "currentChange": "Current change",
@@ -17945,46 +17946,45 @@
           "rename-label": "Rename {{value0}} to {{value1}}"
         },
         "RefactorHunkView": {
-          "accept": "接受",
-          "accepted": "已接受",
-          "lineRange": "第 {{range}} 行"
+          "accept": "Accept",
+          "accepted": "Accepted",
+          "lineRange": "Lines {{range}}"
         },
         "RefactorProposalTree": {
-          "acceptFile": "接受文件 {{path}}",
-          "acceptHunk": "接受 {{path}} 的代码块 {{index}}",
-          "acceptProposal": "接受方案 {{title}}",
-          "hunkLabel": "代码块 {{index}}",
-          "noRationale": "未给出理由"
+          "acceptFile": "Accept file {{path}}",
+          "acceptHunk": "Accept code block {{index}} of {{path}}",
+          "acceptProposal": "Accept proposal {{title}}",
+          "hunkLabel": "Code block {{index}}",
+          "noRationale": "No reason given"
         },
         "RefactorReviewTab": {
-          "acceptAll": "接受全部方案",
-          "acceptWholeProposal": "接受该方案全部改动",
-          "applyAccepted": "应用已接受",
-          "cancelled": "重构已取消",
-          "discard": "丢弃",
-          "discardFailed": "未能丢弃，重构任务可能仍在运行。",
-          "failed": "重构失败",
-          "generated": "已生成 {{count}} 个方案",
-          "generating": "正在生成",
-          "loadingProposals": "正在读取重构建议",
-          "noProposals": "还没有可审查的重构建议",
-          "nothingWritten": "没有改动被写入，请重新生成。",
-          "partialAcceptance": "{{title}}：这个改动由 {{count}} 处修改共同组成，只接受其中一处可能无法编译",
-          "planUnavailable": "未能读取重构建议，请重新生成。",
-          "proposeFailed": "未能发起重构，请稍后重试。",
-          "refused": "部分文件没有被写入",
-          "selectHunk": "选择一个代码块查看差异",
-          "showFile": "查看完整文件",
-          "showHunk": "查看代码块",
-          "starting": "正在准备",
-          "tabLabel": "智能重构 · {{path}}",
-          "timedOut": "重构超时了，重新发起会更快",
-          "wholeFile": "整个文件",
-          "writeFailed": "写入失败，请重试。",
-          "written": "已写入 {{count}} 个文件"
+          "acceptAll": "Accept all proposals",
+          "acceptWholeProposal": "Accept every change in this proposal",
+          "applyAccepted": "Apply accepted changes",
+          "cancelled": "Refactoring cancelled",
+          "discard": "Discard",
+          "discardFailed": "The job could not be discarded and may still be running.",
+          "failed": "Refactoring failed",
+          "generated": "{{count}} proposals generated",
+          "generating": "Generating",
+          "loadingProposals": "Loading the proposals",
+          "noProposals": "No proposals to review yet",
+          "nothingWritten": "No changes were written. Start a new refactoring.",
+          "partialAcceptance": "{{title}}: this change is made of {{count}} edits, and accepting only some of them may not compile",
+          "planUnavailable": "The proposals could not be read. Start a new refactoring.",
+          "proposeFailed": "The refactoring could not be started. Try again.",
+          "refused": "Some files were not written",
+          "selectHunk": "Select a code block to see the diff",
+          "showFile": "Show the whole file",
+          "showHunk": "Show the code block",
+          "starting": "Starting",
+          "timedOut": "The refactoring timed out; starting it again is usually faster",
+          "wholeFile": "Whole file",
+          "writeFailed": "The changes could not be written. Try again.",
+          "written": "Wrote {{count}} files"
         },
         "RefactorTriggerButton": {
-          "refactor": "智能重构"
+          "refactor": "Refactor"
         }
       },
       "diff": {

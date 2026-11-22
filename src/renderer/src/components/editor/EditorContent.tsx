@@ -173,7 +173,10 @@ export function EditorContent({
     if (!refactorReview) {
       return (
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          {t('auto.components.editor.EditorContent.refactorReviewUnavailable', '重构审查不可用')}
+          {t(
+            'auto.components.editor.EditorContent.refactorReviewUnavailable',
+            'The refactoring review is unavailable'
+          )}
         </div>
       )
     }

@@ -127,6 +127,46 @@ const PLAN: RefactorPlan = {
   ]
 }
 
+/**
+ * Two proposals on one file.
+ *
+ * Why: the whole-file view has to show the hunks of the proposal the user is reading, and only a
+ * plan with two proposals on the same file can tell that apart from the whole plan.
+ */
+const SAME_FILE_PLAN: RefactorPlan = {
+  jobId: 'job-1',
+  sourcePath: 'src/foo.ts',
+  proposals: [
+    {
+      id: 'p1',
+      title: '提取参数校验',
+      rationale: '两处校验规则相同',
+      files: [
+        {
+          path: 'src/foo.ts',
+          originalContent: ORIGINAL,
+          hunks: [
+            hunk('src/foo.ts:h1', 1, 'const a = 1\n', 'const a = assertPositive(1)\n'),
+            hunk('src/foo.ts:h2', 3, 'const c = 3\n', 'const c = assertPositive(3)\n')
+          ]
+        }
+      ]
+    },
+    {
+      id: 'p2',
+      title: '补上中间值校验',
+      rationale: '中间值也漏了校验',
+      files: [
+        {
+          path: 'src/foo.ts',
+          originalContent: ORIGINAL,
+          hunks: [hunk('src/foo.ts:h3', 2, 'const b = 2\n', 'const b = assertPositive(2)\n')]
+        }
+      ]
+    }
+  ]
+}
+
 function renderTab(): ReturnType<typeof render> {
   return render(<RefactorReviewTab jobId="job-1" worktreeId="wt-1" relativePath="src/foo.ts" />)
 }
@@ -160,8 +200,15 @@ describe('the refactor review tab', () => {
 
   it('warns when only part of a proposal is accepted', () => {
     renderTab()
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受 src/foo.ts 的代码块 1' }))
-    expect(screen.getByText(/只接受其中一处可能无法编译/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    expect(screen.getByText(/accepting only some of them may not compile/)).toBeTruthy()
+  })
+
+  it('cannot accept every proposal before the plan arrives', () => {
+    refactorReviewStore.remove('job-1')
+    renderTab()
+    const acceptAll = screen.getByRole('button', { name: 'Accept all proposals' })
+    expect(acceptAll.hasAttribute('disabled')).toBe(true)
   })
 
   it('shows the change of the selected hunk on the right', () => {
@@ -173,9 +220,20 @@ describe('the refactor review tab', () => {
 
   it('shows the whole file of the proposal when the view is switched', () => {
     renderTab()
-    fireEvent.click(screen.getByRole('button', { name: '查看完整文件' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show the whole file' }))
     expect(screen.getByTestId('diff-viewer').textContent).toBe(
       `${ORIGINAL}|const a = assertPositive(1)\nconst b = 2\nconst c = assertPositive(3)\n`
+    )
+  })
+
+  it('shows the whole file of the proposal the user is reading, not of another on the same file', () => {
+    refactorReviewStore.setPlan('job-1', SAME_FILE_PLAN)
+    renderTab()
+    // The second proposal's code block: both proposals touch src/foo.ts.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Code block 1' })[1])
+    fireEvent.click(screen.getByRole('button', { name: 'Show the whole file' }))
+    expect(screen.getByTestId('diff-viewer').textContent).toBe(
+      `${ORIGINAL}|const a = 1\nconst b = assertPositive(2)\nconst c = 3\n`
     )
   })
 
@@ -188,8 +246,8 @@ describe('the refactor review tab', () => {
 
   it('accepts the whole proposal when the warning asks for it', () => {
     renderTab()
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受 src/foo.ts 的代码块 1' }))
-    fireEvent.click(screen.getByRole('button', { name: '接受该方案全部改动' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Accept every change in this proposal' }))
     const accepted = refactorReviewStore.getSelection('job-1').acceptedHunkIds
     expect(accepted.has('src/foo.ts:h1')).toBe(true)
     expect(accepted.has('src/foo.ts:h2')).toBe(true)
@@ -197,8 +255,8 @@ describe('the refactor review tab', () => {
 
   it('writes the accepted hunks and closes the tab', async () => {
     renderTab()
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受 src/foo.ts 的代码块 1' }))
-    fireEvent.click(screen.getByRole('button', { name: '应用已接受' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
     await waitFor(() =>
       expect(mocks.applyRefactor).toHaveBeenCalledWith('job-1', ['src/foo.ts:h1'])
     )
@@ -213,8 +271,8 @@ describe('the refactor review tab', () => {
       refusals: [{ path: 'src/foo.ts', reason: '文件在评审期间被改动过，请重新生成重构建议' }]
     })
     renderTab()
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受 src/foo.ts 的代码块 1' }))
-    fireEvent.click(screen.getByRole('button', { name: '应用已接受' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
     await waitFor(() =>
       expect(screen.getByText('文件在评审期间被改动过，请重新生成重构建议')).toBeTruthy()
     )
@@ -234,7 +292,7 @@ describe('the refactor review tab', () => {
   it('tells a timeout apart from a failure, because a retry is faster', async () => {
     mocks.fetchRefactorStatus.mockResolvedValue({ state: 'timed_out', progress: '', warnings: [] })
     renderTab()
-    expect(await screen.findByText(/超时/)).toBeTruthy()
+    expect(await screen.findByText(/timed out/)).toBeTruthy()
   })
 
   it('keeps the plan when the user only looked away', () => {

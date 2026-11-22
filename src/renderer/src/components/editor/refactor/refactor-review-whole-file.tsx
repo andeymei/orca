@@ -35,7 +35,7 @@ export function RefactorWholeFile({
       <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
         <span className="font-mono text-xs text-muted-foreground">{file.path}</span>
         <span className="text-xs text-muted-foreground">
-          {t('auto.components.editor.RefactorReviewTab.wholeFile', '整个文件')}
+          {t('auto.components.editor.RefactorReviewTab.wholeFile', 'Whole file')}
         </span>
       </div>
       <div className="flex min-h-0 flex-1">

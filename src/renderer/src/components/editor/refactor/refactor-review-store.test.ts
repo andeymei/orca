@@ -116,6 +116,14 @@ describe('the refactor review store', () => {
     expect(store.getSelection('job-1').acceptedHunkIds.size).toBe(0)
   })
 
+  it('forgets the revision of a job it dropped', () => {
+    const store = createRefactorReviewStore()
+    store.setPlan('job-1', plan)
+    expect(store.getRevision('job-1')).toBeGreaterThan(0)
+    store.remove('job-1')
+    expect(store.getRevision('job-1')).toBe(0)
+  })
+
   it('keeps the hunks it already accepted when another set is accepted', () => {
     const store = createRefactorReviewStore()
     store.setPlan('job-3', threeHunkPlan)

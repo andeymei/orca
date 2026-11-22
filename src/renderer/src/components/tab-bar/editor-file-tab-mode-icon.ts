@@ -5,6 +5,7 @@ import {
   ListChecks,
   ShieldAlert,
   Smartphone,
+  Sparkles,
   type LucideIcon
 } from 'lucide-react'
 import type { EditorFileTabProps } from './editor-file-tab-props'
@@ -19,11 +20,13 @@ export function getEditorFileTabModeIcon(
       ? ShieldAlert
       : file.mode === 'check-details'
         ? ListChecks
-        : file.mode === 'diff'
-          ? GitCompareArrows
-          : file.mode === 'markdown-preview'
-            ? Eye
-            : file.language === 'simulator'
-              ? Smartphone
-              : null
+        : file.mode === 'refactor-review'
+          ? Sparkles
+          : file.mode === 'diff'
+            ? GitCompareArrows
+            : file.mode === 'markdown-preview'
+              ? Eye
+              : file.language === 'simulator'
+                ? Smartphone
+                : null
 }

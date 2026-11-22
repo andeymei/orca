@@ -160,6 +160,9 @@ export function createRefactorReviewStore(): RefactorReviewStore {
       plans.delete(jobId)
       selections.delete(jobId)
       notify(jobId)
+      // Why after the notice: a removed job is never read again, and the map would otherwise
+      // hold one dead entry per job of the session.
+      revisions.delete(jobId)
     },
     subscribe(jobId: string, listener: () => void): () => void {
       const jobListeners = listeners.get(jobId) ?? new Set<() => void>()

@@ -15824,7 +15824,8 @@
           "8a0898ae4c": "此文件的文本差异不可用",
           "3c6e71df22": "分支比较中此文件的文本差异不可用",
           "6c4f1a8d2e": "检查详情不可用",
-          "resolveConflictGuidance": "重新打开前，请先在 Git 中解决冲突，或恢复其中一方的内容"
+          "resolveConflictGuidance": "重新打开前，请先在 Git 中解决冲突，或恢复其中一方的内容",
+          "refactorReviewUnavailable": "重构审查不可用"
         },
         "EditorPanelHeader": {
           "fb8331694e": "打开侧面预览",
@@ -16506,7 +16507,8 @@
           "branchChangesBase": "分支更改（基准）",
           "commitWithSubject": "提交 {{ref}}：{{subject}}",
           "commit": "提交 {{ref}}",
-          "commitDiffFallback": "提交差异"
+          "commitDiffFallback": "提交差异",
+          "refactorReview": "{{name}}（重构）"
         },
         "conflictMarkers": {
           "currentChange": "当前更改",
@@ -16561,6 +16563,47 @@
           "remotePathIsDirectory": "远程路径是一个目录",
           "remotePagedReadUnsupported": "远程文件超过了此 Orca 服务器可发送的 512 KB 上限，请更新服务器后再打开",
           "remoteFileTooLarge": "远程文件过大，无法在编辑器中打开（{{bytes}} 字节）"
+        },
+        "RefactorHunkView": {
+          "accept": "接受",
+          "accepted": "已接受",
+          "lineRange": "第 {{range}} 行"
+        },
+        "RefactorProposalTree": {
+          "acceptFile": "接受文件 {{path}}",
+          "acceptHunk": "接受 {{path}} 的代码块 {{index}}",
+          "acceptProposal": "接受方案 {{title}}",
+          "hunkLabel": "代码块 {{index}}",
+          "noRationale": "未给出理由"
+        },
+        "RefactorReviewTab": {
+          "acceptAll": "接受全部方案",
+          "acceptWholeProposal": "接受该方案全部改动",
+          "applyAccepted": "应用已接受",
+          "cancelled": "重构已取消",
+          "discard": "丢弃",
+          "discardFailed": "未能丢弃，重构任务可能仍在运行。",
+          "failed": "重构失败",
+          "generated": "已生成 {{count}} 个方案",
+          "generating": "正在生成",
+          "loadingProposals": "正在读取重构建议",
+          "noProposals": "还没有可审查的重构建议",
+          "nothingWritten": "没有改动被写入，请重新生成。",
+          "partialAcceptance": "{{title}}：这个改动由 {{count}} 处修改共同组成，只接受其中一处可能无法编译",
+          "planUnavailable": "未能读取重构建议，请重新生成。",
+          "proposeFailed": "未能发起重构，请稍后重试。",
+          "refused": "部分文件没有被写入",
+          "selectHunk": "选择一个代码块查看差异",
+          "showFile": "查看完整文件",
+          "showHunk": "查看代码块",
+          "starting": "正在准备",
+          "timedOut": "重构超时了，重新发起会更快",
+          "wholeFile": "整个文件",
+          "writeFailed": "写入失败，请重试。",
+          "written": "已写入 {{count}} 个文件"
+        },
+        "RefactorTriggerButton": {
+          "refactor": "智能重构"
         }
       },
       "diff": {

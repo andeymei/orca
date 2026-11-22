@@ -59,12 +59,12 @@ describe('the refactor proposal tree', () => {
   it('shows the proposal and says when the agent gave no reason', () => {
     render(<RefactorProposalTree jobId="job-1" />)
     expect(screen.getByText('提取参数校验')).toBeTruthy()
-    expect(screen.getByText('未给出理由')).toBeTruthy()
+    expect(screen.getByText('No reason given')).toBeTruthy()
   })
 
   it('accepts every hunk of the proposal when the proposal is ticked', () => {
     render(<RefactorProposalTree jobId="job-1" />)
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受方案 提取参数校验 · p1' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept proposal 提取参数校验 · p1' }))
     const accepted = refactorReviewStore.getSelection('job-1').acceptedHunkIds
     expect(accepted.has('src/foo.ts:h1')).toBe(true)
     expect(accepted.has('src/bar.ts:h1')).toBe(true)
@@ -72,7 +72,7 @@ describe('the refactor proposal tree', () => {
 
   it('accepts only the hunks of one file when the file is ticked', () => {
     render(<RefactorProposalTree jobId="job-1" />)
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受文件 src/bar.ts' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept file src/bar.ts' }))
     const accepted = refactorReviewStore.getSelection('job-1').acceptedHunkIds
     expect(accepted.has('src/bar.ts:h1')).toBe(true)
     expect(accepted.has('src/foo.ts:h1')).toBe(false)
@@ -80,7 +80,7 @@ describe('the refactor proposal tree', () => {
 
   it('accepts one hunk when the hunk is ticked', () => {
     render(<RefactorProposalTree jobId="job-1" />)
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受 src/foo.ts 的代码块 1' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
     const accepted = refactorReviewStore.getSelection('job-1').acceptedHunkIds
     expect(accepted.has('src/foo.ts:h1')).toBe(true)
     expect(accepted.has('src/bar.ts:h1')).toBe(false)
@@ -88,7 +88,7 @@ describe('the refactor proposal tree', () => {
 
   it('points the right pane at the hunk the user picked', () => {
     render(<RefactorProposalTree jobId="job-1" />)
-    fireEvent.click(screen.getAllByText('代码块 1')[0])
+    fireEvent.click(screen.getAllByText('Code block 1')[0])
     const selection = refactorReviewStore.getSelection('job-1')
     expect(selection.selectedHunkId).toBe('src/foo.ts:h1')
     expect(selection.selectedFilePath).toBe('src/foo.ts')
@@ -96,28 +96,28 @@ describe('the refactor proposal tree', () => {
 
   it('shows the tick of the hunk the user accepted', () => {
     render(<RefactorProposalTree jobId="job-1" />)
-    expect(stateOf('接受 src/foo.ts 的代码块 1')).toBe('unchecked')
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受 src/foo.ts 的代码块 1' }))
-    expect(stateOf('接受 src/foo.ts 的代码块 1')).toBe('checked')
+    expect(stateOf('Accept code block 1 of src/foo.ts')).toBe('unchecked')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    expect(stateOf('Accept code block 1 of src/foo.ts')).toBe('checked')
   })
 
   it('shows a half accepted file and a half accepted proposal', () => {
     render(<RefactorProposalTree jobId="job-1" />)
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受 src/foo.ts 的代码块 1' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
     // The file holds two hunks and only one of them is accepted.
-    expect(stateOf('接受文件 src/foo.ts')).toBe('indeterminate')
-    expect(stateOf('接受方案 提取参数校验 · p1')).toBe('indeterminate')
+    expect(stateOf('Accept file src/foo.ts')).toBe('indeterminate')
+    expect(stateOf('Accept proposal 提取参数校验 · p1')).toBe('indeterminate')
   })
 
   it('shows the whole proposal as accepted, and gives it back when it is unticked', () => {
     render(<RefactorProposalTree jobId="job-1" />)
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受方案 提取参数校验 · p1' }))
-    expect(stateOf('接受方案 提取参数校验 · p1')).toBe('checked')
-    expect(stateOf('接受文件 src/foo.ts')).toBe('checked')
-    expect(stateOf('接受文件 src/bar.ts')).toBe('checked')
-    fireEvent.click(screen.getByRole('checkbox', { name: '接受方案 提取参数校验 · p1' }))
-    expect(stateOf('接受方案 提取参数校验 · p1')).toBe('unchecked')
-    expect(stateOf('接受文件 src/foo.ts')).toBe('unchecked')
-    expect(stateOf('接受文件 src/bar.ts')).toBe('unchecked')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept proposal 提取参数校验 · p1' }))
+    expect(stateOf('Accept proposal 提取参数校验 · p1')).toBe('checked')
+    expect(stateOf('Accept file src/foo.ts')).toBe('checked')
+    expect(stateOf('Accept file src/bar.ts')).toBe('checked')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept proposal 提取参数校验 · p1' }))
+    expect(stateOf('Accept proposal 提取参数校验 · p1')).toBe('unchecked')
+    expect(stateOf('Accept file src/foo.ts')).toBe('unchecked')
+    expect(stateOf('Accept file src/bar.ts')).toBe('unchecked')
   })
 })

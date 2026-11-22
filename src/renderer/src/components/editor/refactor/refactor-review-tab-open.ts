@@ -37,7 +37,7 @@ export async function openRefactorReviewTab(input: {
         ? outcome.reason
         : translate(
             'auto.components.editor.RefactorReviewTab.proposeFailed',
-            '未能发起重构，请稍后重试。'
+            'The refactoring could not be started. Try again.'
           )
     )
     return
@@ -45,13 +45,9 @@ export async function openRefactorReviewTab(input: {
   const jobId = outcome.jobId
   const state = useAppStore.getState()
   const id = refactorReviewTabId(input.worktreeId, jobId)
-  const label = translate(
-    'auto.components.editor.RefactorReviewTab.tabLabel',
-    '智能重构 · {{path}}',
-    {
-      path: input.relativePath
-    }
-  )
+  // Why the file's own path: the tab strip names the view from it, and the file it reviews is
+  // what the user has to recognise.
+  const label = input.relativePath
   const existing = state.unifiedTabsByWorktree?.[input.worktreeId]?.find(
     (tab) => tab.contentType === 'refactor-review' && tab.entityId === id
   )

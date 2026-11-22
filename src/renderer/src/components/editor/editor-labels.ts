@@ -55,6 +55,14 @@ export function getEditorDisplayLabel(
     return file.checkRunDetails?.check.name ?? getBaseLabel(file, variant)
   }
 
+  if (file.mode === 'refactor-review') {
+    // Why the file name: the tab is a view of that file, and the strip must not show it twice
+    // under the same name.
+    return t('auto.components.editor.editorLabels.refactorReview', '{{name}} (refactoring)', {
+      name: getBaseLabel(file, variant)
+    })
+  }
+
   if (file.mode === 'markdown-preview') {
     return t('auto.components.editor.editorLabels.preview', '{{name}} (preview)', {
       name: getBaseLabel(file, variant)

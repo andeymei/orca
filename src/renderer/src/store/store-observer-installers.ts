@@ -1,5 +1,6 @@
 import type { AppState } from './types'
 import { installTerminalParkingInputs } from './terminals/terminal-parking-input-transitions'
+import { installRefactorReviewPlanRelease } from '@/components/editor/refactor/refactor-review-plan-release'
 
 export type StoreObserverHost = {
   getState: () => AppState
@@ -10,5 +11,6 @@ export type StoreObserverHost = {
 export type StoreObserverInstaller = (store: StoreObserverHost) => void
 
 export const STORE_OBSERVER_INSTALLERS: readonly StoreObserverInstaller[] = [
-  installTerminalParkingInputs
+  installTerminalParkingInputs,
+  installRefactorReviewPlanRelease
 ]

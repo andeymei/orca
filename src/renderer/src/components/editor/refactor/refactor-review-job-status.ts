@@ -19,17 +19,17 @@ export function statusLabel(
   t: Translate
 ): string | null {
   if (!job) {
-    return t('auto.components.editor.RefactorReviewTab.starting', '正在准备')
+    return t('auto.components.editor.RefactorReviewTab.starting', 'Starting')
   }
   switch (job.state) {
     case 'running':
-      return t('auto.components.editor.RefactorReviewTab.generating', '正在生成')
+      return t('auto.components.editor.RefactorReviewTab.generating', 'Generating')
     case 'done':
       return plan
-        ? t('auto.components.editor.RefactorReviewTab.generated', '已生成 {{count}} 个方案', {
+        ? t('auto.components.editor.RefactorReviewTab.generated', '{{count}} proposals generated', {
             count: plan.proposals.length
           })
-        : t('auto.components.editor.RefactorReviewTab.loadingProposals', '正在读取重构建议')
+        : t('auto.components.editor.RefactorReviewTab.loadingProposals', 'Loading the proposals')
     default:
       // Why: a job that ended badly says so in the notice below, not twice.
       return null
@@ -40,11 +40,14 @@ export function statusLabel(
 export function failureLabel(job: UnfinishedJobState, t: Translate): string {
   switch (job.state) {
     case 'failed':
-      return t('auto.components.editor.RefactorReviewTab.failed', '重构失败')
+      return t('auto.components.editor.RefactorReviewTab.failed', 'Refactoring failed')
     case 'timed_out':
-      return t('auto.components.editor.RefactorReviewTab.timedOut', '重构超时了，重新发起会更快')
+      return t(
+        'auto.components.editor.RefactorReviewTab.timedOut',
+        'The refactoring timed out; starting it again is usually faster'
+      )
     case 'cancelled':
-      return t('auto.components.editor.RefactorReviewTab.cancelled', '重构已取消')
+      return t('auto.components.editor.RefactorReviewTab.cancelled', 'Refactoring cancelled')
   }
 }
 

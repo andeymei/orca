@@ -291,3 +291,27 @@ it('releases the diff models of a closed refactor review tab', async () => {
   expect(original.isDisposed()).toBe(true)
   expect(modified.isDisposed()).toBe(true)
 })
+
+it('keeps the diff models of a refactor review tab that is still open', async () => {
+  const { store, attach } = createModelLifetimeFixture()
+  const reviewId = 'wt-1::refactor-review:job-1'
+  const review = {
+    ...modelLifetimeFile(reviewId, 'refactor-review'),
+    filePath: reviewId,
+    relativePath: 'src/foo.ts'
+  }
+  const other = modelLifetimeFile('other')
+  const paths = getDiffViewerMonacoModelPaths({
+    modelKey: `refactor-hunk:${reviewId}:src/foo.ts:h1`,
+    modelOwnerKey: reviewId,
+    generationSuffix: ''
+  })
+  const original = modelLifetimeTextModel(paths.originalModelPath)
+  const modified = modelLifetimeTextModel(paths.modifiedModelPath)
+  store.setState({ openFiles: [review, other] })
+  attach()
+  store.getState().closeFile(other.id)
+  await Promise.resolve()
+  expect(original.isDisposed()).toBe(false)
+  expect(modified.isDisposed()).toBe(false)
+})

@@ -1,4 +1,5 @@
-import { Sparkles } from 'lucide-react'
+import { Loader2, Sparkles } from 'lucide-react'
+import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -28,7 +29,21 @@ export function RefactorTriggerButton({
 }: RefactorTriggerButtonProps): React.JSX.Element {
   const t = useTranslate()
   const content = refactorSourceContent(drafts[fileId], fileContents[fileId])
-  const label = t('auto.components.editor.RefactorTriggerButton.refactor', '智能重构')
+  const label = t('auto.components.editor.RefactorTriggerButton.refactor', 'Refactor')
+  // Why the pending state: the propose request can take a while, and a second click would start a
+  // second agent turn on the same file.
+  const [starting, setStarting] = useState(false)
+  const start = async (): Promise<void> => {
+    if (starting || content.length === 0) {
+      return
+    }
+    setStarting(true)
+    try {
+      await openRefactorReviewTab({ worktreeId, relativePath, content })
+    } finally {
+      setStarting(false)
+    }
+  }
   return (
     <TooltipProvider>
       <Tooltip>
@@ -38,12 +53,16 @@ export function RefactorTriggerButton({
             variant="ghost"
             size="icon-xs"
             aria-label={label}
-            disabled={content.length === 0}
+            disabled={content.length === 0 || starting}
             onClick={() => {
-              void openRefactorReviewTab({ worktreeId, relativePath, content })
+              void start()
             }}
           >
-            <Sparkles className="size-4" />
+            {starting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={4}>

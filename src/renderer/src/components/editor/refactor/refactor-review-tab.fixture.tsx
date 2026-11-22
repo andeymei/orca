@@ -119,5 +119,10 @@ export const withProposals = defineFixture({
       _meta: { runtimeId: 'fixture-runtime' }
     })
   },
-  render: () => <RefactorReviewTab jobId="job-1" worktreeId="wt-1" relativePath="src/foo.ts" />
+  render: () => (
+    // Why the height: the diff pane is a flex chain that collapses without one.
+    <div className="flex h-[600px] flex-col">
+      <RefactorReviewTab jobId="job-1" worktreeId="wt-1" relativePath="src/foo.ts" />
+    </div>
+  )
 })

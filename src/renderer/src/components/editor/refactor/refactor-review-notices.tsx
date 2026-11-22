@@ -50,7 +50,7 @@ export function RefactorReviewNotices({
         <p className="border-b border-border px-3 py-2 text-xs text-destructive">
           {t(
             'auto.components.editor.RefactorReviewTab.planUnavailable',
-            '未能读取重构建议，请重新生成。'
+            'The proposals could not be read. Start a new refactoring.'
           )}
         </p>
       ) : null}
@@ -60,7 +60,7 @@ export function RefactorReviewNotices({
       {refusals.length > 0 ? (
         <div className="border-b border-border px-3 py-2">
           <p className="text-xs font-medium text-destructive">
-            {t('auto.components.editor.RefactorReviewTab.refused', '部分文件没有被写入')}
+            {t('auto.components.editor.RefactorReviewTab.refused', 'Some files were not written')}
           </p>
           {refusals.map((refusal) => (
             <div key={refusal.path} className="text-xs">
@@ -101,7 +101,7 @@ export function RefactorPartialAcceptanceNotices({
           <p className="text-xs text-muted-foreground">
             {t(
               'auto.components.editor.RefactorReviewTab.partialAcceptance',
-              '{{title}}：这个改动由 {{count}} 处修改共同组成，只接受其中一处可能无法编译',
+              '{{title}}: this change is made of {{count}} edits, and accepting only some of them may not compile',
               {
                 title: proposal.title,
                 count: refactorHunksOfProposal(proposal).length
@@ -117,7 +117,7 @@ export function RefactorPartialAcceptanceNotices({
           >
             {t(
               'auto.components.editor.RefactorReviewTab.acceptWholeProposal',
-              '接受该方案全部改动'
+              'Accept every change in this proposal'
             )}
           </Button>
         </div>

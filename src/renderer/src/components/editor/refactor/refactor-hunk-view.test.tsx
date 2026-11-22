@@ -135,27 +135,27 @@ afterEach(() => {
 describe('the refactoring hunk view', () => {
   it('shows the absolute line range of the hunk', async () => {
     render(<RefactorHunkView {...props} />)
-    expect(screen.getByText('第 42-58 行')).toBeTruthy()
+    expect(screen.getByText('Lines 42-58')).toBeTruthy()
     await findDiffEditor()
   })
 
   it('shows a pure insertion as the single line it lands on', async () => {
     render(<RefactorHunkView {...props} hunk={{ ...HUNK, originalLineCount: 0 }} />)
-    expect(screen.getByText('第 42 行')).toBeTruthy()
+    expect(screen.getByText('Lines 42')).toBeTruthy()
     await findDiffEditor()
   })
 
   it('shows an accept control that reports the click', async () => {
     const onToggleAccepted = vi.fn()
     render(<RefactorHunkView {...props} onToggleAccepted={onToggleAccepted} />)
-    fireEvent.click(screen.getByRole('button', { name: '接受' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
     expect(onToggleAccepted).toHaveBeenCalled()
     await findDiffEditor()
   })
 
   it('marks an accepted hunk as accepted', async () => {
     render(<RefactorHunkView {...props} accepted />)
-    expect(screen.getByRole('button', { name: '已接受' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Accepted' })).toBeTruthy()
     await findDiffEditor()
   })
 

@@ -146,13 +146,13 @@ export function RefactorReviewTab({
         setFailure(
           t(
             'auto.components.editor.RefactorReviewTab.nothingWritten',
-            '没有改动被写入，请重新生成。'
+            'No changes were written. Start a new refactoring.'
           )
         )
         return
       }
       toast.success(
-        t('auto.components.editor.RefactorReviewTab.written', '已写入 {{count}} 个文件', {
+        t('auto.components.editor.RefactorReviewTab.written', 'Wrote {{count}} files', {
           count: result.applied.length
         })
       )
@@ -161,9 +161,17 @@ export function RefactorReviewTab({
       setFailure(
         error instanceof Error && error.message.length > 0
           ? error.message
-          : t('auto.components.editor.RefactorReviewTab.writeFailed', '写入失败，请重试。')
+          : t(
+              'auto.components.editor.RefactorReviewTab.writeFailed',
+              'The changes could not be written. Try again.'
+            )
       )
-      toast.error(t('auto.components.editor.RefactorReviewTab.writeFailed', '写入失败，请重试。'))
+      toast.error(
+        t(
+          'auto.components.editor.RefactorReviewTab.writeFailed',
+          'The changes could not be written. Try again.'
+        )
+      )
     } finally {
       setWriting(false)
     }
@@ -198,7 +206,7 @@ export function RefactorReviewTab({
         setFailure(
           t(
             'auto.components.editor.RefactorReviewTab.discardFailed',
-            '未能丢弃，重构任务可能仍在运行。'
+            'The job could not be discarded and may still be running.'
           )
         )
         return
@@ -229,8 +237,8 @@ export function RefactorReviewTab({
             onClick={() => setWholeFile((previous) => !previous)}
           >
             {wholeFile
-              ? t('auto.components.editor.RefactorReviewTab.showHunk', '查看代码块')
-              : t('auto.components.editor.RefactorReviewTab.showFile', '查看完整文件')}
+              ? t('auto.components.editor.RefactorReviewTab.showHunk', 'Show the code block')
+              : t('auto.components.editor.RefactorReviewTab.showFile', 'Show the whole file')}
           </Button>
           <Button
             type="button"
@@ -239,16 +247,16 @@ export function RefactorReviewTab({
             disabled={acceptedHunkIds.length === 0 || writing}
             onClick={() => void write(acceptedHunkIds)}
           >
-            {t('auto.components.editor.RefactorReviewTab.applyAccepted', '应用已接受')}
+            {t('auto.components.editor.RefactorReviewTab.applyAccepted', 'Apply accepted changes')}
           </Button>
           <Button
             type="button"
             variant="default"
             size="xs"
-            disabled={writing}
+            disabled={writing || !plan}
             onClick={() => void acceptAll()}
           >
-            {t('auto.components.editor.RefactorReviewTab.acceptAll', '接受全部方案')}
+            {t('auto.components.editor.RefactorReviewTab.acceptAll', 'Accept all proposals')}
           </Button>
           <Button
             type="button"
@@ -257,7 +265,7 @@ export function RefactorReviewTab({
             disabled={discarding}
             onClick={() => void discard()}
           >
-            {t('auto.components.editor.RefactorReviewTab.discard', '丢弃')}
+            {t('auto.components.editor.RefactorReviewTab.discard', 'Discard')}
           </Button>
         </div>
       </div>
@@ -298,10 +306,13 @@ export function RefactorReviewTab({
           ) : (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
               {plan
-                ? t('auto.components.editor.RefactorReviewTab.selectHunk', '选择一个代码块查看差异')
+                ? t(
+                    'auto.components.editor.RefactorReviewTab.selectHunk',
+                    'Select a code block to see the diff'
+                  )
                 : t(
                     'auto.components.editor.RefactorReviewTab.noProposals',
-                    '还没有可审查的重构建议'
+                    'No proposals to review yet'
                   )}
             </div>
           )}

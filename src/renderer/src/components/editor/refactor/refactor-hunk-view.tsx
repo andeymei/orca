@@ -38,7 +38,7 @@ export function RefactorHunkView({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
         <span className="font-mono text-xs text-muted-foreground">
-          {t('auto.components.editor.RefactorHunkView.lineRange', '第 {{range}} 行', {
+          {t('auto.components.editor.RefactorHunkView.lineRange', 'Lines {{range}}', {
             range: originalLineRange(hunk)
           })}
         </span>
@@ -52,8 +52,8 @@ export function RefactorHunkView({
         >
           {accepted ? <CircleCheck className="size-4" /> : <Circle className="size-4" />}
           {accepted
-            ? t('auto.components.editor.RefactorHunkView.accepted', '已接受')
-            : t('auto.components.editor.RefactorHunkView.accept', '接受')}
+            ? t('auto.components.editor.RefactorHunkView.accepted', 'Accepted')
+            : t('auto.components.editor.RefactorHunkView.accept', 'Accept')}
         </Button>
       </div>
       <div className="flex min-h-0 flex-1">

@@ -64,7 +64,7 @@ function ProposalNode({
   const rationale = proposal.rationale.trim()
   const acceptLabel = t(
     'auto.components.editor.RefactorProposalTree.acceptProposal',
-    '接受方案 {{title}}',
+    'Accept proposal {{title}}',
     { title: proposal.title }
   )
   return (
@@ -98,7 +98,10 @@ function ProposalNode({
                 >
                   {rationale.length > 0
                     ? rationale
-                    : t('auto.components.editor.RefactorProposalTree.noRationale', '未给出理由')}
+                    : t(
+                        'auto.components.editor.RefactorProposalTree.noRationale',
+                        'No reason given'
+                      )}
                 </span>
               </span>
             </Button>
@@ -143,7 +146,7 @@ function FileNode({
         }
         aria-label={t(
           'auto.components.editor.RefactorProposalTree.acceptFile',
-          '接受文件 {{path}}',
+          'Accept file {{path}}',
           { path: file.path }
         )}
       />
@@ -202,7 +205,7 @@ function HunkNode({
         onCheckedChange={() => refactorReviewStore.toggleHunk(jobId, hunk.id)}
         aria-label={t(
           'auto.components.editor.RefactorProposalTree.acceptHunk',
-          '接受 {{path}} 的代码块 {{index}}',
+          'Accept code block {{index}} of {{path}}',
           { path: filePath, index: position }
         )}
       />
@@ -212,7 +215,7 @@ function HunkNode({
         size="xs"
         onClick={() => showHunk(jobId, hunk.id, filePath)}
       >
-        {t('auto.components.editor.RefactorProposalTree.hunkLabel', '代码块 {{index}}', {
+        {t('auto.components.editor.RefactorProposalTree.hunkLabel', 'Code block {{index}}', {
           index: position
         })}
       </Button>

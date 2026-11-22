@@ -399,7 +399,12 @@ git commit -m "feat(refactor): compute and apply the refactoring hunks"
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { isPathInsideScratch, refactorToolAllowed } from './refactor-write-gate'
+import {
+  isPathInsideScratch,
+  isPathInsideWorkspace,
+  refactorToolAllowed,
+  refactorToolTargetPath
+} from './refactor-write-gate'
 
 const workspaceRoot = '/repo'
 const scratchRoot = '/repo/.orca/refactor/job-1'
@@ -419,6 +424,12 @@ describe('isPathInsideScratch', () => {
 
   it('rejects a sibling directory that shares the prefix', () => {
     expect(isPathInsideScratch(scratchRoot, '/repo/.orca/refactor/job-1x/p1/foo.ts')).toBe(false)
+  })
+
+  it('rejects a path that escapes once the trailing space is stripped', () => {
+    expect(isPathInsideScratch(scratchRoot, '/repo/.orca/refactor/job-1/.. /../evil.ts')).toBe(
+      false
+    )
   })
 })
 
@@ -653,6 +664,44 @@ describe('refactorToolAllowed', () => {
       })
     ).toBe(true)
   })
+
+  it('denies a write whose escape only appears once the trailing space is stripped', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '/repo/.. /../evil.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies a read whose escape only appears once the trailing space is stripped', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: { file_path: '/repo/.. /../evil.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+})
+
+describe('refactorToolTargetPath', () => {
+  it('reads the camel-cased path key', () => {
+    expect(refactorToolTargetPath({ filePath: '/repo/src/foo.ts' })).toBe('/repo/src/foo.ts')
+  })
+
+  it('reads the bare path key', () => {
+    expect(refactorToolTargetPath({ path: '/repo/src/foo.ts' })).toBe('/repo/src/foo.ts')
+  })
+})
+
+describe('isPathInsideWorkspace', () => {
+  it('rejects a path that escapes once the trailing space is stripped', () => {
+    expect(isPathInsideWorkspace('/repo', '/repo/.. /../evil.ts')).toBe(false)
+  })
 })
 ```
 
@@ -706,7 +755,7 @@ Expected: FAIL，报模块不存在。
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor/refactor-write-gate.test.ts --maxWorkers=2`
-Expected: PASS，25 个用例全过。
+Expected: PASS，31 个用例全过。
 
 - [ ] **Step 5: 提交**
 
@@ -1131,6 +1180,23 @@ describe('buildRefactorPlan', () => {
     expect(result.plan.proposals[0].files[0].originalContent).toBe('a\nb\n')
   })
 
+  it('keeps the disk content aside for the staleness check', async () => {
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [{ id: 'p1', title: '提取校验', rationale: '重复。', files: ['src/foo.ts'] }]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\nb\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
+      scratchFiles: async () => 'a\nB\n'
+    })
+    expect(result.diskContents.get('src/foo.ts')).toBe('a\n')
+  })
+
   it('drops a proposal whose path escapes the workspace', async () => {
     const result = await buildRefactorPlan({
       jobId: 'job-1',
@@ -1254,7 +1320,7 @@ Expected: FAIL，报模块不存在。
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor/refactor-plan-builder.test.ts --maxWorkers=2`
-Expected: PASS，8 个用例全过（3 个路径安全 + 5 个 builder）。
+Expected: PASS，9 个用例全过（3 个路径安全 + 6 个 builder）。
 
 - [ ] **Step 5: 提交**
 

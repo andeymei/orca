@@ -173,12 +173,8 @@ async function open(
   return connection
 }
 
-async function until<T>(
-  read: () => T | null | undefined,
-  label: string,
-  attempts = 400
-): Promise<T> {
-  for (let attempt = 0; attempt < attempts; attempt++) {
+async function until<T>(read: () => T | null | undefined, label: string): Promise<T> {
+  for (let attempt = 0; attempt < 400; attempt++) {
     const value = read()
     if (value !== null && value !== undefined) {
       return value
@@ -194,6 +190,29 @@ function readReportSafely(scenario: { readReport: () => ScriptedCliReport }) {
   } catch {
     return null
   }
+}
+
+/**
+ * The CLI records the SDK's answer to a hook callback as a control response for the request id it
+ * sent. The failure names the answer that never came and the ones that did, because a timeout
+ * here otherwise reads like a flake rather than a regression.
+ */
+async function waitForControlAnswer(
+  scenario: { readReport: () => ScriptedCliReport },
+  requestId: string
+): Promise<ScriptedCliReport> {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const current = readReportSafely(scenario)
+    if (current?.controlResponses.some((frame) => frame.response.request_id === requestId)) {
+      return current
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  const arrived =
+    readReportSafely(scenario)?.controlResponses.map((frame) => frame.response.request_id) ?? []
+  throw new Error(
+    `the CLI never answered the hook callback ${requestId}; the control responses that arrived: ${arrived.join(', ') || 'none'}`
+  )
 }
 
 function processState(pid: number): 'running' | 'exited' {
@@ -288,11 +307,33 @@ describe('Claude stream-json launch options', () => {
         ?.PreToolUse ?? []
     // Every matcher the launch carried is registered, none is dropped.
     expect(registered).toHaveLength(2)
+    // The pattern the launch carries is the pattern the CLI receives.
+    expect(registered.find((entry) => entry.matcher === 'Read')).toBeDefined()
     // The gate is the one that blocks, so another matcher cannot hide it.
     const gate = registered.find((entry) => entry.onFailure === 'block')
     expect(gate).toBeDefined()
+    // The gate matches every tool, so its pattern stays absent.
+    expect(gate?.matcher).toBeUndefined()
     expect(gate?.hookCallbackIds).toHaveLength(1)
   })
+
+  it('refuses the session when the CLI cannot enforce a blocking hook', async () => {
+    const scenario = scriptScenario([{ awaitControlRequest: 'initialize' }, HOLD_OPEN], {
+      initialize: { hook_on_failure_supported: false, commands: [], models: [] }
+    })
+    const connection = await open(launchWithGate(scenario))
+    // The backstop: without the capability the SDK refuses the session rather than run the agent
+    // with a gate the CLI cannot enforce.
+    await expect(connection.initializationResult()).rejects.toThrow(/does not honor onFailure/)
+  }, 20_000)
+
+  it('refuses the session when the CLI declares no hook capability at all', async () => {
+    // The fixture's default answer declares no capability, which is what a CLI that predates
+    // onFailure sends: it says nothing, rather than saying false.
+    const scenario = scriptScenario([{ awaitControlRequest: 'initialize' }, HOLD_OPEN])
+    const connection = await open(launchWithGate(scenario))
+    await expect(connection.initializationResult()).rejects.toThrow(/does not honor onFailure/)
+  }, 20_000)
 
   it('runs the hook the launch carried when the CLI asks for it', async () => {
     const scenario = scriptScenario(
@@ -320,17 +361,7 @@ describe('Claude stream-json launch options', () => {
     )
     const connection = await open(launchWithGate(scenario))
     await connection.initializationResult()
-    const report = await until(
-      () => {
-        const current = readReportSafely(scenario)
-        const answered = current?.controlResponses.find(
-          (frame) => frame.response.request_id === 'hook-1'
-        )
-        return answered ? current : null
-      },
-      'the hook callback response',
-      160
-    )
+    const report = await waitForControlAnswer(scenario, 'hook-1')
     const answered = report.controlResponses.find((frame) => frame.response.request_id === 'hook-1')
     const reason = denyReason(answered?.response.response)
     // The SDK ran the launch's own hook, and it refused the write to the user's sources.

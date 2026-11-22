@@ -528,7 +528,10 @@ git commit -m "feat(refactor): keep the agent's writes inside the scratch direct
 - Produces:
   - `RefactorAgentLaunch`：`{ pathToClaudeCodeExecutable: string; prefixArgs?: readonly string[]; env: Record<string, string>; cwd: string; options: ClaudeStructuredSdkOptions }`
   - `resolveRefactorAgentLaunch(input: { cwd: string; deps: ClaudeEnvDeps & { resolveAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy }; signal?: AbortSignal }): Promise<RefactorAgentLaunch>`
-  - `REFACTOR_ALLOWED_TOOLS`：`readonly string[]` = `['Read', 'Grep', 'Glob', 'Write', 'Edit']`
+  - `REFACTOR_DISALLOWED_TOOLS`：`readonly string[]` = `['Bash', 'Task']` —— 这两个是脱离路径模型的逃逸口（`Bash` 能 `mv`/`cp`，`Task` 能派生子 agent），从模型的上下文里直接去掉。写闸门本来也拒它们，这是第二道。
+  - **`options.allowedTools` 一律不给**（保持 `undefined`）。SDK 对 `allowedTools` 的定义是"自动放行、不再询问"，
+    而 `canUseTool` 是"每次工具执行前调用"——把 `Write`/`Edit` 列进 `allowedTools`，CLI 可能就绕过闸门直接放行写操作。
+    不给这个选项，所有工具调用都走 `canUseTool`，写闸门是唯一裁决者。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -550,8 +553,20 @@ describe('resolveRefactorAgentLaunch', () => {
     expect(launch.cwd).toBe('/repo')
     expect(launch.pathToClaudeCodeExecutable).toBe('/usr/bin/claude')
     expect(launch.options.permissionMode).toBe('default')
-    expect(launch.options.allowedTools).toEqual(REFACTOR_ALLOWED_TOOLS)
+    expect(launch.options.disallowedTools).toEqual(REFACTOR_DISALLOWED_TOOLS)
+    expect(launch.options.settingSources).toEqual([])
     expect(launch.options.extraArgs?.['dangerously-skip-permissions']).toBeUndefined()
+  })
+
+  it('never auto-allows a write tool, so the gate always gets the decision', async () => {
+    const launch = await resolveRefactorAgentLaunch({
+      cwd: '/repo',
+      deps: {
+        resolveCommand: () => ({ command: '/usr/bin/claude', prefixArgs: [] }),
+        resolveAuthPolicy: () => ({ account: 'system' })
+      }
+    })
+    expect(launch.options.allowedTools).toBeUndefined()
   })
 })
 ```
@@ -572,7 +587,7 @@ Expected: FAIL，报模块不存在。
 在 `refactor-agent-launch.ts`：
 
 ```ts
-export const REFACTOR_ALLOWED_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Write', 'Edit']
+export const REFACTOR_DISALLOWED_TOOLS: readonly string[] = ['Bash', 'Task']
 ```
 
 `resolveRefactorAgentLaunch` 调 `resolveClaudeStructuredInvocation(deps)` 拿到 `{ command, prefixArgs, env, account }`，然后返回：
@@ -581,7 +596,18 @@ export const REFACTOR_ALLOWED_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob'
 - `prefixArgs: invocation.prefixArgs`
 - `env: invocation.env`
 - `cwd: input.cwd`
-- `options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, permissionMode: 'default', allowedTools: [...REFACTOR_ALLOWED_TOOLS] }`
+- `options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, permissionMode: 'default', disallowedTools: [...REFACTOR_DISALLOWED_TOOLS], settingSources: [] }`
+
+三处选项各有理由，缺一个闸门就失效：
+
+- **`permissionMode: 'default'`** —— `'acceptEdits'` 会自动接受编辑（`claudeStructuredPermissionOptions` 的映射里写明了），
+  `'auto'` 由分类器决定，`'bypassPermissions'` 什么都不问。只有 `'default'` 会把每个工具调用交给 `canUseTool`。
+- **不给 `allowedTools`** —— 见 Interfaces 里的说明。写工具一旦被自动放行，闸门就形同虚设。
+- **`settingSources: []`** —— SDK 文档写的是"disable filesystem settings (SDK isolation mode)"。
+  默认的 `['user','project','local']` 会加载用户自己的 Claude 设置；用户若在 `settings.json` 里写了
+  `permissions.allow: ["Write"]`，写操作就会被自动放行，**同样绕过闸门**。隔离掉，
+  这次运行的权限只来自我们传进去的东西。（副作用是用户的 CLAUDE.md 和自定义设置这次不生效——
+  对一个只读的临时重构 agent 来说这是可接受的。）
 
 `CLAUDE_STRUCTURED_BASE_OPTIONS` 的 `systemPrompt` 保持 `'claude_code'` 预设。**不要**加 `extraArgs['dangerously-skip-permissions']`——那是 full-access。
 

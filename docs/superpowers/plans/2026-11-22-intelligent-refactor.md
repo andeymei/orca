@@ -1459,7 +1459,23 @@ precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignatu
 
 - `refactor.discard`：job 还在 running 就 `controller.abort()`；然后删掉 `scratchRoot` 目录（`fs.rm(scratchRoot, { recursive: true, force: true })`），从注册表 `remove`，返回 `{ discarded: true }`。
 
-**暂存目录不进版本库**：工作区是 git 仓库时，把 `.orca/refactor/` 追加到 `<worktree>/.git/info/exclude`——它只在本仓库本地生效，不动被跟踪的 `.gitignore`。已存在该行就跳过；`.git` 目录不存在（非 git 的 folder workspace）就跳过这步。
+**暂存目录不进版本库**：工作区是 git 仓库时，把 `.orca/refactor/` 追加到仓库的 `info/exclude`——
+它只在本仓库本地生效，不动被跟踪的 `.gitignore`。
+
+**不能直接写 `<worktree>/.git/info/exclude`**：Orca 的工作区绝大多数是 **linked worktree**，
+那里的 `.git` 是一个**文件**（内容是 `gitdir: ...`），不是目录，写进去会 ENOTDIR。
+而且 `info/` 不在 per-worktree 目录里——Git 把 `hooks/`、`info/`、`objects/`、`refs/`、`config`
+这些放在 **common dir**（和主仓库共享），只有真正的 Git 知道 common dir 在哪。
+仓库自己的 `readWorktreeGitPath`（`src/main/git/worktrees/catalog/worktree-git-path.ts:14-22`）
+明确列了哪些是 per-worktree 的（`orca`/`HEAD`/`ORIG_HEAD`/`FETCH_HEAD`/`MERGE_HEAD`/`index`/`logs`），
+`info/exclude` 不在其中，它的注释写着"which only real Git resolves"。
+
+所以要问 Git 要路径：用 `gitExecFileAsync(['rev-parse', '--git-path', 'info/exclude'], { cwd: worktreePath })`
+（`src/main/git/command-runner/git-exec-file.ts:187`），拿 `stdout` 拼成绝对路径再追加。
+
+- 命令失败（不是 git 仓库的 folder workspace）→ 跳过这步，不算错误。
+- 追加前先读一遍该文件，**已存在 `.orca/refactor/` 这行就跳过**，不要重复追加。
+- 文件不存在就直接写（`info/exclude` 是 Git 自己保证存在的，父目录也在 common dir 里）。
 
 **暂存目录清理**：发起新任务时，扫 `<worktree>/.orca/refactor/` 下的子目录，把**修改时间超过一天**的删掉（`fs.readdir` + `fs.stat` + `fs.rm`）。当前 job 的目录不动。
 

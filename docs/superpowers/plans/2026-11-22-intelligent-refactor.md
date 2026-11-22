@@ -2492,11 +2492,12 @@ git commit -m "feat(refactor): track what the user accepts in the review"
   - `RefactorHunkView` 组件，props：`{ hunk: RefactorHunk; filePath: string; relativePath: string; ownerKey: string; accepted: boolean; sideBySide: boolean; onToggleAccepted: () => void; disabled?: boolean }`
     - `ownerKey` 是**拥有这批 model 的那个 tab 的 id**（Task 13 的合成 id `${worktreeId}::refactor-review:${jobId}`）。
       它有两个用处，缺一不可：
-      1. `modelKey` 必须唯一到「tab + 文件 + 代码块」这一级。**hunk 的 id 是每个文件各自从 `h1` 开始的**，
-         两个文件都有 `h1`；而 `modelKey` 会变成 Monaco model 的 URI
+      1. `modelKey` 必须唯一到「tab + 文件 + 代码块」这一级。而 `modelKey` 会变成 Monaco model 的 URI
          （`diff:original:<encoded modelKey>:<generation>`，见 `diff-monaco-model-disposal.ts:77-92`），
          同 key 就是同一个 model——第二个 diff 会显示第一个文件的内容。
          所以 `modelKey` 用 `refactor-hunk:${ownerKey}:${relativePath}:${hunk.id}`。
+         （hunk 的 id 现在已经带上了文件路径前缀——`src/a.ts:h1`——所以这里写相对路径是冗余的，
+         但留着它能让 model 的 URI 一眼看出是哪个文件的哪个块。）
       2. `modelOwnerKey` 传 `ownerKey`（不是 `modelKey`）。这样这个 tab 的所有 hunk model 归同一个 owner，
          关掉 tab 时能一次性回收；每个 hunk 各自当 owner 会让 model 留着不释放。
 

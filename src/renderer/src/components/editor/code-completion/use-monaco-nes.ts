@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { editor, KeyCode, type IPosition } from 'monaco-editor/esm/vs/editor/editor.api.js'
-import type { RuntimeFileOperationArgs } from '@/runtime/files/runtime-file-client-types'
+import { editor, KeyCode } from 'monaco-editor/esm/vs/editor/editor.api.js'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 import { buildNesContext } from './nes-context-builder'
 import { applyNesEdit, previewNesEdit } from './nes-edit-application'
@@ -13,7 +12,7 @@ import {
   type NesLocationMarker
 } from './nes-location-markers'
 import { nesPlanStore } from './nes-plan-store'
-import { collectNesRelatedFilesWithinBudget } from './nes-related-files'
+import { nesSuggestionOutcome, reportNesSuggestionOutcome } from './nes-suggestion-outcome'
 import { requestNesPlan } from './nes-runtime-client'
 
 /** What the editor's shortcut installers call; the hook publishes them for its own editor. */
@@ -48,18 +47,9 @@ export function useMonacoNextEditSuggestions(params: {
   enabledExtensions: readonly string[]
   /** The live editor — the hook needs its model, its cursor and its decoration collection. */
   editorInstance: editor.IStandaloneCodeEditor | null
-  /** The worktree that owns the file, for the related-file search; null when it cannot be resolved. */
-  files: RuntimeFileOperationArgs | null
 }): number {
-  const {
-    filePath,
-    relativePath,
-    enabled,
-    triggerDelayMs,
-    enabledExtensions,
-    editorInstance,
-    files
-  } = params
+  const { filePath, relativePath, enabled, triggerDelayMs, enabledExtensions, editorInstance } =
+    params
   // Why: the request cannot be cancelled end to end, so a late answer is dropped by its generation.
   const generationRef = useRef(0)
   // Why: the glyph margin is off by default, so the editor has to be told that a marker is in it.
@@ -220,17 +210,11 @@ export function useMonacoNextEditSuggestions(params: {
         filePath,
         relativePath: relativePath ?? filePath
       })
-      const relatedFiles = files
-        ? await collectNesRelatedFilesWithinBudget({
-            filePath,
-            fileText: model.getValue(),
-            symbolAtCursor: identifierAtCursor(model, position),
-            files
-          })
-        : []
       const plan = await requestNesPlan({
         ...context,
-        relatedFiles,
+        // Why: the related files cost a search and several thousand tokens on every request, and
+        // the model answered the same either way — the suggestion is about the file being typed.
+        relatedFiles: [],
         recentEdits: []
       })
       // Why: the user typed again while the request was in flight, so the answer is about older text.
@@ -245,6 +229,8 @@ export function useMonacoNextEditSuggestions(params: {
       }
       fireNesInlineCompletionsChanged()
       refreshMarkers()
+      const { outcome, editCount } = nesSuggestionOutcome({ plan, model, modelKey, position })
+      reportNesSuggestionOutcome({ outcome, editCount, file: relativePath ?? filePath })
     }
 
     const scheduleTick = (): void => {
@@ -265,7 +251,8 @@ export function useMonacoNextEditSuggestions(params: {
     const cursorSubscription = editorInstance.onDidChangeCursorPosition(() => {
       // Why: the marker list drops the edit under the cursor, so it follows the cursor.
       refreshMarkers()
-      scheduleTick()
+      // Why: a cursor move leaves the text alone, so the plan the request made still applies to
+      // it. Asking again would cost a request per arrow key and cancel the answer in flight.
     })
     const keySubscription = editorInstance.onKeyDown((event) => {
       if (event.keyCode !== KeyCode.Escape) {
@@ -321,24 +308,9 @@ export function useMonacoNextEditSuggestions(params: {
       handlersByEditor.delete(editorInstance)
       setMarkerCount(0)
     }
-  }, [
-    editorInstance,
-    modelKey,
-    filePath,
-    relativePath,
-    enabled,
-    triggerDelayMs,
-    extensionsKey,
-    files
-  ])
+  }, [editorInstance, modelKey, filePath, relativePath, enabled, triggerDelayMs, extensionsKey])
 
   return markerCount
-}
-
-/** The word under the cursor, which is the symbol the related-file search looks for. */
-function identifierAtCursor(model: editor.ITextModel, position: IPosition): string | null {
-  const word = model.getWordUntilPosition(position)
-  return word.word.length > 0 ? word.word : null
 }
 
 function isExtensionEnabled(filePath: string, extensionsKey: string): boolean {

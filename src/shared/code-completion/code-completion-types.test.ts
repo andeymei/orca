@@ -108,6 +108,30 @@ describe('validateNesEditPlan', () => {
     expect(plan.edits[0]?.kind).toBe('replace')
   })
 
+  it('reads an edit whose range covers no text as an insert, whatever the model called it', () => {
+    // Why: the model answers the same empty-range edit as an insert or as a replace from one
+    // answer to the next, and the label decided whether the user saw it.
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          {
+            id: 'e1',
+            path: 'src/foo.ts',
+            kind: 'replace',
+            range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+            originalText: '',
+            text: 'const answer = 42\n',
+            label: 'answer the question'
+          }
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    expect(plan.edits).toHaveLength(1)
+    expect(plan.edits[0]?.kind).toBe('insert')
+  })
+
   it('drops an edit whose path is not in the context', () => {
     const plan = validateNesEditPlan(
       { edits: [buildEdit({ path: 'src/other.ts' })] },

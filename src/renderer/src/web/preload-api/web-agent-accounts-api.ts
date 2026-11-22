@@ -39,7 +39,9 @@ export function createCodeCompletionCredentialsApi(): PreloadApi['codeCompletion
   return {
     getStatus: () => Promise.resolve(notConfigured),
     saveApiKey: () => Promise.reject(unsupportedError),
-    clearApiKey: () => Promise.resolve(notConfigured)
+    clearApiKey: () => Promise.resolve(notConfigured),
+    // Why: the report reaches the main process, and a browser client has none to report to.
+    reportSuggestionOutcome: () => Promise.resolve()
   }
 }
 

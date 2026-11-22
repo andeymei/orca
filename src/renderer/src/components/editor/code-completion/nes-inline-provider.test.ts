@@ -91,13 +91,14 @@ describe('nes inline completion', () => {
     })
   })
 
-  it('offers a replace that rewrites the covered text', () => {
+  it('refuses a replace that rewrites the covered text', () => {
     const model = createModel('const a = 1')
 
     const completion = nesInlineCompletionForEdit(makeEdit({ text: 'const a = 2' }), model)
 
-    // Why: the suggestion replaces the text its range covers, which is what the model proposed.
-    expect(completion?.insertText).toBe('const a = 2')
+    // Why: Monaco draws a suggestion only when the difference holds no deletion, so an edit that
+    // rewrites what it covers would be offered and then draw nothing at all.
+    expect(completion).toBeNull()
   })
 
   it('returns null for a delete edit', () => {

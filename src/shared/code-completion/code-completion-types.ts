@@ -52,8 +52,15 @@ function normalizeNesEdit(raw: unknown): unknown {
   if (typeof edit.id === 'number') {
     edit.id = String(edit.id)
   }
-  if (typeof edit.kind === 'string' && !NES_EDIT_KINDS.includes(edit.kind)) {
-    edit.kind = edit.originalText === '' ? 'insert' : 'replace'
+  if (typeof edit.kind === 'string') {
+    if (edit.originalText === '') {
+      // Why: the model answers the same empty-range edit as an insert or as a replace from one
+      // answer to the next, and the label decided whether the user saw the edit at all. An edit
+      // that covers no text puts text there, so the text says which kind the edit is.
+      edit.kind = 'insert'
+    } else if (!NES_EDIT_KINDS.includes(edit.kind)) {
+      edit.kind = 'replace'
+    }
   }
   return edit
 }

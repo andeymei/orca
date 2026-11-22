@@ -115,8 +115,12 @@ describe('completion service', () => {
       expect(calls()).toBe(2)
       expect(log).toHaveBeenCalledTimes(2)
       expect(log).toHaveBeenCalledWith('[code-completion] The endpoint returned no plan.', {
-        backend: 'anthropic-messages'
+        backend: 'anthropic-messages',
+        failure: 'unparsed'
       })
+      // Why: an answer that never arrived in a usable shape is a fault, not a model that had
+      // nothing to propose, and the trace has to tell the two apart.
+      expect(first.outcome).toBe('unparsed')
     } finally {
       log.mockRestore()
     }

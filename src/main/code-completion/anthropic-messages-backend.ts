@@ -111,18 +111,24 @@ async function requestPlan(
     return {
       ok: false,
       refused: response.status !== undefined && REFUSAL_STATUSES.has(response.status),
-      result: { plan: null, usage: emptyCompletionUsage() }
+      result: { plan: null, usage: emptyCompletionUsage(), failure: 'http_error' }
     }
   }
   const events = parseCompletionSseEvents(response.text)
   if (!events) {
-    return { ok: false, refused: false, result: { plan: null, usage: emptyCompletionUsage() } }
+    return {
+      ok: false,
+      refused: false,
+      result: { plan: null, usage: emptyCompletionUsage(), failure: 'unparsed' }
+    }
   }
+  const plan = planFromCompletionText(anthropicStreamText(events), input)
   return {
     ok: true,
     result: {
-      plan: planFromCompletionText(anthropicStreamText(events), input),
-      usage: anthropicStreamUsage(events)
+      plan,
+      usage: anthropicStreamUsage(events),
+      ...(plan ? {} : { failure: 'unparsed' })
     }
   }
 }

@@ -88,6 +88,18 @@ function shouldDropAttributeKey(key: string, mode: RedactorMode): boolean {
   return false
 }
 
+/**
+ * Whether the attribute goes. A count is not a credential: the blocklist matches names such as
+ * `input_tokens`, and the counts are what says what a request spent — dropping them left the
+ * trace unable to answer the question it was written for.
+ */
+function shouldDropAttribute(key: string, value: unknown, mode: RedactorMode): boolean {
+  if (typeof value === 'number') {
+    return false
+  }
+  return shouldDropAttributeKey(key, mode)
+}
+
 /** Idempotent so sink, bundle and server passes can safely repeat. */
 export function redactString(input: string): string {
   if (typeof input !== 'string' || input.length === 0) {
@@ -212,7 +224,7 @@ export function redactValue(
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       // Parsed NDJSON may contain nested auth and identity fields outside attributes.
-      if (shouldDropAttributeKey(k, mode)) {
+      if (shouldDropAttribute(k, v, mode)) {
         continue
       }
       out[k] = redactValue(v, mode, seen)
@@ -228,7 +240,7 @@ export function redactAttributes(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(attrs)) {
-    if (shouldDropAttributeKey(k, mode)) {
+    if (shouldDropAttribute(k, v, mode)) {
       continue
     }
     out[k] = redactValue(v, mode)

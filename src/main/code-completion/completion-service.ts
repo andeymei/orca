@@ -19,6 +19,7 @@ export const NES_COMPLETION_MAX_CONCURRENT_REQUESTS = 4
 export type CompletionPlanOutcome =
   | 'suggested'
   | 'declined'
+  | 'unparsed'
   | 'failed'
   | 'abandoned'
   | 'no_backend'
@@ -77,8 +78,18 @@ export function createCompletionService(options: {
         return { plan: null, usage: emptyCompletionUsage(), outcome: 'failed' }
       }
       if (!outcome.result.plan) {
-        console.error('[code-completion] The endpoint returned no plan.', { backend: backend.id })
-        return { plan: null, usage: outcome.result.usage, outcome: 'declined' }
+        // Why: "the model had nothing to propose" is an answer and "the answer never arrived in
+        // a usable shape" is a fault, and the user cannot tell them apart from the outside.
+        const httpError = outcome.result.failure === 'http_error'
+        console.error('[code-completion] The endpoint returned no plan.', {
+          backend: backend.id,
+          failure: outcome.result.failure ?? 'unparsed'
+        })
+        return {
+          plan: null,
+          usage: outcome.result.usage,
+          outcome: httpError ? 'failed' : 'unparsed'
+        }
       }
       cache.set(key, outcome.result.plan)
       // Why: a plan that carries no edit shows nothing, so as far as the user is concerned it is

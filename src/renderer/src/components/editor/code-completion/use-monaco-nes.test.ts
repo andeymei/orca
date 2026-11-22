@@ -7,17 +7,11 @@ import { ensureNesInlineCompletionsProvider } from './nes-inline-provider'
 import { nesPlanStore } from './nes-plan-store'
 import { nesShortcutHandlersFor, useMonacoNextEditSuggestions } from './use-monaco-nes'
 
-const { requestNesPlanMock, collectRelatedFilesMock } = vi.hoisted(() => ({
-  requestNesPlanMock: vi.fn(),
-  collectRelatedFilesMock: vi.fn()
+const { requestNesPlanMock } = vi.hoisted(() => ({
+  requestNesPlanMock: vi.fn()
 }))
 
 vi.mock('./nes-runtime-client', () => ({ requestNesPlan: requestNesPlanMock }))
-vi.mock('./nes-related-files', () => ({
-  collectNesRelatedFiles: collectRelatedFilesMock,
-  // Why: the hook asks for the budgeted collector; the budget itself is covered by the module's own test.
-  collectNesRelatedFilesWithinBudget: collectRelatedFilesMock
-}))
 
 const FILE_PATH = '/repo/src/app.ts'
 const MODEL_URI = 'vscode-remote://owner/repo/src/app.ts'
@@ -35,6 +29,7 @@ function createModel(text = 'const a = 1'): monaco.editor.ITextModel {
 type FakeNesEditor = {
   editorInstance: monaco.editor.IStandaloneCodeEditor
   moveCursor: () => void
+  typeText: () => void
   hiddenActions: string[]
   pressEscape: () => void
   clickGutter: (lineNumber: number) => void
@@ -45,6 +40,7 @@ type FakeNesEditor = {
 /** The editor half of the test; the model is the real one, so its URI and text are real. */
 function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
   const cursorListeners: (() => void)[] = []
+  const contentListeners: (() => void)[] = []
   const keyListeners: ((event: monaco.IKeyboardEvent) => void)[] = []
   const mouseListeners: ((event: monaco.editor.IEditorMouseEvent) => void)[] = []
   const hiddenActions: string[] = []
@@ -82,7 +78,10 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
       }
     },
     layoutContentWidget: () => {},
-    onDidChangeModelContent: () => ({ dispose: () => {} }),
+    onDidChangeModelContent: (listener: () => void) => {
+      contentListeners.push(listener)
+      return { dispose: () => {} }
+    },
     onDidChangeCursorPosition: (listener: () => void) => {
       cursorListeners.push(listener)
       return { dispose: () => {} }
@@ -101,6 +100,11 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
     editorInstance: editorInstance as unknown as monaco.editor.IStandaloneCodeEditor,
     moveCursor: () => {
       for (const listener of cursorListeners) {
+        listener()
+      }
+    },
+    typeText: () => {
+      for (const listener of contentListeners) {
         listener()
       }
     },
@@ -144,10 +148,6 @@ function makeEdit(overrides: Partial<NesEdit> = {}): NesEdit {
   }
 }
 
-// Why: the hook re-runs its effect when this changes, so the harness hands it the same object
-// every render — the app's own context is memoized the same way.
-const FILES = { target: { kind: 'local' as const }, worktreeId: null, worktreePath: null }
-
 function renderHookFor(
   model: monaco.editor.ITextModel,
   options: { triggerDelayMs?: number } = {}
@@ -160,8 +160,7 @@ function renderHookFor(
       enabled: true,
       triggerDelayMs: options.triggerDelayMs ?? 0,
       enabledExtensions: ['ts'],
-      editorInstance: fakeEditor.editorInstance,
-      files: FILES
+      editorInstance: fakeEditor.editorInstance
     })
   )
   return { ...fakeEditor, unmount: view.unmount }
@@ -180,8 +179,7 @@ function renderHookView(model: monaco.editor.ITextModel): {
       enabled: true,
       triggerDelayMs: 0,
       enabledExtensions: ['ts'],
-      editorInstance: fakeEditor.editorInstance,
-      files: FILES
+      editorInstance: fakeEditor.editorInstance
     })
   )
   return { count: () => view.result.current, unmount: view.unmount }
@@ -193,7 +191,6 @@ afterEach(() => {
   }
   nesPlanStore.clear()
   requestNesPlanMock.mockReset()
-  collectRelatedFilesMock.mockReset()
 })
 
 let registeredProvider: monaco.languages.InlineCompletionsProvider | null = null
@@ -235,7 +232,6 @@ describe('useMonacoNextEditSuggestions', () => {
   it('asks for a plan when the file opens', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { unmount } = renderHookFor(model)
 
@@ -260,7 +256,6 @@ describe('useMonacoNextEditSuggestions', () => {
         })
       ]
     })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { count, unmount } = renderHookView(model)
 
@@ -273,10 +268,9 @@ describe('useMonacoNextEditSuggestions', () => {
   it('records a failed tick instead of leaving an unhandled rejection', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const model = createModel()
-    const failure = new Error('the collector is down')
-    failure.name = 'CollectorFailure'
-    collectRelatedFilesMock.mockRejectedValue(failure)
-    requestNesPlanMock.mockResolvedValue(null)
+    const failure = new Error('the request is down')
+    failure.name = 'RequestFailure'
+    requestNesPlanMock.mockRejectedValue(failure)
 
     const { unmount } = renderHookFor(model)
 
@@ -284,17 +278,16 @@ describe('useMonacoNextEditSuggestions', () => {
       // Why: the message can carry a path, so only the name reaches the log.
       expect(errorSpy).toHaveBeenCalledWith(
         '[code-completion] The plan tick failed.',
-        'CollectorFailure'
+        'RequestFailure'
       )
     })
     errorSpy.mockRestore()
     unmount()
   })
 
-  it('asks again when the cursor moves', async () => {
+  it('does not ask again when the cursor moves', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { moveCursor, unmount } = renderHookFor(model)
 
@@ -306,8 +299,10 @@ describe('useMonacoNextEditSuggestions', () => {
       moveCursor()
     })
 
+    // Why: a cursor move leaves the text alone, so the plan still applies to it and asking
+    // again would cost a request per arrow key.
     await waitFor(() => {
-      expect(requestNesPlanMock).toHaveBeenCalledTimes(2)
+      expect(requestNesPlanMock).toHaveBeenCalledTimes(1)
     })
     unmount()
   })
@@ -315,7 +310,6 @@ describe('useMonacoNextEditSuggestions', () => {
   it('binds the model under the key the inline provider asks by', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { unmount } = renderHookFor(model)
 
@@ -333,7 +327,6 @@ describe('useMonacoNextEditSuggestions', () => {
   it('writes the accepted edit and only then hides the ghost text', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { editorInstance, hiddenActions, unmount } = renderHookFor(model)
     await waitFor(() => {
@@ -350,7 +343,6 @@ describe('useMonacoNextEditSuggestions', () => {
   it('drops the accepted edit so a second Tab cannot write it twice', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { editorInstance, unmount } = renderHookFor(model)
     await waitFor(() => {
@@ -372,7 +364,6 @@ describe('useMonacoNextEditSuggestions', () => {
   it('rejects the suggestion on Escape, so the next Tab cannot write it', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { editorInstance, pressEscape, hiddenActions, unmount } = renderHookFor(model)
     await waitFor(() => {
@@ -403,7 +394,6 @@ describe('useMonacoNextEditSuggestions', () => {
         })
       ]
     })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { editorInstance, pressEscape, unmount } = renderHookFor(model)
     await waitFor(() => {
@@ -425,9 +415,8 @@ describe('useMonacoNextEditSuggestions', () => {
     try {
       const model = createModel()
       requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-      collectRelatedFilesMock.mockResolvedValue([])
 
-      const { editorInstance, moveCursor, pressEscape, unmount } = renderHookFor(model, {
+      const { editorInstance, typeText, pressEscape, unmount } = renderHookFor(model, {
         triggerDelayMs: 1_000
       })
 
@@ -436,9 +425,9 @@ describe('useMonacoNextEditSuggestions', () => {
       expect(nesShortcutHandlersFor(editorInstance)?.decide()).toBe('accept-suggestion')
       expect(requestNesPlanMock).toHaveBeenCalledTimes(1)
 
-      // The move schedules another tick while the old plan still draws the ghost.
+      // The typing schedules another tick while the old plan still draws the ghost.
       act(() => {
-        moveCursor()
+        typeText()
       })
       act(() => {
         pressEscape()
@@ -465,15 +454,14 @@ describe('useMonacoNextEditSuggestions', () => {
         releasePlan = resolve
       })
     )
-    collectRelatedFilesMock.mockResolvedValue([])
 
-    const { editorInstance, moveCursor, pressEscape, unmount } = renderHookFor(model)
+    const { editorInstance, typeText, pressEscape, unmount } = renderHookFor(model)
     await waitFor(() => {
       expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
     })
 
     act(() => {
-      moveCursor()
+      typeText()
     })
     await waitFor(() => {
       expect(requestNesPlanMock).toHaveBeenCalledTimes(2)
@@ -497,7 +485,6 @@ describe('useMonacoNextEditSuggestions', () => {
   it('releases the Alt preview when the plan is dropped', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { editorInstance, pressEscape, previewWidgets, unmount } = renderHookFor(model)
     await waitFor(() => {
@@ -522,7 +509,6 @@ describe('useMonacoNextEditSuggestions', () => {
     requestNesPlanMock.mockResolvedValue({
       edits: [makeEdit({ originalText: 'const b = 1', text: 'const b = 99' })]
     })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { editorInstance, hiddenActions, markerCounts, unmount } = renderHookFor(model)
     await waitFor(() => {
@@ -550,7 +536,6 @@ describe('useMonacoNextEditSuggestions', () => {
         })
       ]
     })
-    collectRelatedFilesMock.mockResolvedValue([])
 
     const { editorInstance, clickGutter, markerCounts, unmount } = renderHookFor(model)
     await waitFor(() => {
@@ -573,16 +558,15 @@ describe('useMonacoNextEditSuggestions', () => {
   it('drops the previous plan when the request fails', async () => {
     const model = createModel()
     requestNesPlanMock.mockResolvedValue({ edits: [makeEdit()] })
-    collectRelatedFilesMock.mockResolvedValue([])
 
-    const { moveCursor, unmount } = renderHookFor(model)
+    const { typeText, unmount } = renderHookFor(model)
     await waitFor(() => {
       expect(nesPlanStore.getPlan(FILE_PATH)).not.toBeNull()
     })
 
     requestNesPlanMock.mockResolvedValue(null)
     act(() => {
-      moveCursor()
+      typeText()
     })
 
     await waitFor(() => {

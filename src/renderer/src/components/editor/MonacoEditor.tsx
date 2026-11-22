@@ -21,6 +21,7 @@ import {
 } from '@/lib/workspace/ownership/workspace-copy-owner'
 import { getMonacoAutoHeightForContent, isMonacoAutoHeightCapped } from './monaco-auto-height'
 import { monacoFindOptions } from './monaco-find-options'
+import { MONACO_INLINE_SUGGEST_OPTIONS } from './monaco-inline-suggest-options'
 import { buildEditorUnicodeHighlightOptions } from './editor-unicode-highlight-options'
 import { useMonacoRevealScheduler } from './use-monaco-reveal-scheduler'
 import type { MonacoContentSyncMode } from './monaco-content-sync'
@@ -29,7 +30,6 @@ import { useMonacoMarkdownAnnotations } from './markdown-source-tools/monaco/use
 import { useMonacoEditorDecorations } from './use-monaco-editor-decorations'
 import { useMonacoEditorMount } from './use-monaco-editor-mount'
 import { useMonacoNextEditSuggestions } from './code-completion/use-monaco-nes'
-import { useMonacoNesFilesContext } from './code-completion/use-monaco-nes-files-context'
 import { DEFAULT_TRIGGER_DELAY_MS } from '../../../../shared/code-completion/code-completion-settings'
 import {
   useMonacoAiInstructions,
@@ -220,7 +220,6 @@ export default function MonacoEditor({
   })
 
   const codeCompletion = settings?.codeCompletion
-  const nesFilesContext = useMonacoNesFilesContext({ worktreeId, filePath })
   const nesMarkerCount = useMonacoNextEditSuggestions({
     filePath,
     relativePath,
@@ -228,8 +227,7 @@ export default function MonacoEditor({
     enabled: Boolean(codeCompletion?.enabled) && !passiveMirror,
     triggerDelayMs: codeCompletion?.triggerDelayMs ?? DEFAULT_TRIGGER_DELAY_MS,
     enabledExtensions: codeCompletion?.enabledExtensions ?? NO_ENABLED_EXTENSIONS,
-    editorInstance: mountedEditor,
-    files: nesFilesContext
+    editorInstance: mountedEditor
   })
 
   const { glyphs, glyphClick } = useMonacoAiInstructions({
@@ -387,6 +385,7 @@ export default function MonacoEditor({
           cursorSmoothCaretAnimation: 'off',
           padding: { top: 0 },
           find: monacoFindOptions,
+          inlineSuggest: MONACO_INLINE_SUGGEST_OPTIONS,
           // Monaco owns rendered lines, so its selection clipboard must enforce the app opt-out independently of the global DOM hook.
           selectionClipboard: settings?.primarySelectionMiddleClickPaste ?? isLinuxUserAgent()
         }}

@@ -78,6 +78,7 @@ import { registerOpenCodeGoCredentialsHandlers } from '../opencode-go-credential
 import { registerMiniMaxCredentialsHandlers } from '../minimax-credentials'
 import { registerZcodePlanCredentialsHandlers } from '../zcode-plan-credentials'
 import { registerCodeCompletionCredentialHandlers } from '../code-completion-credentials'
+import { registerCodeCompletionSuggestionHandlers } from '../code-completion-suggestion'
 import { registerGrokAccountHandlers } from '../grok-accounts'
 import { registerCursorAccountHandlers } from '../cursor-accounts'
 import { registerUpdaterHandlers } from '../../window/attach-main-window-services'
@@ -189,6 +190,7 @@ export function registerCoreHandlers(
   registerMiniMaxCredentialsHandlers(rateLimits)
   registerZcodePlanCredentialsHandlers(rateLimits)
   registerCodeCompletionCredentialHandlers()
+  registerCodeCompletionSuggestionHandlers()
   registerGrokAccountHandlers()
   registerCursorAccountHandlers()
   registerRateLimitHandlers(rateLimits, codexAccounts)

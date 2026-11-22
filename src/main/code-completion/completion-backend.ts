@@ -23,9 +23,19 @@ export type CompletionUsage = {
   cacheReadTokens: number
 }
 
+/**
+ * Why an answer carries no plan: the endpoint failed, or what it said was not a plan.
+ *
+ * The difference matters to the user: "the model had nothing to propose" is an answer, and
+ * "the answer never arrived in a usable shape" is a fault.
+ */
+export type NesPlanFailure = 'http_error' | 'unparsed'
+
 export type NesBackendResult = {
   plan: NesEditPlan | null
   usage: CompletionUsage
+  /** Set when the answer carries no plan, so the caller can say which it was. */
+  failure?: NesPlanFailure
 }
 
 export type NesBackend = {
@@ -336,11 +346,12 @@ export async function planFromCompletionStream(
 ): Promise<NesBackendResult> {
   const result = await postCompletionJson(request)
   if (!result.ok) {
-    return { plan: null, usage: emptyCompletionUsage() }
+    return { plan: null, usage: emptyCompletionUsage(), failure: 'http_error' }
   }
   const events = parseCompletionSseEvents(result.text)
   if (!events) {
-    return { plan: null, usage: emptyCompletionUsage() }
+    return { plan: null, usage: emptyCompletionUsage(), failure: 'unparsed' }
   }
-  return { plan: finish(extractText(events)), usage: usageOf(events) }
+  const plan = finish(extractText(events))
+  return { plan, usage: usageOf(events), ...(plan ? {} : { failure: 'unparsed' }) }
 }

@@ -2,7 +2,12 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { HookCallbackMatcher, HookInput } from '@anthropic-ai/claude-agent-sdk'
+import type {
+  HookCallback,
+  HookCallbackMatcher,
+  HookInput,
+  HookJSONOutput
+} from '@anthropic-ai/claude-agent-sdk'
 import type { ClaudeStreamJsonConnectionHandlers } from '../claude/claude-stream-json-connection'
 import { runRefactorTurn, type RefactorTurnResult } from './refactor-runner'
 import type { RefactorAgentLaunch } from './refactor-agent-launch'
@@ -107,26 +112,50 @@ async function hookReason(
 }
 
 /**
- * The gate's matcher, found by what it does: it refuses a write to the user's own sources and
- * names the tool and the path it refused. Another matcher the launch carried cannot be mistaken
- * for it, and the gate's place in the list does not matter.
+ * The gate's matcher: the runner appends it after every matcher the launch already carried, so it
+ * is the last one in the list, and it refuses a write to the user's own sources naming the tool
+ * and the path. A launch-side policy hook in front of it cannot be mistaken for the gate.
  */
 async function findGateMatcher(
   matchers: HookCallbackMatcher[],
   workspaceRoot: string
 ): Promise<HookCallbackMatcher | null> {
-  const sourcePath = path.join(workspaceRoot, 'src', 'foo.ts')
-  for (const matcher of matchers) {
-    const refusal = await hookReason(matcher, workspaceRoot, 'Write', { file_path: sourcePath })
-    if (refusal === null || !refusal.includes('Write') || !refusal.includes(sourcePath)) {
-      continue
-    }
-    return matcher
+  const gate = matchers.at(-1)
+  if (!gate) {
+    return null
   }
-  return null
+  const sourcePath = path.join(workspaceRoot, 'src', 'foo.ts')
+  const refusal = await hookReason(gate, workspaceRoot, 'Write', { file_path: sourcePath })
+  if (refusal === null || !refusal.includes('Write') || !refusal.includes(sourcePath)) {
+    return null
+  }
+  return gate
 }
 
 const successFrame = { type: 'result', subtype: 'success', is_error: false }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * A launch-side policy hook that denies the same write the gate denies, without being the gate:
+ * it does not block on failure and it does not name the scratch root.
+ */
+const policyHook: HookCallback = async (input: HookInput): Promise<HookJSONOutput> => {
+  if (input.hook_event_name !== 'PreToolUse' || input.tool_name !== 'Write') {
+    return {}
+  }
+  const toolInput = input.tool_input
+  const target = isRecord(toolInput) ? String(toolInput.file_path ?? '') : ''
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: `Write is not allowed in this task; the refused path: ${target}`
+    }
+  }
+}
 
 describe('closeRefactorTurnConnection', () => {
   const connection = (close: () => Promise<boolean>): RefactorTurnConnection => ({
@@ -239,6 +268,8 @@ describe('runRefactorTurn', () => {
     })
     expect(reason).toContain('Write')
     expect(reason).toContain(path.join(workspaceRoot, 'src', 'foo.ts'))
+    // The gate's own reason names the scratch root, so a policy hook cannot pass for it.
+    expect(reason).toContain(scratchRoot)
   })
 
   it('keeps a matcher the launch already carried beside the gate', async () => {
@@ -260,6 +291,33 @@ describe('runRefactorTurn', () => {
     })
     const matchers = captured[0].options.hooks?.PreToolUse ?? []
     expect(matchers).toHaveLength(2)
+    const gate = await findGateMatcher(matchers, workspaceRoot)
+    if (!gate) {
+      throw new Error("the launch carries no matcher that refuses a write to the user's sources")
+    }
+    expect(gate.onFailure).toBe('block')
+  })
+
+  it('finds the gate behind a launch-side policy hook that denies the same write', async () => {
+    const { workspaceRoot, scratchRoot } = await makeWorkspace()
+    const captured: RefactorAgentLaunch[] = []
+    const launch = launchFor(workspaceRoot)
+    launch.options.hooks = {
+      PreToolUse: [{ matcher: 'Write', hooks: [policyHook] }]
+    }
+    await runTurn({
+      launch,
+      scratchRoot,
+      workspaceRoot,
+      openConnection: connectionFactory({
+        onOpen: (openLaunch) => captured.push(openLaunch),
+        onSend: (handlers) => handlers.onMessage?.(successFrame),
+        close: async () => true
+      })
+    })
+    const matchers = captured[0].options.hooks?.PreToolUse ?? []
+    expect(matchers).toHaveLength(2)
+    // The policy hook denies the same write, but the gate is the one the runner appended.
     const gate = await findGateMatcher(matchers, workspaceRoot)
     if (!gate) {
       throw new Error("the launch carries no matcher that refuses a write to the user's sources")

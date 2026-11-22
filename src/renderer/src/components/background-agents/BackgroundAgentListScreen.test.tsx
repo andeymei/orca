@@ -4,6 +4,7 @@ import { act, cleanup, createEvent, fireEvent, render } from '@testing-library/r
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import type { ClaudeAgentsApi } from '../../../../preload/api/claude-agents-api'
+import { isRecord } from '../../../../shared/claude-background-agents'
 import type {
   ClaudeBackgroundAgent,
   ClaudeBackgroundAgentCommandResult,
@@ -88,7 +89,7 @@ function installPairedHost(): void {
   runtimeRpcMocks.callRuntimeRpc.mockImplementation(
     async (_target: unknown, method: string, params: unknown): Promise<unknown> => {
       if (method === 'terminal.create') {
-        const command = (params as { command?: string }).command ?? ''
+        const command = isRecord(params) && typeof params.command === 'string' ? params.command : ''
         nonce = /ORCA_CLAUDE_RESULT_([0-9a-f]+)/.exec(command)?.[1] ?? ''
         // Why the platform: the panel asks the host what it runs, and quotes the command for it.
         return { terminal: { handle: 'handle-1', hostPlatform: 'linux' } }

@@ -122,10 +122,10 @@ describe('redactor — attribute-key blocklist', () => {
       output_tokens: 101,
       token: 'plain-token',
       api_key: 'plain-key'
-    }) as Record<string, unknown>
+    })
     // Why: the counts are what says what a request spent, and a number is not a credential.
-    expect(out.input_tokens).toBe(683)
-    expect(out.output_tokens).toBe(101)
+    expect(out).toHaveProperty('input_tokens', 683)
+    expect(out).toHaveProperty('output_tokens', 101)
     expect(out).not.toHaveProperty('token')
     expect(out).not.toHaveProperty('api_key')
   })

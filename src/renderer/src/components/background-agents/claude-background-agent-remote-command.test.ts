@@ -13,11 +13,21 @@ import {
   dispatchRemoteClaudeBackgroundAgent,
   runRemoteClaudeAgentCommand
 } from './claude-background-agent-remote-command'
+import { isRecord } from '../../../../shared/claude-background-agents'
 
 const ENVIRONMENT_ID = 'env-remote'
 const AGENT_ID = 'aaaa1111'
 /** The nonce the panel stamps on this invocation's result line. */
 const NONCE = '0123456789abcdef'
+
+/**
+ * The command the host was asked to run.
+ *
+ * The RPC params arrive as unknown, so they are narrowed here rather than asserted at each use.
+ */
+function commandOf(params: unknown): string {
+  return isRecord(params) && typeof params.command === 'string' ? params.command : ''
+}
 
 /**
  * Answers the host's calls the way a host that ran the command would.
@@ -30,7 +40,7 @@ function installHost(lines: (nonce: string) => string[]): void {
   mocks.callRuntimeRpc.mockImplementation(
     async (_target: unknown, method: string, params: unknown): Promise<unknown> => {
       if (method === 'terminal.create') {
-        const command = (params as { command?: string }).command ?? ''
+        const command = commandOf(params)
         nonce = /ORCA_CLAUDE_RESULT_([0-9a-f]+)/.exec(command)?.[1] ?? ''
         return { terminal: { handle: 'handle-1' } }
       }
@@ -93,7 +103,7 @@ describe('starting an agent on a paired host', () => {
       startupCommandDelivery: 'fast',
       presentation: 'background'
     })
-    expect((params as { command: string }).command).toMatch(
+    expect(commandOf(params)).toMatch(
       /^claude --bg -- 'do it'; echo ORCA_CLAUDE_RESULT_[0-9a-f]+_\$\?$/
     )
   })
@@ -183,7 +193,7 @@ describe('commanding an agent on a paired host', () => {
 
     expect(result).toEqual({ ok: true, id: AGENT_ID })
     const [, , params] = mocks.callRuntimeRpc.mock.calls[0]
-    expect((params as { command: string }).command).toMatch(
+    expect(commandOf(params)).toMatch(
       /^claude stop aaaa1111; echo ORCA_CLAUDE_RESULT_[0-9a-f]+_\$\?$/
     )
   })

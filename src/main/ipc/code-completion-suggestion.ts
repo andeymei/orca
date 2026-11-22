@@ -29,19 +29,25 @@ export function registerCodeCompletionSuggestionHandlers(): void {
   )
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 function readSuggestionReport(
   report: unknown
 ): { outcome: string; editCount: number; file: string } | null {
-  if (typeof report !== 'object' || report === null) {
+  if (!isRecord(report)) {
     return null
   }
-  const record = report as Record<string, unknown>
-  if (typeof record.outcome !== 'string' || typeof record.file !== 'string') {
+  const outcome = report.outcome
+  const file = report.file
+  const editCount = report.editCount
+  if (typeof outcome !== 'string' || typeof file !== 'string') {
     return null
   }
   return {
-    outcome: record.outcome,
-    editCount: typeof record.editCount === 'number' ? record.editCount : 0,
-    file: record.file
+    outcome,
+    editCount: typeof editCount === 'number' ? editCount : 0,
+    file
   }
 }

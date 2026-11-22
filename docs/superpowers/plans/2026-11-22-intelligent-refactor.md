@@ -371,6 +371,7 @@ git commit -m "feat(refactor): compute and apply the refactoring hunks"
 - Consumes: 无
 - Produces:
   - `isPathInsideScratch(scratchRoot: string, targetPath: string): boolean`
+  - `isPathInsideWorkspace(workspaceRoot: string, targetPath: string): boolean` —— 读工具用同一套判定，只是根换成工作区根
   - `refactorToolAllowed(input: { toolName: string; toolInput: Record<string, unknown>; scratchRoot: string; workspaceRoot: string }): boolean`
   - `refactorToolTargetPath(toolInput: Record<string, unknown>): string | null` —— 从工具入参里取路径，依次尝试 `file_path`、`filePath`、`path`，都没有则返回 `null`。这三个键是仓库自己的约定，见 `src/shared/agent-hook-listener/tool-input-preview.ts` 的 `TOOL_INPUT_KEYS_BY_TOOL`（Write / Edit / MultiEdit 都是这三个键）。
 
@@ -480,6 +481,116 @@ describe('refactorToolAllowed', () => {
       })
     ).toBe(true)
   })
+
+  it('rejects a path whose segment ends in a space, because Windows strips it', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '/repo/.orca/refactor/job-1/.. /.. /evil.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('rejects a path whose segment ends in a dot, because Windows strips it', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '/repo/.orca/refactor/job-1/.../../evil.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies an unknown tool name', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'NotebookEdit',
+        toolInput: { file_path: '/repo/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies a write whose path is only whitespace', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '   ' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies a differently cased path, because the comparison is case sensitive', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '/repo/.ORCA/refactor/job-1/p1/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('allows a read inside the workspace', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: { file_path: '/repo/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(true)
+  })
+
+  it('denies a read outside the workspace', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: { file_path: '/home/mac/.ssh/id_rsa' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies a read whose input carries no path', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: {},
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('allows a grep without a path, because it searches from the workspace root', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Grep',
+        toolInput: { pattern: 'needle' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(true)
+  })
+
+  it('denies a grep pointed outside the workspace', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Grep',
+        toolInput: { pattern: 'needle', path: '/home/mac' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
 })
 ```
 
@@ -493,17 +604,33 @@ Expected: FAIL，报模块不存在。
 在 `refactor-write-gate.ts`：
 
 - `refactorToolTargetPath` 依次读 `file_path`、`filePath`、`path`，取第一个**非空字符串**；都没有返回 `null`。
+- **路径分量末尾的点和空格必须拒绝**。Win32 在识别 `.` / `..` **之前**先剥掉每个分量末尾的空格和点，
+  所以 `.. `（点-点-空格）对操作系统来说就是"上一级目录"，而 Node 的 `path.win32.resolve` 不剥，
+  它把 `.. ` 当成普通子目录——闸门会放行，而 Windows 实际把文件写到了暂存目录之外。
+  逐段用仓库自己的正则拒绝：`/[. ]$/.test(segment)`。
+  这不是新发明：`src/shared/plugins/frames/plugin-frame-guest.ts:96-105` 就是这么防的，
+  注释写着"Windows strips them, so `__orca.` or `app.js ` would name another file than the one checked"。
+  POSIX 上这种文件名合法但对 agent 毫无用处，拒绝掉无害。
 - `isPathInsideScratch(scratchRoot, targetPath)`：用 `path.resolve` 把两边都规约成绝对路径（`scratchRoot` 本身已是绝对路径），然后判断 `resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep)`。**比较区分大小写**——大小写不敏感的文件系统上这会拒掉一个大小写不同的合法路径，那是安全的方向；agent 总是用 prompt 里给的原样路径写。
+  **不要改用仓库里的 `isPathInsideOrEqual`**（`src/shared/cross-platform-path.ts:159`）——它的
+  `normalizeRuntimePathForComparison` 会把 Windows 风格路径小写化，与上面的大小写敏感要求冲突。
+  写一行注释说明为什么不用它，免得后人"顺手去重"时把大小写敏感的围栏改回大小写不敏感。
 - `refactorToolAllowed`：
-  - `toolName` 是 `Read` / `Grep` / `Glob` → 允许。
   - `toolName` 是 `Write` / `Edit` / `MultiEdit` → 取路径；取不到就**拒绝**（fail-closed）；取到就 `path.resolve(workspaceRoot, target)`（相对路径按工作区根解析）后交给 `isPathInsideScratch`。
     **放行 `MultiEdit` 是必须的**：它是 Claude Code 真实存在的编辑工具，拒掉它等于堵死一条正当的编辑路径，agent 可能转去找 `Bash` 之类的绕路（那些也被拒），功能就废了。
+  - `toolName` 是 `Read` → 取路径；**取不到就拒绝**；取到就要求它落在**工作区根内**。
+  - `toolName` 是 `Grep` / `Glob` → 路径可选（不给就从 cwd 搜，而 cwd 就是工作区根）；给了就要求它落在**工作区根内**。
   - 其它工具名 → **拒绝**。`Bash` 必须在拒绝名单里，否则 agent 能用 `mv` 绕过写闸门。
+
+**读也要圈在工作区里**，不只是写。读工具放行机器上任何路径，等于让 agent 能读 `~/.ssh/id_rsa`
+或 `~/.aws/credentials`——而这个 agent 处理的正是**不可信的**文件内容（提示注入的入口）。
+工作区根的判定用同一套 `path.resolve` + 分隔符边界，只是根换成 `workspaceRoot`；
+暂存目录在工作区里，所以自然可读。
 
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor/refactor-write-gate.test.ts --maxWorkers=2`
-Expected: PASS，10 个用例全过。
+Expected: PASS，21 个用例全过。
 
 - [ ] **Step 5: 提交**
 
@@ -642,6 +769,10 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
   - `src/main/refactor/refactor-runner.ts` 导出：
     - `RefactorTurnResult`：`{ manifest: RefactorManifest | null; progress: string; warnings: string[] }`
     - `runRefactorTurn(input: { launch: RefactorAgentLaunch; scratchRoot: string; workspaceRoot: string; prompt: { system: string; user: string }; onProgress?: (text: string) => void; signal: AbortSignal }): Promise<RefactorTurnResult>`
+      - **`workspaceRoot` 必须等于 `launch.cwd`**（传 `launch.cwd` 进去，不要另传一个）。
+        闸门把相对路径按 `workspaceRoot` 解析，而 SDK 把相对路径按进程的 cwd 解析——
+        两者不一致时，闸门可能批准一个 SDK 根本不会写的位置，而 SDK 真正写的地方在暂存目录之外。
+        传同一个值就没有这个缺口。
     - `parseRefactorToolProgress(message: Record<string, unknown>): string | null` —— 从一条 SDK 消息里抽出进度文案；没有工具调用时返回 `null`。单独导出是为了能脱开 SDK 单测。
     - `REFACTOR_TURN_TIMEOUT_MS = 300_000`
 

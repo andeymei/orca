@@ -2028,11 +2028,18 @@ git commit -m "feat(refactor): show one diff per refactoring hunk"
     远端工作区、路径不合法、没有 Claude 登录态都属于这一类。开了空 tab 只会让人以为界面坏了。
   - 虚拟 tab 的 id 用合成 id（如 `${worktreeId}::refactor-review:${jobId}`），`filePath` 填这个合成 id
     ——虚拟 tab 没有磁盘上的文件，`isVirtualEditorFile` 靠这一点区分它。照抄
-    `src/renderer/src/lib/source-control/graph/git-graph-tab.ts` 里 `openGitGraph` 的写法：
-    `filePath: id`、`relativePath: label`、`language: 'plaintext'`、`mode: 'refactor-review'`、
-    `openFile(..., { reopenId: id, preview: false })`；已经开着同一个 tab 时走
-    `openWorkspaceEditorItem(state, id, worktreeId, label, 'refactor-review')` 激活它。
-    `openWorkspaceEditorItem` 的 `contentType` 参数是 `EditorTabContentType`，Task 10 加了成员后即可直接传。
+    `src/renderer/src/lib/source-control/graph/git-graph-tab.ts` 里 `openGitGraph`（:120-158）的写法：
+    - 先在 `state.unifiedTabsByWorktree?.[worktreeId]` 里找同 id 的 tab；找到了就走
+      `openWorkspaceEditorItem(state, id, worktreeId, label, 'refactor-review')` 激活它并返回。
+      `openWorkspaceEditorItem` 的签名是
+      `(state, fileId, worktreeId, label, contentType, isPreview?, targetGroupId?, selection?, index?)`
+      （`src/renderer/src/store/slices/editor/tabs/workspace-editor-item.ts:16-26`），
+      `contentType` 是 `EditorTabContentType`，Task 10 加了成员后即可直接传。
+    - 没找到就 `state.openFile({ filePath: id, relativePath: label, worktreeId, language: 'plaintext', mode: 'refactor-review' }, { reopenId: id, preview: false })`。
+      **`worktreeId` 要带上**——tab 得归属到工作区，否则布局与归属都对不上。
+      `git-graph` 那份还传了 `runtimeEnvironmentId` 与 `operationProvenance`，那是从它的 scope helper
+      （`gitGraphScope(worktreeId)`）拿的；重构 tab 是本地工作区（Task 8 只支持本地），
+      不需要远端路由，先不传这两个。
 
 - [ ] **Step 1: 写失败的测试**
 

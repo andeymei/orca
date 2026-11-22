@@ -1308,7 +1308,7 @@ Expected: PASS。
 
 ```bash
 pnpm tc:node
-git add src/main/refactor src/shared/refactor/refactor-prompt.ts
+git add src/main/refactor src/shared/refactor/refactor-prompt.ts src/shared/rpc-contract/refactor-params.ts
 git commit -m "feat(refactor): drive the agent turn that writes the refactored files"
 ```
 

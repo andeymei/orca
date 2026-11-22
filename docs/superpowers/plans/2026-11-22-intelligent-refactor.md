@@ -1733,6 +1733,9 @@ writeFileExplorerFile(
       应用去另一个目录读，manifest 永远读不到。
       **把 `onProgress` 接到 job 上**：`onProgress: (text) => registry.update(jobId, { progress: text })`。
       `refactor.status` 返回的就是这份 progress，渲染层靠它显示「正在写入 src/foo.ts」。
+      **后台这段必须自己 catch**：`void runInBackground().catch((error) => registry.update(jobId, { state: 'failed', warnings: [...] }))`。
+      Node 对未处理的 promise rejection 是直接终止进程的 —— handler 返回之后就没有人接这个 promise 了，
+      一次没被 catch 的异常会把整个主进程带走。
       **目标工作区必须在 handler 里解析**（第 1 步），不能推到后台：后台开始时 handler 的上下文已经结束了。
       账号策略可以在后台取——`runtime.requireStore().getSettings()` 拿的是长驻 store 的设置，不随 handler 结束而失效。
       **job 的 `state` 直接取 turn 的 `state`**（Task 5 的 `RefactorTurnResult.state`）：

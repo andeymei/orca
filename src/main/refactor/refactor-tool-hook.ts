@@ -3,7 +3,11 @@ import type {
   HookCallbackMatcher,
   HookJSONOutput
 } from '@anthropic-ai/claude-agent-sdk'
-import { refactorToolAllowed, refactorToolTargetPath } from './refactor-write-gate'
+import {
+  refactorToolAllowed,
+  refactorToolTargetPath,
+  type RefactorGateRoots
+} from './refactor-write-gate'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -41,17 +45,21 @@ function refactorToolTargetPathOrNull(toolInput: Record<string, unknown> | null)
  * `canUseTool` callback is consulted, and the managed tier is read from disk whatever the launch
  * passes. Hooks run before the permission decision, so this is the one place the gate stays the
  * authority; `canUseTool` stays as the second layer.
+ *
+ * Why the roots arrive resolved: the CLI resolves its own working directory to the real path,
+ * so the gate compares physical locations, and resolving them once keeps every tool call cheap.
  */
-export function createRefactorToolHook(input: {
-  scratchRoot: string
-  workspaceRoot: string
-}): HookCallbackMatcher[] {
-  const { scratchRoot, workspaceRoot } = input
+export function createRefactorToolHook(input: { roots: RefactorGateRoots }): HookCallbackMatcher[] {
+  const { roots } = input
   const deny = (toolName: string, toolInput: Record<string, unknown> | null): HookJSONOutput => ({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: refactorToolDenyMessage({ toolName, toolInput, scratchRoot })
+      permissionDecisionReason: refactorToolDenyMessage({
+        toolName,
+        toolInput,
+        scratchRoot: roots.scratchRoot
+      })
     }
   })
   const hook: HookCallback = async (hookInput) => {
@@ -68,11 +76,10 @@ export function createRefactorToolHook(input: {
       if (!toolInput) {
         return deny(toolName, null)
       }
-      const allowed = refactorToolAllowed({
+      const allowed = await refactorToolAllowed({
         toolName,
         toolInput,
-        scratchRoot,
-        workspaceRoot
+        roots
       })
       return allowed ? {} : deny(toolName, toolInput)
     } catch {

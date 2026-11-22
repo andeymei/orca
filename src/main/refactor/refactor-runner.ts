@@ -5,9 +5,15 @@ import { openClaudeStreamJsonConnection } from '../claude/claude-stream-json-con
 import { readNodeFileWithinLimit } from '../../shared/file-content/node-bounded-file-reader'
 import { RefactorManifest } from '../../shared/refactor/refactor-manifest'
 import type { RefactorStatusResult } from '../../shared/rpc-contract/refactor-params'
-import { refactorToolAllowed, refactorToolTargetPath } from './refactor-write-gate'
+import {
+  refactorToolAllowed,
+  resolveRefactorGateRoots,
+  type RefactorGateRoots
+} from './refactor-write-gate'
 import type { RefactorAgentLaunch } from './refactor-agent-launch'
 import { createRefactorToolHook, refactorToolDenyMessage } from './refactor-tool-hook'
+import { parseRefactorToolProgress } from './refactor-tool-progress'
+import { resolvePhysicalPath } from './refactor-physical-path'
 import {
   closeRefactorTurnConnection,
   type RefactorTurnConnection,
@@ -19,6 +25,8 @@ import {
   refactorFaultDetail,
   refactorTurnCancelledFirst
 } from './refactor-turn-verdict'
+
+export { parseRefactorToolProgress } from './refactor-tool-progress'
 
 export {
   classifyRefactorResult,
@@ -33,69 +41,11 @@ export const REFACTOR_TURN_TIMEOUT_MS = 300_000
 /** The manifest is agent-authored input, so it is read under a cap. */
 const REFACTOR_MANIFEST_MAX_BYTES = 1024 * 1024
 
-const WRITE_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit'])
-
 export type RefactorTurnResult = {
   state: RefactorStatusResult['state']
   manifest: RefactorManifest | null
   progress: string
   warnings: string[]
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-/**
- * Why no text for an unknown tool or a missing path: a progress line that names a file the tool
- * never touched is worse than no line at all.
- */
-function refactorToolProgressText(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  workspaceRoot: string
-): string | null {
-  const target = refactorToolTargetPath(toolInput)
-  if (!target) {
-    return null
-  }
-  const relative = path.relative(workspaceRoot, path.resolve(workspaceRoot, target))
-  if (toolName === 'Read') {
-    return `正在读取 ${relative}`
-  }
-  if (WRITE_TOOL_NAMES.has(toolName)) {
-    return `正在写入 ${relative}`
-  }
-  return null
-}
-
-export function parseRefactorToolProgress(
-  message: Record<string, unknown>,
-  workspaceRoot: string
-): string | null {
-  const envelope = message.message
-  if (!isRecord(envelope)) {
-    return null
-  }
-  const content = envelope.content
-  if (!Array.isArray(content)) {
-    return null
-  }
-  for (const block of content) {
-    if (!isRecord(block) || block.type !== 'tool_use') {
-      continue
-    }
-    const toolName = typeof block.name === 'string' ? block.name : ''
-    if (!toolName) {
-      continue
-    }
-    const toolInput = isRecord(block.input) ? block.input : {}
-    const text = refactorToolProgressText(toolName, toolInput, workspaceRoot)
-    if (text !== null) {
-      return text
-    }
-  }
-  return null
 }
 
 async function readRefactorManifest(scratchRoot: string): Promise<{
@@ -128,14 +78,25 @@ async function readRefactorManifest(scratchRoot: string): Promise<{
  * The gate resolves relative tool paths against the workspace root while the SDK resolves them
  * against the process cwd; a gap between the two lets the gate approve a path the SDK writes
  * outside the scratch root.
+ *
+ * Why the physical paths: the CLI resolves its own working directory to the real path, so the
+ * two have to be compared as the places they are rather than as the ways they are written.
  */
-function assertRefactorWorkspaceRoot(workspaceRoot: string, launchCwd: string): void {
-  const left = path.resolve(workspaceRoot)
-  const right = path.resolve(launchCwd)
+async function assertRefactorWorkspaceRoot(
+  roots: RefactorGateRoots,
+  launchCwd: string
+): Promise<void> {
+  const physicalCwd = await resolvePhysicalPath(path.resolve(launchCwd))
+  const workspace = roots.physicalWorkspaceRoot
   const same =
-    process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
+    physicalCwd !== null &&
+    (process.platform === 'win32'
+      ? physicalCwd.toLowerCase() === workspace.toLowerCase()
+      : physicalCwd === workspace)
   if (!same) {
-    throw new Error(`refactor workspace root ${left} does not match the agent cwd ${right}`)
+    throw new Error(
+      `refactor workspace root ${roots.workspaceRoot} does not match the agent cwd ${launchCwd}`
+    )
   }
 }
 
@@ -154,13 +115,16 @@ function resolveRefactorScratchRoot(workspaceRoot: string, scratchRoot: string):
  * one; when they are not the same directory every relative write is refused and the manifest is
  * read from a tree nobody wrote. The scratch root must be strictly inside the workspace: the
  * workspace root itself would let the gate approve a write to the user's own sources.
+ *
+ * Why the physical paths: a scratch root that is a link out of the workspace passes a comparison
+ * of the two spellings, and the gate would then approve writes to a tree outside the workspace.
  */
-function assertRefactorScratchRoot(workspaceRoot: string, scratchRoot: string): void {
-  const relative = path.relative(path.resolve(workspaceRoot), scratchRoot)
+function assertRefactorScratchRoot(roots: RefactorGateRoots): void {
+  const relative = path.relative(roots.physicalWorkspaceRoot, roots.physicalScratchRoot)
   const [firstSegment] = relative.split(path.sep)
   if (relative === '' || firstSegment === '..' || path.isAbsolute(relative)) {
     throw new Error(
-      `refactor scratch root ${scratchRoot} is not strictly inside the workspace root ${workspaceRoot}`
+      `refactor scratch root ${roots.scratchRoot} is not strictly inside the workspace root ${roots.workspaceRoot}`
     )
   }
 }
@@ -197,8 +161,9 @@ export async function runRefactorTurn(input: {
 }): Promise<RefactorTurnResult> {
   const { launch, workspaceRoot, prompt, onProgress, signal } = input
   const scratchRoot = resolveRefactorScratchRoot(workspaceRoot, input.scratchRoot)
-  assertRefactorWorkspaceRoot(workspaceRoot, launch.cwd)
-  assertRefactorScratchRoot(workspaceRoot, scratchRoot)
+  const roots = await resolveRefactorGateRoots({ scratchRoot, workspaceRoot })
+  await assertRefactorWorkspaceRoot(roots, launch.cwd)
+  assertRefactorScratchRoot(roots)
   assertRefactorLaunchGates(launch)
 
   // The gate hangs on a hook because an allow rule in a settings tier approves a tool before the
@@ -211,7 +176,7 @@ export async function runRefactorTurn(input: {
         ...launch.options.hooks,
         PreToolUse: [
           ...(launch.options.hooks?.PreToolUse ?? []),
-          ...createRefactorToolHook({ scratchRoot, workspaceRoot })
+          ...createRefactorToolHook({ roots })
         ]
       }
     }
@@ -231,29 +196,24 @@ export async function runRefactorTurn(input: {
     finished.resolve()
   }
 
-  const canUseTool: CanUseTool = (toolName, toolInput) => {
+  const denyMessage = (toolName: string, toolInput: Record<string, unknown>): string =>
+    refactorToolDenyMessage({ toolName, toolInput, scratchRoot: roots.scratchRoot })
+
+  const canUseTool: CanUseTool = async (toolName, toolInput) => {
     try {
-      const allowed = refactorToolAllowed({ toolName, toolInput, scratchRoot, workspaceRoot })
+      const allowed = await refactorToolAllowed({ toolName, toolInput, roots })
       // A null result leaves the tool blocked forever, so every call gets an explicit verdict.
-      return Promise.resolve(
-        allowed
-          ? { behavior: 'allow' }
-          : {
-              behavior: 'deny',
-              message: refactorToolDenyMessage({ toolName, toolInput, scratchRoot })
-            }
-      )
+      return allowed
+        ? { behavior: 'allow' }
+        : { behavior: 'deny', message: denyMessage(toolName, toolInput) }
     } catch {
       // Fail closed, and never throw: an unanswered callback leaves the tool blocked forever.
-      return Promise.resolve({
-        behavior: 'deny',
-        message: refactorToolDenyMessage({ toolName, toolInput, scratchRoot })
-      })
+      return { behavior: 'deny', message: denyMessage(toolName, toolInput) }
     }
   }
 
   const onMessage = (message: Record<string, unknown>): void => {
-    const text = parseRefactorToolProgress(message, workspaceRoot)
+    const text = parseRefactorToolProgress(message, roots)
     if (text !== null) {
       progress = text
       onProgress?.(text)

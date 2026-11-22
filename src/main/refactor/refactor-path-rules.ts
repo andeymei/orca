@@ -37,8 +37,13 @@ function isWindowsDriveRelativePath(relativePath: string): boolean {
  * strips before it reads `..`; the drive-relative rule rejects a path that resolves onto another
  * drive. The containment check is defence in depth: no path that survives the rules above
  * resolves outside the workspace today, and it is the layer that catches a future change in them.
+ * It compares physical locations, so a directory inside the workspace that is a link out of it is
+ * refused as well.
  */
-export function assertSafeRefactorTargetPath(workspaceRoot: string, relativePath: string): void {
+export async function assertSafeRefactorTargetPath(
+  workspaceRoot: string,
+  relativePath: string
+): Promise<void> {
   if (!isSafeRelativeRefactorPath(relativePath)) {
     throw new Error(
       hasUnsafePathSegment(relativePath)
@@ -48,7 +53,7 @@ export function assertSafeRefactorTargetPath(workspaceRoot: string, relativePath
   }
   const resolvesOutside =
     isWindowsDriveRelativePath(relativePath) ||
-    !isPathInsideWorkspace(workspaceRoot, path.resolve(workspaceRoot, relativePath))
+    !(await isPathInsideWorkspace(workspaceRoot, path.resolve(workspaceRoot, relativePath)))
   if (resolvesOutside) {
     throw new Error('重构目标必须位于工作区内')
   }

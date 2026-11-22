@@ -101,7 +101,7 @@ export async function readScratchFile(
 ): Promise<string | null> {
   const proposalRoot = path.resolve(scratchRoot, proposalId)
   const filePath = path.resolve(proposalRoot, relativePath)
-  if (!isPathInsideScratch(scratchRoot, filePath)) {
+  if (!(await isPathInsideScratch(scratchRoot, filePath))) {
     return null
   }
   if (!isInsideDirectory(proposalRoot, filePath)) {

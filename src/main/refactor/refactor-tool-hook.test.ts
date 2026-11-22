@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { HookInput, HookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
 import { createRefactorToolHook } from './refactor-tool-hook'
+import { resolveRefactorGateRoots } from './refactor-write-gate'
 
 const workspaceRoot = '/repo'
 const scratchRoot = '/repo/.orca/refactor/job-1'
+
+const roots = await resolveRefactorGateRoots({ scratchRoot, workspaceRoot })
 
 function preToolUseInput(toolName: string, toolInput: unknown): HookInput {
   return {
@@ -18,7 +21,7 @@ function preToolUseInput(toolName: string, toolInput: unknown): HookInput {
 }
 
 async function runHook(toolName: string, toolInput: unknown): Promise<HookJSONOutput> {
-  const matcher = createRefactorToolHook({ scratchRoot, workspaceRoot })[0]
+  const matcher = createRefactorToolHook({ roots })[0]
   return matcher.hooks[0](preToolUseInput(toolName, toolInput), undefined, {
     signal: new AbortController().signal
   })
@@ -41,14 +44,14 @@ function denyReason(output: HookJSONOutput): string | null {
 
 describe('createRefactorToolHook', () => {
   it('registers one matcher that matches every tool', () => {
-    const matchers = createRefactorToolHook({ scratchRoot, workspaceRoot })
+    const matchers = createRefactorToolHook({ roots })
     expect(matchers).toHaveLength(1)
     expect(matchers[0].matcher).toBeUndefined()
     expect(matchers[0].hooks).toHaveLength(1)
   })
 
   it('blocks the tool when the hook cannot answer, so the gate never fails open', () => {
-    const matchers = createRefactorToolHook({ scratchRoot, workspaceRoot })
+    const matchers = createRefactorToolHook({ roots })
     expect(matchers[0].onFailure).toBe('block')
   })
 

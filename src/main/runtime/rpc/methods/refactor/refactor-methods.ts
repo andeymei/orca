@@ -75,7 +75,7 @@ export const REFACTOR_METHODS = [
         throw new Error(REMOTE_WORKSPACE_REFUSAL)
       }
       const workspaceRoot = target.worktree.path
-      assertSafeRefactorTargetPath(workspaceRoot, params.relativePath)
+      await assertSafeRefactorTargetPath(workspaceRoot, params.relativePath)
 
       const jobId = randomUUID()
       const scratchRoot = refactorScratchRoot(workspaceRoot, jobId)

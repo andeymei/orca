@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { mkdir, mkdtemp, realpath, symlink } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import {
   classifyRefactorResult,
   decideRefactorTurnOutcome,
@@ -6,7 +9,13 @@ import {
   refactorFaultDetail,
   refactorTurnCancelledFirst
 } from './refactor-runner'
+import { resolveRefactorGateRoots } from './refactor-write-gate'
 import { buildRefactorPrompt } from '../../shared/refactor/refactor-prompt'
+
+const roots = await resolveRefactorGateRoots({
+  scratchRoot: '/repo/.orca/refactor/job-1',
+  workspaceRoot: '/repo'
+})
 
 describe('buildRefactorPrompt', () => {
   const prompt = buildRefactorPrompt({
@@ -50,7 +59,7 @@ describe('parseRefactorToolProgress', () => {
           ]
         }
       },
-      '/repo'
+      roots
     )
     expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
   })
@@ -69,7 +78,7 @@ describe('parseRefactorToolProgress', () => {
           ]
         }
       },
-      '/repo'
+      roots
     )
     expect(text).toBe('正在读取 .orca/refactor/job-1/p1/src/foo.ts')
   })
@@ -88,7 +97,7 @@ describe('parseRefactorToolProgress', () => {
           ]
         }
       },
-      '/repo'
+      roots
     )
     expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
   })
@@ -107,7 +116,7 @@ describe('parseRefactorToolProgress', () => {
           ]
         }
       },
-      '/repo'
+      roots
     )
     expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
   })
@@ -127,7 +136,7 @@ describe('parseRefactorToolProgress', () => {
             ]
           }
         },
-        '/repo'
+        roots
       )
     ).toBeNull()
   })
@@ -141,7 +150,7 @@ describe('parseRefactorToolProgress', () => {
             content: [{ type: 'tool_use', name: 'Write', input: { content: 'x' } }]
           }
         },
-        '/repo'
+        roots
       )
     ).toBeNull()
   })
@@ -160,7 +169,7 @@ describe('parseRefactorToolProgress', () => {
           ]
         }
       },
-      '/repo'
+      roots
     )
     expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
   })
@@ -172,9 +181,36 @@ describe('parseRefactorToolProgress', () => {
           type: 'assistant',
           message: { content: [{ type: 'text', text: 'hi' }] }
         },
-        '/repo'
+        roots
       )
     ).toBeNull()
+  })
+
+  it('names a file the CLI asked for by its real path as the path the user knows', async () => {
+    const base = await mkdtemp(path.join(os.tmpdir(), 'refactor-progress-'))
+    const linked = path.join(base, 'linked')
+    await mkdir(path.join(linked, 'src'), { recursive: true })
+    await symlink(linked, path.join(base, 'workspace'))
+    const workspaceRoots = await resolveRefactorGateRoots({
+      scratchRoot: path.join(base, 'workspace', '.orca', 'refactor', 'job-1'),
+      workspaceRoot: path.join(base, 'workspace')
+    })
+    const text = parseRefactorToolProgress(
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              name: 'Read',
+              input: { file_path: path.join(await realpath(linked), 'src', 'foo.ts') }
+            }
+          ]
+        }
+      },
+      workspaceRoots
+    )
+    expect(text).toBe('正在读取 src/foo.ts')
   })
 })
 

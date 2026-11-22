@@ -758,7 +758,9 @@ git commit -m "feat(refactor): drive the agent turn that writes the refactored f
 
 - Consumes: Task 1 的 `RefactorPlan` / `RefactorManifest` / `RefactorHunk`；Task 2 的 `computeRefactorHunks`
 - Produces:
-  - `buildRefactorPlan(input: { jobId: string; sourcePath: string; manifest: RefactorManifest | null; scratchRoot: string; workspaceRoot: string; readBaseline: (relativePath: string) => Promise<string | null>; readDiskContent: (relativePath: string) => Promise<string | null>; scratchFiles: (proposalId: string, relativePath: string) => Promise<string | null> }): Promise<{ plan: RefactorPlan; warnings: string[]; diskContents: Map<string, string> }>`
+  - `buildRefactorPlan(input: { jobId: string; sourcePath: string; manifest: RefactorManifest | null; scratchRoot: string; workspaceRoot: string; readBaseline: (relativePath: string) => Promise<string | null>; readDiskContent: (relativePath: string) => Promise<string | null>; scratchFiles: (proposalId: string, relativePath: string) => Promise<string | null>; listScratchProposals: () => Promise<string[]> }): Promise<{ plan: RefactorPlan; warnings: string[]; diskContents: Map<string, string> }>`
+    - `listScratchProposals` 返回暂存目录下的**一级子目录名**（含 `_source`，由 builder 负责排除）。
+      它是注入的，所以"清单缺失时从目录还原方案"这条兜底路径可测，builder 本身不碰 fs。
   - `diskContents` 是每个文件在**建 plan 那一刻**的磁盘内容（D）。它不进 plan（plan 只带渲染 diff 用的基准文本 B），由 job 留在主进程侧，供接受时做陈旧判定。
   - `isSafeRelativeRefactorPath(relativePath: string): boolean` —— 清单里的路径必须在工作区内。
     **委托给仓库既有的 `isSafeMobileRelativePath`**（`src/main/runtime/files/mobile-file-kind.ts`），
@@ -803,6 +805,7 @@ describe('buildRefactorPlan', () => {
       workspaceRoot,
       readBaseline: async () => 'a\nb\n',
       readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
       scratchFiles: async () => 'a\nB\n'
     })
     expect(result.plan.proposals).toHaveLength(1)
@@ -821,6 +824,7 @@ describe('buildRefactorPlan', () => {
       workspaceRoot,
       readBaseline: async () => 'a\n',
       readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals).toHaveLength(0)
@@ -841,6 +845,7 @@ describe('buildRefactorPlan', () => {
       workspaceRoot,
       readBaseline: async () => 'a\n',
       readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
@@ -858,6 +863,7 @@ describe('buildRefactorPlan', () => {
       workspaceRoot,
       readBaseline: async () => 'a\n',
       readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
       scratchFiles: async () => null
     })
     expect(result.plan.proposals).toHaveLength(0)
@@ -873,9 +879,10 @@ describe('buildRefactorPlan', () => {
       workspaceRoot,
       readBaseline: async () => 'a\n',
       readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => ['_source', 'p1'],
       scratchFiles: async () => 'b\n'
     })
-    expect(result.plan.proposals.length).toBeGreaterThan(0)
+    expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
     expect(result.warnings.length).toBeGreaterThan(0)
   })
 })
@@ -900,7 +907,11 @@ Expected: FAIL，报模块不存在。
   6. 若 `claimedPaths` 已含该 path，记 warning（"方案 X 与方案 Y 改同一个文件，已丢弃后者"）并跳过整个 proposal。
   7. 否则 `claimedPaths.add(path)`，用 `computeRefactorHunks(baseline, scratchContent)` 算出 hunks，把 `{ path, originalContent: baseline, hunks }` 放进 proposal 的 `files`。
   8. **空 hunks 的方案也要保留**——内容没变的方案不是错误，只是没有可接受的东西。
-  9. manifest 为 `null` 时：扫 `scratchRoot` 下的一级子目录当作 proposalId，每个子目录里的文件当作它的 files，`title` 用子目录名，`rationale` 留空串，并在 warnings 里写"agent 未给出理由"。
+  9. manifest 为 `null` 时：调 `listScratchProposals()` 拿到一级子目录名，**排除 `_source`**，
+     其余每个目录名当作 proposalId，目录里的文件当作它的 files，`title` 用目录名，`rationale` 留空串，
+     并在 warnings 里写"agent 未给出理由"。
+     **必须排除 `_source`**——它是发起时写下的基准副本，不是某个方案的重构产物；
+     把它当成方案会在审查界面里多出一个叫 `_source` 的空方案。
   10. 返回 `{ plan: { jobId, sourcePath, proposals }, warnings, diskContents }`。
 
 **基准文本 B 与磁盘内容 D 是两回事**：B 是用户眼前（编辑器缓冲区）的内容，D 是磁盘上的内容。用户有未保存修改时 B ≠ D。`diskContents` 里的 D 只给接受时的陈旧判定用，不进 plan。
@@ -1168,7 +1179,7 @@ precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignatu
   7. 清理过期暂存目录（见下面「暂存目录清理」）。
   8. 建 job（Task 7 的注册表），**立刻返回** `{ jobId }`。
   9. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `state: 'done'`、`plan` 与 `diskContents`。
-     建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
+     建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。`listScratchProposals` 是 `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name)`。
   10. 失败时 `update` 成 `state: 'failed'` 并把原因写进 `warnings`。抛错时 `state: 'failed'`。
   11. 每一步都要尊重 job 的 `controller.signal`。
 

@@ -17942,6 +17942,13 @@
         },
         "codeCompletion": {
           "rename-label": "Rename {{value0}} to {{value1}}"
+        },
+        "RefactorProposalTree": {
+          "acceptFile": "接受文件 {{path}}",
+          "acceptHunk": "接受 {{path}} 的代码块 {{index}}",
+          "acceptProposal": "接受方案 {{title}}",
+          "hunkLabel": "代码块 {{index}}",
+          "noRationale": "未给出理由"
         }
       },
       "diff": {

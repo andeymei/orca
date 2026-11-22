@@ -41,6 +41,7 @@ export function mountedMention(
       disabled: false,
       caret: 6,
       resolveAttachmentOwner: () => ({ kind: 'local' }),
+      resolveLandingTarget: () => null,
       attachResolvedPaths: () => {},
       attachCopiedFiles: () => {},
       captureCopiedFiles: () => async () => {},

@@ -18,7 +18,7 @@ import {
 import { isTerminalDropWindowsPathLike } from '../../../../../../shared/image-path-paste'
 import { writeTerminalDropPathsToCapturedTarget } from './terminal-drop-path-writer'
 import { showTerminalDropWriteFailure } from './terminal-drop-write-failure'
-import { joinRuntimeTerminalDropDir } from './terminal-drop-worktree-path'
+import { workspaceAttachmentDropDir } from '@/runtime/files/imports/workspace-attachment-landing'
 import type { captureTerminalDropTransportOwner } from './terminal-drop-transport-owner'
 import { toLocalWslDropPath } from './terminal-drop-local-wsl'
 import { terminalFileDropErrorMessage } from './terminal-native-file-drop-error'
@@ -127,7 +127,7 @@ async function uploadRuntimeDropPaths(
   }
 ): Promise<void> {
   const targetShell = getTerminalTargetShellForWorktreePath(args.worktreePath)
-  const destinationDir = joinRuntimeTerminalDropDir(args.worktreePath)
+  const destinationDir = workspaceAttachmentDropDir(args.worktreePath)
   const pending = toast.loading(
     translate(
       'auto.components.terminal.pane.terminal.drop.handler.uploadingFiles',

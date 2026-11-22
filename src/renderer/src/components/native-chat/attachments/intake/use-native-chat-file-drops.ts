@@ -47,6 +47,7 @@ export function useNativeChatFileDrops(args: Args) {
     attachExternalPaths: external.attachExternalPaths,
     captureExternalPaths: external.captureExternalDrop,
     captureCopiedFiles,
-    resolveAttachmentOwner: external.resolveAttachmentOwner
+    resolveAttachmentOwner: external.resolveAttachmentOwner,
+    resolveLandingTarget: external.resolveLandingTarget
   }
 }

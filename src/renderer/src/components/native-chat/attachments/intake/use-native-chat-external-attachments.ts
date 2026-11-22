@@ -17,11 +17,7 @@ import {
   nativeChatWorktreeNotReadyNotice,
   nativeChatLocalAttachmentUnsupportedNotice
 } from './native-chat-attachment-notices'
-import {
-  resolveNativeChatAttachmentOwner,
-  resolveNativeChatAttachmentOwnerForWorktree,
-  resolveNativeChatRuntimeSessionAttachmentOwner
-} from '../uploads/native-chat-attachment-owner'
+import { resolveNativeChatComposerAttachmentOwner } from '../uploads/native-chat-composer-attachment-owner'
 import type {
   NativeChatAttachmentOwner,
   NativeChatStructuredAttachmentSession
@@ -34,7 +30,16 @@ import type {
   NativeChatPendingAttachmentChips,
   NativeChatReservedAttachment
 } from './native-chat-session-attachment-drop'
-import { releaseBrowserAttachmentFiles } from '@/lib/files/drop/browser-attachment-files'
+import { attachNativeChatWorkspaceAttachmentPaths } from './native-chat-workspace-attachment-drop'
+import {
+  nativeChatAttachmentLandingTargetUnchanged,
+  resolveNativeChatLandingTargetForOwner,
+  type NativeChatAttachmentLandingTarget
+} from '../uploads/native-chat-attachment-landing-target'
+import {
+  readBrowserAttachmentFile,
+  releaseBrowserAttachmentFiles
+} from '@/lib/files/drop/browser-attachment-files'
 import { attachNativeChatLocalAttachmentPaths } from './native-chat-local-attachment-drop'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { chatWorkspaceByTabId as findTerminalTabWorktreeId } from '../../../../lib/agent-session/tab-identity/structured-chat-tab-index'
@@ -71,6 +76,7 @@ export function useNativeChatExternalAttachments({
 }: UseNativeChatExternalAttachmentsArgs): {
   attachExternalPaths: (paths: string[], options?: NativeChatAttachmentFocusOptions) => void
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
+  resolveLandingTarget: () => NativeChatAttachmentLandingTarget | null
   captureExternalDrop: (
     destinationIsCurrent?: () => boolean,
     options?: NativeChatAttachmentFocusOptions
@@ -100,35 +106,21 @@ export function useNativeChatExternalAttachments({
     pendingChipsRef.current = pendingChips
   }, [pendingChips])
 
-  const resolveAttachmentOwner = useCallback((): NativeChatAttachmentOwner => {
-    const { structuredWorktreeId, structuredSession, terminalTabId } = workspaceRef.current
-    if (structuredSession?.attachmentStagingScope) {
-      return {
-        kind: 'local',
-        structuredSessionId: structuredSession.sessionId,
-        stagingScope: structuredSession.attachmentStagingScope
-      }
-    }
-    if (structuredWorktreeId && structuredSession?.runtimeEnvironmentId) {
-      if (structuredSession.sessionPending) {
-        return { kind: 'not-ready', notice: structuredSession.sessionPendingNotice }
-      }
-      return resolveNativeChatRuntimeSessionAttachmentOwner({
-        sessionId: structuredSession.sessionId,
-        runtimeEnvironmentId: structuredSession.runtimeEnvironmentId
-      })
-    }
-    if (!structuredWorktreeId) {
-      return resolveNativeChatAttachmentOwner(useAppStore.getState(), terminalTabId)
-    }
-    const owner = resolveNativeChatAttachmentOwnerForWorktree(
-      useAppStore.getState(),
-      structuredWorktreeId
-    )
-    return owner.kind === 'local' && structuredSession
-      ? { kind: 'local', structuredSessionId: structuredSession.sessionId }
-      : owner
-  }, [])
+  const resolveAttachmentOwner = useCallback(
+    (): NativeChatAttachmentOwner =>
+      resolveNativeChatComposerAttachmentOwner(useAppStore.getState(), workspaceRef.current),
+    []
+  )
+
+  // The workspace a chat's attachments land in, when its agent runs on the host that owns it.
+  const resolveLandingTarget = useCallback(
+    (): NativeChatAttachmentLandingTarget | null =>
+      resolveNativeChatLandingTargetForOwner(useAppStore.getState(), resolveAttachmentOwner(), {
+        structuredWorktreeId: workspaceRef.current.structuredWorktreeId,
+        terminalTabId: workspaceRef.current.terminalTabId
+      }),
+    [resolveAttachmentOwner]
+  )
 
   // Captures one intake's owner, destination and chips; its checks and work run against them later.
   const captureIntake = useCallback(
@@ -140,6 +132,7 @@ export function useNativeChatExternalAttachments({
       const owner = resolveAttachmentOwner()
       const chips = pendingChipsRef.current
       const capturedWorkspace = workspaceRef.current
+      const landingTarget = resolveLandingTarget()
       const currentWorktreeId = (): string | null =>
         workspaceRef.current.structuredWorktreeId ??
         findTerminalTabWorktreeId(
@@ -151,7 +144,9 @@ export function useNativeChatExternalAttachments({
         (destination ? destination.active : destinationIsCurrent()) &&
         isSameComposerWorkspace(capturedWorkspace, workspaceRef.current) &&
         capturedWorktreeId === currentWorktreeId() &&
-        nativeChatAttachmentOwnerUnchanged(owner, resolveAttachmentOwner())
+        nativeChatAttachmentOwnerUnchanged(owner, resolveAttachmentOwner()) &&
+        (landingTarget === null ||
+          nativeChatAttachmentLandingTargetUnchanged(landingTarget, resolveLandingTarget()))
       const refusal = (count: number): string | null => {
         if (destination ? !destination.active : !destinationIsCurrent()) {
           return nativeChatAttachmentOwnerChangedNotice()
@@ -170,6 +165,24 @@ export function useNativeChatExternalAttachments({
       }
       const claimedPaths = new Set<string>()
       const run = async (reserved: NativeChatReservedAttachment[]): Promise<void> => {
+        // A browser file has no path on this machine to copy from.
+        const landsInWorkspace =
+          landingTarget !== null && !reserved.some(({ path }) => readBrowserAttachmentFile(path))
+        if (landingTarget && landsInWorkspace) {
+          await attachNativeChatWorkspaceAttachmentPaths({
+            pending: reserved,
+            target: landingTarget,
+            chips,
+            options,
+            ...(owner.kind === 'local' && owner.stagingScope
+              ? { stagingScope: owner.stagingScope }
+              : {}),
+            isAbandoned: abandoned,
+            ownerStillCurrent,
+            setNotice
+          })
+          return
+        }
         if (owner.kind === 'runtime-session') {
           await attachNativeChatSessionAttachmentPaths({
             pending: reserved,
@@ -207,7 +220,7 @@ export function useNativeChatExternalAttachments({
             : ('agent' as const)
       }
     },
-    [attachResolvedPaths, draftScopeKey, resolveAttachmentOwner, setNotice]
+    [attachResolvedPaths, draftScopeKey, resolveAttachmentOwner, resolveLandingTarget, setNotice]
   )
 
   const captureExternalDrop = useCallback(
@@ -277,6 +290,7 @@ export function useNativeChatExternalAttachments({
     attachExternalPaths,
     captureExternalDrop,
     captureReservedAttachments,
-    resolveAttachmentOwner
+    resolveAttachmentOwner,
+    resolveLandingTarget
   }
 }

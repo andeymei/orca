@@ -1,5 +1,6 @@
 import type { AgentType } from '../../../../../shared/agent-status/contracts/agent-status-types'
 import type { NativeChatAttachmentOwner } from '../attachments/uploads/native-chat-attachment-owner'
+import type { NativeChatAttachmentLandingTarget } from '../attachments/uploads/native-chat-attachment-landing-target'
 import type { NativeChatReservedAttachment } from '../attachments/intake/native-chat-session-attachment-drop'
 
 export type UseNativeChatComposerPasteArgs = {
@@ -11,6 +12,8 @@ export type UseNativeChatComposerPasteArgs = {
   caret: number
   /** Resolve at paste time so remote images save where the agent can read them. */
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
+  /** The workspace a pasted image lands in, when the chat's agent runs on the host that owns it. */
+  resolveLandingTarget: () => NativeChatAttachmentLandingTarget | null
   attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
   /** Files a file manager copied attach through the composer's drop route. */
   attachCopiedFiles: (paths: string[], options?: { focus?: boolean }) => void

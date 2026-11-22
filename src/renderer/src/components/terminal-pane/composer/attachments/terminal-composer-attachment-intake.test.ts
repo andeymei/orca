@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { landWorkspaceAttachments } from '@/runtime/files/imports/workspace-attachment-landing'
 import { AGENT_SESSION_ATTACHMENT_MAX_BYTES } from '../../../../../../shared/agent-session/agent-session-attachments'
-import { copyTerminalComposerAttachmentsToWorkspace } from './terminal-composer-workspace-copy'
 import {
   dropTerminalComposerAttachments,
   pasteTerminalComposerAttachments,
@@ -8,11 +8,11 @@ import {
   type TerminalComposerIntakeHost
 } from './terminal-composer-attachment-intake'
 
-vi.mock('./terminal-composer-workspace-copy', () => ({
-  copyTerminalComposerAttachmentsToWorkspace: vi.fn()
+vi.mock('@/runtime/files/imports/workspace-attachment-landing', () => ({
+  landWorkspaceAttachments: vi.fn()
 }))
 
-const copyMock = vi.mocked(copyTerminalComposerAttachmentsToWorkspace)
+const copyMock = vi.mocked(landWorkspaceAttachments)
 const pickAttachments = vi.fn<() => Promise<string[]>>()
 const saveClipboardImageAsTempFile = vi.fn<() => Promise<string | null>>()
 const stat =

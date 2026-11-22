@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { importExternalPathsToRuntime } from '@/runtime/files/imports/runtime-file-import-client'
 import {
-  copyTerminalComposerAttachmentsToWorkspace,
-  terminalComposerDropDir
-} from './terminal-composer-workspace-copy'
+  landWorkspaceAttachments,
+  workspaceAttachmentDropDir
+} from './workspace-attachment-landing'
 
 vi.mock('@/runtime/files/imports/runtime-file-import-client', () => ({
   importExternalPathsToRuntime: vi.fn()
@@ -28,7 +28,7 @@ const localRequest = {
   worktreeId: 'w1'
 }
 
-describe('terminal composer workspace copy', () => {
+describe('workspace attachment landing', () => {
   it('copies into the workspace drop staging directory', async () => {
     importMock.mockResolvedValue({
       results: [
@@ -42,7 +42,7 @@ describe('terminal composer workspace copy', () => {
       ]
     })
 
-    const result = await copyTerminalComposerAttachmentsToWorkspace(localRequest)
+    const result = await landWorkspaceAttachments(localRequest)
 
     expect(importMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -69,7 +69,7 @@ describe('terminal composer workspace copy', () => {
       ]
     })
 
-    const result = await copyTerminalComposerAttachmentsToWorkspace({
+    const result = await landWorkspaceAttachments({
       ...localRequest,
       sourcePaths: ['/tmp/a', '/tmp/b']
     })
@@ -92,7 +92,7 @@ describe('terminal composer workspace copy', () => {
       ]
     })
 
-    const result = await copyTerminalComposerAttachmentsToWorkspace({
+    const result = await landWorkspaceAttachments({
       ...localRequest,
       sourcePaths: ['/tmp/a', '/tmp/b']
     })
@@ -114,7 +114,7 @@ describe('terminal composer workspace copy', () => {
       ]
     })
 
-    const result = await copyTerminalComposerAttachmentsToWorkspace(localRequest)
+    const result = await landWorkspaceAttachments(localRequest)
 
     expect(result.copied[0].workspacePath).toBe('/ws/.orca/drops/a (1).txt')
   })
@@ -126,7 +126,7 @@ describe('terminal composer workspace copy', () => {
     })
 
     await expect(
-      copyTerminalComposerAttachmentsToWorkspace({
+      landWorkspaceAttachments({
         ...localRequest,
         assertCurrent: () => {
           throw new Error('Terminal upload host changed; retry the drop.')
@@ -148,7 +148,7 @@ describe('terminal composer workspace copy', () => {
       ]
     })
 
-    await copyTerminalComposerAttachmentsToWorkspace(localRequest)
+    await landWorkspaceAttachments(localRequest)
 
     expect(writeFile).toHaveBeenCalledWith({
       filePath: '/ws/.orca/drops/.gitignore',
@@ -169,7 +169,7 @@ describe('terminal composer workspace copy', () => {
       ]
     })
 
-    await copyTerminalComposerAttachmentsToWorkspace({
+    await landWorkspaceAttachments({
       ...localRequest,
       runtimeEnvironmentId: 'env-1'
     })
@@ -197,7 +197,7 @@ describe('terminal composer workspace copy', () => {
     })
     writeFile.mockRejectedValue(new Error('read-only file system'))
 
-    const result = await copyTerminalComposerAttachmentsToWorkspace(localRequest)
+    const result = await landWorkspaceAttachments(localRequest)
 
     expect(result.copied).toEqual([
       { sourcePath: '/tmp/a.txt', workspacePath: '/ws/.orca/drops/a.txt' }
@@ -205,7 +205,7 @@ describe('terminal composer workspace copy', () => {
   })
 
   it('drops into a Windows workspace without mixing separators', () => {
-    expect(terminalComposerDropDir('C:\\ws')).toBe('C:\\ws\\.orca\\drops')
+    expect(workspaceAttachmentDropDir('C:\\ws')).toBe('C:\\ws\\.orca\\drops')
   })
 
   it('copies to the local host when the runtime owner is blank', async () => {
@@ -221,7 +221,7 @@ describe('terminal composer workspace copy', () => {
       ]
     })
 
-    await copyTerminalComposerAttachmentsToWorkspace({
+    await landWorkspaceAttachments({
       ...localRequest,
       runtimeEnvironmentId: '  '
     })
@@ -251,7 +251,7 @@ describe('terminal composer workspace copy', () => {
       ]
     })
 
-    await copyTerminalComposerAttachmentsToWorkspace({
+    await landWorkspaceAttachments({
       ...localRequest,
       worktreeId: '',
       runtimeEnvironmentId: 'env-1'
@@ -264,7 +264,7 @@ describe('terminal composer workspace copy', () => {
   })
 
   it('copies nothing without a staging round trip when there is no source', async () => {
-    const result = await copyTerminalComposerAttachmentsToWorkspace({
+    const result = await landWorkspaceAttachments({
       ...localRequest,
       sourcePaths: []
     })

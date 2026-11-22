@@ -4,12 +4,17 @@ import {
   parseExecutionHostId,
   toRuntimeExecutionHostId,
   type ExecutionHostId
-} from '../../../../../../shared/execution-host'
-import { DROP_STAGING_RELATIVE_DIR } from '../../../../../../shared/drop-staging-ignore'
-import { resolveExactWorktreeRoute } from '@/lib/workspace/ownership/worktree-owner-route'
-import { isTerminalDropWindowsPathLike } from '../../../../../../shared/image-path-paste'
+} from '../../../../../shared/execution-host'
+import { resolveExactWorktreeRoute } from './worktree-owner-route'
 
-export function resolveTerminalDropWorktreePath(
+/**
+ * The workspace's directory on the host that owns it.
+ *
+ * A runtime's physical local host is a different catalog namespace from the client's local
+ * host, so the row is looked up in the owner's own catalog and a route that does not match
+ * exactly is refused rather than answered with this machine's path.
+ */
+export function resolveWorktreePathOnOwnerHost(
   worktreeId: string,
   fallbackCwd: string | undefined,
   executionHostId: ExecutionHostId | null | undefined,
@@ -21,7 +26,6 @@ export function resolveTerminalDropWorktreePath(
   }
   const environmentId =
     runtimeEnvironmentId ?? (host.kind === 'runtime' ? host.environmentId : null)
-  // A runtime's physical local host is a different catalog namespace from the client's local host.
   const catalogHostId = environmentId ? toRuntimeExecutionHostId(environmentId) : host.id
   const state = useAppStore.getState()
   const worktree = findKnownWorktreeById(state, worktreeId, catalogHostId)
@@ -38,9 +42,4 @@ export function resolveTerminalDropWorktreePath(
     return null
   }
   return worktree?.path ?? (catalogHostId === 'local' ? fallbackCwd : null) ?? null
-}
-
-export function joinRuntimeTerminalDropDir(worktreePath: string): string {
-  const dropDir = `${worktreePath.replace(/[\\/]+$/, '')}/${DROP_STAGING_RELATIVE_DIR}`
-  return isTerminalDropWindowsPathLike(worktreePath) ? dropDir.replace(/\//g, '\\') : dropDir
 }

@@ -1,6 +1,7 @@
 import { act, createElement, useLayoutEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { NativeChatAttachmentOwner } from '../attachments/uploads/native-chat-attachment-owner'
+import type { NativeChatAttachmentLandingTarget } from '../attachments/uploads/native-chat-attachment-landing-target'
 import type { NativeChatReservedAttachment } from '../attachments/intake/native-chat-session-attachment-drop'
 import { useNativeChatComposerPaste } from './use-native-chat-composer-paste'
 
@@ -56,6 +57,7 @@ type ProbeArgs = {
   agent?: 'claude' | 'omp'
   disabled: boolean
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
+  resolveLandingTarget: () => NativeChatAttachmentLandingTarget | null
   attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
   attachCopiedFiles: (paths: string[]) => void
   captureCopiedFiles: () => (reserved: NativeChatReservedAttachment[]) => Promise<void>
@@ -85,6 +87,7 @@ export async function renderProbe(args: {
   agent?: 'claude' | 'omp'
   disabled?: boolean
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
+  resolveLandingTarget?: () => NativeChatAttachmentLandingTarget | null
   attachResolvedPaths?: (paths: string[], connectionId?: string | null) => void
   attachCopiedFiles?: (paths: string[]) => void
   /** Receives the chips a macOS paste reserved, once the clipboard shows they are files. */
@@ -111,6 +114,7 @@ export async function renderProbe(args: {
           agent: args.agent ?? 'claude',
           disabled,
           resolveAttachmentOwner: args.resolveAttachmentOwner,
+          resolveLandingTarget: args.resolveLandingTarget ?? (() => null),
           attachResolvedPaths: args.attachResolvedPaths ?? (() => {}),
           attachCopiedFiles: args.attachCopiedFiles ?? (() => {}),
           captureCopiedFiles: () => args.continueCopiedFiles ?? (async () => {}),

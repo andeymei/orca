@@ -21,6 +21,32 @@ describe('the refactor job registry', () => {
     expect(registry.get('job-1')?.warnings).toEqual(['w'])
   })
 
+  it('replaces the warnings instead of appending to them', () => {
+    const registry = createRefactorJobRegistry()
+    registry.create({ jobId: 'job-1', scratchRoot: '/repo/.orca/refactor/job-1', worktree: 'wt-1' })
+    registry.update('job-1', { warnings: ['w1'] })
+    registry.update('job-1', { warnings: ['w2'] })
+    expect(registry.get('job-1')?.warnings).toEqual(['w2'])
+  })
+
+  it('gives every job its own abort controller', () => {
+    const registry = createRefactorJobRegistry()
+    const first = registry.create({
+      jobId: 'job-1',
+      scratchRoot: '/repo/.orca/refactor/job-1',
+      worktree: 'wt-1'
+    })
+    const second = registry.create({
+      jobId: 'job-2',
+      scratchRoot: '/repo/.orca/refactor/job-2',
+      worktree: 'wt-2'
+    })
+    expect(first.controller).not.toBe(second.controller)
+    first.controller.abort()
+    expect(first.controller.signal.aborted).toBe(true)
+    expect(second.controller.signal.aborted).toBe(false)
+  })
+
   it('carries the baseline of the target file from the start', () => {
     const registry = createRefactorJobRegistry()
     const job = registry.create({

@@ -17943,6 +17943,11 @@
         "codeCompletion": {
           "rename-label": "Rename {{value0}} to {{value1}}"
         },
+        "RefactorHunkView": {
+          "accept": "接受",
+          "accepted": "已接受",
+          "lineRange": "第 {{range}} 行"
+        },
         "RefactorProposalTree": {
           "acceptFile": "接受文件 {{path}}",
           "acceptHunk": "接受 {{path}} 的代码块 {{index}}",

@@ -25,10 +25,11 @@ import {
 import { excludeRefactorScratchFromGit } from '../../../../refactor/refactor-git-exclude'
 import { refactorJobRegistry } from '../../../../refactor/refactor-job-registry'
 import {
-  assertSafeRefactorTargetPath,
-  buildRefactorPlan,
-  refactorPathKey
-} from '../../../../refactor/refactor-plan-builder'
+  refactorBaselineMap,
+  refactorBaselineReader
+} from '../../../../refactor/refactor-baselines'
+import { assertSafeRefactorTargetPath } from '../../../../refactor/refactor-path-rules'
+import { buildRefactorPlan } from '../../../../refactor/refactor-plan-builder'
 import { resolveRefactorAgentLaunch } from '../../../../refactor/refactor-agent-launch'
 import { runRefactorTurn } from '../../../../refactor/refactor-runner'
 import {
@@ -57,41 +58,6 @@ function diskConflictReason(conflict: FileWriteDiskConflict): string {
     return '文件已被删除'
   }
   return '文件不是有效的 UTF-8 文本，无法安全写入'
-}
-
-/**
- * The baseline of a file: the buffer the user saw.
- *
- * The map is keyed the way the plan keys its paths, so a manifest that spells the path with
- * another separator still finds the buffer instead of the disk.
- */
-export function refactorBaselineFor(
-  baselines: ReadonlyMap<string, string>,
-  relativePath: string
-): string | undefined {
-  return baselines.get(refactorPathKey(relativePath))
-}
-
-/** The baseline map of a job, keyed the way the plan keys its paths. */
-export function refactorBaselineMap(relativePath: string, content: string): Map<string, string> {
-  return new Map([[refactorPathKey(relativePath), content]])
-}
-
-/**
- * The baseline of each file: the buffer the user saw for the target file, the disk for the rest.
- */
-export function refactorBaselineReader(input: {
-  baselines: ReadonlyMap<string, string>
-  workspaceRoot: string
-}): (relativePath: string) => Promise<string | null> {
-  return async (relativePath) => {
-    const baseline = refactorBaselineFor(input.baselines, relativePath)
-    if (baseline !== undefined) {
-      return baseline
-    }
-    const read = await readWorkspaceFile(input.workspaceRoot, relativePath)
-    return read.status === 'read' ? read.content : null
-  }
 }
 
 export const REFACTOR_METHODS = [
@@ -330,9 +296,9 @@ export const REFACTOR_METHODS = [
       if (!job) {
         return { discarded: true }
       }
-      if (job.state === 'running') {
-        job.controller.abort()
-      }
+      // The abort is unconditional: a job whose turn already ended still has a plan, and the
+      // apply of that plan is what the abort has to stop. It is harmless once the turn is over.
+      job.controller.abort()
       try {
         await rm(job.scratchRoot, { recursive: true, force: true })
       } finally {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildRefactorPlan, isSafeRelativeRefactorPath } from './refactor-plan-builder'
+import { buildRefactorPlan } from './refactor-plan-builder'
+import { isSafeRelativeRefactorPath } from './refactor-path-rules'
 
 const workspaceRoot = '/repo'
 const scratchRoot = '/repo/.orca/refactor/job-1'

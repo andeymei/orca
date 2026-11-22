@@ -1928,6 +1928,10 @@ writeFileExplorerFile(
      其它文件的基准文本就是它们当时的磁盘内容。
      顺序很重要：基准在发起那一刻就已知，所以要在建 job 时就给，不能等 job 建好再补——
      那时候注册表里还没有这个 job，也没有地方放它。
+     **基准表的键只归一分隔符，不折叠大小写**：清单里的路径可能用 `\` 写成 `src\foo.ts`，
+     那要和 `src/foo.ts` 命中同一个基准；但 `src/Foo.ts` 和 `src/foo.ts` 在区分大小写的磁盘上是
+     两个文件，命中了就把一个文件的缓冲区写进了另一个文件。
+     查不到就退回磁盘内容（只丢用户未保存的编辑），方向是安全的。
   8. 把 `.orca/refactor/` 加进仓库本地的 exclude 文件（见下面「暂存目录不进版本库」）。
   9. 清理过期暂存目录（见下面「暂存目录清理」），并把被清理掉的 job 从注册表里摘掉。
   10. **立刻返回** `{ jobId }`。
@@ -2041,7 +2045,12 @@ writeFileExplorerFile(
     **写成功之后再点一次接受必须被拒绝**（磁盘内容既不等于基线也不等于 originalContent），
     不许写第二遍——这条要有测试钉住。
 
-- `refactor.discard`：job 还在 running 就 `controller.abort()`；然后删掉 `scratchRoot` 目录（`fs.rm(scratchRoot, { recursive: true, force: true })`），从注册表 `remove`，返回 `{ discarded: true }`。
+- `refactor.discard`：**无条件** `controller.abort()`；然后删掉 `scratchRoot` 目录（`fs.rm(scratchRoot, { recursive: true, force: true })`），从注册表 `remove`，返回 `{ discarded: true }`。
+  无条件是有原因的：**能落盘的 job 一定已经 `done`**（plan 和 `state: 'done'` 是同一次 update 写的），
+  所以"只在 running 时 abort"永远轮不到一个能落盘的 job——
+  用户点完"应用"再点"放弃"，剩下的文件还会继续被写下去。
+  turn 已经结束的 job 被 abort 是无害的。
+  turn 超时或被取消的 job 没有 plan，`refactor.apply` 直接抛错，不能静悄悄地当成空成功。
 
 **暂存目录不进版本库**：工作区是 git 仓库时，把 `.orca/refactor/` 追加到仓库的 `info/exclude`——
 它只在本仓库本地生效，不动被跟踪的 `.gitignore`。

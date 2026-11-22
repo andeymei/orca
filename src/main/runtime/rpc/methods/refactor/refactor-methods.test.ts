@@ -6,12 +6,18 @@ import type { OrcaRuntimeService } from '../../../orca-runtime'
 import type { RpcRequest, RpcResponse } from '../../core'
 import { RpcDispatcher } from '../../dispatcher'
 import { refactorJobRegistry } from '../../../../refactor/refactor-job-registry'
+import {
+  refactorBaselineMap,
+  refactorBaselineReader
+} from '../../../../refactor/refactor-baselines'
 import { computeRefactorHunks } from '../../../../../shared/refactor/refactor-hunk-computation'
-import { REFACTOR_METHODS, refactorBaselineMap, refactorBaselineReader } from './refactor-methods'
+import { REFACTOR_METHODS } from './refactor-methods'
 
 const ORIGINAL = 'a\nb\nc\n'
 const MODIFIED = 'A\nb\nC\n'
-const HUNKS = computeRefactorHunks(ORIGINAL, MODIFIED)
+/** The hunk ids name the file they belong to, the way the plan builds them. */
+const FOO_HUNKS = computeRefactorHunks(ORIGINAL, MODIFIED, 'src/foo.ts:')
+const BAR_HUNKS = computeRefactorHunks(ORIGINAL, MODIFIED, 'src/bar.ts:')
 
 const roots: string[] = []
 const jobIds: string[] = []
@@ -21,31 +27,31 @@ async function workspaceRoot(): Promise<string> {
   roots.push(root)
   await fs.mkdir(path.join(root, 'src'), { recursive: true })
   await fs.writeFile(path.join(root, 'src', 'foo.ts'), ORIGINAL)
+  await fs.writeFile(path.join(root, 'src', 'bar.ts'), ORIGINAL)
   return root
 }
 
-/** A job whose plan accepts the first hunk of `src/foo.ts`. */
-function createJob(root: string, jobId: string): void {
+/** A job whose plan accepts the first hunk of every file it names. */
+function createJob(root: string, jobId: string, paths: string[] = ['src/foo.ts']): void {
   jobIds.push(jobId)
+  const files = paths.map((filePath) => ({
+    path: filePath,
+    originalContent: ORIGINAL,
+    hunks: computeRefactorHunks(ORIGINAL, MODIFIED, `${filePath}:`)
+  }))
   refactorJobRegistry.create({
     jobId,
     scratchRoot: path.join(root, '.orca', 'refactor', jobId),
     worktree: 'id:wt-1'
   })
   refactorJobRegistry.update(jobId, {
+    state: 'done',
     plan: {
       jobId,
       sourcePath: 'src/foo.ts',
-      proposals: [
-        {
-          id: 'p1',
-          title: 't',
-          rationale: 'r',
-          files: [{ path: 'src/foo.ts', originalContent: ORIGINAL, hunks: HUNKS }]
-        }
-      ]
+      proposals: [{ id: 'p1', title: 't', rationale: 'r', files }]
     },
-    diskContents: new Map([['src/foo.ts', ORIGINAL]])
+    diskContents: new Map(paths.map((filePath) => [filePath, ORIGINAL]))
   })
 }
 
@@ -121,6 +127,21 @@ describe('the refactoring RPC methods', () => {
     expect(response).toMatchObject({ ok: false, error: { message: '重构目标必须位于工作区内' } })
   })
 
+  it('names the trailing space in a refused target path', async () => {
+    // A trailing space is stripped by Windows before it reads the name, so the path means
+    // something else there; the user has to be told which part of the path is wrong.
+    const root = await workspaceRoot()
+    const runtime = createRuntime({ executionHostId: 'local', workspacePath: root })
+    const response = await dispatch(runtime, 'refactor.propose', {
+      ...PROPOSE_PARAMS,
+      relativePath: 'src/foo.ts '
+    })
+    expect(response).toMatchObject({
+      ok: false,
+      error: { message: '重构目标的路径含有不安全的片段' }
+    })
+  })
+
   it('refuses an absolute target path', async () => {
     const root = await workspaceRoot()
     const runtime = createRuntime({ executionHostId: 'local', workspacePath: root })
@@ -149,7 +170,7 @@ describe('the refactoring RPC methods', () => {
     const runtime = createRuntime({ executionHostId: 'ssh:target-1', workspacePath: root })
     const response = await dispatch(runtime, 'refactor.apply', {
       jobId: 'job-remote',
-      acceptedHunkIds: [HUNKS[0].id]
+      acceptedHunkIds: [FOO_HUNKS[0].id]
     })
     expect(response).toMatchObject({
       ok: false,
@@ -168,7 +189,7 @@ describe('the refactoring RPC methods', () => {
     })
     const response = await dispatch(runtime, 'refactor.apply', {
       jobId: 'job-apply',
-      acceptedHunkIds: [HUNKS[0].id]
+      acceptedHunkIds: [FOO_HUNKS[0].id]
     })
     expect(response).toMatchObject({
       ok: true,
@@ -187,7 +208,7 @@ describe('the refactoring RPC methods', () => {
     })
     const response = await dispatch(runtime, 'refactor.apply', {
       jobId: 'job-changed',
-      acceptedHunkIds: [HUNKS[0].id]
+      acceptedHunkIds: [FOO_HUNKS[0].id]
     })
     expect(response).toMatchObject({
       ok: true,
@@ -208,7 +229,7 @@ describe('the refactoring RPC methods', () => {
     })
     const response = await dispatch(runtime, 'refactor.apply', {
       jobId: 'job-missing',
-      acceptedHunkIds: [HUNKS[0].id]
+      acceptedHunkIds: [FOO_HUNKS[0].id]
     })
     expect(response).toMatchObject({
       ok: true,
@@ -226,7 +247,7 @@ describe('the refactoring RPC methods', () => {
     })
     const response = await dispatch(runtime, 'refactor.apply', {
       jobId: 'job-not-utf8',
-      acceptedHunkIds: [HUNKS[0].id]
+      acceptedHunkIds: [FOO_HUNKS[0].id]
     })
     expect(response).toMatchObject({
       ok: true,
@@ -250,7 +271,7 @@ describe('the refactoring RPC methods', () => {
     })
     const response = await dispatch(runtime, 'refactor.apply', {
       jobId: 'job-throw',
-      acceptedHunkIds: [HUNKS[0].id]
+      acceptedHunkIds: [FOO_HUNKS[0].id]
     })
     expect(response).toMatchObject({
       ok: true,
@@ -271,6 +292,69 @@ describe('the refactoring RPC methods', () => {
     expect(await readBaseline('src\\foo.ts')).toBe('buffer\n')
   })
 
+  it("does not hand one file's buffer to a path that differs only in case", async () => {
+    // `src/Foo.ts` and `src/foo.ts` are two files on a case-sensitive disk; the baseline of one
+    // written into the other would be a silent overwrite.
+    const root = await workspaceRoot()
+    const baselines = refactorBaselineMap('src/Foo.ts', 'the user buffer\n')
+    const readBaseline = refactorBaselineReader({ baselines, workspaceRoot: root })
+    expect(await readBaseline('src/foo.ts')).not.toBe('the user buffer\n')
+  })
+
+  it('refuses an apply on a job whose turn never produced a plan', async () => {
+    // A turn that timed out or was cancelled has no plan; the apply must say so rather than
+    // report an empty success.
+    const root = await workspaceRoot()
+    jobIds.push('job-no-plan')
+    refactorJobRegistry.create({
+      jobId: 'job-no-plan',
+      scratchRoot: path.join(root, '.orca', 'refactor', 'job-no-plan'),
+      worktree: 'id:wt-1'
+    })
+    refactorJobRegistry.update('job-no-plan', { state: 'timed_out' })
+    const runtime = createRuntime({ executionHostId: 'local', workspacePath: root })
+    const response = await dispatch(runtime, 'refactor.apply', {
+      jobId: 'job-no-plan',
+      acceptedHunkIds: [FOO_HUNKS[0].id]
+    })
+    expect(response).toMatchObject({
+      ok: false,
+      error: { message: '重构任务还没有可评审的方案' }
+    })
+  })
+
+  it('stops an in-flight apply when the job is discarded', async () => {
+    // The user applies and then discards: the files the apply had not reached must not be written.
+    const root = await workspaceRoot()
+    createJob(root, 'job-discarded', ['src/foo.ts', 'src/bar.ts'])
+    const writeGate = Promise.withResolvers<void>()
+    const writeFileExplorerFile = vi.fn(async () => {
+      await writeGate.promise
+      return { ok: true }
+    })
+    const runtime = createRuntime({
+      executionHostId: 'local',
+      workspacePath: root,
+      writeFileExplorerFile
+    })
+    const applying = dispatch(runtime, 'refactor.apply', {
+      jobId: 'job-discarded',
+      acceptedHunkIds: [FOO_HUNKS[0].id, BAR_HUNKS[0].id]
+    })
+    await vi.waitFor(() => expect(writeFileExplorerFile).toHaveBeenCalledTimes(1))
+    await dispatch(runtime, 'refactor.discard', { jobId: 'job-discarded' })
+    writeGate.resolve()
+    const response = await applying
+    expect(writeFileExplorerFile).toHaveBeenCalledTimes(1)
+    expect(response).toMatchObject({
+      ok: true,
+      result: {
+        applied: [{ path: 'src/foo.ts', hunksApplied: 1 }],
+        refusals: [{ path: 'src/bar.ts', reason: '重构任务已取消，该文件未写入' }]
+      }
+    })
+  })
+
   it('writes nothing when the client gave up', async () => {
     const root = await workspaceRoot()
     createJob(root, 'job-aborted')
@@ -285,7 +369,7 @@ describe('the refactoring RPC methods', () => {
     const response = await dispatch(
       runtime,
       'refactor.apply',
-      { jobId: 'job-aborted', acceptedHunkIds: [HUNKS[0].id] },
+      { jobId: 'job-aborted', acceptedHunkIds: [FOO_HUNKS[0].id] },
       { signal: controller.signal }
     )
     expect(writeFileExplorerFile).not.toHaveBeenCalled()

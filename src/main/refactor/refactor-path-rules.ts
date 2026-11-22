@@ -1,0 +1,66 @@
+import path from 'node:path'
+import { isSafeMobileRelativePath } from '../runtime/files/mobile-file-kind'
+import { hasUnsafePathSegment, isPathInsideWorkspace } from './refactor-write-gate'
+
+/**
+ * The path rule of the feature: no absolute path, no `..` segment, and no trailing dot or space
+ * that Windows strips before it reads `..`.
+ */
+export function isSafeRelativeRefactorPath(relativePath: string): boolean {
+  return isSafeMobileRelativePath(relativePath) && !hasUnsafePathSegment(relativePath)
+}
+
+/**
+ * The key a file path is claimed under: the separators are normalised and the case folded, because
+ * macOS and Windows read `src\foo.ts` and `src/foo.ts` as one file, and a missed conflict silently
+ * overwrites the first proposal's file.
+ *
+ * The case folding belongs here and only here: a false collision costs the user a proposal,
+ * which is a cheap mistake.
+ */
+export function refactorPathKey(filePath: string): string {
+  return filePath.split(/[\\/]/).join('/').toLowerCase()
+}
+
+/**
+ * The key a baseline is stored under: the separators are normalised, the case is not.
+ *
+ * Why not the case: a case-folded key makes `src/Foo.ts` and `src/foo.ts` one entry, and the
+ * baseline of one file would then be written into the other. A miss falls back to the disk,
+ * which costs only the user's unsaved edits.
+ */
+export function refactorBaselineKey(relativePath: string): string {
+  return relativePath.split(/[\\/]/).join('/')
+}
+
+/**
+ * A drive-relative path resolves against another drive's current directory, so it names no file
+ * of this workspace. It is refused on every platform, not only where it happens to escape.
+ */
+function isWindowsDriveRelativePath(relativePath: string): boolean {
+  return /^[A-Za-z]:/.test(relativePath)
+}
+
+/**
+ * The path the agent may read and the plan may name.
+ *
+ * The path rule rejects absolute paths, `..` segments and the trailing dot or space Windows
+ * strips before it reads `..`; the drive-relative rule rejects a path that resolves onto another
+ * drive. The containment check is defence in depth: no path that survives the rules above
+ * resolves outside the workspace today, and it is the layer that catches a future change in them.
+ */
+export function assertSafeRefactorTargetPath(workspaceRoot: string, relativePath: string): void {
+  if (!isSafeRelativeRefactorPath(relativePath)) {
+    throw new Error(
+      hasUnsafePathSegment(relativePath)
+        ? '重构目标的路径含有不安全的片段'
+        : '重构目标必须是工作区内的相对路径'
+    )
+  }
+  const resolvesOutside =
+    isWindowsDriveRelativePath(relativePath) ||
+    !isPathInsideWorkspace(workspaceRoot, path.resolve(workspaceRoot, relativePath))
+  if (resolvesOutside) {
+    throw new Error('重构目标必须位于工作区内')
+  }
+}

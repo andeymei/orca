@@ -33,7 +33,8 @@ function unreadableReason(error: unknown): string {
   if (error instanceof NodeFileNotRegularError) {
     return '文件不是普通文件，无法安全读取'
   }
-  return error instanceof Error ? error.message : String(error)
+  // The raw message is an errno with a path in it; it is not something to show a person.
+  return '文件无法读取'
 }
 
 /** A workspace file's current disk content, or why it could not be read. */

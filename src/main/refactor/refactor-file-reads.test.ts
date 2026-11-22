@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { listScratchProposals, readScratchFile } from './refactor-file-reads'
+import { listScratchProposals, readScratchFile, readWorkspaceFile } from './refactor-file-reads'
 
 const roots: string[] = []
 
@@ -69,5 +69,31 @@ describe('readScratchFile', () => {
     await fs.mkdir(path.join(root, 'p1'), { recursive: true })
     await fs.writeFile(path.join(root, 'secret.ts'), 'secret\n')
     expect(await readScratchFile(root, 'p1', '../secret.ts')).toBeNull()
+  })
+})
+
+describe('readWorkspaceFile', () => {
+  afterEach(async () => {
+    for (const root of roots.splice(0)) {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('reads a workspace file', async () => {
+    const root = await scratchRoot()
+    await fs.writeFile(path.join(root, 'a.ts'), 'a\n')
+    expect(await readWorkspaceFile(root, 'a.ts')).toEqual({ status: 'read', content: 'a\n' })
+  })
+
+  it('says a file that is gone is gone', async () => {
+    const root = await scratchRoot()
+    expect(await readWorkspaceFile(root, 'missing.ts')).toEqual({ status: 'missing' })
+  })
+
+  it('keeps the raw error out of the reason', async () => {
+    // The reason lands in the review tab; an errno with a path in it is not a message to show.
+    const root = await scratchRoot()
+    const read = await readWorkspaceFile(root, `${'a'.repeat(300)}.ts`)
+    expect(read).toEqual({ status: 'unreadable', reason: '文件无法读取' })
   })
 })

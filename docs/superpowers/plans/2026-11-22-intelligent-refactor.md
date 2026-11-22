@@ -2473,6 +2473,18 @@ Expected: FAIL，报模块不存在。
 
 - 只在 `mode === 'edit'` 的文件上出现。
 - 点击时取当前激活文件的**缓冲区内容**（用 `createEditorPanelDraftSelector`，见 `src/renderer/src/components/editor/editor-panel-draft-selector.ts`），调 `openRefactorReviewTab`。
+  用法照 `EditorPanel.tsx:87-90`：
+  ```ts
+  const editorDraftSelector = useMemo(
+    () => createEditorPanelDraftSelector(activeFile),
+    [activeFile]
+  )
+  const editorDrafts = useAppStore(editorDraftSelector)
+  ```
+  **返回的 map 是按 file id 索引的**（`editorDrafts[fileId]`，不是按路径），
+  所以当前文件的缓冲区内容是 `editorDrafts[activeFile.id]`；
+  **取不到（有 draft 才取得到）就退回磁盘内容**——没有未保存修改时 draft 是 undefined，
+  这时该用文件在磁盘上的内容。
 - 按钮在没有 Claude 登录态时也要能点——发起失败由 toast 报出来（失败就不开 tab，见 Interfaces）。
 
 - [ ] **Step 5: 写 fixture**

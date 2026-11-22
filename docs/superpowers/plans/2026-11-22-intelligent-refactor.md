@@ -1667,11 +1667,26 @@ Expected: FAIL，报模块不存在。
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 ```
 
-每个方法用 `callRuntimeRpc<Result>({ kind: 'local' }, 'refactor.<method>', params, { timeoutMs })`。
+**超时必须由渲染层自己兜**：`callRuntimeRpc` 走 `{ kind: 'local' }` 时会把 `timeoutMs` 和 `signal`
+一起丢掉（`runtime-rpc-call.ts:62-63` 的 local 分支只调 `window.api.runtime.call`，
+只有 environment 分支才把 timeoutMs 传下去）。NES 的注释写得很直白：
+"The local branch of the transport drops the signal and the timeout, so the renderer keeps its own."
+所以照 NES 的做法：自己建一个 `AbortController`，用 `setTimeout` 到点 abort，
+再用一个 `settleBeforeDeadline(call, timeoutMs, signal)` 把调用和截止时间赛跑。
+（NES 的 `settleBeforeDeadline` 是那个文件里的私有函数，这个文件要自己带一份，
+或者放到 `runtime/rpc/calls/` 下共用——不要 import 别人的私有函数。）
 
-超时：`refactor.propose` 立刻返回，用 35s；`refactor.status` 用 35s；`refactor.plan` 用 35s；`refactor.apply` 用 60s（写盘可能慢）。
+超时：`refactor.propose` 用 35s；`refactor.status` 用 35s；`refactor.plan` 用 35s；
+`refactor.apply` 用 60s（写盘可能慢）。
+
+**结果要过一遍 zod**：NES 用 `NesEditPlan.safeParse(response.plan)` 解析 RPC 返回值。
+这里对应地用 `RefactorStatusResult.safeParse` / `RefactorPlanResult.safeParse` /
+`RefactorApplyResult.safeParse`，解析失败就当"没有结果"。
 
 失败的处理照 NES 的做法：请求失败时 `console.error` 并把错误转成"没有结果"，不让异常冒到 UI。
+`proposeRefactor` 失败返回 `null`；`fetchRefactorPlan` 失败返回 `null`；
+`discardRefactor` 失败返回 `false`；`applyRefactor` 失败要**抛出去**——
+用户点了"接受"，静默失败是最糟的结果，调用方必须能告诉用户"没写成功"。
 
 - [ ] **Step 4: 实现轮询**
 

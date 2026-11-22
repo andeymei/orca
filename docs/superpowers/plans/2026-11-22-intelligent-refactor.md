@@ -2136,6 +2136,14 @@ git add src/main/refactor src/main/runtime/rpc/methods/refactor src/main/runtime
 git commit -m "feat(refactor): expose the refactoring runtime methods"
 ```
 
+**这一任务很大（六个新文件 + 一处共享改动），建议分三次提交**，
+让审查能分别否决其中一块而不必推翻整块：
+① `refactor-scratch.ts` + `refactor-scratch-cleanup.ts` + 它们的测试 —— 纯路径计算，没有 I/O 风险；
+② `refactor-apply.ts` + 它的测试 —— 写回路径，安全边界在这里；
+③ `refactor-methods.ts` + 注册表 + 生成物 —— RPC 接线。
+（`refactor-scratch.ts` 里的 `refactorScratchRoot` 与 `refactorScratchRelativeRoot` 必须相等，
+这条断言放在 ① 里。）
+
 ---
 
 ### Task 9: 渲染层客户端与轮询

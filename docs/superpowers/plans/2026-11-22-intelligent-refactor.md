@@ -710,7 +710,7 @@ git commit -m "feat(refactor): keep the agent's writes inside the scratch direct
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { REFACTOR_ALLOWED_TOOLS, resolveRefactorAgentLaunch } from './refactor-agent-launch'
+import { REFACTOR_DISALLOWED_TOOLS, resolveRefactorAgentLaunch } from './refactor-agent-launch'
 
 describe('resolveRefactorAgentLaunch', () => {
   it('runs the agent in the workspace with only read and write tools', async () => {

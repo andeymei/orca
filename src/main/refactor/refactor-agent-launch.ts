@@ -37,7 +37,8 @@ export const REFACTOR_PERMISSION_SETTINGS = {
     disableBypassPermissionsMode: 'disable',
     disableAutoMode: 'disable'
   }
-  // Settings.permissions carries an index signature, so a misspelled key typechecks; the test pins them.
+  // Settings.permissions carries an index signature, so a misspelled key typechecks;
+  // the test pins the values of the four keys we mean to set.
 } satisfies Settings
 
 export type RefactorAgentLaunch = {
@@ -67,7 +68,8 @@ export async function resolveRefactorAgentLaunch(input: {
     cwd: input.cwd,
     options: {
       ...CLAUDE_STRUCTURED_BASE_OPTIONS,
-      // Only 'default' consults canUseTool for every call; the other modes decide before the gate.
+      // Only 'default' routes tool calls through canUseTool; the other modes decide before it.
+      // Even here an allow rule decides first, which is why the gate also rides a PreToolUse hook.
       permissionMode: 'default',
       disallowedTools: [...REFACTOR_DISALLOWED_TOOLS],
       // SDK isolation mode: a user setting that auto-allows a write tool would bypass the gate.

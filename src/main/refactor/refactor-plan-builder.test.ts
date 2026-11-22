@@ -91,7 +91,7 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    expect(result.warnings.length).toBeGreaterThan(0)
+    expect(result.warnings.some((warning) => warning.includes('改同一个文件'))).toBe(true)
   })
 
   it('checks the conflict before it reads, so the dropped proposal is never read', async () => {
@@ -161,7 +161,28 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    expect(result.warnings.length).toBeGreaterThan(0)
+    expect(result.warnings.some((warning) => warning.includes('改同一个文件'))).toBe(true)
+  })
+
+  it('treats a backslash-spelled path as the same file', async () => {
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [
+          { id: 'p1', title: 'a', rationale: 'r', files: ['src\\foo.ts'] },
+          { id: 'p2', title: 'b', rationale: 'r', files: ['src/foo.ts'] }
+        ]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
+    expect(result.warnings.some((warning) => warning.includes('改同一个文件'))).toBe(true)
   })
 
   it('drops the second proposal when two proposals share an id', async () => {
@@ -182,7 +203,7 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    expect(result.warnings.length).toBeGreaterThan(0)
+    expect(result.warnings.some((warning) => warning.includes('编号重复'))).toBe(true)
     expect(result.diskContents.has('src/other.ts')).toBe(false)
   })
 

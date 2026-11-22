@@ -10,6 +10,7 @@ import { hasUnsafePathSegment } from './refactor-write-gate'
 
 /** The baseline copy written when the job started: it is the source, not a proposal. */
 const SOURCE_DIRECTORY_NAME = '_source'
+const SOURCE_IGNORED_WARNING = `方案 ${SOURCE_DIRECTORY_NAME} 是基准副本，已忽略`
 
 export type RefactorPlanInput = {
   jobId: string
@@ -57,6 +58,15 @@ export function isSafeRelativeRefactorPath(relativePath: string): boolean {
   return isSafeMobileRelativePath(relativePath) && !hasUnsafePathSegment(relativePath)
 }
 
+/**
+ * The key a file path is claimed under: the separators are normalised and the case folded, because
+ * macOS and Windows read `src\foo.ts` and `src/foo.ts` as one file, and a missed conflict silently
+ * overwrites the first proposal's file.
+ */
+function conflictKey(filePath: string): string {
+  return filePath.split(/[\\/]/).join('/').toLowerCase()
+}
+
 async function draftsFromScratchTree(
   input: RefactorPlanInput,
   warnings: string[]
@@ -65,7 +75,7 @@ async function draftsFromScratchTree(
   const drafts: ProposalDraft[] = []
   for (const entry of entries) {
     if (entry.id === SOURCE_DIRECTORY_NAME) {
-      warnings.push(`方案 ${SOURCE_DIRECTORY_NAME} 是基准副本，已忽略`)
+      warnings.push(SOURCE_IGNORED_WARNING)
       continue
     }
     drafts.push({
@@ -83,7 +93,7 @@ function draftsFromManifest(manifest: RefactorManifest, warnings: string[]): Pro
   const drafts: ProposalDraft[] = []
   for (const proposal of manifest.proposals) {
     if (proposal.id === SOURCE_DIRECTORY_NAME) {
-      warnings.push(`方案 ${SOURCE_DIRECTORY_NAME} 是基准副本，已忽略`)
+      warnings.push(SOURCE_IGNORED_WARNING)
       continue
     }
     drafts.push({
@@ -123,9 +133,9 @@ async function evaluateProposal(
         warning: `方案 ${draft.id} 的文件路径不在工作区内，已丢弃：${filePath}`
       }
     }
-    // The key is lower-cased: macOS and Windows treat `src/Foo.ts` and `src/foo.ts` as one file,
-    // and a missed conflict silently overwrites the first proposal's file.
-    const pathKey = filePath.toLowerCase()
+    // The key folds the separator spelling and the case: macOS and Windows treat `src/Foo.ts` and
+    // `src\foo.ts` as one file, and a missed conflict silently overwrites the first proposal's file.
+    const pathKey = conflictKey(filePath)
     const owner = claimedPaths.get(pathKey)
     if (owner !== undefined) {
       return {
@@ -200,7 +210,7 @@ export async function buildRefactorPlan(input: RefactorPlanInput): Promise<Refac
     proposals.push(outcome.proposal)
     claimedIds.add(draft.id)
     for (const [filePath, disk] of outcome.diskContents) {
-      claimedPaths.set(filePath.toLowerCase(), draft.id)
+      claimedPaths.set(conflictKey(filePath), draft.id)
       diskContents.set(filePath, disk)
     }
     if (draft.restored) {

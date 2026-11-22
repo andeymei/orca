@@ -1816,6 +1816,9 @@ Expected: FAIL，报模块不存在。
 在 `refactor-apply.ts`：
 
 1. 把 `acceptedHunkIds` 收成 `Set`。
+   **hunk 的 id 是整串比较的不透明字符串**（形如 `src/a.ts:h1`——文件路径加该文件内的位置），
+   **不要去解析末尾的 `hN`**：接受集合是一个扁平的 `Set<string>`，
+   两个文件的 hunk 必须各有各的 id，否则在一个文件里勾一个会把另一个文件的同名块一起接受。
 2. 按文件分组：遍历 plan 的每个 proposal 的每个 file，收集该文件里**被接受**的 hunk。
 3. 没有被接受的 hunk 的文件跳过。
 4. 对每个要写的文件：

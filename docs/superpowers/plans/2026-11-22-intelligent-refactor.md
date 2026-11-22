@@ -655,10 +655,20 @@ Expected: FAIL，报模块不存在。
   这不是新发明：`src/shared/plugins/frames/plugin-frame-guest.ts:96-105` 就是这么防的，
   注释写着"Windows strips them, so `__orca.` or `app.js ` would name another file than the one checked"。
   POSIX 上这种文件名合法但对 agent 毫无用处，拒绝掉无害。
-- `isPathInsideScratch(scratchRoot, targetPath)`：用 `path.resolve` 把两边都规约成绝对路径（`scratchRoot` 本身已是绝对路径），然后判断 `resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep)`。**比较区分大小写**——大小写不敏感的文件系统上这会拒掉一个大小写不同的合法路径，那是安全的方向；agent 总是用 prompt 里给的原样路径写。
-  **不要改用仓库里的 `isPathInsideOrEqual`**（`src/shared/cross-platform-path.ts:159`）——它的
-  `normalizeRuntimePathForComparison` 会把 Windows 风格路径小写化，与上面的大小写敏感要求冲突。
-  写一行注释说明为什么不用它，免得后人"顺手去重"时把大小写敏感的围栏改回大小写不敏感。
+- **这条规则必须住在两个包含判断函数里面，不能只住在 `refactorToolAllowed` 里**。
+  `isPathInsideScratch` 与 `isPathInsideWorkspace` 是导出的，Task 8 会直接调用它们来校验
+  用户传进来的 `relativePath`；规则只住在 `refactorToolAllowed` 里的话，那条直接调用路径就绕过了它。
+  两个函数的形状：
+  - `isPathInsideScratch(scratchRoot, targetPath)` —— **targetPath 必须是绝对路径**（调用方先按工作区根解析）。
+    依次：① 对 targetPath 逐段做末尾点/空格的检查，不过就返回 `false`；② 用 `path.resolve` 把两边规约成绝对路径，
+    然后判断 `resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep)`。
+  - `isPathInsideWorkspace(workspaceRoot, targetPath)` —— 同一套逻辑，只是根换成工作区根，同样先做分段检查。
+  - `path.resolve` 不会剥末尾的点和空格（剥的是操作系统），所以对**解析后**的路径做这个检查一样有效：
+    精确的 `..` 由 resolve 折叠（折叠完就跑到根外面了，包含判断会拒），`.. ` 原样留在分段里被这条规则拒掉。
+  - **比较区分大小写**——大小写不敏感的文件系统上这会拒掉一个大小写不同的合法路径，那是安全的方向；agent 总是用 prompt 里给的原样路径写。
+  - **不要改用仓库里的 `isPathInsideOrEqual`**（`src/shared/cross-platform-path.ts:159`）——它的
+    `normalizeRuntimePathForComparison` 会把 Windows 风格路径小写化，与上面的大小写敏感要求冲突。
+    写一行注释说明为什么不用它，免得后人"顺手去重"时把大小写敏感的围栏改回大小写不敏感。
 - `refactorToolAllowed`：
   - `toolName` 是 `Write` / `Edit` / `MultiEdit` → 取路径；取不到就**拒绝**（fail-closed）；取到就 `path.resolve(workspaceRoot, target)`（相对路径按工作区根解析）后交给 `isPathInsideScratch`。
     **放行 `MultiEdit` 是必须的**：它是 Claude Code 真实存在的编辑工具，拒掉它等于堵死一条正当的编辑路径，agent 可能转去找 `Bash` 之类的绕路（那些也被拒），功能就废了。
@@ -1445,6 +1455,15 @@ writeFileExplorerFile(
 
 - `refactor.propose`：
   1. `const target = await runtime.resolveRuntimeFileTarget(params.worktree)` → `target.worktree.path` 是工作区绝对路径。
+     1.5. **校验 `params.relativePath`**：它会直接拼进暂存目录的写入路径（`_source/<relativePath>`），
+     所以必须先过两道：
+     - `isSafeMobileRelativePath(params.relativePath)`（`src/main/runtime/files/mobile-file-kind.ts`）——
+       拒绝对路径、Windows 盘符前缀，以及 `..` / `.` / 空路径段。Task 6 的 `isSafeRelativeRefactorPath`
+       委托的就是它，**两个任务共用这一份实现，不要各写一遍**。
+     - `isPathInsideWorkspace(target.worktree.path, path.resolve(target.worktree.path, params.relativePath))`
+       （Task 3 的导出）——`isSafeMobileRelativePath` 不管末尾点/空格，而 `.. ` 在 Windows 上就是"上一级目录"。
+       Task 3 的包含判断里已经含了这条分段规则，所以这一道是必须的。
+       任一条不过就**直接拒绝这次请求**（抛错），不要先建暂存目录再报错。
   2. `jobId` 用 `crypto.randomUUID()`。
   3. `scratchRoot = refactorScratchRoot(target.worktree.path, jobId)`，用 `fs.mkdir(scratchRoot, { recursive: true })` 建出来。
   4. 写基准副本：`fs.writeFile(path.join(scratchRoot, '_source', params.relativePath), params.content)`，父目录先 `mkdir recursive`。

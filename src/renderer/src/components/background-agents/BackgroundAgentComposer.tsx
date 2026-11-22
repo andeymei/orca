@@ -42,6 +42,27 @@ export type BackgroundAgentComposerHandle = {
 }
 
 /**
+ * Lands what the user picked or pasted, and clears the uploading flag whatever the host said.
+ *
+ * The try/finally lives out here on purpose: a finally clause inside a component body is a
+ * bail-out the React Compiler cannot lower, and this composer is the app's rich text field.
+ */
+async function landIntake(
+  intake: () => Promise<TerminalComposerIntakeResult>,
+  landAttachments: (result: TerminalComposerIntakeResult) => void,
+  setUploading: (uploading: boolean) => void,
+  onFailure: (error: unknown) => void
+): Promise<void> {
+  try {
+    landAttachments(await intake())
+  } catch (error) {
+    onFailure(error)
+  } finally {
+    setUploading(false)
+  }
+}
+
+/**
  * The prompt box under the roster.
  *
  * It is the app's rich text field: the text is a document, a file is a pill that names the path
@@ -112,6 +133,17 @@ export function BackgroundAgentComposer({
     [t]
   )
 
+  const reportUploadFailure = useCallback(
+    (error: unknown) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('auto.components.backgroundAgents.uploadFailed', 'Could not attach the file')
+      )
+    },
+    [t]
+  )
+
   const pasteFiles = useCallback(
     async (clipboardData: DataTransfer) => {
       const host = buildHost()
@@ -121,24 +153,18 @@ export function BackgroundAgentComposer({
         )
         return
       }
-      try {
-        landAttachments(
-          await pasteTerminalComposerAttachments(host, {
+      await landIntake(
+        () =>
+          pasteTerminalComposerAttachments(host, {
             files: Array.from(clipboardData.files ?? []),
             items: clipboardData.items ? Array.from(clipboardData.items) : undefined
-          })
-        )
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : t('auto.components.backgroundAgents.uploadFailed', 'Could not attach the file')
-        )
-      } finally {
-        setUploading(false)
-      }
+          }),
+        landAttachments,
+        setUploading,
+        reportUploadFailure
+      )
     },
-    [buildHost, landAttachments, t]
+    [buildHost, landAttachments, reportUploadFailure, t]
   )
 
   const capturePaste = useCallback(
@@ -169,20 +195,13 @@ export function BackgroundAgentComposer({
       return
     }
     setUploading(true)
-    void (async () => {
-      try {
-        landAttachments(await pickTerminalComposerAttachments(host))
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : t('auto.components.backgroundAgents.uploadFailed', 'Could not attach the file')
-        )
-      } finally {
-        setUploading(false)
-      }
-    })()
-  }, [buildHost, landAttachments, t])
+    void landIntake(
+      () => pickTerminalComposerAttachments(host),
+      landAttachments,
+      setUploading,
+      reportUploadFailure
+    )
+  }, [buildHost, landAttachments, reportUploadFailure, t])
 
   const clear = useCallback((): boolean => {
     const editor = editorRef.current

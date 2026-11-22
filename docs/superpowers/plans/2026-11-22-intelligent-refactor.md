@@ -2611,6 +2611,7 @@ git commit -m "feat(refactor): show one diff per refactoring hunk"
 - Create: `src/renderer/src/components/editor/refactor/refactor-review-tab.tsx`
 - Create: `src/renderer/src/components/editor/refactor/refactor-review-tab.fixture.tsx`
 - Modify: `src/renderer/src/components/editor/EditorPanelHeader.tsx`
+- Modify: `src/renderer/src/components/editor/EditorContent.tsx`
 - Test: `src/renderer/src/components/editor/refactor/refactor-review-tab.test.tsx`
 
 **Interfaces:**
@@ -2630,8 +2631,13 @@ git commit -m "feat(refactor): show one diff per refactoring hunk"
       `(state, fileId, worktreeId, label, contentType, isPreview?, targetGroupId?, selection?, index?)`
       （`src/renderer/src/store/slices/editor/tabs/workspace-editor-item.ts:16-26`），
       `contentType` 是 `EditorTabContentType`，Task 10 加了成员后即可直接传。
-    - 没找到就 `state.openFile({ filePath: id, relativePath: label, worktreeId, language: 'plaintext', mode: 'refactor-review' }, { reopenId: id, preview: false })`。
+    - 没找到就 `state.openFile({ filePath: id, relativePath: label, worktreeId, language: 'plaintext', mode: 'refactor-review', refactorReview: { jobId, worktreeId, relativePath } }, { reopenId: id, preview: false })`。
       **`worktreeId` 要带上**——tab 得归属到工作区，否则布局与归属都对不上。
+      **`refactorReview` 也要带上**：编辑器面板是按 `activeFile.mode` 分派的
+      （`src/renderer/src/components/editor/EditorContent.tsx:137-185`，
+      `git-graph` / `check-details` / `conflict-review` 各有一个分支），
+      面板渲染时读的是 `activeFile` 上的那一块数据，不是组件自己带的 props。
+      少了 `refactorReview`，面板就不知道这个 tab 是哪次重构的。
       `git-graph` 那份还传了 `runtimeEnvironmentId` 与 `operationProvenance`，那是从它的 scope helper
       （`gitGraphScope(worktreeId)`）拿的；重构 tab 是本地工作区（Task 8 只支持本地），
       不需要远端路由，先不传这两个。
@@ -2688,6 +2694,13 @@ Expected: FAIL，报模块不存在。
 - 「接受全部方案」把 plan 里所有 hunk 标为接受，然后调 `applyRefactor`，成功后关掉这个 tab（用现成的关闭编辑 tab 的 store action）。
 - 「丢弃」调 `discardRefactor` 后关 tab。
 - **部分接受警告**：对每个方案，若它有 hunk 但被接受的 hunk 是真子集，在方案节点上显示提示"这个改动由 N 处修改共同组成，只接受其中一处可能无法编译"，并给一个"接受该方案全部改动"的按钮。
+
+`EditorContent.tsx`：加一个 `activeFile.mode === 'refactor-review'` 的分支，
+读 `activeFile.refactorReview` 渲染 `<RefactorReviewTab jobId worktreeId relativePath />`。
+**`activeFile.refactorReview` 缺失时给一句"重构审查不可用"**（照 `check-details` 分支的写法：
+`activeFile.checkRunDetails` 没有时渲染一句说明，而不是整个崩掉）。
+少了这个分支，tab 开出来是空白——编辑器面板根本不知道要渲染审查界面。
+
 - 接受成功/失败的提示用 Orca 现成的 toast（查 `src/renderer/src/components/` 里既有的 toast 用法，不要自造）。
 
 - [ ] **Step 4: 加触发入口**
@@ -2759,13 +2772,13 @@ Expected: PNG 落在 `.cache/fixtures/`。**看图确认**：左树的三级层�
 ```bash
 node config/scripts/localization/source-extraction/localize-renderer-strings.mjs
 pnpm tc:web
-pnpm check:changed --base=9127b3837e
-git add src/renderer/src/components/editor/refactor src/renderer/src/components/editor/EditorPanelHeader.tsx src/renderer/src/i18n
+pnpm exec oxlint src/renderer/src/components/editor/refactor src/renderer/src/components/editor/EditorPanelHeader.tsx src/renderer/src/components/editor/EditorContent.tsx
+git add src/renderer/src/components/editor/refactor src/renderer/src/components/editor/EditorPanelHeader.tsx src/renderer/src/components/editor/EditorContent.tsx src/renderer/src/i18n
 git commit -m "feat(refactor): review the proposals and accept them by plan, file, or hunk"
 ```
 
-**`check:changed` 必须带 `--base=9127b3837e`**：默认基线是 `origin/main`，而 origin/main 不含本分支历史里
-那个大提交，changed 集合会混进几千个无关文件，vitest 的 "related" 步骤跑不完（实测 19 分钟仍未结束）。
+**这里不要跑 `pnpm check:changed`**（Global Constraints 说了：整轮门禁由控制者在分支末尾统一跑，
+中途跑会把几十个无关文件的 related 测试拖进来）。
 
 ---
 

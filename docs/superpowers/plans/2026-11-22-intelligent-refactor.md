@@ -20,7 +20,12 @@
 - 类型放 `.ts`，不放 `.d.ts`（`src/shared/` 与 `src/preload/` CI 强制）。
 - 新文件不得使用 `helpers` / `utils` / `common` / `misc` 命名；按领域概念命名。
 - 注释：只写代码本身没说清的原因，一行，写"为什么"不写"怎么做"。
-- UI 文案用 `t('auto.components.editor.<File>.<key>', 'default')`；key 由 `node config/scripts/localization/source-extraction/localize-renderer-strings.mjs` 生成后提交。
+- UI 文案用 `t('auto.components.editor.<File>.<key>', 'default')`；**key 手写进 `en.json`，不跑 `localize-renderer-strings.mjs`**。
+  理由：提取器把 `t` / `translate` / `translateMain` 认作本地化调用并跳过它们里面的字符串
+  （`audit-localization-coverage.mjs:13`），所以脚本既不收集也不生成上面这种写法的 key；
+  它是**改写器**，跑它只会去改上百个与本特性无关的 renderer 文件。
+  `check:changed` 真正会跑的三个本地化闸门（`verify-localization-catalogs.mjs`、
+  `audit-localization-coverage.mjs --check`、`verify-localization-extraction.mjs`）对手写的 key 全部通过。
   组件里 `t` 来自 `useTranslate()`（`src/renderer/src/i18n/use-translate`），不要直接 import `translate`——后者不随语言切换刷新。
 - **渲染层测试要 mock 翻译**：`vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))`。
   不 mock 的话，语言包里的真实译文会把断言里的默认文案换掉，测试就在跟语言包较劲。
@@ -2012,6 +2017,15 @@ writeFileExplorerFile(
   - `ok: false` 且是别的 conflict（`missing` / `not-utf8`）→ 记进 `refusals`，理由按 conflict 说。
     写回用的 `relativePath` 来自 plan，而 plan 的路径来自清单，已经过 Task 6 的
     `isSafeRelativeRefactorPath` 校验；不要在这里重写一套路径检查。
+  - **handler 要观察 `ctx.signal`**（`RpcContext.signal`，core.ts:115）：渲染层 60 秒到了会
+    abort → `runtime:cancelCall` → 主进程 abort，dispatcher **只把 signal 传下去，不会拿它跟 handler 赛跑**
+    （dispatcher.ts:98-102），所以 handler 不看就等于没人管。
+    abort 的语义是"**不要再开始新的写**"——已经在飞的那次写撤不回来（文件要么在盘上要么不在）。
+    abort 之后剩下的文件进 `refusals`，理由说"已取消"；被磁盘冲突拒绝的文件**保留它自己的理由**，
+    别让"已取消"盖掉。
+    这不是可选的：渲染层放弃回复之后主进程还在写，界面会说"超时"而文件其实被改了。
+    **写成功之后再点一次接受必须被拒绝**（磁盘内容既不等于基线也不等于 originalContent），
+    不许写第二遍——这条要有测试钉住。
 
 - `refactor.discard`：job 还在 running 就 `controller.abort()`；然后删掉 `scratchRoot` 目录（`fs.rm(scratchRoot, { recursive: true, force: true })`），从注册表 `remove`，返回 `{ discarded: true }`。
 

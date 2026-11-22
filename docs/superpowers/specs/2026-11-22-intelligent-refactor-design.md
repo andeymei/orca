@@ -469,8 +469,9 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 - **agent 改了真实文件**：写闸门只拦 Write/Edit 工具。agent 若用 `Bash` 里的 `mv`/`cp` 就能绕过——
   所以 `Bash` 根本不给。
 - **暂存目录污染仓库**：`.orca/refactor/` 需要进 `.gitignore`。应用在发起任务时检查工作区是不是
-  git 仓库，是的话把 `.orca/refactor/` 追加到 `.git/info/exclude`（本地生效，不动被跟踪的
-  `.gitignore`）。非 git 的 folder workspace 没有这一步，暂存目录就在那里。
+  git 仓库，是的话把 `.orca/refactor/` 追加到仓库本地的 exclude 文件（`git rev-parse --git-path
+  info/exclude` 问 Git 要路径——linked worktree 里 `.git` 是个文件，而 `info/` 在 common dir）。
+  非 git 的 folder workspace 没有这一步，暂存目录就在那里。
 - **接受后代码不能编译**：见 §8.1 的警告。本期不做编译验证。
 
 ### 限制

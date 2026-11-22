@@ -728,6 +728,7 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      system 与 user 合成一条，是因为 SDK 的用户消息只有 `content` 一个入口；两段之间用一个空行分隔。
   4. 监听 SDK 消息：收到 `tool_use` 就更新进度并 `onProgress?.(text)`；收到 `type === 'result'` 就结束等待。
   5. 结束后读 `<scratchRoot>/manifest.json`，用 `RefactorManifest.safeParse` 解析；解析失败返回 `manifest: null` 并在 `warnings` 里写明原因。
+     读它也要带大小上限（清单是 agent 写的外部输入）：用 `readNodeFileWithinLimit(path, 1 * 1024 * 1024)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限按"解析失败"处理。
   6. 超时：`REFACTOR_TURN_TIMEOUT_MS = 300_000`（5 分钟）。到点中止并关连接。
   7. `signal` 触发时同样中止并关连接，返回 `warnings: ['任务已取消']`。
   8. 无论成功失败都要关闭连接（`close()` 走现成的退出证明 ladder）。
@@ -1180,6 +1181,10 @@ precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignatu
   8. 建 job（Task 7 的注册表），**立刻返回** `{ jobId }`。
   9. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `state: 'done'`、`plan` 与 `diskContents`。
      建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。`listScratchProposals` 是 `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name)`。
+     `scratchFiles` 读暂存文件时**必须带大小上限**：用 `readNodeFileWithinLimit(filePath, maxBytes)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限抛 `NodeFileReadTooLargeError`。
+     上限取 **2 MB**（与运行时 `files.formatText` 的 `z.string().max(2 * 1024 * 1024)` 一致）。
+     agent 写的文件是外部输入，不设上限就是让 agent 用一个巨型文件把主进程内存吃光；
+     这个读取器还会挡住把路径换成 FIFO 的替换攻击。
   10. 失败时 `update` 成 `state: 'failed'` 并把原因写进 `warnings`。抛错时 `state: 'failed'`。
   11. 每一步都要尊重 job 的 `controller.signal`。
 

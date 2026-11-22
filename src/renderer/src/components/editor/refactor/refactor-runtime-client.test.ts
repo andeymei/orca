@@ -9,7 +9,8 @@ import {
   discardRefactor,
   fetchRefactorPlan,
   fetchRefactorStatus,
-  proposeRefactor
+  proposeRefactor,
+  RefactorApplyTimeoutError
 } from './refactor-runtime-client'
 
 installRuntimeFileClientEnvironment()
@@ -163,6 +164,31 @@ describe('the refactor runtime client', () => {
         params: { jobId: 'job-1', acceptedHunkIds: ['hunk-1'] }
       })
     )
+  })
+
+  it('raises its own error when the apply runs out of time, because the write may have landed', async () => {
+    vi.useFakeTimers()
+    runtimeCall.mockReturnValue(new Promise(() => undefined))
+
+    const request = applyRefactor('job-1', ['hunk-1'])
+    // Why the handler comes first: the rejection arrives on the clock, and an unhandled one would
+    // fail the run before the assertion reads it.
+    const rejection = expect(request).rejects.toBeInstanceOf(RefactorApplyTimeoutError)
+    await vi.advanceTimersByTimeAsync(120_000)
+
+    await rejection
+  })
+
+  it('keeps the shared timeout message for the requests that only read', async () => {
+    vi.useFakeTimers()
+    runtimeCall.mockReturnValue(new Promise(() => undefined))
+
+    const request = fetchRefactorStatus('job-1')
+    const rejection = expect(request).rejects.toThrow('The refactoring request timed out.')
+    await vi.advanceTimersByTimeAsync(120_000)
+
+    await rejection
+    await expect(request).rejects.not.toBeInstanceOf(RefactorApplyTimeoutError)
   })
 
   it('keeps the job when the discard fails', async () => {

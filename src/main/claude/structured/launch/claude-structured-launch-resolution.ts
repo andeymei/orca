@@ -73,6 +73,8 @@ export type ClaudeStructuredSdkOptions = Pick<
   | 'resume'
   | 'resumeSessionAt'
   | 'forkSession'
+  | 'allowedTools'
+  | 'disallowedTools'
 > &
   ClaudePermissionOptions
 

@@ -206,7 +206,7 @@ Expected: FAIL，报模块 `./refactor-types` 不存在。
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/shared/refactor/refactor-types.test.ts --maxWorkers=2`
-Expected: PASS，3 个用例全过。
+Expected: PASS，4 个用例全过。
 
 - [ ] **Step 5: 类型检查**
 

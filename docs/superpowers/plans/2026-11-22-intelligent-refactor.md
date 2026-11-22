@@ -2305,7 +2305,29 @@ Expected: FAIL，报模块不存在。
 - 点击时取当前激活文件的**缓冲区内容**（用 `createEditorPanelDraftSelector`，见 `src/renderer/src/components/editor/editor-panel-draft-selector.ts`），调 `openRefactorReviewTab`。
 - 按钮在没有 Claude 登录态时也要能点——发起失败由 toast 报出来（失败就不开 tab，见 Interfaces）。
 
-- [ ] **Step 5: 跑测试与截图**
+- [ ] **Step 5: 写 fixture**
+
+`refactor-review-tab.fixture.tsx` 用**具名导出** + `defineFixture`，照
+`src/renderer/src/components/UpdateCard.fixture.tsx` 的写法：
+
+```tsx
+import { defineFixture } from '../../../component-fixtures/component-fixture'
+
+export const withProposals = defineFixture({
+  width: 1280,
+  setup: () => {
+    // 预置一份 plan，让 fixture 直接渲染出左树和右边的 diff
+    refactorReviewStore.setPlan('job-1', PLAN)
+  },
+  render: () => <RefactorReviewTab jobId="job-1" worktreeId="wt-1" relativePath="src/foo.ts" />
+})
+```
+
+`PLAN` 是你自己写的一份假 plan：两个方案、一个文件两个 hunk。
+**预置 plan 用 `setup`**，不要用 `store` 字段——`setup` 在 store 与 `window.api` 就绪之后、渲染之前跑，
+而 Task 11 的 store 是模块级单例，不属于 app store 的 slice。
+
+- [ ] **Step 6: 跑测试与截图**
 
 Run: `pnpm test src/renderer/src/components/editor/refactor --maxWorkers=2`
 Expected: PASS。
@@ -2313,7 +2335,7 @@ Expected: PASS。
 Run: `pnpm fixtures:shot editor/refactor/refactor-review-tab`
 Expected: PNG 落在 `.cache/fixtures/`。**看图确认**：左树的三级层次清楚、右边的 diff 不是空白。
 
-- [ ] **Step 6: 跑本地化脚本与提交**
+- [ ] **Step 7: 跑本地化脚本与提交**
 
 ```bash
 node config/scripts/localization/source-extraction/localize-renderer-strings.mjs

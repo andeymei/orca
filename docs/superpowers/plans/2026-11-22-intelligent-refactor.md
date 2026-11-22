@@ -1276,6 +1276,7 @@ git commit -m "feat(refactor): call the refactoring runtime from the renderer"
 
 - Modify: `src/renderer/src/store/slices/editor/types/open-file.ts`
 - Modify: `src/shared/editor-tab-view-types.ts`
+- Modify: `src/shared/tab-types.ts`
 - Modify: `src/renderer/src/store/slices/editor/tabs/editor-tab-content-type.ts`
 - Modify: `src/renderer/src/store/slices/editor/tabs/open-file-layout-view.ts`
 - Test: `src/renderer/src/store/slices/editor/tabs/editor-tab-content-type.test.ts`（新建；若已有同名测试文件则在其中加用例）
@@ -1288,6 +1289,7 @@ git commit -m "feat(refactor): call the refactoring runtime from the renderer"
   - `EditorTabView` 新增成员 `{ mode: 'refactor-review'; refactorReview?: { jobId: string; worktree: string; relativePath: string } }`
   - `OpenFile` 新增字段 `refactorReview?: { jobId: string; worktree: string; relativePath: string }`
   - `EditorTabContentType` 新增 `'refactor-review'`
+  - `TabContentType`（`src/shared/tab-types.ts`）新增 `'refactor-review'` —— `EditorTabContentType` 由它 `Extract` 而来，不加就取不到
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -1315,10 +1317,12 @@ Expected: FAIL（类型不匹配或断言不成立）。
 
 - [ ] **Step 3: 接线**
 
+- `src/shared/tab-types.ts`：**`TabContentType` 是封闭联合类型，必须先把它加上 `'refactor-review'`**。`EditorTabContentType` 是 `Extract<Tab['contentType'], …>` 算出来的，不先加这个成员，`Extract` 会静默把它丢掉，类型就废了。
 - `open-file.ts`：`mode` 联合类型加 `'refactor-review'`；加 `refactorReview?: { jobId: string; worktree: string; relativePath: string }` 字段。
 - `editor-tab-view-types.ts`：`EditorTabView` 联合类型加 `{ mode: 'refactor-review'; refactorReview?: { jobId: string; worktree: string; relativePath: string } }`。
 - `editor-tab-content-type.ts`：`EditorTabContentType` 的 Extract 联合加 `'refactor-review'`；`isEditorTabContentType` 的判断加它；`isVirtualEditorFile` 返回 `file.mode === 'check-details' || file.mode === 'git-graph' || file.mode === 'refactor-review'`；`editorTabContentTypeForMode` 的三元链加它。
 - `open-file-layout-view.ts`：`editorTabViewOf` 的 switch 加 `case 'refactor-review': return { mode: 'refactor-review', ...pickStoredFields(file, ['refactorReview']) }`。
+- 新增一个 content type 后，**搜一遍把 contentType 映射成图标或标题的地方**（`grep -rn "contentType ===" src/renderer/src`），确认新成员不会渲染成空白标签。仓库里没有对 contentType 的穷尽 switch，所以不会有编译错误，但可能有显示缺口。
 
 - [ ] **Step 4: 跑测试确认它通过**
 

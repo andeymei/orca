@@ -446,7 +446,7 @@ describe('buildRefactorPlan', () => {
     expect(result.warnings.some((warning) => warning.includes('没有文件'))).toBe(true)
   })
 
-  it('drops the proposals past the limit and names the one it dropped', async () => {
+  it('drops the proposals past the limit and says how many were dropped', async () => {
     const result = await buildRefactorPlan({
       jobId: 'job-1',
       sourcePath: 'src/foo.ts',
@@ -475,8 +475,7 @@ describe('buildRefactorPlan', () => {
       'p5'
     ])
     const limitWarnings = result.warnings.filter((warning) => warning.includes('超出方案数量上限'))
-    expect(limitWarnings).toHaveLength(1)
-    expect(limitWarnings[0]).toContain('p6')
+    expect(limitWarnings).toEqual(['有 1 个方案超出方案数量上限（最多 5 个），已丢弃'])
   })
 
   it('drops the proposals past the limit on the scratch tree path too', async () => {
@@ -506,8 +505,92 @@ describe('buildRefactorPlan', () => {
       'p5'
     ])
     const limitWarnings = result.warnings.filter((warning) => warning.includes('超出方案数量上限'))
-    expect(limitWarnings).toHaveLength(1)
-    expect(limitWarnings[0]).toContain('p6')
+    expect(limitWarnings).toEqual(['有 1 个方案超出方案数量上限（最多 5 个），已丢弃'])
+  })
+
+  it('warns once about the proposals past the limit, not once per proposal', async () => {
+    // The pathological tree: hundreds of scratch directories, so the notices would render
+    // hundreds of paragraphs.
+    const proposals = Array.from({ length: 500 }, (_unused, index) => ({
+      id: `p${index + 1}`,
+      title: 'a',
+      rationale: 'r',
+      files: [`src/${index + 1}.ts`]
+    }))
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: { proposals },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.plan.proposals).toHaveLength(5)
+    expect(result.warnings).toEqual(['有 495 个方案超出方案数量上限（最多 5 个），已丢弃'])
+  })
+
+  it('warns once about the proposals that name too many files, not once per proposal', async () => {
+    const proposals = [
+      {
+        id: 'p1',
+        title: 'a',
+        rationale: 'r',
+        files: ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts', 'src/f.ts']
+      },
+      {
+        id: 'p2',
+        title: 'a',
+        rationale: 'r',
+        files: ['src/g.ts', 'src/h.ts', 'src/i.ts', 'src/j.ts', 'src/k.ts', 'src/l.ts']
+      }
+    ]
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: { proposals },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.plan.proposals).toHaveLength(0)
+    expect(result.warnings).toEqual(['有 2 个方案的文件数超出上限（最多 5 个文件），已丢弃'])
+  })
+
+  it('keeps a warning of its own for a proposal dropped for a reason the user can act on', async () => {
+    // The count limits collapse into one line each; the rest tell the user what the agent did
+    // wrong, so they keep a line each.
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [
+          {
+            id: 'p1',
+            title: 'a',
+            rationale: 'r',
+            files: ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts', 'src/f.ts']
+          },
+          { id: 'p2', title: 'a', rationale: 'r', files: ['src/g.ts'] },
+          { id: 'p3', title: 'a', rationale: 'r', files: ['src/g.ts'] }
+        ]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => 'a\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
+      scratchFiles: async () => 'b\n'
+    })
+    expect(result.warnings).toEqual([
+      '方案 p3 与方案 p2 改同一个文件，已丢弃后者：src/g.ts',
+      '有 1 个方案的文件数超出上限（最多 5 个文件），已丢弃'
+    ])
   })
 
   it('drops a proposal that names more files than the limit', async () => {

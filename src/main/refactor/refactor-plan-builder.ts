@@ -54,7 +54,8 @@ type ProposalDraft = {
 
 type ProposalOutcome =
   | { kept: true; proposal: RefactorProposal; diskContents: Map<string, string> }
-  | { kept: false; warning: string }
+  | { kept: false; kind: 'dropped'; warning: string }
+  | { kept: false; kind: 'overFileLimit' }
 
 async function draftsFromScratchTree(
   input: RefactorPlanInput,
@@ -148,18 +149,20 @@ async function evaluateProposal(
   // The proposal id becomes a directory in the scratch path, so it has to be a safe relative path
   // like the file paths are.
   if (!isSafeRelativeRefactorPath(draft.id)) {
-    return { kept: false, warning: `方案 ${draft.id} 的编号不是安全的相对路径，已丢弃` }
+    return {
+      kept: false,
+      kind: 'dropped',
+      warning: `方案 ${draft.id} 的编号不是安全的相对路径，已丢弃`
+    }
   }
   // Two proposals under one id cannot be told apart in the review UI.
   if (claimedIds.has(draft.id)) {
-    return { kept: false, warning: `方案 ${draft.id} 的编号重复，已丢弃` }
+    return { kept: false, kind: 'dropped', warning: `方案 ${draft.id} 的编号重复，已丢弃` }
   }
   // The agent may write more files than the limit allows; the plan does not grow past it.
+  // Why no warning of its own: a tree of hundreds of proposals would render hundreds of lines.
   if (draft.files.length > REFACTOR_MAX_FILES_PER_PROPOSAL) {
-    return {
-      kept: false,
-      warning: `方案 ${draft.id} 的文件数超出上限（最多 ${REFACTOR_MAX_FILES_PER_PROPOSAL} 个），已丢弃`
-    }
+    return { kept: false, kind: 'overFileLimit' }
   }
   // Every read-free check runs before anything is read: a proposal that gets dropped must not
   // leave its disk content behind for the staleness check to compare against.
@@ -169,6 +172,7 @@ async function evaluateProposal(
     if (!isSafeRelativeRefactorPath(filePath)) {
       return {
         kept: false,
+        kind: 'dropped',
         warning: `方案 ${draft.id} 的文件路径不在工作区内，已丢弃：${filePath}`
       }
     }
@@ -179,36 +183,53 @@ async function evaluateProposal(
     if (owner !== undefined) {
       return {
         kept: false,
+        kind: 'dropped',
         warning: `方案 ${draft.id} 与方案 ${owner} 改同一个文件，已丢弃后者：${filePath}`
       }
     }
     if (pathKeys.has(pathKey)) {
-      return { kept: false, warning: `方案 ${draft.id} 重复列出了同一个文件，已丢弃：${filePath}` }
+      return {
+        kept: false,
+        kind: 'dropped',
+        warning: `方案 ${draft.id} 重复列出了同一个文件，已丢弃：${filePath}`
+      }
     }
     pathKeys.add(pathKey)
     paths.push(filePath)
   }
   if (paths.length === 0) {
-    return { kept: false, warning: `方案 ${draft.id} 没有文件，已丢弃` }
+    return { kept: false, kind: 'dropped', warning: `方案 ${draft.id} 没有文件，已丢弃` }
   }
 
   const files: RefactorFileProposal[] = []
   const diskContents = new Map<string, string>()
   for (const filePath of paths) {
     if (input.signal?.aborted === true) {
-      return { kept: false, warning: `方案 ${draft.id} 的重构任务已取消，已丢弃` }
+      return { kept: false, kind: 'dropped', warning: `方案 ${draft.id} 的重构任务已取消，已丢弃` }
     }
     const modified = await input.scratchFiles(draft.id, filePath)
     if (modified === null) {
-      return { kept: false, warning: `方案 ${draft.id} 的暂存文件读不到，已丢弃：${filePath}` }
+      return {
+        kept: false,
+        kind: 'dropped',
+        warning: `方案 ${draft.id} 的暂存文件读不到，已丢弃：${filePath}`
+      }
     }
     const baseline = await input.readBaseline(filePath)
     if (baseline === null) {
-      return { kept: false, warning: `方案 ${draft.id} 的基准内容读不到，已丢弃：${filePath}` }
+      return {
+        kept: false,
+        kind: 'dropped',
+        warning: `方案 ${draft.id} 的基准内容读不到，已丢弃：${filePath}`
+      }
     }
     const disk = await input.readDiskContent(filePath)
     if (disk === null) {
-      return { kept: false, warning: `方案 ${draft.id} 的磁盘内容读不到，已丢弃：${filePath}` }
+      return {
+        kept: false,
+        kind: 'dropped',
+        warning: `方案 ${draft.id} 的磁盘内容读不到，已丢弃：${filePath}`
+      }
     }
     files.push({
       path: filePath,
@@ -241,16 +262,12 @@ export async function buildRefactorPlan(input: RefactorPlanInput): Promise<Refac
   // The limit holds on both paths: the manifest names its proposals, and the tree names its
   // directories — neither may grow the plan past what the review tab can show.
   const withinLimit = drafts.slice(0, REFACTOR_MAX_PROPOSALS)
-  for (const dropped of drafts.slice(REFACTOR_MAX_PROPOSALS)) {
-    warnings.push(
-      `方案 ${dropped.id} 超出方案数量上限（最多 ${REFACTOR_MAX_PROPOSALS} 个），已丢弃`
-    )
-  }
 
   const proposals: RefactorProposal[] = []
   const diskContents = new Map<string, string>()
   const claimedPaths = new Map<string, string>()
   const claimedIds = new Set<string>()
+  let overFileLimitCount = 0
 
   for (const draft of withinLimit) {
     if (input.signal?.aborted === true) {
@@ -259,6 +276,10 @@ export async function buildRefactorPlan(input: RefactorPlanInput): Promise<Refac
     }
     const outcome = await evaluateProposal(draft, input, claimedPaths, claimedIds)
     if (!outcome.kept) {
+      if (outcome.kind === 'overFileLimit') {
+        overFileLimitCount += 1
+        continue
+      }
       warnings.push(outcome.warning)
       continue
     }
@@ -274,6 +295,20 @@ export async function buildRefactorPlan(input: RefactorPlanInput): Promise<Refac
     if (draft.filesFromTree) {
       warnings.push(`方案 ${draft.id} 在清单里没有列出文件，已按暂存目录还原`)
     }
+  }
+
+  // Why one line each: the counts are the only drops that can happen hundreds of times, and the
+  // notices render one line per warning.
+  const overProposalLimitCount = drafts.length - withinLimit.length
+  if (overProposalLimitCount > 0) {
+    warnings.push(
+      `有 ${overProposalLimitCount} 个方案超出方案数量上限（最多 ${REFACTOR_MAX_PROPOSALS} 个），已丢弃`
+    )
+  }
+  if (overFileLimitCount > 0) {
+    warnings.push(
+      `有 ${overFileLimitCount} 个方案的文件数超出上限（最多 ${REFACTOR_MAX_FILES_PER_PROPOSAL} 个文件），已丢弃`
+    )
   }
 
   return {

@@ -2,12 +2,12 @@ import { Button } from '@/components/ui/button'
 import { useTranslate } from '@/i18n/use-translate'
 
 import type { RefactorProposal } from '../../../../../shared/refactor/refactor-types'
-import { failureLabel, type UnfinishedJobState } from './refactor-review-job-status'
+import { failureLabel, unfinishedJob, type ReviewJobState } from './refactor-review-job-status'
 import { refactorHunksOfProposal } from './refactor-review-store'
 
 export type RefactorReviewNoticesProps = {
-  /** The job, when it ended without proposals. */
-  job: UnfinishedJobState | null
+  /** The job, when it ended. A job that succeeded carries its warnings too. */
+  job: ReviewJobState | null
   planUnavailable: boolean
   /** The failure of the last write attempt, if it failed. */
   failure: string | null
@@ -23,24 +23,30 @@ export function RefactorReviewNotices({
   refusals
 }: RefactorReviewNoticesProps): React.JSX.Element | null {
   const t = useTranslate()
-  if (!job && !planUnavailable && !failure && refusals.length === 0) {
+  const failed = unfinishedJob(job)
+  // Why a running job is left out: its warnings are still being written, and the header already
+  // says the job is running.
+  const warnings = job && job.state !== 'running' ? job.warnings : []
+  if (!failed && warnings.length === 0 && !planUnavailable && !failure && refusals.length === 0) {
     return null
   }
   return (
     <>
-      {job ? (
+      {failed || warnings.length > 0 ? (
         <div className="border-b border-border px-3 py-2">
-          <p
-            className={
-              job.state === 'failed'
-                ? 'text-xs font-medium text-destructive'
-                : 'text-xs font-medium'
-            }
-          >
-            {failureLabel(job, t)}
-          </p>
-          {job.warnings.map((warning) => (
-            <p key={warning} className="text-xs text-muted-foreground">
+          {failed ? (
+            <p
+              className={
+                failed.state === 'failed'
+                  ? 'text-xs font-medium text-destructive'
+                  : 'text-xs font-medium'
+              }
+            >
+              {failureLabel(failed, t)}
+            </p>
+          ) : null}
+          {warnings.map((warning, index) => (
+            <p key={`${index}-${warning}`} className="text-xs text-muted-foreground">
               {warning}
             </p>
           ))}

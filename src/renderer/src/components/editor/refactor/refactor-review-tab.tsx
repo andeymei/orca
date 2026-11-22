@@ -10,12 +10,7 @@ import { useAppStore } from '@/store/index'
 import type { RefactorProposal } from '../../../../../shared/refactor/refactor-types'
 import { RefactorHunkView } from './refactor-hunk-view'
 import { pollRefactorJob } from './refactor-job-poller'
-import {
-  statusLabel,
-  unfinishedJob,
-  writtenLabel,
-  type ReviewJobState
-} from './refactor-review-job-status'
+import { statusLabel, writtenLabel, type ReviewJobState } from './refactor-review-job-status'
 import { RefactorPartialAcceptanceNotices, RefactorReviewNotices } from './refactor-review-notices'
 import { findHunk, firstHunkOf, partiallyAcceptedProposals } from './refactor-review-plan-selection'
 import { refactorHunksOfProposal, refactorReviewStore } from './refactor-review-store'
@@ -131,7 +126,6 @@ export function RefactorReviewTab({
   const partiallyAccepted = plan ? partiallyAcceptedProposals(plan, selection.acceptedHunkIds) : []
   const acceptedHunkIds = [...selection.acceptedHunkIds]
   const headerStatus = statusLabel(job, plan, t)
-  const unfinished = unfinishedJob(job)
 
   const closeTab = useCallback((): void => {
     useAppStore.getState().closeFile(ownerKey)
@@ -268,7 +262,7 @@ export function RefactorReviewTab({
         </div>
       </div>
       <RefactorReviewNotices
-        job={unfinished}
+        job={job}
         planUnavailable={planUnavailable}
         failure={failure}
         refusals={refusals}

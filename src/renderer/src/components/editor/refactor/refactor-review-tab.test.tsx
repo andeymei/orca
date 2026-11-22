@@ -337,6 +337,25 @@ describe('the refactor review tab', () => {
     expect(await screen.findByText('Claude 未登录')).toBeTruthy()
   })
 
+  it('shows the warnings of a job that succeeded', async () => {
+    // The spec's marking that the agent gave no reason is only ever produced by a job that
+    // succeeded, so the tab has to show the warnings of a finished job.
+    mocks.fetchRefactorStatus.mockResolvedValue({
+      state: 'done',
+      progress: '',
+      warnings: ['方案 p1 是从暂存目录还原的，agent 未给出理由']
+    })
+    renderTab()
+    expect(await screen.findByText('方案 p1 是从暂存目录还原的，agent 未给出理由')).toBeTruthy()
+  })
+
+  it('shows no notice when a job that succeeded carries no warning', async () => {
+    mocks.fetchRefactorStatus.mockResolvedValue({ state: 'done', progress: '', warnings: [] })
+    const view = renderTab()
+    expect(await screen.findByText(/proposals generated/)).toBeTruthy()
+    expect(view.container.querySelector('.text-destructive')).toBeNull()
+  })
+
   it('tells a timeout apart from a failure, because a retry is faster', async () => {
     mocks.fetchRefactorStatus.mockResolvedValue({ state: 'timed_out', progress: '', warnings: [] })
     renderTab()

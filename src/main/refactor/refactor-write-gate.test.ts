@@ -26,16 +26,6 @@ describe('isPathInsideScratch', () => {
   })
 })
 
-describe('refactorToolTargetPath', () => {
-  it('reads the camel-cased path key', () => {
-    expect(refactorToolTargetPath({ filePath: '/repo/src/foo.ts' })).toBe('/repo/src/foo.ts')
-  })
-
-  it('reads the bare path key', () => {
-    expect(refactorToolTargetPath({ path: '/repo/src/foo.ts' })).toBe('/repo/src/foo.ts')
-  })
-})
-
 describe('refactorToolAllowed', () => {
   it('allows reading', () => {
     expect(
@@ -112,5 +102,125 @@ describe('refactorToolAllowed', () => {
         workspaceRoot
       })
     ).toBe(true)
+  })
+
+  it('rejects a path whose segment ends in a space, because Windows strips it', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '/repo/.orca/refactor/job-1/.. /.. /evil.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('rejects a path whose segment ends in a dot, because Windows strips it', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '/repo/.orca/refactor/job-1/.../../evil.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies an unknown tool name', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'NotebookEdit',
+        toolInput: { file_path: '/repo/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies a write whose path is only whitespace', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '   ' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies a differently cased path, because the comparison is case sensitive', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Write',
+        toolInput: { file_path: '/repo/.ORCA/refactor/job-1/p1/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('allows a read inside the workspace', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: { file_path: '/repo/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(true)
+  })
+
+  it('denies a read outside the workspace', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: { file_path: '/home/mac/.ssh/id_rsa' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('denies a read whose input carries no path', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: {},
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+
+  it('allows a grep without a path, because it searches from the workspace root', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Grep',
+        toolInput: { pattern: 'needle' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(true)
+  })
+
+  it('denies a grep pointed outside the workspace', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'Grep',
+        toolInput: { pattern: 'needle', path: '/home/mac' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(false)
+  })
+})
+
+describe('refactorToolTargetPath', () => {
+  it('reads the camel-cased path key', () => {
+    expect(refactorToolTargetPath({ filePath: '/repo/src/foo.ts' })).toBe('/repo/src/foo.ts')
+  })
+
+  it('reads the bare path key', () => {
+    expect(refactorToolTargetPath({ path: '/repo/src/foo.ts' })).toBe('/repo/src/foo.ts')
   })
 })

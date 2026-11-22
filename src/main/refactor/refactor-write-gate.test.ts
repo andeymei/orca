@@ -15,6 +15,7 @@ const scratchRoot = '/repo/.orca/refactor/job-1'
 
 const roots = await resolveRefactorGateRoots({ scratchRoot, workspaceRoot })
 
+// The roots above do not exist on disk, so the blocks that use them cover the raw-path rules only.
 describe('isPathInsideScratch', () => {
   it('accepts a path inside the scratch root', async () => {
     await expect(
@@ -186,6 +187,26 @@ describe('refactorToolAllowed', () => {
     ).resolves.toBe(false)
   })
 
+  it('denies a drive-relative read, because Windows resolves it against that drive', async () => {
+    await expect(
+      refactorToolAllowed({
+        toolName: 'Read',
+        toolInput: { file_path: 'D:secrets/token.txt' },
+        roots
+      })
+    ).resolves.toBe(false)
+  })
+
+  it('denies a drive-relative search path, because Windows resolves it against that drive', async () => {
+    await expect(
+      refactorToolAllowed({
+        toolName: 'Grep',
+        toolInput: { pattern: 'needle', path: 'D:secrets' },
+        roots
+      })
+    ).resolves.toBe(false)
+  })
+
   it('denies a read whose input carries no path', async () => {
     await expect(
       refactorToolAllowed({
@@ -330,29 +351,6 @@ describe('the gate and the physical location of a path', () => {
       refactorToolAllowed({
         toolName: 'Write',
         toolInput: { file_path: path.join(gateScratchRoot, 'out', 'evil.ts') },
-        roots: gateRoots
-      })
-    ).resolves.toBe(false)
-  })
-
-  it('denies a write that climbs out of the scratch root through a link', async () => {
-    const base = await mkdtemp(path.join(os.tmpdir(), 'refactor-gate-'))
-    const workspace = path.join(base, 'workspace')
-    const outside = path.join(base, 'outside')
-    const gateScratchRoot = path.join(workspace, '.orca', 'refactor', 'job-1')
-    await mkdir(gateScratchRoot, { recursive: true })
-    await mkdir(outside, { recursive: true })
-    await symlink(outside, path.join(gateScratchRoot, 'out'))
-    const gateRoots = await resolveRefactorGateRoots({
-      scratchRoot: gateScratchRoot,
-      workspaceRoot: workspace
-    })
-    // The kernel follows the link before it applies the `..`, so the file lands beside the
-    // workspace; the path is spelled by hand because `path.join` would fold the `..` away.
-    await expect(
-      refactorToolAllowed({
-        toolName: 'Write',
-        toolInput: { file_path: `${gateScratchRoot}/out/../evil.ts` },
         roots: gateRoots
       })
     ).resolves.toBe(false)

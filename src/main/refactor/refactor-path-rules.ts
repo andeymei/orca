@@ -1,6 +1,10 @@
 import path from 'node:path'
 import { isSafeMobileRelativePath } from '../runtime/files/mobile-file-kind'
-import { hasUnsafePathSegment, isPathInsideWorkspace } from './refactor-write-gate'
+import {
+  hasUnsafePathSegment,
+  isPathInsideWorkspace,
+  isWindowsDriveRelativePath
+} from './refactor-write-gate'
 
 /**
  * The path rule of the feature: no absolute path, no `..` segment, and no trailing dot or space
@@ -20,14 +24,6 @@ export function isSafeRelativeRefactorPath(relativePath: string): boolean {
  */
 export function refactorPathKey(filePath: string): string {
   return filePath.split(/[\\/]/).join('/').toLowerCase()
-}
-
-/**
- * A drive-relative path resolves against another drive's current directory, so it names no file
- * of this workspace. It is refused on every platform, not only where it happens to escape.
- */
-function isWindowsDriveRelativePath(relativePath: string): boolean {
-  return /^[A-Za-z]:/.test(relativePath)
 }
 
 /**

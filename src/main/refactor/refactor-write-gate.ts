@@ -29,6 +29,14 @@ export function hasUnsafePathSegment(targetPath: string): boolean {
 }
 
 /**
+ * A drive-relative path resolves against another drive's current directory, so it names no file
+ * of this workspace. It is refused on every platform, not only where it happens to escape.
+ */
+export function isWindowsDriveRelativePath(relativePath: string): boolean {
+  return /^[A-Za-z]:/.test(relativePath)
+}
+
+/**
  * The two roots of the gate, each with the location it really has.
  *
  * Why both spellings are kept: the refusal names the scratch root the agent was told, and the
@@ -142,14 +150,29 @@ async function isPathInside(rootPath: string, targetPath: string): Promise<boole
   return isInsidePhysicalRootOf(physicalRoot, targetPath)
 }
 
+/**
+ * A target the gate cannot place under a root.
+ *
+ * Why: on Windows a drive-relative path (`D:foo`) resolves against drive D:'s current directory,
+ * so the file it names is not under the workspace root the gate compares against. The refusal is
+ * the same on every platform, so the gate does not answer differently by host.
+ */
+function isDriveRelativeTarget(target: string): boolean {
+  return !path.isAbsolute(target) && isWindowsDriveRelativePath(target)
+}
+
 export async function refactorToolAllowed(input: {
   toolName: string
   toolInput: Record<string, unknown>
   roots: RefactorGateRoots
 }): Promise<boolean> {
   const { toolName, toolInput, roots } = input
+  const target = refactorToolTargetPath(toolInput)
+  // A drive-relative target names no file of the workspace, so it lands outside every root.
+  if (target !== null && isDriveRelativeTarget(target)) {
+    return false
+  }
   if (WRITE_TOOLS.has(toolName)) {
-    const target = refactorToolTargetPath(toolInput)
     // Fail closed: a write without a recognisable path cannot be proven to land in the scratch root.
     if (target === null || hasUnsafePathSegment(target)) {
       return false
@@ -160,7 +183,6 @@ export async function refactorToolAllowed(input: {
     )
   }
   if (toolName === 'Read') {
-    const target = refactorToolTargetPath(toolInput)
     if (target === null || hasUnsafePathSegment(target)) {
       return false
     }
@@ -170,7 +192,6 @@ export async function refactorToolAllowed(input: {
     )
   }
   if (SEARCH_TOOLS.has(toolName)) {
-    const target = refactorToolTargetPath(toolInput)
     // Grep and Glob without a path search from the agent's cwd, which is the workspace root.
     if (target === null) {
       return true

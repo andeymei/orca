@@ -1586,6 +1586,8 @@ writeFileExplorerFile(
       **同一个 `scratchRoot` 要同时给闸门和 runner**：闸门用它判断写操作落在不在暂存目录内，
       runner 用它读 `manifest.json` 和暂存文件。两个值不一致的话，agent 写在一个目录、
       应用去另一个目录读，manifest 永远读不到。
+      **把 `onProgress` 接到 job 上**：`onProgress: (text) => registry.update(jobId, { progress: text })`。
+      `refactor.status` 返回的就是这份 progress，渲染层靠它显示「正在写入 src/foo.ts」。
       **目标工作区必须在 handler 里解析**（第 1 步），不能推到后台：后台开始时 handler 的上下文已经结束了。
       账号策略可以在后台取——`runtime.requireStore().getSettings()` 拿的是长驻 store 的设置，不随 handler 结束而失效。
       **job 的 `state` 直接取 turn 的 `state`**（Task 5 的 `RefactorTurnResult.state`）：

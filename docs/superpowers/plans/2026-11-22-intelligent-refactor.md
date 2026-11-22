@@ -887,6 +887,13 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      ```
      system 与 user 合成一条，是因为 SDK 的用户消息只有 `content` 一个入口；两段之间用一个空行分隔。
   4. 监听 SDK 消息：收到 `tool_use` 就更新进度并 `onProgress?.(text)`；收到 `type === 'result'` 就结束等待。
+     **结果帧要分成功与失败**：`SDKResultMessage = SDKResultSuccess | SDKResultError`。
+     成功的帧是 `subtype: 'success'`；失败的帧是
+     `subtype: 'error_during_execution' | 'error_max_turns' | 'error_max_budget_usd' | 'error_max_structured_output_retries'`，
+     带 `is_error` 和 `stop_reason`。失败的那一种要结束等待并把 `subtype` 与 `stop_reason`
+     写进 `warnings` —— 否则这一轮报错会被当成正常结束，用户看到的是"agent 什么都没产出"，
+     而不是"agent 报错了"。失败时如果暂存目录里已经有文件，仍然照常读清单（可能有部分产出），
+     但警告里必须说明这一轮是失败结束的。
   5. 结束后读 `<scratchRoot>/manifest.json`，用 `RefactorManifest.safeParse` 解析；解析失败返回 `manifest: null` 并在 `warnings` 里写明原因。
      读它也要带大小上限（清单是 agent 写的外部输入）：用 `readNodeFileWithinLimit(path, 1 * 1024 * 1024)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限按"解析失败"处理。
   6. 超时：`REFACTOR_TURN_TIMEOUT_MS = 300_000`（5 分钟）。到点中止并关连接。

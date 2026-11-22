@@ -202,6 +202,15 @@ export const RefactorHunk = z.object({
 - `options.disallowedTools = ['Bash','Task']`（脱离路径模型的两个逃逸口，从模型上下文里去掉）。
 - `options.settingSources = []`（SDK 隔离模式，不加载用户/项目/本地的 Claude 设置；
   否则用户自己写的 `permissions.allow: ["Write"]` 同样会被自动放行）。
+- `options.settings = { permissions: { blockReadsOutsideWorkingDirectories: true, blockWritesOutsideWorkingDirectories: true, disableBypassPermissionsMode: 'disable', disableAutoMode: 'disable' } }`
+  —— CLI 自己那层围栏。SDK 文档写明这两条 "true in any settings source wins. **No allow rule lifts it.**"，
+  而且 "in every permission mode"。它们堵的是两件 `settingSources: []` 堵不住的事：
+  ① **managed 设置层照旧从磁盘读**（"the managed-settings policy tier is still read from disk"），
+  机器上若被 IT 托管过且 `managed-settings.json` 里有 `permissions.allow: ["Write"]`，
+  那条 allow 规则会让写操作不再经过 `canUseTool`——闸门就被绕过了；
+  ② CLI 在 `default` 模式下对只读工具可能不询问，于是 `canUseTool` 根本不会被调用，
+  我们的读围栏（读只在工作区内）形同虚设，agent 能读到 `~/.ssh/id_rsa`。
+  工作目录就是工作区根，暂存目录在工作区根底下，所以闸门放行的读写不受这两条影响。
 
 `allowedTools` / `disallowedTools` 目前不在 `ClaudeStructuredSdkOptions` 里，需要加进这个 Pick
 类型。SDK 支持这两个字段，且 `claude-structured-launch-args.ts` 的 `OWNED_FLAGS` 已经把它们挡在

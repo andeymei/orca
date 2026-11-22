@@ -780,6 +780,9 @@ git commit -m "feat(refactor): keep the agent's writes inside the scratch direct
 - Produces:
   - `RefactorAgentLaunch`：`{ pathToClaudeCodeExecutable: string; prefixArgs?: readonly string[]; env: Record<string, string>; cwd: string; options: ClaudeStructuredSdkOptions }`
   - `resolveRefactorAgentLaunch(input: { cwd: string; deps: ClaudeEnvDeps & { resolveAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy }; signal?: AbortSignal }): Promise<RefactorAgentLaunch>`
+  - `REFACTOR_PERMISSION_SETTINGS`：传给 SDK `options.settings` 的围栏设置
+    （`{ permissions: { blockReadsOutsideWorkingDirectories, blockWritesOutsideWorkingDirectories, disableBypassPermissionsMode, disableAutoMode } }`）——
+    理由见 Step 4。这是闸门之外 CLI 自己那一层的围栏，managed 设置抬不起来。
   - `REFACTOR_DISALLOWED_TOOLS`：`readonly string[]` = `['Bash', 'PowerShell', 'Task', 'Agent', 'NotebookEdit', 'WebFetch', 'WebSearch']`
     —— 这些是**脱离路径模型**的工具，从模型的上下文里直接去掉（写闸门本来也拒它们，这是第二道）：
     - `Bash` / `PowerShell`：两个 shell。`Bash` 能 `mv`/`cp`，`PowerShell` 在 Windows 上是同一个洞。
@@ -801,7 +804,11 @@ git commit -m "feat(refactor): keep the agent's writes inside the scratch direct
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { REFACTOR_DISALLOWED_TOOLS, resolveRefactorAgentLaunch } from './refactor-agent-launch'
+import {
+  REFACTOR_DISALLOWED_TOOLS,
+  REFACTOR_PERMISSION_SETTINGS,
+  resolveRefactorAgentLaunch
+} from './refactor-agent-launch'
 
 describe('resolveRefactorAgentLaunch', () => {
   it('runs the agent in the workspace without bypassing the permission gate', async () => {
@@ -843,6 +850,21 @@ describe('resolveRefactorAgentLaunch', () => {
       expect(launch.options.disallowedTools).toContain(tool)
     }
   })
+
+  it('refuses reads and writes outside the working directory at the cli level', async () => {
+    const launch = await resolveRefactorAgentLaunch({
+      cwd: '/repo',
+      deps: {
+        resolveCommand: () => ({ command: '/usr/bin/claude', prefixArgs: [] }),
+        resolveAuthPolicy: () => ({ account: 'system' })
+      }
+    })
+    expect(launch.options.settings).toBe(REFACTOR_PERMISSION_SETTINGS)
+    expect(REFACTOR_PERMISSION_SETTINGS.permissions.blockReadsOutsideWorkingDirectories).toBe(true)
+    expect(REFACTOR_PERMISSION_SETTINGS.permissions.blockWritesOutsideWorkingDirectories).toBe(true)
+    expect(REFACTOR_PERMISSION_SETTINGS.permissions.disableBypassPermissionsMode).toBe('disable')
+    expect(REFACTOR_PERMISSION_SETTINGS.permissions.disableAutoMode).toBe('disable')
+  })
 })
 ```
 
@@ -882,7 +904,44 @@ export const REFACTOR_DISALLOWED_TOOLS: readonly string[] = [
 - `prefixArgs: invocation.prefixArgs`
 - `env: invocation.env`
 - `cwd: input.cwd`
-- `options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, permissionMode: 'default', disallowedTools: [...REFACTOR_DISALLOWED_TOOLS], settingSources: [] }`
+- `options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, permissionMode: 'default', disallowedTools: [...REFACTOR_DISALLOWED_TOOLS], settingSources: [], settings: REFACTOR_PERMISSION_SETTINGS }`
+
+**再加一层 CLI 自己的围栏**（`settings` 选项，等价于 `--settings`）：
+
+```ts
+export const REFACTOR_PERMISSION_SETTINGS = {
+  permissions: {
+    blockReadsOutsideWorkingDirectories: true,
+    blockWritesOutsideWorkingDirectories: true,
+    disableBypassPermissionsMode: 'disable',
+    disableAutoMode: 'disable'
+  }
+} satisfies Settings
+```
+
+`Settings` 从 SDK 导入（`import type { Settings } from '@anthropic-ai/claude-agent-sdk'`）。
+用 `satisfies` 而不是 `as const`——仓库的门禁明确放行 `as const`，但 `satisfies` 更贴切：
+它检查形状而不把字面量类型压窄。
+
+这四条不是装饰，是补闸门补不到的两个洞：
+
+- **`blockReadsOutsideWorkingDirectories`** —— SDK 文档写得很直白：
+  "Refuse file-tool reads (Read, Grep, Glob, LSP) outside the working directories **in every permission mode**;
+  **true in any settings source wins. No allow rule lifts it.**"
+  这一条堵的是"CLI 在 `default` 模式下对只读工具不询问、于是 `canUseTool` 根本不会被调用"的情况——
+  那种情况下我们的读围栏（读只在工作区内）就形同虚设，agent 能读到 `~/.ssh/id_rsa`。
+  有了它，读越界由 CLI 自己拒，而且**任何 allow 规则都抬不起来**。
+- **`blockWritesOutsideWorkingDirectories`** —— 同理，"Refuse file-tool writes (Write, Edit, NotebookEdit)
+  outside the working directories in every permission mode; true in any settings source wins.
+  No allow rule lifts it." 它还顺带把 `EnterWorktree` / `ExitWorktree` 从工具列表里拿掉
+  （那两个会移动工作目录）。工作目录就是工作区根，暂存目录在工作区根底下，所以闸门放行的写不受影响。
+- **`disableBypassPermissionsMode` / `disableAutoMode`** —— 把「跳过权限询问」和「让分类器替我们决定」这两条路堵死。
+
+**为什么必须有这一层**：`settingSources: []` 只关掉 user/project/local 三层设置，
+**managed 那一层照旧从磁盘读**（SDK 文档："the managed-settings policy tier is still read from disk"）。
+机器上如果被 IT 托管过、`managed-settings.json` 里有 `permissions.allow: ["Write"]`，
+那条 allow 规则会让写操作不再经过 `canUseTool` —— 闸门就绕过了。
+`blockWritesOutsideWorkingDirectories` 的 "No allow rule lifts it" 正是为这种情况准备的。
 
 三处选项各有理由，缺一个闸门就失效：
 

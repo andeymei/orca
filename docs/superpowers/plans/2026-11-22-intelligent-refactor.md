@@ -1751,8 +1751,14 @@ writeFileExplorerFile(
   这个通道就是 `RefactorApplyResult.refusals`。
   写回用 `runtime.writeFileExplorerFile(worktree, relativePath, content, ...sshArgs, diskPrecondition)`。
   `worktree` 用 job 上存的原始 `worktree` 选择器字符串。
-  写回用的 `relativePath` 来自 plan，而 plan 的路径来自清单，已经过 Task 6 的
-  `isSafeRelativeRefactorPath` 校验；不要在这里重写一套路径检查。
+  **写回的结果要分三种**（`FileWriteResult` = `{ ok: true; unchanged?: boolean } | { ok: false; diskConflict }`）：
+  - `ok: true` → 记进 `applied`。
+  - `ok: false` 且 `diskConflict === 'changed'` → 记进 `refusals`，理由写"文件在评审期间被改动过，请重新生成重构建议"。
+    这是**比对与写入之间**又被人动了一次（磁盘前置条件挡住了），和前面的陈旧判定是同一个意思，
+    但发生得更晚——所以也要给用户看得见的理由。
+  - `ok: false` 且是别的 conflict（`missing` / `not-utf8`）→ 记进 `refusals`，理由按 conflict 说。
+    写回用的 `relativePath` 来自 plan，而 plan 的路径来自清单，已经过 Task 6 的
+    `isSafeRelativeRefactorPath` 校验；不要在这里重写一套路径检查。
 
 - `refactor.discard`：job 还在 running 就 `controller.abort()`；然后删掉 `scratchRoot` 目录（`fs.rm(scratchRoot, { recursive: true, force: true })`），从注册表 `remove`，返回 `{ discarded: true }`。
 

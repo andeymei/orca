@@ -26,8 +26,6 @@ export function useMonacoNesFeature(params: {
   passiveMirror: boolean
   editorInstance: editor.IStandaloneCodeEditor | null
 }): {
-  /** Whether the feature is on for this file. */
-  enabled: boolean
   /** The edit the cursor cannot show, when the plan holds one the user should look at. */
   nextEdit: NesNextEdit | null
 } {

@@ -1,12 +1,12 @@
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 import type { NesCursorPosition } from './nes-plan-store'
-import type { NesLocationMarker } from './nes-location-markers'
+import { nesNextLocationAfter } from './nes-other-locations'
 
 /**
  * The edit the editor cannot show where the user is typing, and what the notice says about it.
  *
- * A plan that carries an edit elsewhere in the file leaves a gutter marker, and a marker alone
- * reads as nothing happened. The notice names the place, so a suggestion is never invisible.
+ * A plan that carries an edit elsewhere in the file has nothing on the screen to point at, so the
+ * notice names the place: a suggestion is never invisible.
  */
 export type NesNextEdit = {
   /**
@@ -33,8 +33,8 @@ export function nesNextEditNotice(input: {
   drawn: NesEdit | null
   /** Whether the editor can draw that edit where the cursor is. */
   drawnIsDrawable: boolean
-  /** The edits that carry a gutter marker. */
-  markers: readonly NesLocationMarker[]
+  /** The edits the plan predicts somewhere other than the cursor. */
+  locations: readonly NesEdit[]
   cursor: NesCursorPosition | null
 }): NesNextEdit | null {
   if (input.drawn) {
@@ -51,32 +51,13 @@ export function nesNextEditNotice(input: {
   if (!input.cursor) {
     return null
   }
-  const next = nextMarkerAfter(input.markers, input.cursor)
+  const next = nesNextLocationAfter(input.locations, input.cursor)
   if (!next) {
     return null
   }
   return {
     kind: 'elsewhere',
-    lineNumber: next.edit.range.startLine,
-    label: next.edit.label
+    lineNumber: next.range.startLine,
+    label: next.label
   }
-}
-
-/** The location after the cursor; the list cycles, so the last one leads back to the first. */
-function nextMarkerAfter(
-  markers: readonly NesLocationMarker[],
-  position: NesCursorPosition
-): NesLocationMarker | null {
-  if (markers.length === 0) {
-    return null
-  }
-  const after = markers.find((marker) => isAfterCursor(marker.edit, position))
-  return after ?? markers[0]
-}
-
-function isAfterCursor(edit: NesEdit, position: NesCursorPosition): boolean {
-  if (edit.range.endLine !== position.lineNumber) {
-    return edit.range.endLine > position.lineNumber
-  }
-  return edit.range.endColumn > position.column
 }

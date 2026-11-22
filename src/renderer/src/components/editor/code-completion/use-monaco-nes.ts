@@ -28,8 +28,6 @@ export function useMonacoNextEditSuggestions(params: {
   /** The live editor — the hook needs its model, its cursor and its decoration collection. */
   editorInstance: editor.IStandaloneCodeEditor | null
 }): {
-  /** Whether the feature is on for this file. */
-  enabled: boolean
   /** The edit the cursor cannot show, when the plan holds one the user should look at. */
   nextEdit: NesNextEdit | null
 } {
@@ -104,11 +102,7 @@ export function useMonacoNextEditSuggestions(params: {
     completionModel
   ])
 
-  // Why: the gutter needs its margin before the first marker exists, so the editor has to be
-  // told that the feature is on for this file rather than how many markers it holds right now.
-  const featureEnabled = Boolean(enabled && filePath && isExtensionEnabled(filePath, extensionsKey))
-
-  return { enabled: featureEnabled, nextEdit }
+  return { nextEdit }
 }
 
 function isExtensionEnabled(filePath: string, extensionsKey: string): boolean {

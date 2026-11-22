@@ -38,8 +38,6 @@ type FakeNesEditor = {
   typeText: () => void
   hiddenActions: string[]
   pressEscape: () => void
-  clickGutter: (lineNumber: number) => void
-  markerCounts: () => number[]
   previewWidgets: () => monaco.editor.IContentWidget[]
 }
 
@@ -48,9 +46,7 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
   const cursorListeners: (() => void)[] = []
   const contentListeners: (() => void)[] = []
   const keyListeners: ((event: monaco.IKeyboardEvent) => void)[] = []
-  const mouseListeners: ((event: monaco.editor.IEditorMouseEvent) => void)[] = []
   const hiddenActions: string[] = []
-  const markerCounts: number[] = []
   const previewWidgets: monaco.editor.IContentWidget[] = []
   let position = { ...CURSOR }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this editor double only answers the calls the hook makes, and the model behind it is a real Monaco model.
@@ -67,12 +63,6 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
         hiddenActions.push(id)
         return Promise.resolve()
       }
-    }),
-    createDecorationsCollection: () => ({
-      set: (decorations: monaco.editor.IModelDeltaDecoration[]) => {
-        markerCounts.push(decorations.length)
-      },
-      clear: () => {}
     }),
     addContentWidget: (widget: monaco.editor.IContentWidget) => {
       previewWidgets.push(widget)
@@ -94,10 +84,6 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
     },
     onKeyDown: (listener: (event: monaco.IKeyboardEvent) => void) => {
       keyListeners.push(listener)
-      return { dispose: () => {} }
-    },
-    onMouseDown: (listener: (event: monaco.editor.IEditorMouseEvent) => void) => {
-      mouseListeners.push(listener)
       return { dispose: () => {} }
     }
   }
@@ -122,21 +108,6 @@ function createFakeEditor(model: monaco.editor.ITextModel): FakeNesEditor {
         listener(event)
       }
     },
-    clickGutter: (lineNumber: number) => {
-      const mouseEvent = {
-        target: {
-          type: monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN,
-          position: { lineNumber, column: 1 }
-        },
-        event: { leftButton: true }
-      }
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hook reads the target type, the button and the line only, so the double carries those three fields.
-      const event = mouseEvent as unknown as monaco.editor.IEditorMouseEvent
-      for (const listener of mouseListeners) {
-        listener(event)
-      }
-    },
-    markerCounts: () => markerCounts,
     previewWidgets: () => previewWidgets
   }
 }
@@ -157,7 +128,7 @@ function makeEdit(overrides: Partial<NesEdit> = {}): NesEdit {
 function renderHookFor(
   model: monaco.editor.ITextModel,
   options: { triggerDelayMs?: number } = {}
-): FakeNesEditor & { unmount: () => void } {
+): FakeNesEditor & { result: () => { nextEdit: NesNextEdit | null }; unmount: () => void } {
   const fakeEditor = createFakeEditor(model)
   const view = renderHook(() =>
     useMonacoNextEditSuggestions({
@@ -173,14 +144,13 @@ function renderHookFor(
       editorInstance: fakeEditor.editorInstance
     })
   )
-  return { ...fakeEditor, unmount: view.unmount }
+  return { ...fakeEditor, result: () => view.result.current, unmount: view.unmount }
 }
 
 /** The hook's own view, for the tests that read what it reports. */
 function renderHookView(model: monaco.editor.ITextModel): {
-  result: () => { enabled: boolean; nextEdit: NesNextEdit | null }
+  result: () => { nextEdit: NesNextEdit | null }
   /** The decorations the markers are drawn as. */
-  markerCounts: () => number[]
   unmount: () => void
 } {
   const fakeEditor = createFakeEditor(model)
@@ -200,7 +170,6 @@ function renderHookView(model: monaco.editor.ITextModel): {
   )
   return {
     result: () => view.result.current,
-    markerCounts: fakeEditor.markerCounts,
     unmount: view.unmount
   }
 }
@@ -261,30 +230,6 @@ describe('useMonacoNextEditSuggestions', () => {
     // Why: the context builder reads the language off the model, which is the authoritative one.
     // The model here carries no language contribution, so it reads as plaintext.
     expect(requestNesPlanMock.mock.calls[0][0].languageId).toBe('plaintext')
-    unmount()
-  })
-
-  it('draws the markers the plan left and reports the feature as on, so the editor reserves the glyph margin', async () => {
-    const model = createModel('const a = 1\nconst b = 2')
-    requestNesPlanMock.mockResolvedValue({
-      edits: [
-        makeEdit({
-          kind: 'insert',
-          range: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 1 },
-          originalText: '',
-          text: 'const c = 3'
-        })
-      ]
-    })
-
-    const { result, markerCounts, unmount } = renderHookView(model)
-
-    await waitFor(() => {
-      expect(markerCounts().at(-1)).toBe(1)
-    })
-    // Why: the margin has to be there before the first marker is, or the text moves sideways
-    // every time a marker comes and goes.
-    expect(result().enabled).toBe(true)
     unmount()
   })
 
@@ -580,27 +525,29 @@ describe('useMonacoNextEditSuggestions', () => {
 
   it('drops the plan when the edit no longer matches the buffer', async () => {
     const model = createModel()
-    // Why: the rewrite cannot be drawn as a ghost, so the plan shows it as a gutter marker.
+    // Why: the rewrite cannot be drawn as a ghost, so the plan names it in the notice.
     requestNesPlanMock.mockResolvedValue({
       edits: [makeEdit({ originalText: 'const b = 1', text: 'const b = 99' })]
     })
 
-    const { editorInstance, hiddenActions, markerCounts, unmount } = renderHookFor(model)
+    const { editorInstance, hiddenActions, result, unmount } = renderHookFor(model)
     await waitFor(() => {
-      expect(markerCounts().at(-1)).toBe(1)
+      expect(result().nextEdit?.kind).toBe('rewrite')
     })
 
     nesShortcutHandlersFor(editorInstance)?.accept()
 
     expect(model.getValue()).toBe('const a = 1')
     expect(hiddenActions).toEqual([])
-    // Why: a marker that can never land would keep offering the refused edit.
+    // Why: a notice that names an edit that can never land would keep offering the refused edit.
     expect(nesPlanStore.getPlan(FILE_PATH)).toBeNull()
-    expect(markerCounts().at(-1)).toBe(0)
+    await waitFor(() => {
+      expect(result().nextEdit).toBeNull()
+    })
     unmount()
   })
 
-  it('jumps to the marker whose gutter glyph was clicked', async () => {
+  it('jumps to the place the plan predicts', async () => {
     const model = createModel('const a = 1\nconst b = 1')
     requestNesPlanMock.mockResolvedValue({
       edits: [
@@ -612,20 +559,15 @@ describe('useMonacoNextEditSuggestions', () => {
       ]
     })
 
-    const { editorInstance, clickGutter, markerCounts, unmount } = renderHookFor(model)
+    const { editorInstance, result, unmount } = renderHookFor(model)
     await waitFor(() => {
-      expect(markerCounts().at(-1)).toBe(1)
+      expect(result().nextEdit?.kind).toBe('elsewhere')
     })
 
     act(() => {
-      clickGutter(3)
+      nesShortcutHandlersFor(editorInstance)?.jump()
     })
-    expect(editorInstance.getPosition()).toEqual(CURSOR)
-
-    act(() => {
-      clickGutter(2)
-    })
-    // Why: the marker's edit becomes the anchor at its range end, which is where the jump goes.
+    // Why: the edit becomes the anchor at its range end, which is where the jump goes.
     expect(editorInstance.getPosition()).toEqual({ lineNumber: 2, column: 12 })
     unmount()
   })

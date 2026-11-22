@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
-import type { NesLocationMarker } from './nes-location-markers'
 import { nesNextEditNotice } from './nes-next-edit'
 
 const FILE_PATH = '/repo/src/app.ts'
@@ -18,10 +17,6 @@ function makeEdit(overrides: Partial<NesEdit> = {}): NesEdit {
   }
 }
 
-function makeMarker(edit: NesEdit): NesLocationMarker {
-  return { edit, lineNumber: edit.range.startLine }
-}
-
 describe('the next-edit notice', () => {
   it('says nothing when the cursor shows the whole plan', () => {
     const drawn = makeEdit()
@@ -29,7 +24,7 @@ describe('the next-edit notice', () => {
       nesNextEditNotice({
         drawn,
         drawnIsDrawable: true,
-        markers: [],
+        locations: [],
         cursor: { lineNumber: 1, column: 12 }
       })
     ).toBeNull()
@@ -46,7 +41,7 @@ describe('the next-edit notice', () => {
       nesNextEditNotice({
         drawn: makeEdit(),
         drawnIsDrawable: true,
-        markers: [makeMarker(elsewhere)],
+        locations: [elsewhere],
         cursor: { lineNumber: 1, column: 12 }
       })
     ).toBeNull()
@@ -61,7 +56,7 @@ describe('the next-edit notice', () => {
       nesNextEditNotice({
         drawn,
         drawnIsDrawable: false,
-        markers: [],
+        locations: [],
         cursor: { lineNumber: 7, column: 8 }
       })
     ).toEqual({ kind: 'rewrite', lineNumber: 7, label: 'rename the constant' })
@@ -77,7 +72,7 @@ describe('the next-edit notice', () => {
       nesNextEditNotice({
         drawn: null,
         drawnIsDrawable: false,
-        markers: [makeMarker(elsewhere)],
+        locations: [elsewhere],
         cursor: { lineNumber: 2, column: 1 }
       })
     ).toEqual({ kind: 'elsewhere', lineNumber: 9, label: 'add the import' })
@@ -98,7 +93,7 @@ describe('the next-edit notice', () => {
       nesNextEditNotice({
         drawn: null,
         drawnIsDrawable: false,
-        markers: [makeMarker(before), makeMarker(after)],
+        locations: [before, after],
         cursor: { lineNumber: 5, column: 1 }
       })
     ).toEqual({ kind: 'elsewhere', lineNumber: 20, label: 'an edit below' })
@@ -109,7 +104,7 @@ describe('the next-edit notice', () => {
       nesNextEditNotice({
         drawn: null,
         drawnIsDrawable: false,
-        markers: [makeMarker(makeEdit())],
+        locations: [makeEdit()],
         cursor: null
       })
     ).toBeNull()

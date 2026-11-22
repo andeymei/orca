@@ -66,6 +66,38 @@ describe('RefactorPlan', () => {
     })
     expect(parsed.success).toBe(false)
   })
+
+  it('rejects a hunk whose start line is zero', () => {
+    const parsed = RefactorPlan.safeParse({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      proposals: [
+        {
+          id: 'p1',
+          title: 't',
+          rationale: 'r',
+          files: [
+            {
+              path: 'src/foo.ts',
+              originalContent: '',
+              hunks: [
+                {
+                  id: 'h1',
+                  originalStartLine: 0,
+                  originalLineCount: 1,
+                  modifiedStartLine: 1,
+                  modifiedLineCount: 1,
+                  originalText: '',
+                  modifiedText: 'x'
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    })
+    expect(parsed.success).toBe(false)
+  })
 })
 
 describe('RefactorManifest', () => {

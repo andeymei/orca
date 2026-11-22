@@ -2,10 +2,10 @@ import { z } from 'zod'
 
 export const RefactorHunk = z.object({
   id: z.string().min(1),
-  originalStartLine: z.number().positive(),
-  originalLineCount: z.number().nonnegative(),
-  modifiedStartLine: z.number().positive(),
-  modifiedLineCount: z.number().nonnegative(),
+  originalStartLine: z.number().int().positive(),
+  originalLineCount: z.number().int().nonnegative(),
+  modifiedStartLine: z.number().int().positive(),
+  modifiedLineCount: z.number().int().nonnegative(),
   originalText: z.string(),
   modifiedText: z.string()
 })

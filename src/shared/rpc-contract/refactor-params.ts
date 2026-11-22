@@ -37,6 +37,13 @@ export const RefactorApplyResult = z.object({
       path: z.string().min(1),
       hunksApplied: z.number().int().nonnegative()
     })
+  ),
+  /** Why: a refusal whose reason the user cannot see is a silent no-op, so the reason travels with the result. */
+  refusals: z.array(
+    z.object({
+      path: z.string().min(1),
+      reason: z.string()
+    })
   )
 })
 

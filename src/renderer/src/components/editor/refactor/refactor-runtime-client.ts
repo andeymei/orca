@@ -30,7 +30,7 @@ export type RefactorProposeFailure =
 export type RefactorProposeOutcome = { jobId: string } | RefactorProposeFailure
 
 /**
- * Start a refactoring job and answer its id.
+ * Start a refactoring job and answer its outcome.
  *
  * Why an outcome instead of a throw: the caller opens a tab and a toast, and a failed start has
  * no tab to show an error in — so the reason travels with the answer instead of on a stack.

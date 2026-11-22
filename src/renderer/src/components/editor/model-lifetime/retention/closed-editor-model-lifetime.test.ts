@@ -267,3 +267,27 @@ it('releases Changes-mode diff models when their edit tab closes', async () => {
   expect(original.isDisposed()).toBe(true)
   expect(modified.isDisposed()).toBe(true)
 })
+
+it('releases the diff models of a closed refactor review tab', async () => {
+  const { store, attach } = createModelLifetimeFixture()
+  // A review tab has no file on disk; its id owns the models of the hunks it shows.
+  const reviewId = 'wt-1::refactor-review:job-1'
+  const file = {
+    ...modelLifetimeFile(reviewId, 'refactor-review'),
+    filePath: reviewId,
+    relativePath: 'src/foo.ts'
+  }
+  const paths = getDiffViewerMonacoModelPaths({
+    modelKey: `refactor-hunk:${reviewId}:src/foo.ts:h1`,
+    modelOwnerKey: reviewId,
+    generationSuffix: ''
+  })
+  const original = modelLifetimeTextModel(paths.originalModelPath)
+  const modified = modelLifetimeTextModel(paths.modifiedModelPath)
+  store.setState({ openFiles: [file] })
+  attach()
+  store.getState().closeFile(file.id)
+  await Promise.resolve()
+  expect(original.isDisposed()).toBe(true)
+  expect(modified.isDisposed()).toBe(true)
+})

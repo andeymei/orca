@@ -18,6 +18,7 @@ import { useTranslate } from '@/i18n/use-translate'
 import { useEditorConflictNavigation } from './useEditorConflictNavigation'
 import { useMarkdownDocuments } from './markdown/documents/useMarkdownDocuments'
 import type { MarkdownRenderState } from './markdown/render-mode/markdown-render-mode'
+import { RefactorReviewTab } from './refactor/refactor-review-tab'
 
 // Retry is a user act: it may start a stopped WSL distro.
 const USER_RETRY = { wakeWslDistro: true }
@@ -163,6 +164,24 @@ export function EditorContent({
         onRefresh={() => {
           void reloadOpenCheckRunDetailsTab(activeFile.id)
         }}
+      />
+    )
+  }
+
+  if (activeFile.mode === 'refactor-review') {
+    const refactorReview = activeFile.refactorReview
+    if (!refactorReview) {
+      return (
+        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+          {t('auto.components.editor.EditorContent.refactorReviewUnavailable', '重构审查不可用')}
+        </div>
+      )
+    }
+    return (
+      <RefactorReviewTab
+        jobId={refactorReview.jobId}
+        worktreeId={refactorReview.worktreeId}
+        relativePath={refactorReview.relativePath}
       />
     )
   }

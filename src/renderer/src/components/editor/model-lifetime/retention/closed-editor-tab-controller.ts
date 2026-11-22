@@ -274,8 +274,13 @@ export function attachClosedEditorTabCleanup(
             candidateModels.add(model)
           }
         }
-        // Edit tabs that showed Changes mode own diff models too.
-        if (file.mode === 'diff' || (file.mode === 'edit' && hasDiffViewerModelPaths(file.id))) {
+        // Edit tabs that showed Changes mode own diff models too, and a review tab owns the
+        // models of the hunks it shows.
+        if (
+          file.mode === 'diff' ||
+          file.mode === 'refactor-review' ||
+          (file.mode === 'edit' && hasDiffViewerModelPaths(file.id))
+        ) {
           removedDiffOwner = true
         }
       }

@@ -25,6 +25,8 @@ import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
 import type { ArtifactWriteRequest } from '../../../../shared/artifacts/artifacts'
 import { ArtifactPublishButton } from '@/components/artifacts/ArtifactPublishButton'
 import { editorArtifactSourceKey } from './editor-artifact-upload'
+import type { FileContent } from './editor-panel-content-types'
+import { RefactorTriggerButton } from './refactor/refactor-trigger-button'
 
 const NO_CUSTOM_EDITOR_TITLES: Readonly<Record<CustomEditorToggleValue, string>> = {}
 
@@ -53,6 +55,10 @@ type EditorPanelHeaderProps = {
   markdownFrontmatterVisible: boolean
   sideBySide: boolean
   openFileState: EditorHeaderOpenFileState
+  /** The unsaved buffer of every open file, by file id. */
+  editorDrafts: Record<string, string>
+  /** The content the editor loaded from disk, by file id. */
+  fileContents: Record<string, FileContent>
   onCopyPath: () => void
   onOpenDiffTargetFile: (preferredMarkdownViewMode?: 'rich') => void
   onOpenPreview: () => void
@@ -89,6 +95,8 @@ export function EditorPanelHeader({
   markdownFrontmatterVisible,
   sideBySide,
   openFileState,
+  editorDrafts,
+  fileContents,
   onCopyPath,
   onOpenDiffTargetFile,
   onOpenPreview,
@@ -220,6 +228,15 @@ export function EditorPanelHeader({
           filePath={activeFile.relativePath}
         />
       )}
+      {activeFile.mode === 'edit' ? (
+        <RefactorTriggerButton
+          fileId={activeFile.id}
+          worktreeId={activeFile.worktreeId}
+          relativePath={activeFile.relativePath}
+          drafts={editorDrafts}
+          fileContents={fileContents}
+        />
+      ) : null}
       {isDiffSurface && (
         <TooltipProvider>
           <Tooltip>

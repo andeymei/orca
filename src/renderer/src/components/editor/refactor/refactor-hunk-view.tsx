@@ -10,8 +10,9 @@ import { DiffViewer } from '../editor-lazy-views'
 
 export type RefactorHunkViewProps = {
   hunk: RefactorHunk
-  /** The file the hunk came from, as the workspace holds it. */
+  /** The absolute path of the file the hunk came from, as the workspace holds it. */
   filePath: string
+  /** The path of that file relative to the workspace root. */
   relativePath: string
   /** The review tab that owns the Monaco models of every hunk it shows. */
   ownerKey: string

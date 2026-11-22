@@ -122,6 +122,8 @@ export function EditorPanelShell({
           markdownFrontmatterVisible={markdownFrontmatterVisible}
           sideBySide={sideBySide}
           openFileState={model.openFileState}
+          editorDrafts={editorDrafts}
+          fileContents={fileContents}
           onCopyPath={onCopyPath}
           onOpenDiffTargetFile={onOpenDiffTargetFile}
           onOpenPreview={onOpenPreview}

@@ -57,7 +57,9 @@ export function disposeClosedEditorModels(
       } else {
         model?.dispose()
       }
-    } else if (closedFile.mode === 'diff') {
+    } else if (closedFile.mode === 'diff' || closedFile.mode === 'refactor-review') {
+      // Why the review tab too: it owns the diff models of the hunks it shows, and a closed tab
+      // must not leave them in the registry.
       sweepDiffModels(closedFile)
     }
   }

@@ -17180,7 +17180,8 @@
           "8a0898ae4c": "Text diff is unavailable for this file.",
           "3c6e71df22": "Text diff is unavailable for this file in branch compare.",
           "6c4f1a8d2e": "Check details are unavailable.",
-          "resolveConflictGuidance": "Resolve the conflict in Git or restore one side before reopening it."
+          "resolveConflictGuidance": "Resolve the conflict in Git or restore one side before reopening it.",
+          "refactorReviewUnavailable": "重构审查不可用"
         },
         "EditorPanelHeader": {
           "fb8331694e": "Open Preview to the Side",
@@ -17954,6 +17955,36 @@
           "acceptProposal": "接受方案 {{title}}",
           "hunkLabel": "代码块 {{index}}",
           "noRationale": "未给出理由"
+        },
+        "RefactorReviewTab": {
+          "acceptAll": "接受全部方案",
+          "acceptWholeProposal": "接受该方案全部改动",
+          "applyAccepted": "应用已接受",
+          "cancelled": "重构已取消",
+          "discard": "丢弃",
+          "discardFailed": "未能丢弃，重构任务可能仍在运行。",
+          "failed": "重构失败",
+          "generated": "已生成 {{count}} 个方案",
+          "generating": "正在生成",
+          "loadingProposals": "正在读取重构建议",
+          "noProposals": "还没有可审查的重构建议",
+          "nothingWritten": "没有改动被写入，请重新生成。",
+          "partialAcceptance": "{{title}}：这个改动由 {{count}} 处修改共同组成，只接受其中一处可能无法编译",
+          "planUnavailable": "未能读取重构建议，请重新生成。",
+          "proposeFailed": "未能发起重构，请稍后重试。",
+          "refused": "部分文件没有被写入",
+          "selectHunk": "选择一个代码块查看差异",
+          "showFile": "查看完整文件",
+          "showHunk": "查看代码块",
+          "starting": "正在准备",
+          "tabLabel": "智能重构 · {{path}}",
+          "timedOut": "重构超时了，重新发起会更快",
+          "wholeFile": "整个文件",
+          "writeFailed": "写入失败，请重试。",
+          "written": "已写入 {{count}} 个文件"
+        },
+        "RefactorTriggerButton": {
+          "refactor": "智能重构"
         }
       },
       "diff": {

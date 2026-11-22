@@ -1644,6 +1644,13 @@ git commit -m "feat(refactor): show one diff per refactoring hunk"
 - Produces:
   - `RefactorReviewTab` 组件，props：`{ jobId: string; worktree: string; relativePath: string }`
   - `openRefactorReviewTab(input: { worktree: string; relativePath: string; content: string; instruction?: string }): Promise<void>` —— 发起任务、拿到 jobId、开 tab
+  - 虚拟 tab 的 id 用合成 id（如 `${worktreeId}::refactor-review:${jobId}`），`filePath` 填这个合成 id
+    ——虚拟 tab 没有磁盘上的文件，`isVirtualEditorFile` 靠这一点区分它。照抄
+    `src/renderer/src/lib/source-control/graph/git-graph-tab.ts` 里 `openGitGraph` 的写法：
+    `filePath: id`、`relativePath: label`、`language: 'plaintext'`、`mode: 'refactor-review'`、
+    `openFile(..., { reopenId: id, preview: false })`；已经开着同一个 tab 时走
+    `openWorkspaceEditorItem(state, id, worktreeId, label, 'refactor-review')` 激活它。
+    `openWorkspaceEditorItem` 的 `contentType` 参数是 `EditorTabContentType`，Task 10 加了成员后即可直接传。
 
 - [ ] **Step 1: 写失败的测试**
 

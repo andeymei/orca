@@ -28,11 +28,12 @@ export function splitPhysicalPath(rawPath: string): PhysicalPathParts {
 /**
  * The location a path really has.
  *
- * Why the path is walked in runs: the kernel follows a symbolic link before it applies the `..`
- * that follows it, so `/ws/link/../secret` lands in `/secret` when `link` points at `/etc`.
- * Node's `realpath` folds that `..` lexically before it looks at the link, so a run that holds
- * no `..` is resolved with the OS's own resolver and the `..` in between is applied here, to
- * the directory the run really ended in.
+ * Why the path is walked in runs: one `realpath` cannot answer for a path whose tail does not
+ * exist yet -- it fails with ENOENT -- so the path is resolved in runs, and a run that holds no
+ * `..` is resolved with the OS's own resolver. Why the `..` between the runs is applied here:
+ * the kernel follows a symbolic link before it applies the `..` that follows it, so
+ * `/ws/link/../secret` lands in `/secret` when `link` points at `/etc`; the `..` has to be
+ * applied to the directory the run really ended in.
  *
  * Why a path that is not there still gets an answer: a write names a file that does not exist
  * yet, and the kernel puts it where the part of the path that does exist says.

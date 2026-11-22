@@ -2957,9 +2957,10 @@ git commit -m "feat(refactor): review the proposals and accept them by plan, fil
 
   - `applies '..' to the directory a link points at, the way the kernel does` ——
     内核**先跟符号链接、再套 `..`**，所以 `/ws/link/../secret` 在 `link → /etc` 时落在 `/secret`。
-    **Node 的 `fs.realpath` 在 macOS 上不是内核的解析器**：libc 先跟链接，
-    Node 的 JS 版**先把 `..` 折掉**。所以不能对整条路径调用 `realpath` ——
-    要把路径按 `..` 切成若干段，每段（不含 `..`）用 OS 的解析器解，`..` 由自己在两段之间套。
+    **不能对整条路径调用 `realpath`**：目标可能**还不存在**（写操作要写新文件），
+    `realpath` 对这种路径以 ENOENT 失败，回答不了它；所以要把路径按 `..` 切成若干段，
+    每段（不含 `..`）用 OS 的解析器解（`fs/promises.realpath` 就是 OS 的解析器，与内核一致），
+    段与段之间的 `..` 由自己套：内核的规则是 `..` 作用在**前一段真正落到**的那个目录上。
   - `puts a file that is not there where the part of the path that is says` ——
     写操作要写还不存在的文件，内核把它放在**确实存在的那一段**说的位置。
   - `keeps the spelling of a path the disk has never seen`
@@ -2971,8 +2972,6 @@ git commit -m "feat(refactor): review the proposals and accept them by plan, fil
     **工作区根本身是符号链接时，读必须被允许**（这正是真跑踩到的那一类）。
   - `denies a write through a link that leaves the scratch root` ——
     **暂存根里指向外面的符号链接必须被拒**（这条也关掉了"暂存根检查是字面的"那条遗留）。
-  - `denies a write that climbs out of the scratch root through a link` ——
-    路径是手写的，因为 `path.join` 会把 `..` 折掉。
 
 - [ ] **Step 2: 跑测试确认它们失败**
 

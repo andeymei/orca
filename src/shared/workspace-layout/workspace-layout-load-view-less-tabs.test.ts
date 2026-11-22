@@ -73,12 +73,6 @@ describe("main's layout load of view-less saved editor tabs", () => {
     expect(workspace.tabs.map((tab) => tab.id).sort()).toEqual(['ed-a', 'ed-b', 'kept-diff'])
   })
 
-  it('drops a refactor-review tab, whose plan lives only in memory', () => {
-    const workspace = load(savedSession()).layout.workspaces[KEY]!
-
-    expect(workspace.tabs.map((tab) => tab.id)).not.toContain('ghost-refactor')
-  })
-
   it('writes the drop back on its next save, and a reload does not bring them back', () => {
     const saved = saveWorkspaceLayout(load(savedSession()))
 

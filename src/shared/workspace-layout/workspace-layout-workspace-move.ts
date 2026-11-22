@@ -15,7 +15,7 @@ import { removeTabFromWorkspace, withWorkspace } from './workspace-layout-remova
 import { withoutKey } from './stored-record-fields'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../layout-owner-switch'
 
-/** A review tab is left out: its entityId is a synthetic job id, not a file path, so a move must not rekey it. */
+/** A review tab is left out: its id names a refactor job that belongs to the workspace that ran it, so a move must not rekey it — the members name a file, a per-workspace singleton or a repository check, which another workspace can name too. */
 export const EDITOR_KINDS: ReadonlySet<LayoutTab['kind']> = new Set<LayoutTab['kind']>([
   'editor',
   'diff',

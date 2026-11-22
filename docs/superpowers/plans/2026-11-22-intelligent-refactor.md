@@ -1525,7 +1525,7 @@ writeFileExplorerFile(
      顺序很重要：基准在发起那一刻就已知，所以要在建 job 时就给，不能等 job 建好再补——
      那时候注册表里还没有这个 job，也没有地方放它。
   8. 把 `.orca/refactor/` 加进仓库本地的 exclude 文件（见下面「暂存目录不进版本库」）。
-  9. 清理过期暂存目录（见下面「暂存目录清理」）。
+  9. 清理过期暂存目录（见下面「暂存目录清理」），并把被清理掉的 job 从注册表里摘掉。
   10. **立刻返回** `{ jobId }`。
   11. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `plan` 与 `diskContents`。
       **job 的 `state` 直接取 turn 的 `state`**（Task 5 的 `RefactorTurnResult.state`）：
@@ -1582,6 +1582,9 @@ writeFileExplorerFile(
 
 **暂存目录清理**：发起新任务时调 `cleanExpiredRefactorScratch({ scratchParentRoot: path.join(workspaceRoot, '.orca', 'refactor'), excludeJobId: jobId })`。
 当前 job 的目录不动（`excludeJobId`），父目录不存在就当没有暂存目录（不是错误）。
+**清理掉的目录名要用来摘掉对应的 job**：注册表里只有 `discard` 会删 job，
+不清的话注册表会随着每次清理无限增长（暂存目录一天就过期，job 可是一直留着）。
+所以清理返回的目录名逐个 `registry.remove(name)`——目录名就是 jobId。
 
 - [ ] **Step 5: 写暂存目录清理的测试**
 

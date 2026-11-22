@@ -1025,6 +1025,10 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
       而不是"agent 报错了"。
       **超时是独立的 `'timed_out'`**，不是 `'failed'`——两者的处理动作不同（一个要重试，一个要看错误信息），
       混在一起用户就没法只重试超时的那些。
+      **所以 `src/shared/rpc-contract/refactor-params.ts` 的 `RefactorStatusResult` 要加这个成员**：
+      `state: z.enum(['running', 'done', 'failed', 'timed_out', 'cancelled'])`。
+      那个文件是 Task 1 的产出，但 Task 7 的注册表与 Task 8 的 RPC 都用同一个类型，
+      枚举在这里加一处，下游全都跟着走（都是索引访问，没有第二份拷贝）。
     - `runRefactorTurn(input: { launch: RefactorAgentLaunch; scratchRoot: string; workspaceRoot: string; prompt: { system: string; user: string }; onProgress?: (text: string) => void; signal: AbortSignal }): Promise<RefactorTurnResult>`
       - **`workspaceRoot` 必须等于 `launch.cwd`**（传 `launch.cwd` 进去，不要另传一个）。
         闸门把相对路径按 `workspaceRoot` 解析，而 SDK 把相对路径按进程的 cwd 解析——

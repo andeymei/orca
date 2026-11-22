@@ -36,7 +36,7 @@ vi.mock('@/runtime/rpc/calls/runtime-rpc-call', () => ({
 }))
 
 /** The keys the panel answers, as one line under the box. */
-const SHORTCUTS = `↑↓ select · ${getScreenSubmitModifierLabel()}enter send · ctrl+x stop · / task`
+const SHORTCUTS = `↑↓ select · ${getScreenSubmitModifierLabel()}↵ send · ctrl+x stop · / task`
 
 const ROSTER: ClaudeBackgroundAgent[] = [
   { id: 'aaaa1111', sessionId: 's1', name: 'alpha', cwd: '/w', state: 'working' },

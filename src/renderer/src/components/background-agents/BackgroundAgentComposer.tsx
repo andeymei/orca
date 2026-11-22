@@ -338,7 +338,7 @@ export function BackgroundAgentComposer({
 function shortcutsText(t: Translate): string {
   return t(
     'auto.components.backgroundAgents.shortcuts',
-    '↑↓ select · {{modifier}}enter send · ctrl+x stop · / task',
+    '↑↓ select · {{modifier}}↵ send · ctrl+x stop · / task',
     { modifier: getScreenSubmitModifierLabel() }
   )
 }

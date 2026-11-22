@@ -27,6 +27,15 @@ function answered(result: unknown): unknown {
   return { id: 'rpc-1', ok: true, result, _meta: { runtimeId: 'runtime-1' } }
 }
 
+/** The id the transport gave a call; the main side keys a pending call by it. */
+function requestIdOf(request: unknown): string | undefined {
+  if (typeof request !== 'object' || request === null || !('requestId' in request)) {
+    return undefined
+  }
+  const { requestId } = request
+  return typeof requestId === 'string' ? requestId : undefined
+}
+
 describe('the refactor runtime client', () => {
   it('sends the workspace as a runtime selector', async () => {
     runtimeCall.mockResolvedValue(answered({ jobId: 'job-1' }))
@@ -85,8 +94,12 @@ describe('the refactor runtime client', () => {
     await vi.advanceTimersByTimeAsync(120_000)
 
     expect(await request).toEqual({ failure: 'unreachable' })
-    // Why: a request nobody waits for must stop working in the runtime.
-    expect(runtimeCancelCall).toHaveBeenCalled()
+    expect(runtimeCall).toHaveBeenCalled()
+    const requestId = requestIdOf(runtimeCall.mock.calls[0][0])
+    expect(requestId).toEqual(expect.any(String))
+    // Why: a request nobody waits for must stop working in the runtime, and the cancel has to name
+    // this call: the main side keys a pending call by its id.
+    expect(runtimeCancelCall).toHaveBeenCalledWith(expect.objectContaining({ requestId }))
   })
 
   it('answers the plan of a finished job', async () => {
@@ -121,6 +134,12 @@ describe('the refactor runtime client', () => {
       progress: 'halfway',
       warnings: []
     })
+    expect(runtimeCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'refactor.status',
+        params: { jobId: 'job-1' }
+      })
+    )
   })
 
   it('fails the apply when the write does not happen', async () => {
@@ -156,5 +175,17 @@ describe('the refactor runtime client', () => {
     runtimeCall.mockResolvedValue(answered({ discarded: true }))
 
     expect(await discardRefactor('job-1')).toBe(true)
+    expect(runtimeCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'refactor.discard',
+        params: { jobId: 'job-1' }
+      })
+    )
+  })
+
+  it('keeps the job when the runtime did not discard it', async () => {
+    runtimeCall.mockResolvedValue(answered({ discarded: false }))
+
+    expect(await discardRefactor('job-1')).toBe(false)
   })
 })

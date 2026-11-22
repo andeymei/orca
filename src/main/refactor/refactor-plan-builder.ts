@@ -20,7 +20,13 @@ export type RefactorPlanInput = {
   workspaceRoot: string
   readBaseline: (relativePath: string) => Promise<string | null>
   readDiskContent: (relativePath: string) => Promise<string | null>
+  /** Reads `<scratchRoot>/<proposalId>/<relativePath>`. */
   scratchFiles: (proposalId: string, relativePath: string) => Promise<string | null>
+  /**
+   * The proposal directories under the scratch root, each with the files it holds. A file path is
+   * relative to its proposal directory, so it is the workspace-relative path the plan uses:
+   * `<scratchRoot>/p1/src/foo.ts` is reported as `src/foo.ts`.
+   */
   listScratchProposals: () => Promise<{ id: string; files: string[] }[]>
 }
 
@@ -51,11 +57,15 @@ export function isSafeRelativeRefactorPath(relativePath: string): boolean {
   return isSafeMobileRelativePath(relativePath) && !hasUnsafePathSegment(relativePath)
 }
 
-async function draftsFromScratchTree(input: RefactorPlanInput): Promise<ProposalDraft[]> {
+async function draftsFromScratchTree(
+  input: RefactorPlanInput,
+  warnings: string[]
+): Promise<ProposalDraft[]> {
   const entries = await input.listScratchProposals()
   const drafts: ProposalDraft[] = []
   for (const entry of entries) {
     if (entry.id === SOURCE_DIRECTORY_NAME) {
+      warnings.push(`方案 ${SOURCE_DIRECTORY_NAME} 是基准副本，已忽略`)
       continue
     }
     drafts.push({
@@ -69,19 +79,43 @@ async function draftsFromScratchTree(input: RefactorPlanInput): Promise<Proposal
   return drafts
 }
 
+function draftsFromManifest(manifest: RefactorManifest, warnings: string[]): ProposalDraft[] {
+  const drafts: ProposalDraft[] = []
+  for (const proposal of manifest.proposals) {
+    if (proposal.id === SOURCE_DIRECTORY_NAME) {
+      warnings.push(`方案 ${SOURCE_DIRECTORY_NAME} 是基准副本，已忽略`)
+      continue
+    }
+    drafts.push({
+      id: proposal.id,
+      title: proposal.title,
+      rationale: proposal.rationale,
+      files: proposal.files,
+      restored: false
+    })
+  }
+  return drafts
+}
+
 async function evaluateProposal(
   draft: ProposalDraft,
   input: RefactorPlanInput,
-  claimedPaths: Map<string, string>
+  claimedPaths: Map<string, string>,
+  claimedIds: Set<string>
 ): Promise<ProposalOutcome> {
   // The proposal id becomes a directory in the scratch path, so it has to be a safe relative path
   // like the file paths are.
   if (!isSafeRelativeRefactorPath(draft.id)) {
     return { kept: false, warning: `方案 ${draft.id} 的编号不是安全的相对路径，已丢弃` }
   }
+  // Two proposals under one id cannot be told apart in the review UI.
+  if (claimedIds.has(draft.id)) {
+    return { kept: false, warning: `方案 ${draft.id} 的编号重复，已丢弃` }
+  }
   // Every read-free check runs before anything is read: a proposal that gets dropped must not
   // leave its disk content behind for the staleness check to compare against.
   const paths: string[] = []
+  const pathKeys = new Set<string>()
   for (const filePath of draft.files) {
     if (!isSafeRelativeRefactorPath(filePath)) {
       return {
@@ -89,16 +123,20 @@ async function evaluateProposal(
         warning: `方案 ${draft.id} 的文件路径不在工作区内，已丢弃：${filePath}`
       }
     }
-    const owner = claimedPaths.get(filePath)
+    // The key is lower-cased: macOS and Windows treat `src/Foo.ts` and `src/foo.ts` as one file,
+    // and a missed conflict silently overwrites the first proposal's file.
+    const pathKey = filePath.toLowerCase()
+    const owner = claimedPaths.get(pathKey)
     if (owner !== undefined) {
       return {
         kept: false,
         warning: `方案 ${draft.id} 与方案 ${owner} 改同一个文件，已丢弃后者：${filePath}`
       }
     }
-    if (paths.includes(filePath)) {
+    if (pathKeys.has(pathKey)) {
       return { kept: false, warning: `方案 ${draft.id} 重复列出了同一个文件，已丢弃：${filePath}` }
     }
+    pathKeys.add(pathKey)
     paths.push(filePath)
   }
   if (paths.length === 0) {
@@ -123,7 +161,9 @@ async function evaluateProposal(
     files.push({
       path: filePath,
       originalContent: baseline,
-      hunks: computeRefactorHunks(baseline, modified)
+      // The hunk id names the file: the accepted set is flat, so `h1` in two files would be
+      // accepted together.
+      hunks: computeRefactorHunks(baseline, modified, `${filePath}:`)
     })
     diskContents.set(filePath, disk)
   }
@@ -140,33 +180,27 @@ async function evaluateProposal(
  * the repo's diff package applied to the baseline the user sees.
  */
 export async function buildRefactorPlan(input: RefactorPlanInput): Promise<RefactorPlanResult> {
+  const warnings: string[] = []
   const drafts =
     input.manifest === null
-      ? await draftsFromScratchTree(input)
-      : input.manifest.proposals
-          .filter((proposal) => proposal.id !== SOURCE_DIRECTORY_NAME)
-          .map((proposal) => ({
-            id: proposal.id,
-            title: proposal.title,
-            rationale: proposal.rationale,
-            files: proposal.files,
-            restored: false
-          }))
+      ? await draftsFromScratchTree(input, warnings)
+      : draftsFromManifest(input.manifest, warnings)
 
-  const warnings: string[] = []
   const proposals: RefactorProposal[] = []
   const diskContents = new Map<string, string>()
   const claimedPaths = new Map<string, string>()
+  const claimedIds = new Set<string>()
 
   for (const draft of drafts) {
-    const outcome = await evaluateProposal(draft, input, claimedPaths)
+    const outcome = await evaluateProposal(draft, input, claimedPaths, claimedIds)
     if (!outcome.kept) {
       warnings.push(outcome.warning)
       continue
     }
     proposals.push(outcome.proposal)
+    claimedIds.add(draft.id)
     for (const [filePath, disk] of outcome.diskContents) {
-      claimedPaths.set(filePath, draft.id)
+      claimedPaths.set(filePath.toLowerCase(), draft.id)
       diskContents.set(filePath, disk)
     }
     if (draft.restored) {

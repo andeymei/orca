@@ -34,4 +34,14 @@ describe('computeRefactorHunks', () => {
   it('reports no hunk for identical text', () => {
     expect(computeRefactorHunks('a\n', 'a\n')).toEqual([])
   })
+
+  it('numbers the hunks h1, h2 when no prefix is given', () => {
+    const hunks = computeRefactorHunks('a\nb\nc\n', 'A\nb\nC\n')
+    expect(hunks.map((hunk) => hunk.id)).toEqual(['h1', 'h2'])
+  })
+
+  it('puts the prefix in front of the hunk number', () => {
+    const hunks = computeRefactorHunks('a\n', 'b\n', 'src/a.ts:')
+    expect(hunks.map((hunk) => hunk.id)).toEqual(['src/a.ts:h1'])
+  })
 })

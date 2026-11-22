@@ -28,8 +28,17 @@ function toRefactorHunk(group: ChangeGroup, id: string): RefactorHunk {
   }
 }
 
-/** Splits the original and the modified text into the changed regions the review UI shows. */
-export function computeRefactorHunks(original: string, modified: string): RefactorHunk[] {
+/**
+ * Splits the original and the modified text into the changed regions the review UI shows.
+ *
+ * `idPrefix` keeps the ids unique across the files of one plan: the accepted set is flat, so two
+ * files that both number their first hunk `h1` would be accepted together.
+ */
+export function computeRefactorHunks(
+  original: string,
+  modified: string,
+  idPrefix = ''
+): RefactorHunk[] {
   const hunks: RefactorHunk[] = []
   let originalLine = 1
   let modifiedLine = 1
@@ -39,7 +48,7 @@ export function computeRefactorHunks(original: string, modified: string): Refact
     const lineCount = countLines(part.value)
     if (!part.added && !part.removed) {
       if (group) {
-        hunks.push(toRefactorHunk(group, `h${hunks.length + 1}`))
+        hunks.push(toRefactorHunk(group, `${idPrefix}h${hunks.length + 1}`))
         group = undefined
       }
       originalLine += lineCount
@@ -66,7 +75,7 @@ export function computeRefactorHunks(original: string, modified: string): Refact
   }
 
   if (group) {
-    hunks.push(toRefactorHunk(group, `h${hunks.length + 1}`))
+    hunks.push(toRefactorHunk(group, `${idPrefix}h${hunks.length + 1}`))
   }
   return hunks
 }

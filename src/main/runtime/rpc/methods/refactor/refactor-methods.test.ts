@@ -8,7 +8,8 @@ import { RpcDispatcher } from '../../dispatcher'
 import { refactorJobRegistry } from '../../../../refactor/refactor-job-registry'
 import {
   refactorBaselineMap,
-  refactorBaselineReader
+  refactorBaselineReader,
+  type RefactorBaselineDeps
 } from '../../../../refactor/refactor-baselines'
 import { computeRefactorHunks } from '../../../../../shared/refactor/refactor-hunk-computation'
 import { REFACTOR_METHODS } from './refactor-methods'
@@ -344,6 +345,44 @@ describe('the refactoring RPC methods', () => {
     })
     const readBaseline = refactorBaselineReader({ baselines, workspaceRoot: root })
     expect(await readBaseline('src/twin.ts')).toBe('the user buffer\n')
+  })
+
+  it("does not hand the buffer to a file that took the target's inode", async () => {
+    // The target was deleted during the turn and the filesystem handed its inode to
+    // another file: the identity answers, the content does not, so the buffer is not that
+    // file's baseline. The collision is forced, not waited for — no filesystem hands a
+    // freed inode over on demand.
+    const root = await workspaceRoot()
+    const deps: RefactorBaselineDeps = { stat: async () => ({ dev: 1, ino: 42 }) }
+    const baselines = await refactorBaselineMap({
+      workspaceRoot: root,
+      relativePath: 'src/foo.ts',
+      content: 'the user buffer\n',
+      deps
+    })
+    await fs.writeFile(path.join(root, 'src', 'bar.ts'), 'a different file\n')
+    const readBaseline = refactorBaselineReader({ baselines, workspaceRoot: root, deps })
+    expect(await readBaseline('src/bar.ts')).toBe('a different file\n')
+  })
+
+  it('gives the buffer to a file the manifest spells with another case, changed or not', async () => {
+    // The canonical path answers for the file, and a path answer needs no witness: the
+    // user saved the file during the review, so its content is not the content the job
+    // started with, and the buffer is still the right baseline for the path.
+    const root = await workspaceRoot()
+    await fs.writeFile(path.join(root, 'src', 'Foo.ts'), ORIGINAL)
+    const baselines = await refactorBaselineMap({
+      workspaceRoot: root,
+      relativePath: 'src/Foo.ts',
+      content: 'the user buffer\n'
+    })
+    await fs.writeFile(path.join(root, 'src', 'Foo.ts'), 'the saved version\n')
+    const readBaseline = refactorBaselineReader({ baselines, workspaceRoot: root })
+    const sameFile = await isSameFile(
+      path.join(root, 'src', 'Foo.ts'),
+      path.join(root, 'src', 'foo.ts')
+    )
+    expect(await readBaseline('src/foo.ts')).toBe(sameFile ? 'the user buffer\n' : null)
   })
 
   it('gives the buffer to a file that was replaced under it', async () => {

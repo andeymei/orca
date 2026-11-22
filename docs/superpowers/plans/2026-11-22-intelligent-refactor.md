@@ -1642,12 +1642,12 @@ describe('the refactor job registry', () => {
       // The keys are the file's identity on disk: the path it was named by, the path the
       // filesystem calls it, and its inode.
       baselines: new Map([
-        ['/repo/src/foo.ts', 'a\n'],
-        ['inode:16777225-13181744224', 'a\n']
+        ['/repo/src/foo.ts', { content: 'a\n', witness: 'a\n' }],
+        ['inode:16777225-13181744224', { content: 'a\n', witness: 'a\n' }]
       ])
     })
-    expect(job.baselines.get('/repo/src/foo.ts')).toBe('a\n')
-    expect(job.baselines.get('inode:16777225-13181744224')).toBe('a\n')
+    expect(job.baselines.get('/repo/src/foo.ts')?.content).toBe('a\n')
+    expect(job.baselines.get('inode:16777225-13181744224')?.content).toBe('a\n')
   })
 
   it('returns null for an unknown job', () => {
@@ -1930,8 +1930,10 @@ writeFileExplorerFile(
      把这个约定钉住，别让两个函数各走各的。
   6. 写基准副本：`fs.writeFile(path.join(scratchRoot, '_source', params.relativePath), params.content)`，父目录先 `mkdir recursive`。
   7. **建 job**（Task 7 的注册表），建的时候就把目标文件的**基准文本**带上：
-     `baselines: new Map([[<目标文件的规范路径>, params.content], ...])`——
+     `baselines: new Map([[<目标文件的规范路径>, { content: params.content, witness: <发起时目标文件的磁盘内容> }], ...])`——
      同一份缓冲区要放在**这个文件回答的每一个键**下面（见下面「基准表的键」）。
+     这张表只在主进程里（`RefactorJob.baselines`），**不上线**，所以值的形状可以按需要改，
+     RPC 契约和参数目录都不动。
      其它文件的基准文本就是它们当时的磁盘内容。
      顺序很重要：基准在发起那一刻就已知，所以要在建 job 时就给，不能等 job 建好再补——
      那时候注册表里还没有这个 job，也没有地方放它。
@@ -1942,18 +1944,26 @@ writeFileExplorerFile(
      - **路径**回答"是不是同一个名字"：用 `fs.promises.realpath`（**不是 `realpathSync`**：
        同步的那个保留给定的写法，在不区分大小写的卷上分不开两个拼法）算出来的规范路径，
        外加发起时用的那个绝对路径。编辑器用"改名保存"换掉文件时，路径没变而 inode 变了，
-       只有路径键能认出来。
+       只有路径键能认出来。**路径命中不需要见证**：路径指的就是用户说的那个文件。
      - **inode**（`stat` 的 `dev` + `ino`）回答"是不是同一个文件"：硬链接的另一个名字路径不同、
        inode 相同，只有 inode 键能认出来。不区分大小写的卷上两种拼法也落到同一个 inode。
-       两个键都存、都查，命中任意一个就算同一个文件；只用其中一个，另一个方向的漏查就会
-       重新变成"用户没保存的修改被悄悄抹掉"。
-       **查不到就是另一个文件**，退回它自己的磁盘内容——这时用户的缓冲区不参与。
-       **写法不同已经不再是入口**：不区分大小写的卷上两种拼法，规范路径和 inode 都认得出来，
-       用户没保存的修改不会再被悄悄抹掉。
-       **还开着的那道门是另一个文件**：RPC 只带**一个**文件的缓冲区（`relativePath` + `content`），
-       所以清单里**别的**文件拿到的基准只能是它自己的磁盘内容——这是契约的形状（一次一个缓冲区），
-       不是键的问题。用户如果在那个文件里也有没保存的修改，应用根本没见过这部分内容，
-       部分接受时它会被磁盘内容覆盖。
+       **inode 命中还要对一下"见证"**：inode 本身不是身份——文件被删了，文件系统会把它的 inode
+       发给下一个建出来的文件。所以发起时记下**目标文件当时的磁盘内容**当见证，
+       命中 inode 键时再读那个文件现在的内容，见证对得上才算命中：
+       - 硬链接的另一个名字：同一个 inode，**内容也一样**，见证对得上，照样拿到缓冲区；
+       - 回收的 inode：那个文件有它自己的内容，见证对不上，inode 键不回答，
+         那个文件退回它自己的磁盘内容——**用户没保存的修改不会被写进无关的文件**。
+         这道门（回收的 inode）就是这么关上的：它需要删除 + inode 被回收 + 清单点名那个新文件，
+         而现在就算凑齐了，缓冲区也不会落到那个文件上。
+         两个键都存、都查，命中任意一个就算同一个文件；只用其中一个，另一个方向的漏查就会
+         重新变成"用户没保存的修改被悄悄抹掉"。
+         **查不到就是另一个文件**，退回它自己的磁盘内容——这时用户的缓冲区不参与。
+         **写法不同已经不再是入口**：不区分大小写的卷上两种拼法，规范路径和 inode 都认得出来，
+         用户没保存的修改不会再被悄悄抹掉。
+         **还开着的那道门是另一个文件**：RPC 只带**一个**文件的缓冲区（`relativePath` + `content`），
+         所以清单里**别的**文件拿到的基准只能是它自己的磁盘内容——这是契约的形状（一次一个缓冲区），
+         不是键的问题。用户如果在那个文件里也有没保存的修改，应用根本没见过这部分内容，
+         部分接受时它会被磁盘内容覆盖。
   8. 把 `.orca/refactor/` 加进仓库本地的 exclude 文件（见下面「暂存目录不进版本库」）。
   9. 清理过期暂存目录（见下面「暂存目录清理」），并把被清理掉的 job 从注册表里摘掉。
   10. **立刻返回** `{ jobId }`。
@@ -2013,7 +2023,8 @@ writeFileExplorerFile(
       把所有结束方式都当成 `'done'` 会让用户面对一个空白的审查界面。
       建 plan 时传的 `readBaseline` 是 `(path) => 按身份查 baselines ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。
       「按身份查」的意思是：把这个路径的**每一个键**（规范路径、原路径、inode）都试一遍，
-      命中任意一个就算命中（见上面第 7 步的「基准表的键」）；`readDiskContent` 是 `(path) => 磁盘内容`。
+      路径键命中就是命中，**inode 键命中还要对一下见证**（发起时目标文件的磁盘内容，
+      见上面第 7 步的「基准表的键」）；`readDiskContent` 是 `(path) => 磁盘内容`。
       `listScratchProposals` 要**连每个方案目录里的文件一起返回**：
       `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())`
       拿到目录名后，对每个目录再递归列一次文件，组成 `{ id: 目录名, files: [...] }`。

@@ -56,12 +56,12 @@ describe('the refactor job registry', () => {
       // The keys are the file's identity on disk: the path it was named by, the path the
       // filesystem calls it, and its inode.
       baselines: new Map([
-        ['/repo/src/foo.ts', 'a\n'],
-        ['inode:16777225-13181744224', 'a\n']
+        ['/repo/src/foo.ts', { content: 'a\n', witness: 'a\n' }],
+        ['inode:16777225-13181744224', { content: 'a\n', witness: 'a\n' }]
       ])
     })
-    expect(job.baselines.get('/repo/src/foo.ts')).toBe('a\n')
-    expect(job.baselines.get('inode:16777225-13181744224')).toBe('a\n')
+    expect(job.baselines.get('/repo/src/foo.ts')?.content).toBe('a\n')
+    expect(job.baselines.get('inode:16777225-13181744224')?.content).toBe('a\n')
   })
 
   it('returns null for an unknown job', () => {

@@ -1,5 +1,6 @@
 import type { RefactorPlan } from '../../shared/refactor/refactor-types'
 import type { RefactorStatusResult } from '../../shared/rpc-contract/refactor-params'
+import type { RefactorBaseline } from './refactor-baselines'
 
 export type RefactorJob = {
   jobId: string
@@ -10,10 +11,11 @@ export type RefactorJob = {
   /** The disk content of each file at the moment the plan was built, for the staleness check. */
   diskContents: Map<string, string>
   /**
-   * The target file's baseline (the editor buffer), under every key the file answers to:
-   * its canonical path, the path it was named by, and its inode.
+   * The target file's baseline (the editor buffer and the witness of the file's identity),
+   * under every key the file answers to: its canonical path, the path it was named by, and
+   * its inode.
    */
-  baselines: Map<string, string>
+  baselines: Map<string, RefactorBaseline>
   /** The original worktree selector, replayed when the accepted changes are written back. */
   worktree: string
   controller: AbortController
@@ -25,7 +27,7 @@ export type RefactorJobCreateInput = {
   scratchRoot: string
   worktree: string
   /** Known when the job starts, so it arrives with the job rather than being patched in later. */
-  baselines?: Map<string, string>
+  baselines?: Map<string, RefactorBaseline>
 }
 
 export type RefactorJobUpdate = Partial<

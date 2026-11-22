@@ -761,6 +761,10 @@ git commit -m "feat(refactor): drive the agent turn that writes the refactored f
   - `buildRefactorPlan(input: { jobId: string; sourcePath: string; manifest: RefactorManifest | null; scratchRoot: string; workspaceRoot: string; readBaseline: (relativePath: string) => Promise<string | null>; readDiskContent: (relativePath: string) => Promise<string | null>; scratchFiles: (proposalId: string, relativePath: string) => Promise<string | null> }): Promise<{ plan: RefactorPlan; warnings: string[]; diskContents: Map<string, string> }>`
   - `diskContents` 是每个文件在**建 plan 那一刻**的磁盘内容（D）。它不进 plan（plan 只带渲染 diff 用的基准文本 B），由 job 留在主进程侧，供接受时做陈旧判定。
   - `isSafeRelativeRefactorPath(relativePath: string): boolean` —— 清单里的路径必须在工作区内。
+    **委托给仓库既有的 `isSafeMobileRelativePath`**（`src/main/runtime/files/mobile-file-kind.ts`），
+    不要自己重写一遍路径段检查。路径守卫是安全边界，两份实现就是两个可能出错的地方；
+    那个函数被 `file-access` / `file-reads` / `terminal-path-resolver` 三处通用文件 API 使用，
+    语义（拒绝绝对路径、Windows 盘符前缀、`..` / `.` / 空段）比本任务要的更严，正好够用。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -886,7 +890,7 @@ Expected: FAIL，报模块不存在。
 
 在 `refactor-plan-builder.ts`：
 
-- `isSafeRelativeRefactorPath(relativePath)`：拒绝绝对路径（`path.isAbsolute`）、拒绝任何一段为 `..` 的路径（按 `/` 和 `\` 两种分隔符切分后检查）、拒绝空串。
+- `isSafeRelativeRefactorPath(relativePath)`：直接 `return isSafeMobileRelativePath(relativePath)`，从 `src/main/runtime/files/mobile-file-kind.ts` 导入。它拒绝绝对路径、Windows 盘符前缀，以及任何 `..` / `.` / 空路径段——比本任务要求的更严，正好覆盖。不要自己重写这段检查。
 - `buildRefactorPlan`：
   1. 遍历 manifest 的 proposals，维护一个 `claimedPaths: Set<string>`。
   2. 每个 proposal 的每个 file：先过 `isSafeRelativeRefactorPath`，不过就记 warning 并跳过整个 proposal。

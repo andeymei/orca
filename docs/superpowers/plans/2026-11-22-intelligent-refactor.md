@@ -1144,7 +1144,7 @@ Expected: FAIL，报模块不存在。
    - `await write(path, newContent, precondition)`；写失败记 refusal"写入失败"。
 5. 返回 `{ applied, refusals }`。
 
-precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignature, allowMissing }`。`expectedSignature` 取当前磁盘内容的签名——用 `src/main/filesystem/file-stat-signature.ts` 里现成的签名函数，具体导出名以该文件为准。
+precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignature, allowMissing }`。`expectedSignature` 用 `getDiskBaselineSignature(content)`（`src/shared/file-write/disk-baseline-signature.ts`）——它对**内容**求签名，与 `files.writeIfUnchanged` 的前置条件语义一致（`src/main/ipc/filesystem/local-disk-write-precondition.ts` 就是拿它跟磁盘内容比的）。
 
 **写盘会连带保存用户的未保存修改**：因为 `newContent` 是从基准文本 B 算出来的，而 B 含用户那些还没存盘的编辑。这不是副作用而是语义的一部分（重构基于用户眼前的内容，落盘理应包含它），但界面必须写明这一点。
 

@@ -581,6 +581,7 @@ import {
   ProjectUpdate
 } from './project-runtime-params'
 import { RecipeVmWakeParams } from './recipe-vm-wake-params'
+import { RefactorApplyParams, RefactorJobIdParams, RefactorProposeParams } from './refactor-params'
 import { ReferenceFind, ReferenceList } from './reference-params'
 import {
   ProjectGroupCreate,
@@ -1468,6 +1469,11 @@ export const RPC_PARAMS_BY_METHOD = {
   'projectHostSetup.list': null,
   'projectHostSetup.setupExistingFolder': ProjectHostSetupExistingFolder,
   'projectHostSetup.update': ProjectHostSetupUpdate,
+  'refactor.apply': RefactorApplyParams,
+  'refactor.discard': RefactorJobIdParams,
+  'refactor.plan': RefactorJobIdParams,
+  'refactor.propose': RefactorProposeParams,
+  'refactor.status': RefactorJobIdParams,
   'reference.find': ReferenceFind,
   'reference.list': ReferenceList,
   'repo.add': RepoPath,

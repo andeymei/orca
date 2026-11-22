@@ -1,0 +1,323 @@
+import { randomUUID } from 'node:crypto'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { defineMethod } from '../../core'
+import {
+  RefactorApplyParams,
+  RefactorJobIdParams,
+  RefactorProposeParams,
+  type RefactorApplyResult,
+  type RefactorDiscardResult,
+  type RefactorPlanResult,
+  type RefactorProposeResult,
+  type RefactorStatusResult
+} from '../../../../../shared/rpc-contract/refactor-params'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../../shared/execution-host'
+import { buildRefactorPrompt } from '../../../../../shared/refactor/refactor-prompt'
+import type { FileWriteDiskConflict } from '../../../../../shared/file-write/file-write-disk-precondition'
+import { resolveTuiAgentLaunchEnv } from '../../../../../shared/agent-launch/choices/tui-agent-launch-defaults'
+import { applyRefactorSelection } from '../../../../refactor/refactor-apply'
+import {
+  listScratchProposals,
+  readScratchFile,
+  readWorkspaceFile
+} from '../../../../refactor/refactor-file-reads'
+import { excludeRefactorScratchFromGit } from '../../../../refactor/refactor-git-exclude'
+import { refactorJobRegistry } from '../../../../refactor/refactor-job-registry'
+import { buildRefactorPlan } from '../../../../refactor/refactor-plan-builder'
+import { resolveRefactorAgentLaunch } from '../../../../refactor/refactor-agent-launch'
+import { runRefactorTurn } from '../../../../refactor/refactor-runner'
+import {
+  REFACTOR_SOURCE_DIRECTORY_NAME,
+  refactorScratchParentRoot,
+  refactorScratchRelativeRoot,
+  refactorScratchRoot
+} from '../../../../refactor/refactor-scratch'
+import { cleanExpiredRefactorScratch } from '../../../../refactor/refactor-scratch-cleanup'
+import {
+  hasUnsafePathSegment,
+  isPathInsideWorkspace
+} from '../../../../refactor/refactor-write-gate'
+import { claudeStructuredAuthPolicyForSettings } from '../../../../claude-accounts/runtime-auth/claude-structured-auth-policy'
+import { resolveStructuredAgentCommand } from '../../../../native-chat/structured-agent-command-resolution'
+import { isSafeMobileRelativePath } from '../../../files/mobile-file-kind'
+
+const REMOTE_WORKSPACE_REFUSAL = '远程主机上的重构暂不支持：请在本机的工作区发起重构。'
+
+const FILE_CHANGED_REASON = '文件在评审期间被改动过，请重新生成重构建议'
+
+/** Why the file is refused, in the words the user reads. */
+function diskConflictReason(conflict: FileWriteDiskConflict): string {
+  if (conflict === 'changed') {
+    return FILE_CHANGED_REASON
+  }
+  if (conflict === 'missing') {
+    return '文件已被删除'
+  }
+  return '文件不是有效的 UTF-8 文本，无法安全写入'
+}
+
+/**
+ * The path the agent may read and the plan may name.
+ *
+ * Three checks, because each one closes a hole the others leave: the mobile guard rejects
+ * absolute paths and `..` segments, the segment guard rejects the trailing dot and space that
+ * Windows strips before it reads `..`, and the containment check confirms the resolved path
+ * still lands inside the workspace.
+ */
+function assertSafeRefactorTargetPath(workspaceRoot: string, relativePath: string): void {
+  if (!isSafeMobileRelativePath(relativePath)) {
+    throw new Error('重构目标必须是工作区内的相对路径')
+  }
+  if (hasUnsafePathSegment(relativePath)) {
+    throw new Error('重构目标的路径含有不安全的片段')
+  }
+  if (!isPathInsideWorkspace(workspaceRoot, path.resolve(workspaceRoot, relativePath))) {
+    throw new Error('重构目标必须位于工作区内')
+  }
+}
+
+/** Removes the scratch directories that expired, and the jobs that own them. */
+async function removeExpiredRefactorJobs(
+  workspaceRoot: string,
+  currentJobId: string
+): Promise<void> {
+  try {
+    const removed = await cleanExpiredRefactorScratch({
+      scratchParentRoot: refactorScratchParentRoot(workspaceRoot),
+      excludeJobId: currentJobId
+    })
+    for (const jobId of removed) {
+      // The directory is named after the job, and only a discard used to retire a job.
+      refactorJobRegistry.remove(jobId)
+    }
+  } catch {
+    // A cleanup failure leaves old directories behind; it must not stop the new request.
+  }
+}
+
+export const REFACTOR_METHODS = [
+  defineMethod({
+    name: 'refactor.propose',
+    permission: 'workspace',
+    params: RefactorProposeParams,
+    handler: async (params, { runtime }): Promise<RefactorProposeResult> => {
+      // The workspace is resolved here: by the time the background run starts, the handler's
+      // context is gone.
+      const target = await runtime.resolveRuntimeFileTarget(params.worktree)
+      // The agent is a child process on this machine, so a remote workspace's paths belong to
+      // another machine: its cwd could not be started and its sources could not be read.
+      if (target.executionHostId !== LOCAL_EXECUTION_HOST_ID) {
+        throw new Error(REMOTE_WORKSPACE_REFUSAL)
+      }
+      const workspaceRoot = target.worktree.path
+      assertSafeRefactorTargetPath(workspaceRoot, params.relativePath)
+
+      const jobId = randomUUID()
+      const scratchRoot = refactorScratchRoot(workspaceRoot, jobId)
+      const scratchRelativeRoot = refactorScratchRelativeRoot(jobId)
+      const sourceCopyPath = path.join(
+        scratchRoot,
+        REFACTOR_SOURCE_DIRECTORY_NAME,
+        params.relativePath
+      )
+      await mkdir(path.dirname(sourceCopyPath), { recursive: true })
+      await writeFile(sourceCopyPath, params.content, 'utf8')
+
+      const job = refactorJobRegistry.create({
+        jobId,
+        scratchRoot,
+        worktree: params.worktree,
+        // The baseline of the target file is known now: it is the buffer the user is looking at.
+        baselines: new Map([[params.relativePath, params.content]])
+      })
+
+      await excludeRefactorScratchFromGit(workspaceRoot)
+      await removeExpiredRefactorJobs(workspaceRoot, jobId)
+
+      const runInBackground = async (): Promise<void> => {
+        const signal = job.controller.signal
+        const settings = runtime.requireStore().getSettings()
+        // The account is pushed and Claude refreshed before the agent starts, so the launch
+        // uses the account the user picked instead of a stale one.
+        await runtime.prepareHostAgentLaunch('claude')
+        const launch = await resolveRefactorAgentLaunch({
+          cwd: workspaceRoot,
+          deps: {
+            // The same resolution path as the native chat: a configured Command wins, and the
+            // agent name is resolved otherwise.
+            resolveCommand: (options) => resolveStructuredAgentCommand('claude', settings, options),
+            // Only labels the sign-in failure; it does not pick the executable.
+            resolveAuthPolicy: () => claudeStructuredAuthPolicyForSettings(settings),
+            // The user's own per-agent environment plus the environment of the current account.
+            resolveEnv: () => ({
+              ...resolveTuiAgentLaunchEnv('claude', settings),
+              ...runtime.getHostAgentLaunchEnv('claude')
+            })
+          },
+          signal
+        })
+        const turn = await runRefactorTurn({
+          launch,
+          scratchRoot,
+          workspaceRoot,
+          prompt: buildRefactorPrompt({
+            relativePath: params.relativePath,
+            sourceRelativePath: path.join(
+              scratchRelativeRoot,
+              REFACTOR_SOURCE_DIRECTORY_NAME,
+              params.relativePath
+            ),
+            scratchRelativeRoot,
+            instruction: params.instruction
+          }),
+          onProgress: (text) => {
+            refactorJobRegistry.update(jobId, { progress: text })
+          },
+          signal
+        })
+        if (signal.aborted) {
+          return
+        }
+        if (turn.state !== 'done') {
+          // Without a trustworthy output there is no plan to review.
+          refactorJobRegistry.update(jobId, {
+            state: turn.state,
+            progress: turn.progress,
+            warnings: turn.warnings
+          })
+          return
+        }
+        const built = await buildRefactorPlan({
+          jobId,
+          sourcePath: params.relativePath,
+          manifest: turn.manifest,
+          scratchRoot,
+          workspaceRoot,
+          // The target file's baseline is the buffer the user saw; every other file's baseline
+          // is the disk content of the moment.
+          readBaseline: async (relativePath) => {
+            const baseline = job.baselines.get(relativePath)
+            return baseline ?? (await readWorkspaceFile(workspaceRoot, relativePath))
+          },
+          readDiskContent: (relativePath) => readWorkspaceFile(workspaceRoot, relativePath),
+          scratchFiles: (proposalId, relativePath) =>
+            readScratchFile(scratchRoot, proposalId, relativePath),
+          listScratchProposals: () => listScratchProposals(scratchRoot)
+        })
+        refactorJobRegistry.update(jobId, {
+          state: 'done',
+          progress: turn.progress,
+          warnings: [...turn.warnings, ...built.warnings],
+          plan: built.plan,
+          diskContents: built.diskContents
+        })
+      }
+
+      // A rejected promise nobody holds terminates the main process, so the background run
+      // carries its own failure into the job's warnings.
+      void runInBackground().catch((error: unknown) => {
+        refactorJobRegistry.update(jobId, {
+          state: 'failed',
+          warnings: [error instanceof Error ? error.message : String(error)]
+        })
+      })
+
+      return { jobId }
+    }
+  }),
+  defineMethod({
+    name: 'refactor.status',
+    permission: 'workspace',
+    params: RefactorJobIdParams,
+    handler: (params): RefactorStatusResult => {
+      const job = refactorJobRegistry.get(params.jobId)
+      if (!job) {
+        return { state: 'failed', progress: '', warnings: ['任务不存在'] }
+      }
+      return { state: job.state, progress: job.progress, warnings: job.warnings }
+    }
+  }),
+  defineMethod({
+    name: 'refactor.plan',
+    permission: 'workspace',
+    params: RefactorJobIdParams,
+    handler: (params): RefactorPlanResult => {
+      const job = refactorJobRegistry.get(params.jobId)
+      return { plan: job?.plan ?? null }
+    }
+  }),
+  defineMethod({
+    name: 'refactor.apply',
+    permission: 'workspace',
+    params: RefactorApplyParams,
+    handler: async (params, { runtime }): Promise<RefactorApplyResult> => {
+      const job = refactorJobRegistry.get(params.jobId)
+      // A missing job or plan is a failed call: every refusal names a path, so there is no
+      // honest way to report "nothing to write" as a success.
+      if (!job) {
+        throw new Error('重构任务不存在')
+      }
+      if (!job.plan) {
+        throw new Error('重构任务还没有可评审的方案')
+      }
+      const target = await runtime.resolveRuntimeFileTarget(job.worktree)
+      if (target.executionHostId !== LOCAL_EXECUTION_HOST_ID) {
+        throw new Error(REMOTE_WORKSPACE_REFUSAL)
+      }
+      const workspaceRoot = target.worktree.path
+      const refusalReasons = new Map<string, string>()
+      const result = await applyRefactorSelection({
+        plan: job.plan,
+        diskContents: job.diskContents,
+        acceptedHunkIds: params.acceptedHunkIds,
+        readCurrent: (relativePath) => readWorkspaceFile(workspaceRoot, relativePath),
+        write: async (relativePath, content, precondition) => {
+          const writeResult = await runtime.writeFileExplorerFile(
+            job.worktree,
+            relativePath,
+            content,
+            undefined,
+            undefined,
+            // The host expectation is not optional: a write without it is refused as a remote
+            // change from an outdated client.
+            target.executionHostId,
+            precondition
+          )
+          if (writeResult.ok) {
+            return true
+          }
+          refusalReasons.set(relativePath, diskConflictReason(writeResult.diskConflict))
+          return false
+        }
+      })
+      return {
+        applied: result.applied,
+        refusals: result.refusals.map((refusal) => ({
+          path: refusal.path,
+          reason: refusalReasons.get(refusal.path) ?? refusal.reason
+        }))
+      }
+    }
+  }),
+  defineMethod({
+    name: 'refactor.discard',
+    permission: 'workspace',
+    params: RefactorJobIdParams,
+    handler: async (params): Promise<RefactorDiscardResult> => {
+      const job = refactorJobRegistry.get(params.jobId)
+      if (!job) {
+        return { discarded: true }
+      }
+      if (job.state === 'running') {
+        job.controller.abort()
+      }
+      try {
+        await rm(job.scratchRoot, { recursive: true, force: true })
+      } finally {
+        refactorJobRegistry.remove(params.jobId)
+      }
+      return { discarded: true }
+    }
+  })
+]

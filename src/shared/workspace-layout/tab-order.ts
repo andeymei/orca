@@ -104,7 +104,7 @@ export function insertTabIdIntoOrder(
   return order
 }
 
-/** A review tab is not a file preview: if it could replace one, it would close the user's preview of the file under review. */
+/** The rule only ever decides between two preview tabs, and a review tab is never one (it opens with preview: false); it must stay out, because as a preview it would close whatever preview the group holds. */
 export function isReplaceablePreviewContentType(contentType: Tab['contentType']): boolean {
   return (
     contentType === 'editor' ||

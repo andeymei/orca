@@ -2327,6 +2327,11 @@ export const withProposals = defineFixture({
 **预置 plan 用 `setup`**，不要用 `store` 字段——`setup` 在 store 与 `window.api` 就绪之后、渲染之前跑，
 而 Task 11 的 store 是模块级单例，不属于 app store 的 slice。
 
+**还要在 `setup` 里 stub 掉 RPC**：审查 tab 会去轮询 `refactor.status`，
+fixture 里没有 runtime，那个调用会失败。把 `window.api.runtime.call` 换成
+返回「任务已完成」的假响应（照 `src/renderer/src/components/artifacts/ArtifactPublishButton.test.tsx`
+里 stub `window.api` 的写法），免得 fixture 截图里是一片错误提示。
+
 - [ ] **Step 6: 跑测试与截图**
 
 Run: `pnpm test src/renderer/src/components/editor/refactor --maxWorkers=2`

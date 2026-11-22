@@ -1499,6 +1499,7 @@ git commit -m "feat(refactor): expose the refactoring runtime methods"
 ```ts
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { pollRefactorJob } from './refactor-job-poller'
+import type { RefactorStatusResult } from '../../../../../shared/rpc-contract/refactor-params'
 
 describe('pollRefactorJob', () => {
   afterEach(() => {
@@ -1507,13 +1508,13 @@ describe('pollRefactorJob', () => {
 
   it('polls until the job leaves the running state', async () => {
     vi.useFakeTimers()
-    const states = ['running', 'running', 'done']
+    const states: RefactorStatusResult['state'][] = ['running', 'running', 'done']
     let call = 0
     const seen: string[] = []
     const stop = pollRefactorJob({
       jobId: 'job-1',
       intervalMs: 1000,
-      fetchStatus: async () => ({ state: states[call++] as 'running', progress: '', warnings: [] }),
+      fetchStatus: async () => ({ state: states[call++], progress: '', warnings: [] }),
       onStatus: (status) => seen.push(status.state)
     })
     await vi.advanceTimersByTimeAsync(3500)

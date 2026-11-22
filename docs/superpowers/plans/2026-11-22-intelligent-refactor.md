@@ -14,6 +14,7 @@
 
 - 跨平台：不硬编码 `e.metaKey`；快捷键用 `monaco.KeyMod.CtrlCmd`；路径一律用 `path.join` / `path.resolve` / `path.relative`。
 - 工作区读写走 runtime RPC，参数用 `worktree` + `relativePath`（沿用 `WorktreeSelector` 形状）。
+  渲染层拿到的是**工作区 id**，要经 `toRuntimeWorktreeSelector(worktreeId)` 转成 `id:` 前缀的选择器再传。
   **但本特性只支持本地工作区**：agent 是本地子进程，远端（SSH / WSL）工作区的路径在另一台机器上，
   `refactor.propose` 遇到非 `local` 的 `executionHostId` 直接拒绝（见 Task 8）。
 - 类型放 `.ts`，不放 `.d.ts`（`src/shared/` 与 `src/preload/` CI 强制）。
@@ -1695,7 +1696,12 @@ git commit -m "feat(refactor): expose the refactoring runtime methods"
 
 - Consumes: Task 1 的 RPC 参数与结果类型；`callRuntimeRpc`（`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`）
 - Produces:
-  - `proposeRefactor(input: { worktree: string; relativePath: string; content: string; instruction?: string }): Promise<string | null>` —— 返回 jobId；**失败时返回 `null`**，不要抛到 UI（发起失败的原因由调用方用 toast 告诉用户）
+  - `proposeRefactor(input: { worktreeId: string; relativePath: string; content: string; instruction?: string }): Promise<string | null>` —— 返回 jobId；**失败时返回 `null`**，不要抛到 UI（发起失败的原因由调用方用 toast 告诉用户）
+    - 入参是**工作区 id**，但 RPC 的 `worktree` 参数要的是 **runtime 选择器**：
+      客户端内部用 `toRuntimeWorktreeSelector(worktreeId)` 转换
+      （`src/renderer/src/runtime/rpc/targets/runtime-worktree-selector.ts:7-13`，加 `id:` 前缀）。
+      仓库里所有 `files.*` 的调用都是这么做的（见 `runtime-file-search-client.ts:66`）。
+      **不要把裸的 worktree id 直接塞进 `worktree` 参数**。
   - `fetchRefactorStatus(jobId: string): Promise<RefactorStatusResult>`
   - `fetchRefactorPlan(jobId: string): Promise<RefactorPlan | null>`
   - `applyRefactor(jobId: string, acceptedHunkIds: readonly string[]): Promise<RefactorApplyResult>`
@@ -1762,7 +1768,11 @@ Expected: FAIL，报模块不存在。
 
 ```ts
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
+import { toRuntimeWorktreeSelector } from '@/runtime/rpc/targets/runtime-worktree-selector'
 ```
+
+`proposeRefactor` 要传的 `worktree` 是**选择器**，不是裸 id：
+`{ worktree: toRuntimeWorktreeSelector(input.worktreeId), relativePath, content, instruction }`。
 
 **超时必须由渲染层自己兜**：`callRuntimeRpc` 走 `{ kind: 'local' }` 时会把 `timeoutMs` 和 `signal`
 一起丢掉（`runtime-rpc-call.ts:62-63` 的 local 分支只调 `window.api.runtime.call`，
@@ -1831,8 +1841,9 @@ git commit -m "feat(refactor): call the refactoring runtime from the renderer"
 - Consumes: 无（tab 只存 jobId 与路径，不存 plan）
 - Produces:
   - `OpenFile['mode']` 新增 `'refactor-review'`
-  - `EditorTabView` 新增成员 `{ mode: 'refactor-review'; refactorReview?: { jobId: string; worktree: string; relativePath: string } }`
-  - `OpenFile` 新增字段 `refactorReview?: { jobId: string; worktree: string; relativePath: string }`
+  - `EditorTabView` 新增成员 `{ mode: 'refactor-review'; refactorReview?: { jobId: string; worktreeId: string; relativePath: string } }`
+  - `OpenFile` 新增字段 `refactorReview?: { jobId: string; worktreeId: string; relativePath: string }`
+    —— 存的是**工作区 id**（渲染层手上就是这个），不是 runtime 选择器；转换发生在调用 RPC 的客户端里（Task 9）。
   - `EditorTabContentType` 新增 `'refactor-review'`
   - `TabContentType`（`src/shared/tab-types.ts`）新增 `'refactor-review'` —— `EditorTabContentType` 由它 `Extract` 而来，不加就取不到
 
@@ -2143,8 +2154,8 @@ git commit -m "feat(refactor): show one diff per refactoring hunk"
 
 - Consumes: Task 9 的客户端与轮询；Task 11 的 store；Task 12 的 `RefactorHunkView`；Task 1 的 `RefactorPlan`
 - Produces:
-  - `RefactorReviewTab` 组件，props：`{ jobId: string; worktree: string; relativePath: string }`
-  - `openRefactorReviewTab(input: { worktree: string; relativePath: string; content: string; instruction?: string }): Promise<void>` —— 发起任务、拿到 jobId、开 tab。
+  - `RefactorReviewTab` 组件，props：`{ jobId: string; worktreeId: string; relativePath: string }`
+  - `openRefactorReviewTab(input: { worktreeId: string; relativePath: string; content: string; instruction?: string }): Promise<void>` —— 发起任务、拿到 jobId、开 tab。
     **发起失败（`proposeRefactor` 返回 `null`）时用 toast 报错，并且不要开 tab**——
     远端工作区、路径不合法、没有 Claude 登录态都属于这一类。开了空 tab 只会让人以为界面坏了。
   - 虚拟 tab 的 id 用合成 id（如 `${worktreeId}::refactor-review:${jobId}`），`filePath` 填这个合成 id

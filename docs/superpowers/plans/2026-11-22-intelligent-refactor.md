@@ -996,6 +996,9 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
         闸门把相对路径按 `workspaceRoot` 解析，而 SDK 把相对路径按进程的 cwd 解析——
         两者不一致时，闸门可能批准一个 SDK 根本不会写的位置，而 SDK 真正写的地方在暂存目录之外。
         传同一个值就没有这个缺口。
+        **这一条要在代码里强制，不要只靠调用方记得**：加一个 `assertRefactorWorkspaceRoot(launch, workspaceRoot)`，
+        不相等就抛错。这是安全边界，静默放过等于把闸门的围栏开一个口子。
+        （调用方因此必须传 `launch.cwd`——Task 8 就是这么做的。）
     - `parseRefactorToolProgress(message: Record<string, unknown>, workspaceRoot: string): string | null` —— 从一条 SDK 消息里抽出进度文案；没有工具调用时返回 `null`。
       **第二个参数是工作区根**：进度文案里要显示**相对工作区**的路径，而工具入参给的是绝对路径。
       单独导出是为了能脱开 SDK 单测。
@@ -1142,6 +1145,12 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      写进 `warnings` —— 否则这一轮报错会被当成正常结束，用户看到的是"agent 什么都没产出"，
      而不是"agent 报错了"。失败时如果暂存目录里已经有文件，仍然照常读清单（可能有部分产出），
      但警告里必须说明这一轮是失败结束的。
+     **`subtype: 'success'` 但 `is_error: true` 仍然是失败**：SDK 文档写得很清楚
+     （sdk.d.ts:6066）——"subtype \"success\" carries the final assistant text in result —
+     **or, with is_error true, the error text when the turn ended on an API error**"。
+     也就是说这一轮是死在 API 错误上的，只是错误 subtype 还没来得及标出来。
+     只看 subtype 会把 API 错误报成"正常完成"，用户看到的是空白的审查界面。
+     所以判定是：`subtype === 'success' && !is_error` 才算 `'done'`。
      **也要接 `handlers.onFault` 与 `handlers.onExit`**：CLI 崩了或被杀掉的时候不会有 `result` 帧，
      只等 `result` 就会一路挂到 5 分钟超时才罢休。两者任一触发就结束等待，
      `state: 'failed'`，并把错误信息写进 `warnings`（`onExit` 的 `expected` 为 false 时说明是非预期退出，更该写明）。

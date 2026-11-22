@@ -674,7 +674,7 @@ Expected: FAIL，报模块不存在。
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor/refactor-write-gate.test.ts --maxWorkers=2`
-Expected: PASS，21 个用例全过。
+Expected: PASS，25 个用例全过。
 
 - [ ] **Step 5: 提交**
 
@@ -1189,9 +1189,11 @@ git commit -m "feat(refactor): assemble the plan from the scratch files"
     - `diskContents` 是每个文件在**建 plan 那一刻**的磁盘内容 D，供接受时做陈旧判定。
     - `worktree` 是原始的 worktree 选择器字符串，写回时要用。
   - `createRefactorJobRegistry()`：
-    - `create(input: { jobId: string; scratchRoot: string; worktree: string }): RefactorJob`
+    - `create(input: { jobId: string; scratchRoot: string; worktree: string; baselines?: Map<string, string> }): RefactorJob`
+      —— `baselines` 在**建 job 时**就要带上：发起时就知道目标文件的基准文本（编辑器缓冲区内容），
+      等 job 建好再补就晚了。
     - `get(jobId: string): RefactorJob | null`
-    - `update(jobId: string, patch: Partial<Pick<RefactorJob, 'state' | 'progress' | 'warnings' | 'plan' | 'diskContents'>>): void`
+    - `update(jobId: string, patch: Partial<Pick<RefactorJob, 'state' | 'progress' | 'warnings' | 'plan' | 'diskContents' | 'baselines'>>): void`
     - `remove(jobId: string): void`
 
 - [ ] **Step 1: 写失败的测试**
@@ -1216,10 +1218,21 @@ describe('the refactor job registry', () => {
 
   it('updates the progress and the warnings', () => {
     const registry = createRefactorJobRegistry()
-    registry.create({ jobId: 'job-1', scratchRoot: '/repo/.orca/refactor/job-1' })
+    registry.create({ jobId: 'job-1', scratchRoot: '/repo/.orca/refactor/job-1', worktree: 'wt-1' })
     registry.update('job-1', { progress: '正在读取 src/foo.ts', warnings: ['w'] })
     expect(registry.get('job-1')?.progress).toBe('正在读取 src/foo.ts')
     expect(registry.get('job-1')?.warnings).toEqual(['w'])
+  })
+
+  it('carries the baseline of the target file from the start', () => {
+    const registry = createRefactorJobRegistry()
+    const job = registry.create({
+      jobId: 'job-1',
+      scratchRoot: '/repo/.orca/refactor/job-1',
+      worktree: 'wt-1',
+      baselines: new Map([['src/foo.ts', 'a\n']])
+    })
+    expect(job.baselines.get('src/foo.ts')).toBe('a\n')
   })
 
   it('returns null for an unknown job', () => {
@@ -1247,7 +1260,7 @@ Expected: FAIL，报模块不存在。
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor/refactor-job-registry.test.ts --maxWorkers=2`
-Expected: PASS，4 个用例全过。
+Expected: PASS，5 个用例全过。
 
 - [ ] **Step 5: 提交**
 
@@ -1416,10 +1429,14 @@ precondition 用 `FileWriteDiskPreconditionParam` 的形状：`{ expectedSignatu
   2. `jobId` 用 `crypto.randomUUID()`。
   3. `scratchRoot = refactorScratchRoot(target.worktree.path, jobId)`，用 `fs.mkdir(scratchRoot, { recursive: true })` 建出来。
   4. 写基准副本：`fs.writeFile(path.join(scratchRoot, '_source', params.relativePath), params.content)`，父目录先 `mkdir recursive`。
-  5. 把目标文件的**基准文本**记进 job：`baselines.set(params.relativePath, params.content)`。其它文件的基准文本就是它们当时的磁盘内容。
+  5. **建 job**（Task 7 的注册表），建的时候就把目标文件的**基准文本**带上：
+     `baselines: new Map([[params.relativePath, params.content]])`。
+     其它文件的基准文本就是它们当时的磁盘内容。
+     顺序很重要：基准在发起那一刻就已知，所以要在建 job 时就给，不能等 job 建好再补——
+     那时候注册表里还没有这个 job，也没有地方放它。
   6. 把 `.orca/refactor/` 加进工作区的 `.git/info/exclude`（见下面「暂存目录不进版本库」）。
   7. 清理过期暂存目录（见下面「暂存目录清理」）。
-  8. 建 job（Task 7 的注册表），**立刻返回** `{ jobId }`。
+  8. **立刻返回** `{ jobId }`。
   9. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `state: 'done'`、`plan` 与 `diskContents`。
      建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
      `listScratchProposals` 要**连每个方案目录里的文件一起返回**：

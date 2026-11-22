@@ -21,6 +21,9 @@
 - 新文件不得使用 `helpers` / `utils` / `common` / `misc` 命名；按领域概念命名。
 - 注释：只写代码本身没说清的原因，一行，写"为什么"不写"怎么做"。
 - UI 文案用 `t('auto.components.editor.<File>.<key>', 'default')`；key 由 `node config/scripts/localization/source-extraction/localize-renderer-strings.mjs` 生成后提交。
+  组件里 `t` 来自 `useTranslate()`（`src/renderer/src/i18n/use-translate`），不要直接 import `translate`——后者不随语言切换刷新。
+- **渲染层测试要 mock 翻译**：`vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))`。
+  不 mock 的话，语言包里的真实译文会把断言里的默认文案换掉，测试就在跟语言包较劲。
 - 不默认加测试。本计划列出的测试都是纯逻辑、会在改动被回退时失效、且硬编码期望值的。
 - 测试用 `pnpm test <path> --maxWorkers=2`，不要裸跑 vitest。
 - 类型检查 `pnpm tc:node`（main + shared）与 `pnpm tc:web`（renderer）。

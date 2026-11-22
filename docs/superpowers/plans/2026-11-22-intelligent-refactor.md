@@ -717,7 +717,17 @@ git commit -m "feat(refactor): keep the agent's writes inside the scratch direct
 - Produces:
   - `RefactorAgentLaunch`：`{ pathToClaudeCodeExecutable: string; prefixArgs?: readonly string[]; env: Record<string, string>; cwd: string; options: ClaudeStructuredSdkOptions }`
   - `resolveRefactorAgentLaunch(input: { cwd: string; deps: ClaudeEnvDeps & { resolveAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy }; signal?: AbortSignal }): Promise<RefactorAgentLaunch>`
-  - `REFACTOR_DISALLOWED_TOOLS`：`readonly string[]` = `['Bash', 'Task']` —— 这两个是脱离路径模型的逃逸口（`Bash` 能 `mv`/`cp`，`Task` 能派生子 agent），从模型的上下文里直接去掉。写闸门本来也拒它们，这是第二道。
+  - `REFACTOR_DISALLOWED_TOOLS`：`readonly string[]` = `['Bash', 'PowerShell', 'Task', 'Agent', 'NotebookEdit', 'WebFetch', 'WebSearch']`
+    —— 这些是**脱离路径模型**的工具，从模型的上下文里直接去掉（写闸门本来也拒它们，这是第二道）：
+    - `Bash` / `PowerShell`：两个 shell。`Bash` 能 `mv`/`cp`，`PowerShell` 在 Windows 上是同一个洞。
+    - `Task` / `Agent`：派生子 agent。SDK 文档里这个工具叫 "Agent/Task tool"
+      （`sdk.d.ts:6664`），**两个名字都要列**——只列一个的话另一个名字的工具照样出现在模型面前。
+      子 agent 的工具调用未必走我们的闸门，所以这个洞要在模型看不见的地方堵。
+    - `NotebookEdit`：写文件。
+    - `WebFetch` / `WebSearch`：**能把用户的源码发到网络上**。这个 agent 的工作内容就是读用户的私有代码，
+      给它联网工具等于给了它一条外传通道。
+    - SDK 的 `BUILTIN_TOOL_NAMES`（`sdk.d.ts:214`）列了这些名字；列表里出现一个当前平台没有的工具是安全的
+      （文档写明"A name is listed even where a platform or setting turns its tool off"）。
   - **`options.allowedTools` 一律不给**（保持 `undefined`）。SDK 对 `allowedTools` 的定义是"自动放行、不再询问"，
     而 `canUseTool` 是"每次工具执行前调用"——把 `Write`/`Edit` 列进 `allowedTools`，CLI 可能就绕过闸门直接放行写操作。
     不给这个选项，所有工具调用都走 `canUseTool`，写闸门是唯一裁决者。
@@ -757,6 +767,19 @@ describe('resolveRefactorAgentLaunch', () => {
     })
     expect(launch.options.allowedTools).toBeUndefined()
   })
+
+  it('keeps the shell, the subagent and the network out of reach', async () => {
+    const launch = await resolveRefactorAgentLaunch({
+      cwd: '/repo',
+      deps: {
+        resolveCommand: () => ({ command: '/usr/bin/claude', prefixArgs: [] }),
+        resolveAuthPolicy: () => ({ account: 'system' })
+      }
+    })
+    for (const tool of ['Bash', 'PowerShell', 'Task', 'Agent', 'WebFetch', 'WebSearch']) {
+      expect(launch.options.disallowedTools).toContain(tool)
+    }
+  })
 })
 ```
 
@@ -779,7 +802,15 @@ SDK 的 `Options` 上确实有这两个字段（`node_modules/@anthropic-ai/clau
 在 `refactor-agent-launch.ts`：
 
 ```ts
-export const REFACTOR_DISALLOWED_TOOLS: readonly string[] = ['Bash', 'Task']
+export const REFACTOR_DISALLOWED_TOOLS: readonly string[] = [
+  'Bash',
+  'PowerShell',
+  'Task',
+  'Agent',
+  'NotebookEdit',
+  'WebFetch',
+  'WebSearch'
+]
 ```
 
 `resolveRefactorAgentLaunch` 调 `resolveClaudeStructuredInvocation(deps)` 拿到 `{ command, prefixArgs, env, account }`，然后返回：

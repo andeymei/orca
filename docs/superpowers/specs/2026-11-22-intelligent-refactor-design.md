@@ -214,7 +214,11 @@ export const RefactorHunk = z.object({
 - `Read` / `Grep` / `Glob`：放行（限制在工作区内）。
 - `Write` / `Edit` / `MultiEdit`：**目标路径必须落在 `.orca/refactor/<jobId>/` 之内**，否则拒绝。
   `MultiEdit` 必须放行——它是 Claude Code 真实存在的编辑工具，拒掉它等于堵死一条正当的编辑路径。
-- 其它工具：拒绝（`Bash`、`Task`、MCP 工具都不给）。
+- 其它工具：拒绝（`Bash`、`PowerShell`、`Task`、`Agent`、`NotebookEdit`、`WebFetch`、`WebSearch`、MCP 工具都不给）。
+  这几个名字除了从模型上下文里去掉（`disallowedTools`），闸门也一律拒绝：
+  两个 shell 能 `mv`/`cp`，两个子 agent 名字能派生子 agent（SDK 里这个工具叫 "Agent/Task tool"），
+  `NotebookEdit` 写文件，而 `WebFetch`/`WebSearch` 能把用户的源码发到网络上——
+  这个 agent 的工作内容恰恰就是读用户的私有代码。
 
 路径裁决必须做**规范化后再比较**（resolve 相对路径、消除 `..`），不能只做字符串前缀匹配。
 另外要逐段拒绝**末尾带点或空格**的分量：Win32 在识别 `.` / `..` 之前先剥掉它们，

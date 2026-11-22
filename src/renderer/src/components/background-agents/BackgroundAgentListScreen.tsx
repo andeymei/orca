@@ -12,7 +12,10 @@ import {
   groupBackgroundAgentListRows,
   type BackgroundAgentListRow
 } from './background-agent-list-rows'
-import { BackgroundAgentComposer } from './BackgroundAgentComposer'
+import {
+  BackgroundAgentComposer,
+  type BackgroundAgentComposerHandle
+} from './BackgroundAgentComposer'
 import { BackgroundAgentDispatchRow } from './BackgroundAgentDispatchRow'
 import { BackgroundAgentEmptyState } from './BackgroundAgentEmptyState'
 import { BackgroundAgentHostNotice } from './BackgroundAgentHostNotice'
@@ -21,6 +24,9 @@ import {
   removeBackgroundAgentOnHost,
   stopBackgroundAgentOnHost
 } from './background-agent-host-command'
+import { backgroundAgentIntakeHost } from './background-agent-composer-attachments'
+import { backgroundAgentWorkspacePath } from './background-agent-workspace-path'
+import type { TerminalComposerIntakeHost } from '@/components/terminal-pane/composer/attachments/terminal-composer-attachment-intake'
 import { useBackgroundAgentScopeMatcher } from './use-background-agent-scope-matcher'
 import { useBackgroundAgentDispatch } from './use-background-agent-dispatch'
 import {
@@ -38,14 +44,6 @@ const ELAPSED_TICK_INTERVAL_MS = 1000
 /** A command that waits for its second Ctrl+X. */
 type PendingCommand = { id: string; kind: 'stop' | 'delete'; at: number }
 
-/** Whether the field that has the focus holds a text selection of its own. */
-function hasTextSelection(target: EventTarget & HTMLElement): boolean {
-  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-    return target.selectionStart !== target.selectionEnd
-  }
-  return false
-}
-
 /**
  * The list of Claude Code's background agents.
  *
@@ -56,8 +54,7 @@ function hasTextSelection(target: EventTarget & HTMLElement): boolean {
 export function BackgroundAgentListScreen(): React.JSX.Element {
   const t = useTranslate()
   const rootRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<HTMLInputElement>(null)
-  const [composer, setComposer] = useState('')
+  const composerRef = useRef<BackgroundAgentComposerHandle>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -169,22 +166,36 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
     setSelectedId(selectableRows[next].id)
   }
 
-  const activateOrDispatch = async (): Promise<void> => {
-    if (!hostCanOpenAgents) {
+  const activate = (): void => {
+    if (!hostCanOpenAgents || !selectedRow) {
       return
     }
-    const prompt = composer.trim()
-    if (prompt !== '') {
-      // Why: the prompt stays in the box while the agent opens, and a refused dispatch keeps it
-      // so the user can try again without typing it twice.
+    openBackgroundAgent(selectedRow.id)
+  }
+
+  /**
+   * Starts the agent with the composed prompt.
+   *
+   * The prompt stays in the box while the agent opens, and a refused dispatch keeps it so the
+   * user can try again without typing it twice.
+   */
+  const sendPrompt = (prompt: string): void => {
+    void (async () => {
       if (await dispatchPrompt(prompt)) {
-        setComposer('')
+        composerRef.current?.clear()
+        composerRef.current?.focus()
       }
-      return
-    }
-    if (selectedRow) {
-      openBackgroundAgent(selectedRow.id)
-    }
+    })()
+  }
+
+  /** The host that owns the workspace; the attachments land there. */
+  const buildIntakeHost = (): TerminalComposerIntakeHost | null => {
+    const state = useAppStore.getState()
+    return backgroundAgentIntakeHost({
+      worktreeId: state.activeWorktreeId,
+      executionHostId: state.activeWorkspaceExecutionHostId,
+      workspacePath: backgroundAgentWorkspacePath(state, state.activeWorktreeId)
+    })
   }
 
   const runSelectedCommand = async (): Promise<void> => {
@@ -241,17 +252,18 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       : t('auto.components.backgroundAgents.stopConfirm', 'ctrl+x again to stop')
   }
 
-  /** Opens the selected row, or dispatches the composed prompt. */
-  const activate = (event: React.KeyboardEvent<HTMLElement>): void => {
+  /** Opens the selected row. */
+  const activateOnKey = (event: React.KeyboardEvent<HTMLElement>): void => {
     event.preventDefault()
-    void activateOrDispatch()
+    activate()
   }
 
   /**
-   * The actions the panel's keys trigger.
+   * The actions the list's keys trigger.
    *
-   * The root, the rows and the composer run the same actions, so the behaviour does not depend on
-   * where the focus happens to be.
+   * The root and the rows run the same actions, so the behaviour does not depend on where the
+   * focus happens to be. The composer answers its own keys: Enter breaks the line there, and
+   * Mod+Enter starts the agent.
    */
   const runPanelKey = (event: React.KeyboardEvent<HTMLElement>): boolean => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -260,14 +272,10 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       return true
     }
     if (event.key === 'Enter') {
-      activate(event)
+      activateOnKey(event)
       return true
     }
     if (event.ctrlKey && (event.key === 'x' || event.key === 'X')) {
-      // Why: a selection in the composer is the user's own text, and the native cut has to win.
-      if (hasTextSelection(event.currentTarget)) {
-        return false
-      }
       event.preventDefault()
       void runSelectedCommand()
       return true
@@ -276,8 +284,7 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       event.preventDefault()
       // Why: the composer holds the user's own text, and clearing it is what they meant; the
       // placeholder row above carries the "esc to cancel" and cancels from its own handler.
-      if (composer !== '') {
-        setComposer('')
+      if (composerRef.current?.clear()) {
         return true
       }
       if (dispatch?.state === 'opening') {
@@ -314,17 +321,11 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
     if (event.key === ' ') {
       // Why: the button's own activation would open the focused row, while the panel's keys act
       // on the selected one.
-      activate(event)
+      activateOnKey(event)
       event.stopPropagation()
       return
     }
     if (focusComposer(event) || runPanelKey(event)) {
-      event.stopPropagation()
-    }
-  }
-
-  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (runPanelKey(event)) {
       event.stopPropagation()
     }
   }
@@ -427,10 +428,11 @@ export function BackgroundAgentListScreen(): React.JSX.Element {
       </div>
       {hostCanCommandAgents ? (
         <BackgroundAgentComposer
-          value={composer}
-          onChange={(event) => setComposer(event.target.value)}
-          onKeyDown={handleComposerKeyDown}
-          inputRef={composerRef}
+          ref={composerRef}
+          onSend={sendPrompt}
+          onCommand={() => void runSelectedCommand()}
+          onDismiss={() => rootRef.current?.focus()}
+          buildHost={buildIntakeHost}
         />
       ) : null}
     </div>

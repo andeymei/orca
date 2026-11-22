@@ -18,6 +18,8 @@ export type PromptEditorInput = {
   readonly value: string
   readonly disabled: boolean
   focus: () => void
+  /** Empties the document; the caret stays in it. */
+  clear?: () => void
   insertText?: (text: string) => void
   insertFileReferences?: (paths: readonly string[]) => void
   insertImageReference?: (attachmentId: string, name: string) => void
@@ -29,6 +31,8 @@ export type PromptEditorProps = {
   initialDocument: JSONContent
   disabled: boolean
   placeholder: string
+  /** The name a screen reader reads for the field; the placeholder is the fallback. */
+  ariaLabel?: string
   /**
    * Runs before ProseMirror's own key handling; returning true stops it.
    * Enter splits the paragraph on its own, so a consumer that wants Enter to mean
@@ -47,6 +51,7 @@ export function PromptEditor({
   initialDocument,
   disabled,
   placeholder,
+  ariaLabel,
   handleKeyDown,
   onDocumentChange,
   onChange,
@@ -95,7 +100,7 @@ export function PromptEditor({
           'data-prompt-editor': 'true',
           role: 'textbox',
           'aria-multiline': 'true',
-          'aria-label': placeholder,
+          'aria-label': ariaLabel ?? placeholder,
           class: `${className ?? ''} whitespace-pre-wrap break-words [&_p]:m-0 [&_p.is-editor-empty:first-child]:before:content-[attr(data-placeholder)] [&_p.is-editor-empty:first-child]:before:text-muted-foreground [&_p.is-editor-empty:first-child]:before:float-left [&_p.is-editor-empty:first-child]:before:h-0 [&_p.is-editor-empty:first-child]:before:pointer-events-none`
         },
         // Clipboard input is always literal text; only the picker and attachments create pills.
@@ -154,7 +159,13 @@ export function PromptEditor({
             get disabled() {
               return !editor.isEditable
             },
-            focus: () => editor.commands.focus(),
+            // Why the view and not the command: the command waits for a frame, and a panel
+            // that opens with its caret nowhere is a panel the user has to click into.
+            focus: () => editor.view.focus(),
+            // The document goes back to one empty paragraph, and the caret stays in it.
+            clear: () => {
+              editor.commands.clearContent()
+            },
             insertText: (text) => {
               const content = editor.schema.nodeFromJSON(promptTextContent(text))
               editor.view.dispatch(

@@ -229,11 +229,47 @@
 但**远端自己的窗口**上会不会闪一个 tab，取决于宿主怎么摆 floating 终端。
 命令跑完就 `terminal.close`，所以那个 surface 只活几秒。
 
-## 8. 不在这次范围（明确不做）
+## 8. 面板的输入框（富文本 + 附件）—— 已实现
+
+### 8.1 用 app 自己的富文本编辑器
+
+面板的输入框不再是 `<input>`，而是 **`PromptEditor`**（tiptap）—— 和终端 composer、原生对话
+用的是同一个编辑器。所以：
+
+- **键位和 app 里别的 composer 一致**：Enter 换行，⌘/Ctrl+Enter 发送。
+  之前面板是「Enter 发送」，现在富文本框里 Enter 必须能换行，否则多行 prompt 写不出来。
+- **Esc 清空输入框**；输入框本来就是空的时候，Esc **把焦点交回列表**。
+- **列表拿到焦点之后**：↑↓ 选行、Enter 打开选中的 agent、`/` 跳回输入框、Ctrl+X 停止/删除。
+- 面板打开时焦点在输入框上（和 CLI 自己的列表一样，先能打字）；要选行的话，按一次 Esc。
+
+### 8.2 附件落在拥有工作区的那台机器上
+
+复用终端 composer 的 intake（`terminal-composer-attachment-intake`）：
+
+- 本机的文件先复制进工作区的 `.orca/drops/`；配对主机上的文件先**上传**到那台机器。
+- 落地的路径就是**宿主上的路径** —— 配对主机的工作区在本机的记录里也是**宿主的拼法**
+  （`D:\…`），所以路径 mention 对那个 agent 是对的。
+
+### 8.3 附件怎么进 prompt（探针实测，2026-11-22）
+
+一个后台 agent 是**一条 prompt 参数**起来的（`claude --bg -- <prompt>`），所以附件**不能以字节 travel** ——
+prompt 只有一个字符串的位置。所以附件只能以**路径 mention**（`@<宿主上的路径>`）的形式进去。
+
+探针实测（`claude --bg -- "read @<path> …"`）：transcript 里 prompt **原样**带着 mention，
+**没有**被展开成文件内容；是 agent 自己用 Read 工具打开了那个文件，并答出了内容。
+
+所以 mention 就够了 —— agent 读得到那个文件（Read 工具也读图片）。
+
+### 8.4 这一轮的已知限制
+
+- **图片只能以路径交给 agent**，不能作为图片内容块附在 prompt 上（`--bg` 是一次性 prompt，没有图片通道）。
+- **没有做 OS 拖放**：这一轮是「回形针 + 粘贴」。侧边栏不是终端面板，拖放归属另一套 owner 机制。
+
+## 9. 不在这次范围（明确不做）
 
 - **SSH 宿主**。
 
-## 9. 测试
+## 10. 测试
 
 - **远端 lister 的单测**（注入一个假的 RPC 调用）：
   - `template: 'claude'` 的 job **也出现**（`template` 只说明怎么起的）；只有没有 `sessionId` 的不出现。
@@ -257,10 +293,13 @@
   **宿主关不掉那个终端 ⇒ 取消不能报成「已取消」**（命令还在跑，得说关不掉）。
 - **平台探针的单测**：attach 之前先问一次宿主（多一次 `terminal.create` + 一次 `terminal.close`），
   宿主报 win32 ⇒ attach 那条命令钉 `shell: 'powershell.exe'`。
+- **输入框的单测**：Enter 换行、⌘/Ctrl+Enter 发送、Esc 清空（空了就交回列表）、
+  Ctrl+X 停止/删除（**编辑器自己有选区时原生剪切赢**）、附件落成 pill、
+  prompt 里带的是**宿主上的路径**。
 - **活的验证**：跑一次对 `frp-yolocalc` 的真实查询，确认 `ctjt-service` 那 **81 个** agent 出现
   （其中在跑的也在），数量与远端 `claude agents --json --all` 一致。
 
-## 10. 一条实现规则（探针踩出来的）
+## 11. 一条实现规则（探针踩出来的）
 
 **resolve 和 read 必须走 `callRuntimeEnvironment`**（app 的正常路由，持久 shared-control 连接），
 **不能**自己 dial 一次性 socket —— grant 绑设备，设备最后一条连接一关就被撤销。

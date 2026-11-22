@@ -20108,7 +20108,11 @@
         "dispatchingCancelling": "cancelling…",
         "dispatchStarted": "started · {{id}}",
         "dispatchFailed": "The agent could not be started",
-        "shortcuts": "↑↓ select · enter enter · ctrl+x stop · / task"
+        "shortcuts": "↑↓ select · {{modifier}}enter send · ctrl+x stop · / task",
+        "uploadFailed": "Could not attach the file",
+        "attachUnavailable": "This host takes no files",
+        "attach": "Add attachment",
+        "send": "Send"
       },
       "NewWorkspaceComposerFooter": {
         "create": "Create"

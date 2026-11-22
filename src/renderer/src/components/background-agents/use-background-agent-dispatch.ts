@@ -1,11 +1,10 @@
 import { useRef } from 'react'
 import { toast } from 'sonner'
 import { useAppStore } from '@/store/index'
-import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-record-fields'
-import { findFirstIndexedWorktree } from '@/lib/workspace/ownership/worktree-runtime-owner-index'
 import type { BackgroundAgentsDispatch } from '@/store/slices/background-agents/create-background-agents-slice'
 import { CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE } from '../../../../shared/claude-background-agents'
 import { dispatchBackgroundAgentOnHost } from './background-agent-host-command'
+import { backgroundAgentWorkspacePath } from './background-agent-workspace-path'
 import { refreshBackgroundAgentRoster } from './use-background-agent-roster-refresh'
 
 /** How long the "started" row stays before it disappears on its own. */
@@ -115,10 +114,7 @@ export function useBackgroundAgentDispatch(): BackgroundAgentDispatchControls {
     controllerRef.current = controller
     publishBackgroundAgentsDispatch({ state: 'opening', agentId: null, message: null })
     const state = useAppStore.getState()
-    const cwd = state.activeWorktreeId
-      ? (findFirstIndexedWorktree(selectWorktreesByRepo(state), state.activeWorktreeId)?.path ??
-        null)
-      : null
+    const cwd = backgroundAgentWorkspacePath(state, state.activeWorktreeId)
     return dispatchBackgroundAgent({
       prompt,
       cwd,

@@ -578,6 +578,10 @@ test('entering a running agent and coming back leaves the agent running', async 
     await expect(rows.first()).toBeVisible({ timeout: 30_000 })
     await expect(rows.first()).toHaveAttribute('aria-selected', 'true')
 
+    // The composer takes the keys when the panel opens, and Escape hands them to the list. The
+    // list is what walks the rows, so the keys have to be there first.
+    await orcaPage.keyboard.press('Escape')
+
     // The arrow keys walk the rows the way the CLI's own list does. With a single row there is
     // nowhere to walk to, and the selection has to stay where it is.
     const rowCount = await rows.count()

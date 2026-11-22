@@ -15,6 +15,7 @@ import { useAppStore } from '../../store/index'
 import { makeWorktree } from '@/store/slices/worktrees/worktree.test-fixture'
 import BackgroundAgentListScreen from './BackgroundAgentListScreen'
 import { resetHostPlatformsForTests } from './background-agent-host-platform'
+import { getScreenSubmitModifierLabel } from '@/lib/keyboard/screen-submit-shortcut'
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal<typeof I18n>()),
@@ -33,6 +34,9 @@ const runtimeRpcMocks = vi.hoisted(() => ({
 vi.mock('@/runtime/rpc/calls/runtime-rpc-call', () => ({
   callRuntimeRpc: runtimeRpcMocks.callRuntimeRpc
 }))
+
+/** The keys the panel answers, as one line under the box. */
+const SHORTCUTS = `↑↓ select · ${getScreenSubmitModifierLabel()}enter send · ctrl+x stop · / task`
 
 const ROSTER: ClaudeBackgroundAgent[] = [
   { id: 'aaaa1111', sessionId: 's1', name: 'alpha', cwd: '/w', state: 'working' },
@@ -120,11 +124,19 @@ async function press(element: Element, key: string, init?: Record<string, unknow
   })
 }
 
+/** Types into the composer the way a paste does, which is the only way a test can type. */
 async function type(view: ReturnType<typeof render>, prompt: string): Promise<void> {
   const composer = view.getByLabelText('New background agent')
   await act(async () => {
-    fireEvent.change(composer, { target: { value: prompt } })
+    fireEvent.paste(composer, {
+      clipboardData: { files: [], items: [], getData: () => prompt }
+    })
   })
+}
+
+/** Starts the agent the way the composer does: the prompt leaves on Mod+Enter. */
+async function send(view: ReturnType<typeof render>): Promise<void> {
+  await press(view.getByLabelText('New background agent'), 'Enter', { metaKey: true })
 }
 
 beforeEach(() => {
@@ -170,11 +182,22 @@ it('puts the caret in the composer when the screen opens', async () => {
   expect(document.activeElement).toBe(view.getByLabelText('New background agent'))
 })
 
-it('moves the selection with the arrow keys from the composer', async () => {
+it('leaves the rows alone when the arrow keys move the caret in the composer', async () => {
   const view = await renderScreen()
   const composer = view.getByLabelText('New background agent')
   expect(document.activeElement).toBe(composer)
   await press(composer, 'ArrowDown')
+  // The caret moves in the text; the list keeps its own selection until the keys leave the box.
+  const rows = view.getAllByTestId('background-agent-row')
+  expect(rows[0].getAttribute('data-selected')).toBe('true')
+})
+
+it('moves the selection with the arrow keys once the list has the focus', async () => {
+  const view = await renderScreen()
+  const composer = view.getByLabelText('New background agent')
+  // An empty box hands the keys back to the list.
+  await press(composer, 'Escape')
+  await press(view.getByTestId('background-agents-list'), 'ArrowDown')
   const rows = view.getAllByTestId('background-agent-row')
   expect(rows[0].getAttribute('data-selected')).toBeNull()
   expect(rows[1].getAttribute('data-selected')).toBe('true')
@@ -187,9 +210,7 @@ it('arms the stop with ctrl+x from the composer', async () => {
   }))
   installApi({ stop })
   const view = await renderScreen()
-  const composer = view.getByLabelText('New background agent')
-  await press(composer, 'ArrowDown')
-  await press(composer, 'x', { ctrlKey: true })
+  await press(view.getByLabelText('New background agent'), 'x', { ctrlKey: true })
   expect(view.getByText('ctrl+x again to stop')).toBeTruthy()
   expect(stop).not.toHaveBeenCalled()
 })
@@ -265,13 +286,10 @@ it('clears the composer instead of cancelling the dispatch when Escape is presse
   installApi({ dispatch: vi.fn(() => pending.promise), cancelDispatch })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   const composer = view.getByLabelText('New background agent')
-  if (!(composer instanceof HTMLInputElement)) {
-    throw new Error('the composer is not a text input')
-  }
   await press(composer, 'Escape')
-  expect(composer.value).toBe('')
+  expect(composer.textContent).toBe('')
   expect(cancelDispatch).not.toHaveBeenCalled()
 })
 
@@ -283,7 +301,7 @@ it('dispatches the composed prompt', async () => {
   installApi({ dispatch })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   expect(dispatch).toHaveBeenCalledTimes(1)
   expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'do the thing' }))
 })
@@ -295,7 +313,7 @@ it('counts the agents in the header', async () => {
 
 it('does not advertise a search the panel does not have', async () => {
   const view = await renderScreen()
-  expect(view.getByText('↑↓ select · enter enter · ctrl+x stop · / task')).toBeTruthy()
+  expect(view.getByText(SHORTCUTS)).toBeTruthy()
 })
 
 it('shows what a blocked agent is asking', async () => {
@@ -328,7 +346,7 @@ it('shows an opening row while the dispatch is on its way', async () => {
   installApi({ dispatch: vi.fn(() => pending.promise) })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   expect(view.getByTestId('background-agent-dispatch-row').textContent).toContain(
     'opening… · esc to cancel'
   )
@@ -339,7 +357,7 @@ it('marks the dispatch as cancelling when Escape is pressed', async () => {
   installApi({ dispatch: vi.fn(() => pending.promise) })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   await press(view.getByTestId('background-agent-dispatch-row'), 'Escape')
   expect(view.getByTestId('background-agent-dispatch-row').textContent).toContain('cancelling…')
 })
@@ -350,7 +368,7 @@ it('cancels the opening dispatch when Escape is pressed', async () => {
   installApi({ dispatch: vi.fn(() => pending.promise), cancelDispatch })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   await press(view.getByTestId('background-agent-dispatch-row'), 'Escape')
   expect(cancelDispatch).toHaveBeenCalledTimes(1)
   // The abort only delivers the signal; the row waits for the dispatch to settle.
@@ -368,7 +386,7 @@ it('drops a cancelled dispatch when the panel was remounted', async () => {
   installApi({ dispatch: vi.fn(() => pending.promise), cancelDispatch })
   const first = await renderScreen()
   await type(first, 'do the thing')
-  await press(first.getByTestId('background-agents-list'), 'Enter')
+  await send(first)
   // The panel unmounts when the user switches sidebar tabs; the new instance knows nothing.
   first.unmount()
   const second = await renderScreen()
@@ -391,7 +409,7 @@ it('says so when the dispatch fails', async () => {
   })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   expect(view.getByTestId('background-agent-dispatch-row').textContent).toContain(
     'the CLI refused the prompt'
   )
@@ -461,7 +479,7 @@ it('lists a paired runtime host’s agents and opens them', async () => {
   expect(view.getByTestId('background-agents-list')).toBeTruthy()
   // Why: the host runs the panel's commands, so it gets the composer and the stop/delete keys.
   expect(view.queryByLabelText('New background agent')).not.toBeNull()
-  expect(view.queryByText('↑↓ select · enter enter · ctrl+x stop · / task')).not.toBeNull()
+  expect(view.queryByText(SHORTCUTS)).not.toBeNull()
 
   const rows = view.getAllByTestId('background-agent-row')
   expect(rows).toHaveLength(2)
@@ -509,7 +527,7 @@ it('starts an agent on the paired host that owns the workspace', async () => {
   const view = await renderScreen()
 
   await type(view, 'do it')
-  await press(view.getByLabelText('New background agent'), 'Enter')
+  await send(view)
 
   // Why two creates: the first asks the host what it runs, the second runs the command.
   const creates = runtimeRpcMocks.callRuntimeRpc.mock.calls.filter(
@@ -630,8 +648,8 @@ it('refuses a second dispatch while one is on its way', async () => {
   installApi({ dispatch })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
+  await send(view)
   expect(dispatch).toHaveBeenCalledTimes(1)
 })
 
@@ -640,7 +658,7 @@ it('says the agent started when the cancel lost the race', async () => {
   installApi({ dispatch: vi.fn(() => pending.promise) })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   await press(view.getByTestId('background-agent-dispatch-row'), 'Escape')
   await act(async () => {
     pending.resolve({ ok: true, id: 'dddd4444' })
@@ -665,14 +683,14 @@ it('keeps a newer dispatch row when the started row expires', async () => {
   installApi({ dispatch })
   const view = await renderScreen()
   await type(view, 'do the thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   await press(view.getByTestId('background-agent-dispatch-row'), 'Escape')
   await act(async () => {
     first.resolve({ ok: true, id: 'dddd4444' })
     await first.promise
   })
   await type(view, 'another thing')
-  await press(view.getByTestId('background-agents-list'), 'Enter')
+  await send(view)
   expect(view.getByTestId('background-agent-dispatch-row').textContent).toContain(
     'opening… · esc to cancel'
   )
@@ -763,11 +781,10 @@ it('lets the native cut win when the composer has a selection', async () => {
   installApi({ stop })
   const view = await renderScreen()
   const composer = view.getByLabelText('New background agent')
-  if (!(composer instanceof HTMLInputElement)) {
-    throw new Error('the composer is not a text input')
-  }
   await type(view, 'do the thing')
-  composer.setSelectionRange(0, 3)
+  // The editor selects its own text; the platform's own shortcut is the one that does it.
+  await press(composer, 'a', { metaKey: true })
+  await press(composer, 'a', { ctrlKey: true })
   const cut = createEvent.keyDown(composer, { key: 'x', ctrlKey: true })
   fireEvent(composer, cut)
   expect(cut.defaultPrevented).toBe(false)

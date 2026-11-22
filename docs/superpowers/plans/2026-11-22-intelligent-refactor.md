@@ -994,8 +994,11 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
   2. `canUseTool` 回调：`CanUseTool = (toolName: string, input: Record<string, unknown>, options: { signal: AbortSignal; suggestions?: PermissionUpdate[] }) => Promise<PermissionResult>`。
      调 `refactorToolAllowed({ toolName, toolInput: input, scratchRoot, workspaceRoot })`，
      允许返回 `{ behavior: 'allow' }`，拒绝返回 `{ behavior: 'deny', message: '该工具在此任务中不可用。' }`。
-     **必须显式返回 deny 对象，不能返回 `null`** —— SDK 的文档说 `null` 表示"不发响应"，
-     那个 elicitation 会永远挂起（sdk.d.ts:1558）。
+     **必须显式返回 deny 对象，不能返回 `null`** —— SDK 文档在 `CanUseTool` 的注释里写明：
+     `Return null ONLY after the consumer has already sent the control_response out-of-band`，
+     而且 "an accidental null means no control_response is sent and the tool stays blocked
+     indefinitely — permission prompts have no park deadline"。
+     也就是返回 `null` 的话那次工具调用会**永远挂着**，整个 turn 就卡死了。
   3. 发送 prompt：把 system 与 user 两段合成一条 SDK 用户消息帧，用 `connection.send(frame)` 投出去。帧的形状照 `src/main/claude/structured/claude-structured-dispatch.ts` 里已有的那条：
      ```ts
      {

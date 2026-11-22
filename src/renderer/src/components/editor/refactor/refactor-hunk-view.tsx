@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { Circle, CircleCheck } from 'lucide-react'
 import { Suspense } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,7 @@ import { DiffViewer } from '../editor-lazy-views'
 
 export type RefactorHunkViewProps = {
   hunk: RefactorHunk
-  /** The file the hunk came from; the diff itself shows the relative path. */
+  /** The file the hunk came from, as the workspace holds it. */
   filePath: string
   relativePath: string
   /** The review tab that owns the Monaco models of every hunk it shows. */
@@ -24,6 +24,7 @@ export type RefactorHunkViewProps = {
 /** One hunk of one file: the lines it replaces, the diff, and the control that accepts it. */
 export function RefactorHunkView({
   hunk,
+  filePath,
   relativePath,
   ownerKey,
   accepted,
@@ -48,7 +49,7 @@ export function RefactorHunkView({
           aria-pressed={accepted}
           onClick={onToggleAccepted}
         >
-          <Check className="size-4" />
+          {accepted ? <CircleCheck className="size-4" /> : <Circle className="size-4" />}
           {accepted
             ? t('auto.components.editor.RefactorHunkView.accepted', '已接受')
             : t('auto.components.editor.RefactorHunkView.accept', '接受')}
@@ -63,7 +64,7 @@ export function RefactorHunkView({
             originalContent={hunk.originalText}
             modifiedContent={hunk.modifiedText}
             language={detectLanguage(relativePath)}
-            filePath={relativePath}
+            filePath={filePath}
             relativePath={relativePath}
             sideBySide={sideBySide}
             editable={false}

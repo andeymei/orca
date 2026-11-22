@@ -53,10 +53,10 @@ const OWNER_KEY = 'wt-1::refactor-review:job-1'
 export const twoHunks = defineFixture({
   width: 1280,
   render: () => (
-    <div className="flex flex-col">
+    <div className="flex h-[600px] flex-col">
       <RefactorHunkView
         hunk={ACCEPTED_HUNK}
-        filePath="src/foo.ts"
+        filePath="/repo/src/foo.ts"
         relativePath="src/foo.ts"
         ownerKey={OWNER_KEY}
         accepted
@@ -65,7 +65,7 @@ export const twoHunks = defineFixture({
       />
       <RefactorHunkView
         hunk={PENDING_HUNK}
-        filePath="src/foo.ts"
+        filePath="/repo/src/foo.ts"
         relativePath="src/foo.ts"
         ownerKey={OWNER_KEY}
         accepted={false}

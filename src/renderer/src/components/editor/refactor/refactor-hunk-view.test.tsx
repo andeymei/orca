@@ -27,7 +27,8 @@ type StoreFixture = {
 
 const captured = vi.hoisted(() => {
   const diffEditors: CapturedDiffEditor[] = []
-  return { diffEditors }
+  const pluginSyntaxPaths: string[] = []
+  return { diffEditors, pluginSyntaxPaths }
 })
 
 vi.mock('@monaco-editor/react', () => ({
@@ -67,6 +68,13 @@ vi.mock('@/lib/monaco-languages/plugin-syntax-editor-options', () => ({
 }))
 vi.mock('../useContextualCopySetup', () => ({
   useContextualCopySetup: () => ({ setupCopy: vi.fn(), toastNode: null })
+}))
+// DiffViewer hands its filePath to the plugin-syntax lookup; that is where the workspace path shows up.
+vi.mock('../use-plugin-syntax-language', () => ({
+  usePluginSyntaxLanguage: (filePath: string, coreLanguage: string) => {
+    captured.pluginSyntaxPaths.push(filePath)
+    return coreLanguage
+  }
 }))
 vi.mock('../../diff-comments/useDiffCommentDecorator', () => ({
   useDiffCommentDecorator: vi.fn()
@@ -121,6 +129,7 @@ async function findDiffEditor(): Promise<HTMLElement> {
 afterEach(() => {
   cleanup()
   captured.diffEditors.length = 0
+  captured.pluginSyntaxPaths.length = 0
 })
 
 describe('the refactoring hunk view', () => {
@@ -148,6 +157,21 @@ describe('the refactoring hunk view', () => {
     render(<RefactorHunkView {...props} accepted />)
     expect(screen.getByRole('button', { name: '已接受' })).toBeTruthy()
     await findDiffEditor()
+  })
+
+  it('shows the check only once the hunk is accepted', async () => {
+    const view = render(<RefactorHunkView {...props} />)
+    expect(view.container.querySelector('.lucide-circle-check')).toBeNull()
+    expect(view.container.querySelector('.lucide-circle')).toBeTruthy()
+    view.rerender(<RefactorHunkView {...props} accepted />)
+    expect(view.container.querySelector('.lucide-circle-check')).toBeTruthy()
+    await findDiffEditor()
+  })
+
+  it('gives the diff the workspace path of the file it shows', async () => {
+    render(<RefactorHunkView {...props} />)
+    await findDiffEditor()
+    expect(captured.pluginSyntaxPaths).toContain('/repo/src/foo.ts')
   })
 
   it('gives every hunk of the tab its own model under the tab that owns it', async () => {

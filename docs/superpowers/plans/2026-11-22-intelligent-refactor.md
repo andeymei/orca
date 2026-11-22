@@ -1600,6 +1600,8 @@ Expected: FAIL，报模块不存在。
 - [ ] **Step 3: 实现注册表**
 
 在 `refactor-job-registry.ts` 用一个 `Map<string, RefactorJob>`。`create` 造一个 `new AbortController()` 挂上。`update` 合并字段（`warnings` 整体替换，不追加）。`remove` 从 map 删掉。
+**`update` 一个不存在的 job 是静默 no-op，不抛错**——后台那一段跑完时用户可能已经把任务丢了，
+那时候再抛一个错只会让整个主进程看到一次没被接住的异常。
 
 - [ ] **Step 4: 跑测试确认它通过**
 
@@ -1844,6 +1846,45 @@ writeFileExplorerFile(
   9. 清理过期暂存目录（见下面「暂存目录清理」），并把被清理掉的 job 从注册表里摘掉。
   10. **立刻返回** `{ jobId }`。
   11. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `plan` 与 `diskContents`。
+      **启动参数（Task 4 的 `resolveRefactorAgentLaunch`）要用同一个 Claude CLI、同一个账号**——
+      用户在原生聊天里用的是哪个，重构 agent 就该是哪个，否则托管账号的用户会直接撞上登录失败。
+      `deps` 的具体构造（`ClaudeEnvDeps` 的成员除 `resolveAuthPolicy` 外都有默认值，
+      所以最少只要给 `resolveAuthPolicy`；但只给最少的那份会落到 PATH 里随便一个 claude，
+      绕开用户在设置里配的 Command）：
+      ```ts
+      const settings = runtime.requireStore().getSettings()
+      const launch = await resolveRefactorAgentLaunch({
+        cwd: workspaceRoot,
+        deps: {
+          // 跟原生聊天同一条解析路径：设置里配了 Command 就用它，没配就按 agent 名解析。
+          resolveCommand: (options) => resolveStructuredAgentCommand('claude', settings, options),
+          // 只用于给登录失败标账号，不决定用哪个可执行文件。
+          resolveAuthPolicy: () => claudeStructuredAuthPolicyForSettings(settings),
+          // 用户自己配的 per-agent 环境 + 当前托管账号的环境。
+          resolveEnv: () => ({
+            ...resolveTuiAgentLaunchEnv('claude', settings),
+            ...runtime.getHostAgentLaunchEnv('claude')
+          })
+        }
+      })
+      ```
+      导入：`resolveStructuredAgentCommand` 来自 `src/main/native-chat/structured-agent-command-resolution.ts`，
+      `claudeStructuredAuthPolicyForSettings` 来自 `src/main/claude-accounts/runtime-auth/claude-structured-auth-policy.ts`，
+      `resolveTuiAgentLaunchEnv` 来自 `src/shared/agent-launch/choices/tui-agent-launch-defaults`。
+      **`runtime.getHostAgentLaunchEnv` 现在还没有**——账号控制器是 runtime 的 protected 成员，
+      服务面（`src/main/runtime/construction/runtime-service-command-surface.ts`）只挑了几个方法暴露出来。
+      本任务要往那个面上加两个方法（类型与安装处各一行）：
+      ```ts
+      // RuntimeServiceCommandSurface 类型里
+      getHostAgentLaunchEnv: RuntimeAccountController['hostLaunchEnvFor']
+      prepareHostAgentLaunch: RuntimeAccountController['prepareHostAgentLaunch']
+      // installRuntimeServiceCommandSurface 里
+      getHostAgentLaunchEnv: accounts.hostLaunchEnvFor.bind(accounts),
+      prepareHostAgentLaunch: accounts.prepareHostAgentLaunch.bind(accounts),
+      ```
+      `prepareHostAgentLaunch` 要在起 agent **之前**调一次：它的职责是"起这个 agent 之前先推一次账号、
+      再刷新一次 Claude"（`runtime-account-controller.ts:100-104`），不调的话账号环境可能是旧的。
+      **这两行是纯新增**，不改任何既有行为。
       **同一个 `scratchRoot` 要同时给闸门和 runner**：闸门用它判断写操作落在不在暂存目录内，
       runner 用它读 `manifest.json` 和暂存文件。两个值不一致的话，agent 写在一个目录、
       应用去另一个目录读，manifest 永远读不到。

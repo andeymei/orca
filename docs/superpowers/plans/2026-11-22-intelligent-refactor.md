@@ -1524,6 +1524,7 @@ git commit -m "feat(refactor): track the refactoring jobs"
 import { describe, expect, it } from 'vitest'
 import { applyRefactorSelection } from './refactor-apply'
 import { computeRefactorHunks } from '../../shared/refactor/refactor-hunk-computation'
+import { getDiskBaselineSignature } from '../../shared/file-write/disk-baseline-signature'
 
 const original = 'a\nb\nc\n'
 const modified = 'A\nb\nC\n'
@@ -1545,18 +1546,23 @@ const plan = {
 describe('applyRefactorSelection', () => {
   it('writes the file when the accepted hunk matches the current content', async () => {
     const writes: { path: string; content: string }[] = []
+    const preconditions: { expectedSignature: string; allowMissing: boolean }[] = []
     const result = await applyRefactorSelection({
       plan,
       diskContents: new Map([['src/foo.ts', original]]),
       acceptedHunkIds: [hunks[0].id],
       readCurrent: async () => original,
-      write: async (path, content) => {
+      write: async (path, content, precondition) => {
         writes.push({ path, content })
+        preconditions.push(precondition)
         return true
       }
     })
     expect(writes).toEqual([{ path: 'src/foo.ts', content: 'A\nb\nc\n' }])
     expect(result.applied).toEqual([{ path: 'src/foo.ts', hunksApplied: 1 }])
+    // 前置条件描述的是**读到的**那份磁盘内容，不是要写进去的新内容——
+    // 写错的话每次写都会被拒，功能直接废掉。
+    expect(preconditions[0].expectedSignature).toBe(getDiskBaselineSignature(original))
   })
 
   it('writes the file when the disk still holds the content the plan was built against', async () => {

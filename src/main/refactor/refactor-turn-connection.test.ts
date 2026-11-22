@@ -106,6 +106,26 @@ async function hookReason(
   return specific.permissionDecisionReason ?? ''
 }
 
+/**
+ * The gate's matcher, found by what it does: it refuses a write to the user's own sources and
+ * names the tool and the path it refused. Another matcher the launch carried cannot be mistaken
+ * for it, and the gate's place in the list does not matter.
+ */
+async function findGateMatcher(
+  matchers: HookCallbackMatcher[],
+  workspaceRoot: string
+): Promise<HookCallbackMatcher | null> {
+  const sourcePath = path.join(workspaceRoot, 'src', 'foo.ts')
+  for (const matcher of matchers) {
+    const refusal = await hookReason(matcher, workspaceRoot, 'Write', { file_path: sourcePath })
+    if (refusal === null || !refusal.includes('Write') || !refusal.includes(sourcePath)) {
+      continue
+    }
+    return matcher
+  }
+  return null
+}
+
 const successFrame = { type: 'result', subtype: 'success', is_error: false }
 
 describe('closeRefactorTurnConnection', () => {
@@ -208,14 +228,43 @@ describe('runRefactorTurn', () => {
       })
     })
     const matchers = captured[0].options.hooks?.PreToolUse ?? []
-    expect(matchers).toHaveLength(1)
-    expect(matchers[0].onFailure).toBe('block')
+    const gate = await findGateMatcher(matchers, workspaceRoot)
+    if (!gate) {
+      throw new Error("the launch carries no matcher that refuses a write to the user's sources")
+    }
+    expect(gate.onFailure).toBe('block')
     // The attached hook is the gate: it refuses a write to the user's own sources.
-    const reason = await hookReason(matchers[0], workspaceRoot, 'Write', {
+    const reason = await hookReason(gate, workspaceRoot, 'Write', {
       file_path: path.join(workspaceRoot, 'src', 'foo.ts')
     })
     expect(reason).toContain('Write')
     expect(reason).toContain(path.join(workspaceRoot, 'src', 'foo.ts'))
+  })
+
+  it('keeps a matcher the launch already carried beside the gate', async () => {
+    const { workspaceRoot, scratchRoot } = await makeWorkspace()
+    const captured: RefactorAgentLaunch[] = []
+    const launch = launchFor(workspaceRoot)
+    launch.options.hooks = {
+      PreToolUse: [{ matcher: 'Read', hooks: [async () => ({})] }]
+    }
+    await runTurn({
+      launch,
+      scratchRoot,
+      workspaceRoot,
+      openConnection: connectionFactory({
+        onOpen: (openLaunch) => captured.push(openLaunch),
+        onSend: (handlers) => handlers.onMessage?.(successFrame),
+        close: async () => true
+      })
+    })
+    const matchers = captured[0].options.hooks?.PreToolUse ?? []
+    expect(matchers).toHaveLength(2)
+    const gate = await findGateMatcher(matchers, workspaceRoot)
+    if (!gate) {
+      throw new Error("the launch carries no matcher that refuses a write to the user's sources")
+    }
+    expect(gate.onFailure).toBe('block')
   })
 
   it('gives the gate and the hook the workspace-relative scratch root', async () => {
@@ -239,10 +288,12 @@ describe('runRefactorTurn', () => {
     })
     const proposalPath = path.join(scratchRoot, 'p1', 'src', 'foo.ts')
     const matchers = captured[0].options.hooks?.PreToolUse ?? []
+    const gate = await findGateMatcher(matchers, workspaceRoot)
+    if (!gate) {
+      throw new Error("the launch carries no matcher that refuses a write to the user's sources")
+    }
     // The hook writes into the scratch tree: its root is the workspace-relative one, not the process's.
-    expect(
-      await hookReason(matchers[0], workspaceRoot, 'Write', { file_path: proposalPath })
-    ).toBeNull()
+    expect(await hookReason(gate, workspaceRoot, 'Write', { file_path: proposalPath })).toBeNull()
     // The second layer decides on the same root.
     const verdict = await capturedHandlers[0].canUseTool?.(
       'Write',

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { spawnProcess } from '@orca/process-host'
 import type { ProcessSpec } from '@orca/process-host/process-spec'
+import type { HookCallback, HookInput, HookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
 
 import {
   openClaudeStreamJsonConnection,
@@ -18,9 +19,22 @@ const FAKE_CLI = join(__dirname, '__fixtures__', 'claude-agent-sdk-scripted-cli.
 const SESSION_ID = '5348c19f-6a54-4c2e-9c68-9c2b1a3d4e5f'
 const HOLD_OPEN = { delayMs: 10_000 }
 
+/** The file the gate has to refuse: the user's own source, outside every scratch tree. */
+const USER_SOURCE = '/work/repo/src/foo.ts'
+
+type RegisteredHook = {
+  matcher?: string
+  hookCallbackIds?: string[]
+  timeout?: number
+  onFailure?: string
+}
+
 type ScriptedCliReport = {
   argv: string[]
-  controlRequests: { request_id: string; request: { subtype: string } }[]
+  controlRequests: {
+    request_id: string
+    request: { subtype: string; hooks?: { PreToolUse?: RegisteredHook[] } }
+  }[]
   controlResponses: { response: { request_id: string; response?: unknown } }[]
   userMessages: Record<string, unknown>[]
   descendantPid: number | null
@@ -75,6 +89,72 @@ function launchFor(
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function toolPath(toolInput: unknown): string | null {
+  if (!isRecord(toolInput)) {
+    return null
+  }
+  const target = toolInput.file_path
+  return typeof target === 'string' ? target : null
+}
+
+/**
+ * The gate the refactor runner hangs on a PreToolUse hook: a write to the user's own sources
+ * is refused with a reason that names the tool and the path. The matcher carries no pattern and
+ * blocks on failure, which is the shape the runner hands over.
+ */
+const gateHook: HookCallback = async (input: HookInput): Promise<HookJSONOutput> => {
+  if (input.hook_event_name !== 'PreToolUse') {
+    return {}
+  }
+  const target = toolPath(input.tool_input)
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: `该工具在此任务中不可用：${input.tool_name} 只能写暂存目录下的文件；被拒绝的路径：${target ?? '未知的路径'}。`
+    }
+  }
+}
+
+/** The launch carries the gate beside another matcher, so the gate is found by identity, not by position. */
+function launchWithGate(scenario: {
+  cwd: string
+  env: Record<string, string>
+}): ClaudeStreamJsonLaunch {
+  const launch = launchFor(scenario)
+  return {
+    ...launch,
+    options: {
+      ...launch.options,
+      hooks: {
+        PreToolUse: [
+          { matcher: 'Read', hooks: [async () => ({})] },
+          { hooks: [gateHook], onFailure: 'block' }
+        ]
+      }
+    }
+  }
+}
+
+function denyReason(response: unknown): string | null {
+  if (!isRecord(response)) {
+    return null
+  }
+  const specific = response.hookSpecificOutput
+  if (!isRecord(specific)) {
+    return null
+  }
+  if (specific.hookEventName !== 'PreToolUse' || specific.permissionDecision !== 'deny') {
+    return null
+  }
+  const reason = specific.permissionDecisionReason
+  return typeof reason === 'string' ? reason : null
+}
+
 const spawned: ProcessSpec[] = []
 const spawnedChildren: ChildProcess[] = []
 
@@ -93,8 +173,12 @@ async function open(
   return connection
 }
 
-async function until<T>(read: () => T | null | undefined, label: string): Promise<T> {
-  for (let attempt = 0; attempt < 400; attempt++) {
+async function until<T>(
+  read: () => T | null | undefined,
+  label: string,
+  attempts = 400
+): Promise<T> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const value = read()
     if (value !== null && value !== undefined) {
       return value
@@ -177,4 +261,80 @@ describe('Claude stream-json connection', () => {
     },
     20_000
   )
+})
+
+describe('Claude stream-json launch options', () => {
+  // The SDK refuses a session whose CLI does not honour onFailure, so the CLI has to say it does.
+  const HOOK_CAPABLE_CLI = {
+    initialize: { hook_on_failure_supported: true, commands: [], models: [] }
+  }
+
+  it('registers the hooks the launch carries with the CLI', async () => {
+    const scenario = scriptScenario(
+      [{ awaitControlRequest: 'initialize' }, HOLD_OPEN],
+      HOOK_CAPABLE_CLI
+    )
+    const connection = await open(launchWithGate(scenario))
+    await connection.initializationResult()
+    const report = await until(() => {
+      const current = readReportSafely(scenario)
+      const initialize = current?.controlRequests.find(
+        (frame) => frame.request.subtype === 'initialize'
+      )
+      return initialize ? current : null
+    }, 'the initialize request')
+    const registered =
+      report.controlRequests.find((frame) => frame.request.subtype === 'initialize')?.request.hooks
+        ?.PreToolUse ?? []
+    // Every matcher the launch carried is registered, none is dropped.
+    expect(registered).toHaveLength(2)
+    // The gate is the one that blocks, so another matcher cannot hide it.
+    const gate = registered.find((entry) => entry.onFailure === 'block')
+    expect(gate).toBeDefined()
+    expect(gate?.hookCallbackIds).toHaveLength(1)
+  })
+
+  it('runs the hook the launch carried when the CLI asks for it', async () => {
+    const scenario = scriptScenario(
+      [
+        { awaitControlRequest: 'initialize' },
+        { delayMs: 100 },
+        {
+          hookCallback: {
+            requestId: 'hook-1',
+            toolUseId: 'tool-1',
+            input: {
+              hook_event_name: 'PreToolUse',
+              session_id: SESSION_ID,
+              transcript_path: '/work/repo/.orca/refactor/transcript.jsonl',
+              cwd: '/work/repo',
+              tool_name: 'Write',
+              tool_input: { file_path: USER_SOURCE },
+              tool_use_id: 'tool-1'
+            }
+          }
+        },
+        HOLD_OPEN
+      ],
+      HOOK_CAPABLE_CLI
+    )
+    const connection = await open(launchWithGate(scenario))
+    await connection.initializationResult()
+    const report = await until(
+      () => {
+        const current = readReportSafely(scenario)
+        const answered = current?.controlResponses.find(
+          (frame) => frame.response.request_id === 'hook-1'
+        )
+        return answered ? current : null
+      },
+      'the hook callback response',
+      160
+    )
+    const answered = report.controlResponses.find((frame) => frame.response.request_id === 'hook-1')
+    const reason = denyReason(answered?.response.response)
+    // The SDK ran the launch's own hook, and it refused the write to the user's sources.
+    expect(reason).toContain('Write')
+    expect(reason).toContain(USER_SOURCE)
+  })
 })

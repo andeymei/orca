@@ -159,6 +159,30 @@ for (const step of scenario.steps) {
     await waitFor('control_request', step.awaitControlRequest)
   } else if (step.awaitControlResponse !== undefined) {
     await waitFor('control_response', step.awaitControlResponse)
+  } else if (step.hookCallback) {
+    // The CLI owns when a hook runs: it asks the SDK to run the callback the initialize
+    // request registered, and the SDK answers with the hook's own output.
+    const initialize = report.controlRequests.find(
+      (frame) => frame.request?.subtype === 'initialize'
+    )
+    const registered = initialize?.request?.hooks?.PreToolUse ?? []
+    const wanted = step.hookCallback.onFailure ?? 'block'
+    const entry = registered.find((item) => item.onFailure === wanted)
+    const callbackId = entry?.hookCallbackIds?.[0]
+    if (!callbackId) {
+      throw new Error('The initialize request registered no hook callback that blocks on failure')
+    }
+    emit({
+      type: 'control_request',
+      request_id: step.hookCallback.requestId,
+      request: {
+        subtype: 'hook_callback',
+        callback_id: callbackId,
+        input: step.hookCallback.input,
+        tool_use_id: step.hookCallback.toolUseId
+      }
+    })
+    await waitFor('control_response', step.hookCallback.requestId)
   } else if (step.awaitFile) {
     const deadline = Date.now() + step.awaitFile.timeoutMs
     while (!existsSync(step.awaitFile.path)) {

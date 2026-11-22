@@ -1528,6 +1528,8 @@ writeFileExplorerFile(
   9. 清理过期暂存目录（见下面「暂存目录清理」），并把被清理掉的 job 从注册表里摘掉。
   10. **立刻返回** `{ jobId }`。
   11. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `plan` 与 `diskContents`。
+      **目标工作区必须在 handler 里解析**（第 1 步），不能推到后台：后台开始时 handler 的上下文已经结束了。
+      账号策略可以在后台取——`runtime.requireStore().getSettings()` 拿的是长驻 store 的设置，不随 handler 结束而失效。
       **job 的 `state` 直接取 turn 的 `state`**（Task 5 的 `RefactorTurnResult.state`）：
       turn 是 `'done'` 才建 plan 并把 job 标成 `'done'`；turn 是 `'failed'` / `'cancelled'` 就直接把那个状态
       和 turn 的 warnings 写进 job，**不要建 plan**（没有可信的产出）。

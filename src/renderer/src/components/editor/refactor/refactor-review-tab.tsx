@@ -141,31 +141,34 @@ export function RefactorReviewTab({
     setWriting(true)
     setFailure(null)
     setRefusals([])
-    try {
-      const result = await applyRefactor(jobId, hunkIds)
-      if (result.refusals.length > 0) {
-        // Why the tab stays open: the user has to read why a file was not written.
-        setRefusals(result.refusals)
-        return
-      }
-      if (result.applied.length === 0) {
-        setFailure(
-          t(
-            'auto.components.editor.RefactorReviewTab.nothingWritten',
-            'No changes were written. Start a new refactoring.'
-          )
-        )
-        return
-      }
-      toast.success(writtenLabel(result.applied.length, t))
-      closeTab()
-    } catch (error) {
-      const message = applyFailureMessage(error, t)
-      setFailure(message)
-      toast.error(message)
-    } finally {
-      setWriting(false)
-    }
+    await runAndClear(
+      async () => {
+        try {
+          const result = await applyRefactor(jobId, hunkIds)
+          if (result.refusals.length > 0) {
+            // Why the tab stays open: the user has to read why a file was not written.
+            setRefusals(result.refusals)
+            return
+          }
+          if (result.applied.length === 0) {
+            setFailure(
+              t(
+                'auto.components.editor.RefactorReviewTab.nothingWritten',
+                'No changes were written. Start a new refactoring.'
+              )
+            )
+            return
+          }
+          toast.success(writtenLabel(result.applied.length, t))
+          closeTab()
+        } catch (error) {
+          const message = applyFailureMessage(error, t)
+          setFailure(message)
+          toast.error(message)
+        }
+      },
+      () => setWriting(false)
+    )
   }
 
   const acceptAll = async (): Promise<void> => {
@@ -190,22 +193,23 @@ export function RefactorReviewTab({
 
   const discard = async (): Promise<void> => {
     setDiscarding(true)
-    try {
-      const discarded = await discardRefactor(jobId)
-      if (!discarded) {
-        // Why the tab stays open: the job may still be running, and the user has to know.
-        setFailure(
-          t(
-            'auto.components.editor.RefactorReviewTab.discardFailed',
-            'The job could not be discarded and may still be running.'
+    await runAndClear(
+      async () => {
+        const discarded = await discardRefactor(jobId)
+        if (!discarded) {
+          // Why the tab stays open: the job may still be running, and the user has to know.
+          setFailure(
+            t(
+              'auto.components.editor.RefactorReviewTab.discardFailed',
+              'The job could not be discarded and may still be running.'
+            )
           )
-        )
-        return
-      }
-      closeTab()
-    } finally {
-      setDiscarding(false)
-    }
+          return
+        }
+        closeTab()
+      },
+      () => setDiscarding(false)
+    )
   }
 
   return (
@@ -311,6 +315,20 @@ export function RefactorReviewTab({
       </div>
     </div>
   )
+}
+
+/**
+ * Runs the work and clears the flag afterwards, even when the work throws.
+ *
+ * Why it is not a component function: the React Compiler cannot compile a try statement with a
+ * finalizer inside a component, and the flag has to be cleared even when the work fails.
+ */
+async function runAndClear(work: () => Promise<void>, clear: () => void): Promise<void> {
+  try {
+    await work()
+  } finally {
+    clear()
+  }
 }
 
 /**

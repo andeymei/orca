@@ -43,15 +43,8 @@ export function RefactorTriggerButton({
     [worktreeId, relativePath]
   )
   const starting = useSyncExternalStore(subscribeRefactorStarts, readStarting)
-  const start = async (): Promise<void> => {
-    if (content.length === 0 || !beginRefactorStart(worktreeId, relativePath)) {
-      return
-    }
-    try {
-      await openRefactorReviewTab({ worktreeId, relativePath, content })
-    } finally {
-      endRefactorStart(worktreeId, relativePath)
-    }
+  const start = (): void => {
+    void startRefactoring({ worktreeId, relativePath, content })
   }
   return (
     <TooltipProvider>
@@ -63,9 +56,7 @@ export function RefactorTriggerButton({
             size="icon-xs"
             aria-label={label}
             disabled={content.length === 0 || starting}
-            onClick={() => {
-              void start()
-            }}
+            onClick={start}
           >
             {starting ? (
               <Loader2 className="size-4 animate-spin" />
@@ -80,6 +71,31 @@ export function RefactorTriggerButton({
       </Tooltip>
     </TooltipProvider>
   )
+}
+
+/**
+ * Starts the refactoring and always releases the start guard.
+ *
+ * Why it is not a component function: the React Compiler cannot compile a try/finally without a
+ * catch inside a component, and the guard has to be released even when the request fails.
+ */
+async function startRefactoring(input: {
+  worktreeId: string
+  relativePath: string
+  content: string
+}): Promise<void> {
+  if (input.content.length === 0 || !beginRefactorStart(input.worktreeId, input.relativePath)) {
+    return
+  }
+  try {
+    await openRefactorReviewTab({
+      worktreeId: input.worktreeId,
+      relativePath: input.relativePath,
+      content: input.content
+    })
+  } finally {
+    endRefactorStart(input.worktreeId, input.relativePath)
+  }
 }
 
 /**

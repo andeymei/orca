@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, symlink } from 'node:fs/promises'
-import { realpath } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { resolvePhysicalPath } from './refactor-physical-path'

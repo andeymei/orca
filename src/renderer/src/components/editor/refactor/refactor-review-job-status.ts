@@ -31,7 +31,9 @@ export function statusLabel(
             defaultValue_one: '{{count}} proposal generated'
           })
         : t('auto.components.editor.RefactorReviewTab.loadingProposals', 'Loading the proposals')
-    default:
+    case 'failed':
+    case 'timed_out':
+    case 'cancelled':
       // Why: a job that ended badly says so in the notice below, not twice.
       return null
   }

@@ -202,18 +202,20 @@ async function waitForControlAnswer(
   scenario: { readReport: () => ScriptedCliReport },
   requestId: string
 ): Promise<ScriptedCliReport> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    const current = readReportSafely(scenario)
-    if (current?.controlResponses.some((frame) => frame.response.request_id === requestId)) {
-      return current
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25))
+  try {
+    return await until(() => {
+      const current = readReportSafely(scenario)
+      return current?.controlResponses.some((frame) => frame.response.request_id === requestId)
+        ? current
+        : null
+    }, `the CLI to answer the hook callback ${requestId}`)
+  } catch {
+    const arrived =
+      readReportSafely(scenario)?.controlResponses.map((frame) => frame.response.request_id) ?? []
+    throw new Error(
+      `the CLI never answered the hook callback ${requestId}; the control responses that arrived: ${arrived.join(', ') || 'none'}`
+    )
   }
-  const arrived =
-    readReportSafely(scenario)?.controlResponses.map((frame) => frame.response.request_id) ?? []
-  throw new Error(
-    `the CLI never answered the hook callback ${requestId}; the control responses that arrived: ${arrived.join(', ') || 'none'}`
-  )
 }
 
 function processState(pid: number): 'running' | 'exited' {
@@ -318,6 +320,9 @@ describe('Claude stream-json launch options', () => {
     expect(gate?.hookCallbackIds).toHaveLength(1)
   })
 
+  // Why the extra time: this case starts the real SDK against the scripted CLI, and the SDK only
+  // refuses the session after the CLI has answered the initialize request, which on a loaded
+  // machine can take several seconds.
   it('refuses the session when the CLI cannot enforce a blocking hook', async () => {
     const scenario = scriptScenario([{ awaitControlRequest: 'initialize' }, HOLD_OPEN], {
       initialize: { hook_on_failure_supported: false, commands: [], models: [] }
@@ -328,6 +333,9 @@ describe('Claude stream-json launch options', () => {
     await expect(connection.initializationResult()).rejects.toThrow(/does not honor onFailure/)
   }, 20_000)
 
+  // Why the extra time: this case starts the real SDK against the scripted CLI, and the SDK only
+  // refuses the session after the CLI has answered the initialize request, which on a loaded
+  // machine can take several seconds.
   it('refuses the session when the CLI declares no hook capability at all', async () => {
     // A CLI that predates onFailure says nothing about the capability: its answer carries no
     // hook_on_failure_supported key, rather than saying false. The scenario states that shape here,

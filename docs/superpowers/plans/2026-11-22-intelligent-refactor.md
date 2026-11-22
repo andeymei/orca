@@ -367,7 +367,7 @@ git commit -m "feat(refactor): compute and apply the refactoring hunks"
 - Produces:
   - `isPathInsideScratch(scratchRoot: string, targetPath: string): boolean`
   - `refactorToolAllowed(input: { toolName: string; toolInput: Record<string, unknown>; scratchRoot: string; workspaceRoot: string }): boolean`
-  - `refactorToolTargetPath(toolInput: Record<string, unknown>): string | null` —— 从工具入参里取路径，依次尝试 `file_path`、`filePath`、`path`，都没有则返回 `null`。
+  - `refactorToolTargetPath(toolInput: Record<string, unknown>): string | null` —— 从工具入参里取路径，依次尝试 `file_path`、`filePath`、`path`，都没有则返回 `null`。这三个键是仓库自己的约定，见 `src/shared/agent-hook-listener/tool-input-preview.ts` 的 `TOOL_INPUT_KEYS_BY_TOOL`（Write / Edit / MultiEdit 都是这三个键）。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -464,6 +464,17 @@ describe('refactorToolAllowed', () => {
       })
     ).toBe(true)
   })
+
+  it('allows a multi-edit inside the scratch root', () => {
+    expect(
+      refactorToolAllowed({
+        toolName: 'MultiEdit',
+        toolInput: { file_path: '/repo/.orca/refactor/job-1/p1/src/foo.ts' },
+        scratchRoot,
+        workspaceRoot
+      })
+    ).toBe(true)
+  })
 })
 ```
 
@@ -480,13 +491,14 @@ Expected: FAIL，报模块不存在。
 - `isPathInsideScratch(scratchRoot, targetPath)`：用 `path.resolve` 把两边都规约成绝对路径（`scratchRoot` 本身已是绝对路径），然后判断 `resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep)`。**比较区分大小写**——大小写不敏感的文件系统上这会拒掉一个大小写不同的合法路径，那是安全的方向；agent 总是用 prompt 里给的原样路径写。
 - `refactorToolAllowed`：
   - `toolName` 是 `Read` / `Grep` / `Glob` → 允许。
-  - `toolName` 是 `Write` / `Edit` → 取路径；取不到就**拒绝**（fail-closed）；取到就 `path.resolve(workspaceRoot, target)`（相对路径按工作区根解析）后交给 `isPathInsideScratch`。
+  - `toolName` 是 `Write` / `Edit` / `MultiEdit` → 取路径；取不到就**拒绝**（fail-closed）；取到就 `path.resolve(workspaceRoot, target)`（相对路径按工作区根解析）后交给 `isPathInsideScratch`。
+    **放行 `MultiEdit` 是必须的**：它是 Claude Code 真实存在的编辑工具，拒掉它等于堵死一条正当的编辑路径，agent 可能转去找 `Bash` 之类的绕路（那些也被拒），功能就废了。
   - 其它工具名 → **拒绝**。`Bash` 必须在拒绝名单里，否则 agent 能用 `mv` 绕过写闸门。
 
 - [ ] **Step 4: 跑测试确认它通过**
 
 Run: `pnpm test src/main/refactor/refactor-write-gate.test.ts --maxWorkers=2`
-Expected: PASS，9 个用例全过。
+Expected: PASS，10 个用例全过。
 
 - [ ] **Step 5: 提交**
 

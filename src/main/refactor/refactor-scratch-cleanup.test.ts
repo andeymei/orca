@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { cleanExpiredRefactorScratch } from './refactor-scratch-cleanup'
+import { refactorJobRegistry } from './refactor-job-registry'
+import {
+  cleanExpiredRefactorScratch,
+  removeDiscardedRefactorScratch
+} from './refactor-scratch-cleanup'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const now = 1_700_000_000_000
@@ -64,5 +68,46 @@ describe('cleanExpiredRefactorScratch', () => {
       now
     })
     expect(removed).toEqual([])
+  })
+})
+
+describe('removeDiscardedRefactorScratch', () => {
+  afterEach(async () => {
+    refactorJobRegistry.remove('job-discarded')
+    for (const root of roots.splice(0)) {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('removes the tree of a job that is gone', async () => {
+    // The agent's death is asynchronous, so a write after the discard recreates the tree.
+    const root = await scratchRoot()
+    const jobRoot = path.join(root, 'job-discarded')
+    await fs.mkdir(jobRoot, { recursive: true })
+    refactorJobRegistry.create({
+      jobId: 'job-discarded',
+      scratchRoot: jobRoot,
+      worktree: 'wt-1'
+    })
+    refactorJobRegistry.remove('job-discarded')
+
+    await removeDiscardedRefactorScratch('job-discarded', jobRoot)
+
+    await expect(fs.stat(jobRoot)).rejects.toThrow()
+  })
+
+  it('keeps the tree of a job that is still there', async () => {
+    const root = await scratchRoot()
+    const jobRoot = path.join(root, 'job-discarded')
+    await fs.mkdir(jobRoot, { recursive: true })
+    refactorJobRegistry.create({
+      jobId: 'job-discarded',
+      scratchRoot: jobRoot,
+      worktree: 'wt-1'
+    })
+
+    await removeDiscardedRefactorScratch('job-discarded', jobRoot)
+
+    await expect(fs.stat(jobRoot)).resolves.toBeTruthy()
   })
 })

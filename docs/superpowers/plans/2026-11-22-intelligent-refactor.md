@@ -2564,6 +2564,9 @@ git commit -m "feat(refactor): track what the user accepts in the review"
          但留着它能让 model 的 URI 一眼看出是哪个文件的哪个块。）
       2. `modelOwnerKey` 传 `ownerKey`（不是 `modelKey`）。这样这个 tab 的所有 hunk model 归同一个 owner，
          关掉 tab 时能一次性回收；每个 hunk 各自当 owner 会让 model 留着不释放。
+    - `filePath` 是这个文件在工作区里的**绝对路径**，`relativePath` 是相对路径。
+      `DiffViewer` 的 `filePath` 槽位在别处（`ChangesModeView.tsx:85`、`EditorDiffFileSurface.tsx:163`）
+      收的都是绝对路径；往里塞相对路径，会让将来按工作区根解析这个路径的调用方找错地方。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -2612,12 +2615,13 @@ Expected: FAIL，报模块不存在。
 
 在 `refactor-hunk-view.tsx`：
 
-- 顶部一行：绝对行号标签 + 接受按钮（按钮文案随 `accepted` 在"接受"与"已接受"之间切换）。
+- 顶部一行：绝对行号标签 + 接受按钮（按钮文案随 `accepted` 在"接受"与"已接受"之间切换；
+  图标也跟着换：未接受是空心圆 `Circle`，已接受是 `CircleCheck`，不能让勾在未接受时也出现）。
 - 下面一个 `DiffViewer`：
   - `originalContent={hunk.originalText}`
   - `modifiedContent={hunk.modifiedText}`
   - `language={detectLanguage(relativePath)}`
-  - `filePath` / `relativePath` 传相对路径
+  - `filePath` 传工作区的绝对路径，`relativePath` 传相对路径
   - `modelKey={`refactor-hunk:${ownerKey}:${relativePath}:${hunk.id}`}`
   - `modelOwnerKey={ownerKey}`
   - `sideBySide={sideBySide}`
@@ -2646,6 +2650,10 @@ export const twoHunks = defineFixture({
 都是自己 import 这一行的；不 import 的话截图里 diff 区域是空的。
 **用具名导出**：注册表把模块的每个导出各自当成一个 fixture，名字就是 `<组件 id>:<导出名>`
 （`src/renderer/src/component-fixtures/component-fixture-registry.ts:31-44`）。
+**根容器要给一个确定的高度**（仓库里的惯例是 `flex h-[600px] flex-col`，见
+`src/renderer/src/components/right-sidebar/folder-workspace-empty-state.fixture.tsx`）：
+组件的高度全靠 `flex-1` 链，`min-h-0` 会把基准高度压成 0，diff 区域就渲染成空白，
+截图里只剩两个标题行。
 
 - [ ] **Step 5: 跑测试与截图**
 

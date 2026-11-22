@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { computeRefactorHunks } from '../../shared/refactor/refactor-hunk-computation'
 import type { RefactorManifest } from '../../shared/refactor/refactor-manifest'
 import type {
@@ -6,11 +7,10 @@ import type {
   RefactorProposal
 } from '../../shared/refactor/refactor-types'
 import { isSafeMobileRelativePath } from '../runtime/files/mobile-file-kind'
-import { hasUnsafePathSegment } from './refactor-write-gate'
+import { REFACTOR_SOURCE_DIRECTORY_NAME } from './refactor-scratch'
+import { hasUnsafePathSegment, isPathInsideWorkspace } from './refactor-write-gate'
 
-/** The baseline copy written when the job started: it is the source, not a proposal. */
-const SOURCE_DIRECTORY_NAME = '_source'
-const SOURCE_IGNORED_WARNING = `方案 ${SOURCE_DIRECTORY_NAME} 是基准副本，已忽略`
+const SOURCE_IGNORED_WARNING = `方案 ${REFACTOR_SOURCE_DIRECTORY_NAME} 是基准副本，已忽略`
 
 export type RefactorPlanInput = {
   jobId: string
@@ -29,6 +29,8 @@ export type RefactorPlanInput = {
    * `<scratchRoot>/p1/src/foo.ts` is reported as `src/foo.ts`.
    */
   listScratchProposals: () => Promise<{ id: string; files: string[] }[]>
+  /** Stops the build when the job is discarded; a build in flight otherwise only wastes its reads. */
+  signal?: AbortSignal
 }
 
 export type RefactorPlanResult = {
@@ -59,11 +61,38 @@ export function isSafeRelativeRefactorPath(relativePath: string): boolean {
 }
 
 /**
+ * A drive-relative path resolves against another drive's current directory, so it names no file
+ * of this workspace. It is refused on every platform, not only where it happens to escape.
+ */
+function isWindowsDriveRelativePath(relativePath: string): boolean {
+  return /^[A-Za-z]:/.test(relativePath)
+}
+
+/**
+ * The path the agent may read and the plan may name.
+ *
+ * Two checks, because each one closes a hole the other leaves: the path rule rejects absolute
+ * paths, `..` segments and the trailing dot and space Windows strips before it reads `..`, and
+ * the containment check confirms the path still lands inside the workspace once it is resolved.
+ */
+export function assertSafeRefactorTargetPath(workspaceRoot: string, relativePath: string): void {
+  if (!isSafeRelativeRefactorPath(relativePath)) {
+    throw new Error('重构目标必须是工作区内的相对路径')
+  }
+  const resolvesOutside =
+    isWindowsDriveRelativePath(relativePath) ||
+    !isPathInsideWorkspace(workspaceRoot, path.resolve(workspaceRoot, relativePath))
+  if (resolvesOutside) {
+    throw new Error('重构目标必须位于工作区内')
+  }
+}
+
+/**
  * The key a file path is claimed under: the separators are normalised and the case folded, because
  * macOS and Windows read `src\foo.ts` and `src/foo.ts` as one file, and a missed conflict silently
  * overwrites the first proposal's file.
  */
-function conflictKey(filePath: string): string {
+export function refactorPathKey(filePath: string): string {
   return filePath.split(/[\\/]/).join('/').toLowerCase()
 }
 
@@ -74,7 +103,7 @@ async function draftsFromScratchTree(
   const entries = await input.listScratchProposals()
   const drafts: ProposalDraft[] = []
   for (const entry of entries) {
-    if (entry.id === SOURCE_DIRECTORY_NAME) {
+    if (entry.id === REFACTOR_SOURCE_DIRECTORY_NAME) {
       warnings.push(SOURCE_IGNORED_WARNING)
       continue
     }
@@ -92,7 +121,7 @@ async function draftsFromScratchTree(
 function draftsFromManifest(manifest: RefactorManifest, warnings: string[]): ProposalDraft[] {
   const drafts: ProposalDraft[] = []
   for (const proposal of manifest.proposals) {
-    if (proposal.id === SOURCE_DIRECTORY_NAME) {
+    if (proposal.id === REFACTOR_SOURCE_DIRECTORY_NAME) {
       warnings.push(SOURCE_IGNORED_WARNING)
       continue
     }
@@ -135,7 +164,7 @@ async function evaluateProposal(
     }
     // The key folds the separator spelling and the case: macOS and Windows treat `src/Foo.ts` and
     // `src\foo.ts` as one file, and a missed conflict silently overwrites the first proposal's file.
-    const pathKey = conflictKey(filePath)
+    const pathKey = refactorPathKey(filePath)
     const owner = claimedPaths.get(pathKey)
     if (owner !== undefined) {
       return {
@@ -156,6 +185,9 @@ async function evaluateProposal(
   const files: RefactorFileProposal[] = []
   const diskContents = new Map<string, string>()
   for (const filePath of paths) {
+    if (input.signal?.aborted === true) {
+      return { kept: false, warning: `方案 ${draft.id} 的重构任务已取消，已丢弃` }
+    }
     const modified = await input.scratchFiles(draft.id, filePath)
     if (modified === null) {
       return { kept: false, warning: `方案 ${draft.id} 的暂存文件读不到，已丢弃：${filePath}` }
@@ -202,6 +234,10 @@ export async function buildRefactorPlan(input: RefactorPlanInput): Promise<Refac
   const claimedIds = new Set<string>()
 
   for (const draft of drafts) {
+    if (input.signal?.aborted === true) {
+      warnings.push('重构任务已取消')
+      break
+    }
     const outcome = await evaluateProposal(draft, input, claimedPaths, claimedIds)
     if (!outcome.kept) {
       warnings.push(outcome.warning)
@@ -210,7 +246,7 @@ export async function buildRefactorPlan(input: RefactorPlanInput): Promise<Refac
     proposals.push(outcome.proposal)
     claimedIds.add(draft.id)
     for (const [filePath, disk] of outcome.diskContents) {
-      claimedPaths.set(conflictKey(filePath), draft.id)
+      claimedPaths.set(refactorPathKey(filePath), draft.id)
       diskContents.set(filePath, disk)
     }
     if (draft.restored) {

@@ -1,5 +1,6 @@
 import { readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
+import { refactorJobRegistry } from './refactor-job-registry'
 
 /** A scratch directory older than this is nobody's business any more. */
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000
@@ -49,4 +50,43 @@ export async function cleanExpiredRefactorScratch(input: {
     removed.push(entry.name)
   }
   return removed
+}
+
+/** Removes the scratch directories that expired, and the jobs that own them. */
+export async function removeExpiredRefactorJobs(
+  scratchParentRoot: string,
+  currentJobId: string
+): Promise<void> {
+  try {
+    const removed = await cleanExpiredRefactorScratch({
+      scratchParentRoot,
+      excludeJobId: currentJobId
+    })
+    for (const jobId of removed) {
+      // The directory is named after the job, and only a discard used to retire a job.
+      refactorJobRegistry.remove(jobId)
+    }
+  } catch {
+    // A cleanup failure leaves old directories behind; it must not stop the new request.
+  }
+}
+
+/**
+ * Removes the scratch tree of a job that is gone.
+ *
+ * The agent's death is asynchronous, so a write after the discard recreates the tree; the run
+ * that owns the tree removes it again once it ends, instead of leaving an orphan directory.
+ */
+export async function removeDiscardedRefactorScratch(
+  jobId: string,
+  scratchRoot: string
+): Promise<void> {
+  if (refactorJobRegistry.get(jobId) !== null) {
+    return
+  }
+  try {
+    await rm(scratchRoot, { recursive: true, force: true })
+  } catch {
+    // The directory stays until the next sweep finds it.
+  }
 }

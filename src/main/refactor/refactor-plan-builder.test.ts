@@ -361,4 +361,31 @@ describe('buildRefactorPlan', () => {
     expect(reasonWarnings[0]).toContain('p1')
     expect(reasonWarnings[0]).not.toContain('p2')
   })
+
+  it('stops building when the job was cancelled', async () => {
+    // A discarded job's plan is never reviewed, so the build must not keep reading files.
+    const controller = new AbortController()
+    controller.abort()
+    let reads = 0
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: {
+        proposals: [{ id: 'p1', title: '提取校验', rationale: '重复。', files: ['src/foo.ts'] }]
+      },
+      scratchRoot,
+      workspaceRoot,
+      readBaseline: async () => {
+        reads += 1
+        return 'a\n'
+      },
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [],
+      scratchFiles: async () => 'b\n',
+      signal: controller.signal
+    })
+    expect(reads).toBe(0)
+    expect(result.plan.proposals).toHaveLength(0)
+    expect(result.warnings.some((warning) => warning.includes('已取消'))).toBe(true)
+  })
 })

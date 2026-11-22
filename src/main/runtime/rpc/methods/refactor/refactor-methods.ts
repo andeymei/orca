@@ -24,7 +24,11 @@ import {
 } from '../../../../refactor/refactor-file-reads'
 import { excludeRefactorScratchFromGit } from '../../../../refactor/refactor-git-exclude'
 import { refactorJobRegistry } from '../../../../refactor/refactor-job-registry'
-import { buildRefactorPlan } from '../../../../refactor/refactor-plan-builder'
+import {
+  assertSafeRefactorTargetPath,
+  buildRefactorPlan,
+  refactorPathKey
+} from '../../../../refactor/refactor-plan-builder'
 import { resolveRefactorAgentLaunch } from '../../../../refactor/refactor-agent-launch'
 import { runRefactorTurn } from '../../../../refactor/refactor-runner'
 import {
@@ -33,14 +37,12 @@ import {
   refactorScratchRelativeRoot,
   refactorScratchRoot
 } from '../../../../refactor/refactor-scratch'
-import { cleanExpiredRefactorScratch } from '../../../../refactor/refactor-scratch-cleanup'
 import {
-  hasUnsafePathSegment,
-  isPathInsideWorkspace
-} from '../../../../refactor/refactor-write-gate'
+  removeDiscardedRefactorScratch,
+  removeExpiredRefactorJobs
+} from '../../../../refactor/refactor-scratch-cleanup'
 import { claudeStructuredAuthPolicyForSettings } from '../../../../claude-accounts/runtime-auth/claude-structured-auth-policy'
 import { resolveStructuredAgentCommand } from '../../../../native-chat/structured-agent-command-resolution'
-import { isSafeMobileRelativePath } from '../../../files/mobile-file-kind'
 
 const REMOTE_WORKSPACE_REFUSAL = '远程主机上的重构暂不支持：请在本机的工作区发起重构。'
 
@@ -58,41 +60,37 @@ function diskConflictReason(conflict: FileWriteDiskConflict): string {
 }
 
 /**
- * The path the agent may read and the plan may name.
+ * The baseline of a file: the buffer the user saw.
  *
- * Three checks, because each one closes a hole the others leave: the mobile guard rejects
- * absolute paths and `..` segments, the segment guard rejects the trailing dot and space that
- * Windows strips before it reads `..`, and the containment check confirms the resolved path
- * still lands inside the workspace.
+ * The map is keyed the way the plan keys its paths, so a manifest that spells the path with
+ * another separator still finds the buffer instead of the disk.
  */
-function assertSafeRefactorTargetPath(workspaceRoot: string, relativePath: string): void {
-  if (!isSafeMobileRelativePath(relativePath)) {
-    throw new Error('重构目标必须是工作区内的相对路径')
-  }
-  if (hasUnsafePathSegment(relativePath)) {
-    throw new Error('重构目标的路径含有不安全的片段')
-  }
-  if (!isPathInsideWorkspace(workspaceRoot, path.resolve(workspaceRoot, relativePath))) {
-    throw new Error('重构目标必须位于工作区内')
-  }
+export function refactorBaselineFor(
+  baselines: ReadonlyMap<string, string>,
+  relativePath: string
+): string | undefined {
+  return baselines.get(refactorPathKey(relativePath))
 }
 
-/** Removes the scratch directories that expired, and the jobs that own them. */
-async function removeExpiredRefactorJobs(
-  workspaceRoot: string,
-  currentJobId: string
-): Promise<void> {
-  try {
-    const removed = await cleanExpiredRefactorScratch({
-      scratchParentRoot: refactorScratchParentRoot(workspaceRoot),
-      excludeJobId: currentJobId
-    })
-    for (const jobId of removed) {
-      // The directory is named after the job, and only a discard used to retire a job.
-      refactorJobRegistry.remove(jobId)
+/** The baseline map of a job, keyed the way the plan keys its paths. */
+export function refactorBaselineMap(relativePath: string, content: string): Map<string, string> {
+  return new Map([[refactorPathKey(relativePath), content]])
+}
+
+/**
+ * The baseline of each file: the buffer the user saw for the target file, the disk for the rest.
+ */
+export function refactorBaselineReader(input: {
+  baselines: ReadonlyMap<string, string>
+  workspaceRoot: string
+}): (relativePath: string) => Promise<string | null> {
+  return async (relativePath) => {
+    const baseline = refactorBaselineFor(input.baselines, relativePath)
+    if (baseline !== undefined) {
+      return baseline
     }
-  } catch {
-    // A cleanup failure leaves old directories behind; it must not stop the new request.
+    const read = await readWorkspaceFile(input.workspaceRoot, relativePath)
+    return read.status === 'read' ? read.content : null
   }
 }
 
@@ -129,11 +127,11 @@ export const REFACTOR_METHODS = [
         scratchRoot,
         worktree: params.worktree,
         // The baseline of the target file is known now: it is the buffer the user is looking at.
-        baselines: new Map([[params.relativePath, params.content]])
+        baselines: refactorBaselineMap(params.relativePath, params.content)
       })
 
       await excludeRefactorScratchFromGit(workspaceRoot)
-      await removeExpiredRefactorJobs(workspaceRoot, jobId)
+      await removeExpiredRefactorJobs(refactorScratchParentRoot(workspaceRoot), jobId)
 
       const runInBackground = async (): Promise<void> => {
         const signal = job.controller.signal
@@ -196,14 +194,18 @@ export const REFACTOR_METHODS = [
           workspaceRoot,
           // The target file's baseline is the buffer the user saw; every other file's baseline
           // is the disk content of the moment.
-          readBaseline: async (relativePath) => {
-            const baseline = job.baselines.get(relativePath)
-            return baseline ?? (await readWorkspaceFile(workspaceRoot, relativePath))
+          readBaseline: refactorBaselineReader({
+            baselines: job.baselines,
+            workspaceRoot
+          }),
+          readDiskContent: async (relativePath) => {
+            const read = await readWorkspaceFile(workspaceRoot, relativePath)
+            return read.status === 'read' ? read.content : null
           },
-          readDiskContent: (relativePath) => readWorkspaceFile(workspaceRoot, relativePath),
           scratchFiles: (proposalId, relativePath) =>
             readScratchFile(scratchRoot, proposalId, relativePath),
-          listScratchProposals: () => listScratchProposals(scratchRoot)
+          listScratchProposals: () => listScratchProposals(scratchRoot),
+          signal
         })
         refactorJobRegistry.update(jobId, {
           state: 'done',
@@ -216,12 +218,14 @@ export const REFACTOR_METHODS = [
 
       // A rejected promise nobody holds terminates the main process, so the background run
       // carries its own failure into the job's warnings.
-      void runInBackground().catch((error: unknown) => {
-        refactorJobRegistry.update(jobId, {
-          state: 'failed',
-          warnings: [error instanceof Error ? error.message : String(error)]
+      void runInBackground()
+        .catch((error: unknown) => {
+          refactorJobRegistry.update(jobId, {
+            state: 'failed',
+            warnings: [error instanceof Error ? error.message : String(error)]
+          })
         })
-      })
+        .finally(() => removeDiscardedRefactorScratch(jobId, scratchRoot))
 
       return { jobId }
     }
@@ -251,7 +255,7 @@ export const REFACTOR_METHODS = [
     name: 'refactor.apply',
     permission: 'workspace',
     params: RefactorApplyParams,
-    handler: async (params, { runtime }): Promise<RefactorApplyResult> => {
+    handler: async (params, { runtime, signal }): Promise<RefactorApplyResult> => {
       const job = refactorJobRegistry.get(params.jobId)
       // A missing job or plan is a failed call: every refusal names a path, so there is no
       // honest way to report "nothing to write" as a success.
@@ -266,29 +270,46 @@ export const REFACTOR_METHODS = [
         throw new Error(REMOTE_WORKSPACE_REFUSAL)
       }
       const workspaceRoot = target.worktree.path
+      // The apply stops when the client goes away or the job is discarded: both mean that no
+      // new write may start.
+      const applySignal =
+        signal === undefined
+          ? job.controller.signal
+          : AbortSignal.any([signal, job.controller.signal])
       const refusalReasons = new Map<string, string>()
       const result = await applyRefactorSelection({
         plan: job.plan,
         diskContents: job.diskContents,
         acceptedHunkIds: params.acceptedHunkIds,
         readCurrent: (relativePath) => readWorkspaceFile(workspaceRoot, relativePath),
+        signal: applySignal,
         write: async (relativePath, content, precondition) => {
-          const writeResult = await runtime.writeFileExplorerFile(
-            job.worktree,
-            relativePath,
-            content,
-            undefined,
-            undefined,
-            // The host expectation is not optional: a write without it is refused as a remote
-            // change from an outdated client.
-            target.executionHostId,
-            precondition
-          )
-          if (writeResult.ok) {
-            return true
+          try {
+            const writeResult = await runtime.writeFileExplorerFile(
+              job.worktree,
+              relativePath,
+              content,
+              undefined,
+              undefined,
+              // The host expectation is not optional: a write without it is refused as a remote
+              // change from an outdated client.
+              target.executionHostId,
+              precondition
+            )
+            if (writeResult.ok) {
+              return true
+            }
+            refusalReasons.set(relativePath, diskConflictReason(writeResult.diskConflict))
+            return false
+          } catch (error) {
+            // The files already written stay written, so a throwing write is a refusal of this
+            // file rather than a failure of the whole apply.
+            refusalReasons.set(
+              relativePath,
+              `写入失败：${error instanceof Error ? error.message : String(error)}`
+            )
+            return false
           }
-          refusalReasons.set(relativePath, diskConflictReason(writeResult.diskConflict))
-          return false
         }
       })
       return {

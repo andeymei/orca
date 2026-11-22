@@ -5,6 +5,7 @@ import type {
   RefactorPlan
 } from '../../shared/refactor/refactor-types'
 import { getDiskBaselineSignature } from '../../shared/file-write/disk-baseline-signature'
+import type { RefactorFileReadResult } from './refactor-file-reads'
 
 export type RefactorApplyPrecondition = {
   expectedSignature: string
@@ -16,14 +17,16 @@ export type RefactorApplySelectionInput = {
   /** The disk content of each file when the plan was built. */
   diskContents: ReadonlyMap<string, string>
   acceptedHunkIds: readonly string[]
-  /** The file's current disk content, or null when it is gone. */
-  readCurrent: (path: string) => Promise<string | null>
+  /** The file's current disk content, or why it could not be read. */
+  readCurrent: (path: string) => Promise<RefactorFileReadResult>
   /** Writes the file unless the disk moved on; false means the write was refused. */
   write: (
     path: string,
     content: string,
     precondition: RefactorApplyPrecondition
   ) => Promise<boolean>
+  /** Stops the remaining writes; a write already in flight cannot be un-written. */
+  signal?: AbortSignal
 }
 
 export type RefactorApplySelectionResult = {
@@ -34,6 +37,7 @@ export type RefactorApplySelectionResult = {
 const FILE_CHANGED_REASON = '文件在评审期间被改动过，请重新生成重构建议'
 const FILE_MISSING_REASON = '文件已被删除'
 const WRITE_FAILED_REASON = '写入失败'
+const CANCELLED_REASON = '重构任务已取消，该文件未写入'
 
 type FileSelection = {
   file: RefactorFileProposal
@@ -78,26 +82,38 @@ export async function applyRefactorSelection(
   const applied: RefactorApplySelectionResult['applied'] = []
   const refusals: RefactorApplySelectionResult['refusals'] = []
 
-  for (const selection of collectAcceptedFiles(input.plan, accepted)) {
+  const selections = collectAcceptedFiles(input.plan, accepted)
+  for (const [index, selection] of selections.entries()) {
     const { file, hunks } = selection
     const current = await input.readCurrent(file.path)
-    if (current === null) {
+    if (current.status === 'missing') {
       refusals.push({ path: file.path, reason: FILE_MISSING_REASON })
+      continue
+    }
+    if (current.status === 'unreadable') {
+      refusals.push({ path: file.path, reason: current.reason })
       continue
     }
     const disk = input.diskContents.get(file.path)
     // Two readings pass: the disk may still hold the content the plan was built against (the
     // user never saved), or the user's saved baseline (the user saved during the review). Only
     // neither means somebody really changed the file.
-    if (current !== disk && current !== file.originalContent) {
+    if (current.content !== disk && current.content !== file.originalContent) {
       refusals.push({ path: file.path, reason: FILE_CHANGED_REASON })
       continue
+    }
+    if (input.signal?.aborted === true) {
+      // The task was cancelled: nothing new starts, and the files that were not written say so.
+      for (const pending of selections.slice(index)) {
+        refusals.push({ path: pending.file.path, reason: CANCELLED_REASON })
+      }
+      break
     }
     // The diff is against the baseline, so the refactored text starts from the baseline too.
     const newContent = applyRefactorHunks(file.originalContent, hunks)
     const written = await input.write(file.path, newContent, {
       // The precondition describes what was read from disk, not what is written into it.
-      expectedSignature: getDiskBaselineSignature(current),
+      expectedSignature: getDiskBaselineSignature(current.content),
       allowMissing: false
     })
     if (!written) {

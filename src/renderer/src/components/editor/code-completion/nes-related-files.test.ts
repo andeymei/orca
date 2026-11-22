@@ -298,7 +298,7 @@ describe('collectNesRelatedFiles', () => {
     expect(fsSearch).toHaveBeenCalledWith(expect.objectContaining({ maxResults: 200 }))
   })
 
-  it('never returns more than eight files', async () => {
+  it('never returns more than three files', async () => {
     const manyFiles = Array.from({ length: 20 }, (_, index) => ({
       filePath: `/repo/src/file${index}.ts`,
       relativePath: `src/file${index}.ts`,
@@ -316,11 +316,12 @@ describe('collectNesRelatedFiles', () => {
       files: filesContext()
     })
 
-    expect(related).toHaveLength(8)
+    expect(related).toHaveLength(3)
   })
 
-  it('gives every file at most a thousand tokens', async () => {
-    contents.set('/repo/src/big.ts', `${'x'.repeat(200)}\n${'y'.repeat(10_000)}`)
+  it('gives every file at most four hundred tokens', async () => {
+    const line = 'x'.repeat(100)
+    contents.set('/repo/src/big.ts', Array.from({ length: 40 }, () => line).join('\n'))
 
     const related = await collectNesRelatedFiles({
       filePath: CURRENT_FILE,
@@ -329,7 +330,8 @@ describe('collectNesRelatedFiles', () => {
       files: filesContext()
     })
 
-    expect(related[0].content).toBe('x'.repeat(200))
+    // 400 tokens of 4 characters each is 1600 characters, and the cut lands between the lines.
+    expect(related[0].content).toBe(Array.from({ length: 15 }, () => line).join('\n'))
   })
 
   it('cuts a one-line file at the budget', async () => {
@@ -342,7 +344,7 @@ describe('collectNesRelatedFiles', () => {
       files: filesContext()
     })
 
-    expect(related[0].content).toHaveLength(4000)
+    expect(related[0].content).toHaveLength(1600)
   })
 
   it('drops a file the model cannot read', async () => {

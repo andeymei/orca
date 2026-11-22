@@ -23,6 +23,16 @@ function buildPromptInput(overrides: Partial<NesPromptInput> = {}): NesPromptInp
   }
 }
 
+describe('buildNesSystemPrompt', () => {
+  it('asks for the edit at the cursor first', () => {
+    const prompt = buildNesSystemPrompt()
+
+    // Why: the editor can only draw an edit that ends at the cursor, and a model that proposes
+    // its edits elsewhere leaves the user with a marker on a line they are not on.
+    expect(prompt).toContain('Prefer the edit at the cursor')
+  })
+})
+
 describe('buildNesUserPrompt', () => {
   it('marks the cursor with a sentinel that cannot appear in source', () => {
     const prompt = buildNesUserPrompt(buildPromptInput())

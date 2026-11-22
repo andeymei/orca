@@ -12,13 +12,20 @@ import {
 } from '../../../../../shared/cross-platform-path'
 import { shouldIncludeQuickOpenPath } from '../../../../../shared/quick-open/quick-open-filter'
 
-export const NES_RELATED_FILE_MAX = 8
-export const NES_RELATED_FILE_TOKEN_BUDGET = 1000
+/**
+ * How many related files a request carries, and how much of each one.
+ *
+ * A request goes out on every pause in typing, and every request pays for the whole context
+ * again. Eight files of a thousand tokens each made a request about seven thousand tokens — for
+ * a suggestion about one line — and the code around the cursor is what the answer is about.
+ */
+export const NES_RELATED_FILE_MAX = 3
+export const NES_RELATED_FILE_TOKEN_BUDGET = 400
 /**
  * How long the related-file search may hold up a suggestion. A remote host answers a full-text
  * search in seconds, and the suggestion the user is waiting for must not wait for it.
  */
-export const NES_RELATED_FILES_BUDGET_MS = 1_000
+export const NES_RELATED_FILES_BUDGET_MS = 400
 // Why: an import can appear, or a related file change, while the feature sits idle on one buffer.
 const NES_RELATED_FILES_CACHE_TTL_MS = 5_000
 

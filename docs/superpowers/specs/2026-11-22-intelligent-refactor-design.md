@@ -470,6 +470,14 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 - 不处理跨文件的重命名。
 - 远端主机（SSH / WSL）上，暂存目录和 agent 都跑在远端——这符合仓库的远端优先规矩，
   但意味着远端上必须有可用的 Claude 安装与登录态。
+- **重构 agent 不加载项目的 CLAUDE.md 与用户设置**。为了保证写闸门是写操作的唯一裁决者，
+  这次运行用 SDK 的隔离模式（`settingSources: []`）：不加载 `user` / `project` / `local`
+  三层设置文件。代价是 agent 看不到项目自己的约定，重构质量会打折扣；
+  收益是用户的 `permissions.allow` 规则无法把写操作自动放行、绕过闸门。
+  （SDK 文档：`Pass [] to disable filesystem settings (SDK isolation mode)`，
+  `Must include 'project' to load CLAUDE.md files`。）
+  将来要让 agent 读到项目约定，正确做法是由应用自己读 CLAUDE.md 并放进 prompt，
+  而不是把设置文件加载回来。
 
 ## 14. 参考
 

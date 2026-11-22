@@ -343,7 +343,8 @@ function identifierAtCursor(model: editor.ITextModel, position: IPosition): stri
 
 function isExtensionEnabled(filePath: string, extensionsKey: string): boolean {
   const extension = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase()
-  return extensionsKey.split(',').some((entry) => entry.toLowerCase() === extension)
+  // Why: an empty list splits into one empty entry, and a file without an extension would match it.
+  return extensionsKey.split(',').some((entry) => entry !== '' && entry.toLowerCase() === extension)
 }
 
 /** The location after the cursor; the list cycles, so the last one leads back to the first. */

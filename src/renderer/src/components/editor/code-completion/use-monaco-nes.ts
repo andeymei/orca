@@ -229,8 +229,12 @@ export function useMonacoNextEditSuggestions(params: {
       }
       fireNesInlineCompletionsChanged()
       refreshMarkers()
-      const { outcome, editCount } = nesSuggestionOutcome({ plan, model, modelKey, position })
-      reportNesSuggestionOutcome({ outcome, editCount, file: relativePath ?? filePath })
+      // Why: a request that failed is reported by the main process, which knows why it failed;
+      // reporting it here as "the model had nothing to propose" would say the opposite.
+      if (plan) {
+        const { outcome, editCount } = nesSuggestionOutcome({ plan, model, modelKey, position })
+        reportNesSuggestionOutcome({ outcome, editCount, file: relativePath ?? filePath })
+      }
     }
 
     const scheduleTick = (): void => {

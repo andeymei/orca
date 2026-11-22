@@ -655,25 +655,29 @@ Expected: FAIL，报模块不存在。
   这不是新发明：`src/shared/plugins/frames/plugin-frame-guest.ts:96-105` 就是这么防的，
   注释写着"Windows strips them, so `__orca.` or `app.js ` would name another file than the one checked"。
   POSIX 上这种文件名合法但对 agent 毫无用处，拒绝掉无害。
-- **这条规则必须住在两个包含判断函数里面，不能只住在 `refactorToolAllowed` 里**。
-  `isPathInsideScratch` 与 `isPathInsideWorkspace` 是导出的，Task 8 会直接调用它们来校验
-  用户传进来的 `relativePath`；规则只住在 `refactorToolAllowed` 里的话，那条直接调用路径就绕过了它。
-  两个函数的形状：
-  - `isPathInsideScratch(scratchRoot, targetPath)` —— **targetPath 必须是绝对路径**（调用方先按工作区根解析）。
-    依次：① 对 targetPath 逐段做末尾点/空格的检查，不过就返回 `false`；② 用 `path.resolve` 把两边规约成绝对路径，
-    然后判断 `resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep)`。
-  - `isPathInsideWorkspace(workspaceRoot, targetPath)` —— 同一套逻辑，只是根换成工作区根，同样先做分段检查。
-  - `path.resolve` 不会剥末尾的点和空格（剥的是操作系统），所以对**解析后**的路径做这个检查一样有效：
-    精确的 `..` 由 resolve 折叠（折叠完就跑到根外面了，包含判断会拒），`.. ` 原样留在分段里被这条规则拒掉。
+- **这条规则必须作用在「原始路径」上，不能只查解析之后的路径**。原因是一个具体的抵消例子：
+  原始路径 `/repo/.. /../evil.ts` 里，`path.resolve` 只折叠**精确**的 `..`，于是 `.. ` 是个普通分段，
+  紧跟其后的 `..` 把它弹掉，结果是 `/repo/evil.ts`——**看着在根内**；
+  但 Windows 先把 `.. ` 的尾空格剥掉，它就变成 `..`，整条路径实际落在 `/evil`。
+  所以：先在原始路径上查这条规则，再解析，再做包含判断。
+- 导出 `hasUnsafePathSegment(targetPath: string): boolean`（这条规则本身）。
+  **两个包含判断函数里也要查一遍**，因为它们是导出的、会被直接调用：
+  - `isPathInsideScratch(scratchRoot, targetPath)` —— **targetPath 必须是绝对路径**
+    （调用方自己按工作区根解析相对路径；这里不解析相对路径，因为相对路径的基准根在两个函数里不一样）。
+    依次：① `hasUnsafePathSegment(targetPath)` 命中就 `false`；② `path.resolve` 两边，
+    判断 `resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep)`。
+  - `isPathInsideWorkspace(workspaceRoot, targetPath)` —— 同一套逻辑，根换成工作区根。
   - **比较区分大小写**——大小写不敏感的文件系统上这会拒掉一个大小写不同的合法路径，那是安全的方向；agent 总是用 prompt 里给的原样路径写。
   - **不要改用仓库里的 `isPathInsideOrEqual`**（`src/shared/cross-platform-path.ts:159`）——它的
     `normalizeRuntimePathForComparison` 会把 Windows 风格路径小写化，与上面的大小写敏感要求冲突。
     写一行注释说明为什么不用它，免得后人"顺手去重"时把大小写敏感的围栏改回大小写不敏感。
 - `refactorToolAllowed`：
-  - `toolName` 是 `Write` / `Edit` / `MultiEdit` → 取路径；取不到就**拒绝**（fail-closed）；取到就 `path.resolve(workspaceRoot, target)`（相对路径按工作区根解析）后交给 `isPathInsideScratch`。
+  - `toolName` 是 `Write` / `Edit` / `MultiEdit` → 取路径；取不到就**拒绝**（fail-closed）；
+    **在原始路径上**查 `hasUnsafePathSegment`，命中就拒绝；再 `path.resolve(workspaceRoot, target)`
+    （相对路径按工作区根解析）后交给 `isPathInsideScratch`。
     **放行 `MultiEdit` 是必须的**：它是 Claude Code 真实存在的编辑工具，拒掉它等于堵死一条正当的编辑路径，agent 可能转去找 `Bash` 之类的绕路（那些也被拒），功能就废了。
-  - `toolName` 是 `Read` → 取路径；**取不到就拒绝**；取到就要求它落在**工作区根内**。
-  - `toolName` 是 `Grep` / `Glob` → 路径可选（不给就从 cwd 搜，而 cwd 就是工作区根）；给了就要求它落在**工作区根内**。
+  - `toolName` 是 `Read` → 取路径；**取不到就拒绝**；同样先查原始路径的分段规则，再要求它落在**工作区根内**。
+  - `toolName` 是 `Grep` / `Glob` → 路径可选（不给就从 cwd 搜，而 cwd 就是工作区根）；给了就同样处理。
   - 其它工具名 → **拒绝**。`Bash` 必须在拒绝名单里，否则 agent 能用 `mv` 绕过写闸门。
 
 **读也要圈在工作区里**，不只是写。读工具放行机器上任何路径，等于让 agent 能读 `~/.ssh/id_rsa`
@@ -1142,7 +1146,14 @@ Expected: FAIL，报模块不存在。
 
 在 `refactor-plan-builder.ts`：
 
-- `isSafeRelativeRefactorPath(relativePath)`：直接 `return isSafeMobileRelativePath(relativePath)`，从 `src/main/runtime/files/mobile-file-kind.ts` 导入。它拒绝绝对路径、Windows 盘符前缀，以及任何 `..` / `.` / 空路径段——比本任务要求的更严，正好覆盖。不要自己重写这段检查。
+- `isSafeRelativeRefactorPath(relativePath)`：**两道都要过**。
+  1. `isSafeMobileRelativePath(relativePath)`（从 `src/main/runtime/files/mobile-file-kind.ts` 导入）——
+     它拒绝绝对路径、Windows 盘符前缀，以及任何 `..` / `.` / 空路径段。不要自己重写这段检查。
+  2. `!hasUnsafePathSegment(relativePath)`（Task 3 的导出）——**查原始路径**。
+     清单里的路径会被拼成 `<scratchRoot>/<proposalId>/<path>` 去读暂存文件，
+     而 `.. ` 在 Windows 上就是"上一级目录"；`isSafeMobileRelativePath` 不管末尾点/空格。
+     路径解析还会把 `.. ` 和后面的 `..` 抵消掉（`.. /../evil` 解析后看着在根内，实际落在根外），
+     所以必须在解析之前查。
 - `buildRefactorPlan`：
   1. 遍历 manifest 的 proposals，维护一个 `claimedPaths: Set<string>`。
   2. **一个方案要么整个留下，要么整个丢掉**——不要半留半丢，否则审查界面里会出现一个缺文件的方案。
@@ -1455,7 +1466,7 @@ writeFileExplorerFile(
 
 - `refactor.propose`：
   1. `const target = await runtime.resolveRuntimeFileTarget(params.worktree)` → `target.worktree.path` 是工作区绝对路径。
-     1.2. **只支持本地工作区**：`target.executionHostId` 必须是 `LOCAL_EXECUTION_HOST_ID`（`'local'`，
+  2. **只支持本地工作区**：`target.executionHostId` 必须是 `LOCAL_EXECUTION_HOST_ID`（`'local'`，
      `src/shared/execution-host.ts:5`），否则**拒绝这次请求**，理由写清楚"远程主机上的重构暂不支持"。
      理由不是偷懒，是结构性的：agent 是在**这台机器上**跑的本地子进程
      （`openClaudeStreamJsonConnection` 只 spawn 本地子进程），它的 cwd 必须是本机上的目录；
@@ -1465,39 +1476,42 @@ writeFileExplorerFile(
      写着 "structured sessions run on the local host, not <hostId>"。
      远端要支持，得让**远端那台机器上的 orcad** 来跑这个特性（把方法注册进远端的运行时并转发过去），
      那是另一个工作量的特性，不在本次范围内。
-     1.5. **校验 `params.relativePath`**：它会直接拼进暂存目录的写入路径（`_source/<relativePath>`），
-     所以必须先过两道：
+  3. **校验 `params.relativePath`**：它会直接拼进暂存目录的写入路径（`_source/<relativePath>`），
+     所以必须先过三道：
      - `isSafeMobileRelativePath(params.relativePath)`（`src/main/runtime/files/mobile-file-kind.ts`）——
        拒绝对路径、Windows 盘符前缀，以及 `..` / `.` / 空路径段。Task 6 的 `isSafeRelativeRefactorPath`
        委托的就是它，**两个任务共用这一份实现，不要各写一遍**。
+     - `hasUnsafePathSegment(params.relativePath)`（Task 3 的导出）——**查原始路径**。
+       `isSafeMobileRelativePath` 不管末尾点/空格，而 `.. ` 在 Windows 上就是"上一级目录"；
+       而且路径解析会把它和后面的 `..` 抵消掉（`.. /../evil` 解析后看着在根内，实际落在根外），
+       所以必须在解析之前查。
      - `isPathInsideWorkspace(target.worktree.path, path.resolve(target.worktree.path, params.relativePath))`
-       （Task 3 的导出）——`isSafeMobileRelativePath` 不管末尾点/空格，而 `.. ` 在 Windows 上就是"上一级目录"。
-       Task 3 的包含判断里已经含了这条分段规则，所以这一道是必须的。
+       （Task 3 的导出）——解析之后仍然要确认落点在工作区内。
        任一条不过就**直接拒绝这次请求**（抛错），不要先建暂存目录再报错。
-  2. `jobId` 用 `crypto.randomUUID()`。
-  3. `scratchRoot = refactorScratchRoot(target.worktree.path, jobId)`，用 `fs.mkdir(scratchRoot, { recursive: true })` 建出来。
-  4. 写基准副本：`fs.writeFile(path.join(scratchRoot, '_source', params.relativePath), params.content)`，父目录先 `mkdir recursive`。
-  5. **建 job**（Task 7 的注册表），建的时候就把目标文件的**基准文本**带上：
+  4. `jobId` 用 `crypto.randomUUID()`。
+  5. `scratchRoot = refactorScratchRoot(target.worktree.path, jobId)`，用 `fs.mkdir(scratchRoot, { recursive: true })` 建出来。
+  6. 写基准副本：`fs.writeFile(path.join(scratchRoot, '_source', params.relativePath), params.content)`，父目录先 `mkdir recursive`。
+  7. **建 job**（Task 7 的注册表），建的时候就把目标文件的**基准文本**带上：
      `baselines: new Map([[params.relativePath, params.content]])`。
      其它文件的基准文本就是它们当时的磁盘内容。
      顺序很重要：基准在发起那一刻就已知，所以要在建 job 时就给，不能等 job 建好再补——
      那时候注册表里还没有这个 job，也没有地方放它。
-  6. 把 `.orca/refactor/` 加进工作区的 `.git/info/exclude`（见下面「暂存目录不进版本库」）。
-  7. 清理过期暂存目录（见下面「暂存目录清理」）。
-  8. **立刻返回** `{ jobId }`。
-  9. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `state: 'done'`、`plan` 与 `diskContents`。
-     建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
-     `listScratchProposals` 要**连每个方案目录里的文件一起返回**：
-     `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())`
-     拿到目录名后，对每个目录再递归列一次文件，得到相对**工作区**的路径列表，组成
-     `{ id: 目录名, files: [...] }`。只返回目录名是不够的——清单缺失时 builder 要靠它还原方案，
-     知道有 `p1` 这个目录却不知道里面有哪些文件，兜底路径就无从下手。
-     `scratchFiles` 读暂存文件时**必须带大小上限**：用 `readNodeFileWithinLimit(filePath, maxBytes)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限抛 `NodeFileReadTooLargeError`。
-     上限取 **2 MB**（与运行时 `files.formatText` 的 `z.string().max(2 * 1024 * 1024)` 一致）。
-     agent 写的文件是外部输入，不设上限就是让 agent 用一个巨型文件把主进程内存吃光；
-     这个读取器还会挡住把路径换成 FIFO 的替换攻击。
-  10. 失败时 `update` 成 `state: 'failed'` 并把原因写进 `warnings`。抛错时 `state: 'failed'`。
-  11. 每一步都要尊重 job 的 `controller.signal`。
+  8. 把 `.orca/refactor/` 加进仓库本地的 exclude 文件（见下面「暂存目录不进版本库」）。
+  9. 清理过期暂存目录（见下面「暂存目录清理」）。
+  10. **立刻返回** `{ jobId }`。
+  11. 后台异步跑：解析 agent 启动（Task 4）→ 跑 turn（Task 5）→ 建 plan（Task 6）→ `update` job 的 `state: 'done'`、`plan` 与 `diskContents`。
+      建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
+      `listScratchProposals` 要**连每个方案目录里的文件一起返回**：
+      `(await fs.readdir(scratchRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())`
+      拿到目录名后，对每个目录再递归列一次文件，得到相对**工作区**的路径列表，组成
+      `{ id: 目录名, files: [...] }`。只返回目录名是不够的——清单缺失时 builder 要靠它还原方案，
+      知道有 `p1` 这个目录却不知道里面有哪些文件，兜底路径就无从下手。
+      `scratchFiles` 读暂存文件时**必须带大小上限**：用 `readNodeFileWithinLimit(filePath, maxBytes)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限抛 `NodeFileReadTooLargeError`。
+      上限取 **2 MB**（与运行时 `files.formatText` 的 `z.string().max(2 * 1024 * 1024)` 一致）。
+      agent 写的文件是外部输入，不设上限就是让 agent 用一个巨型文件把主进程内存吃光；
+      这个读取器还会挡住把路径换成 FIFO 的替换攻击。
+  12. 失败时 `update` 成 `state: 'failed'` 并把原因写进 `warnings`。抛错时 `state: 'failed'`。
+  13. 每一步都要尊重 job 的 `controller.signal`。
 
 - `refactor.status`：从注册表取 job，返回 `{ state, progress, warnings }`。job 不存在时返回 `{ state: 'failed', progress: '', warnings: ['任务不存在'] }`。
 

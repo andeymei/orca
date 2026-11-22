@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
@@ -37,14 +37,11 @@ function localDayKey(at: number): string {
 }
 
 /** The saved days, or none when the file is missing, unreadable or not the shape we wrote. */
-function readUsageDays(): CompletionUsageDays {
+async function readUsageDays(): Promise<CompletionUsageDays> {
   const path = completionUsageFile()
   try {
-    if (!existsSync(path)) {
-      return {}
-    }
     const parsed = completionUsageDaysSchema.safeParse(
-      JSON.parse(readFileSync(path).toString('utf8'))
+      JSON.parse((await readFile(path)).toString('utf8'))
     )
     return parsed.success ? parsed.data : {}
   } catch {
@@ -53,17 +50,36 @@ function readUsageDays(): CompletionUsageDays {
 }
 
 /** What the completions spent on the day of `now`; zero when nothing was recorded. */
-export function readCompletionUsageToday(now = Date.now()): CompletionUsage {
-  return readUsageDays()[localDayKey(now)] ?? emptyCompletionUsage()
+export async function readCompletionUsageToday(now = Date.now()): Promise<CompletionUsage> {
+  const days = await readUsageDays()
+  return days[localDayKey(now)] ?? emptyCompletionUsage()
 }
+
+/**
+ * The writes, one after the other.
+ *
+ * Why: two completions that land together would each read the file and each write their own
+ * total, and the second write would drop the first one's tokens.
+ */
+let usageWrites: Promise<void> = Promise.resolve()
 
 /** Adds one completion to the day's total; a total that cannot be written is lost, not fatal. */
 export function recordCompletionUsage(entry: {
   model: string
   usage: CompletionUsage
   at: number
-}): void {
-  const days = readUsageDays()
+}): Promise<void> {
+  usageWrites = usageWrites.then(() => writeUsageDays(entry))
+  return usageWrites
+}
+
+/** Adds one completion to the day's total and writes the window back. */
+async function writeUsageDays(entry: {
+  model: string
+  usage: CompletionUsage
+  at: number
+}): Promise<void> {
+  const days = await readUsageDays()
   const day = localDayKey(entry.at)
   const spent = days[day] ?? emptyCompletionUsage()
   days[day] = {

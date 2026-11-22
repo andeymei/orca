@@ -109,7 +109,7 @@ export const CODE_COMPLETION_METHODS = [
         const { usage } = result
         // Why: a null plan can still have spent tokens — the model answered, the answer was unusable.
         if (usage.inputTokens > 0 || usage.outputTokens > 0 || usage.cacheReadTokens > 0) {
-          recordCompletionUsage({ model: settings.model, usage, at: Date.now() })
+          await recordCompletionUsage({ model: settings.model, usage, at: Date.now() })
         }
         const editCount = result.plan?.edits.length ?? 0
         span.setAttribute('edit_count', editCount)

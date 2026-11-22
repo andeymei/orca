@@ -172,6 +172,34 @@ describe('parseWorkspaceSessionSalvaging', () => {
     }
   })
 
+  it('keeps a refactor-review tab the app itself wrote', () => {
+    const reviewTab = {
+      id: 'wt-1::refactor-review:job-1',
+      entityId: 'wt-1::refactor-review:job-1',
+      groupId: 'group-1',
+      worktreeId: WT,
+      contentType: 'refactor-review',
+      label: 'a.ts',
+      customLabel: null,
+      color: null,
+      sortOrder: 0,
+      createdAt: 1_700_000_000_000
+    }
+    const result = parseWorkspaceSessionSalvaging(
+      baseSession({
+        tabsByWorktree: { [WT]: [terminalTab('tab-1')] },
+        unifiedTabs: { [WT]: [reviewTab] }
+      })
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.droppedPaths).toEqual([])
+      expect(result.value.unifiedTabs?.[WT]?.map((tab) => tab.id)).toEqual([
+        'wt-1::refactor-review:job-1'
+      ])
+    }
+  })
+
   it('salvages rather than throwing on a payload large enough to overflow the validator', () => {
     // An escaping RangeError in Store construction prevents launch; per-entry salvage avoids materializing the old overflowing issue list.
     const worktreeId = 'repo-1::/huge'

@@ -24,4 +24,25 @@ describe("layout.apply's editor view", () => {
       expect(LayoutApplyParams.safeParse(open(view)).success).toBe(false)
     }
   })
+
+  it('accepts a refactor-review tab with its view', () => {
+    const result = LayoutApplyParams.safeParse({
+      command: {
+        type: 'openEditorTab',
+        workspace: 'wt-1',
+        tabId: 'wt-1::refactor-review:job-1',
+        fileId: 'wt-1::refactor-review:job-1',
+        contentType: 'refactor-review',
+        view: {
+          view: {
+            mode: 'refactor-review',
+            refactorReview: { jobId: 'job-1', worktreeId: 'wt-1', relativePath: 'a.ts' }
+          },
+          file: FILE
+        }
+      }
+    })
+
+    expect(result.success).toBe(true)
+  })
 })

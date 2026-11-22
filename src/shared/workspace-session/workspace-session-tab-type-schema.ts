@@ -7,6 +7,7 @@ export const tabContentTypeSchema = z.enum([
   'conflict-review',
   'check-details',
   'git-graph',
+  'refactor-review',
   'agent-session',
   'browser',
   'simulator'

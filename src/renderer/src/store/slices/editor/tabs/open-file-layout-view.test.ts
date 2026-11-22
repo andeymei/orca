@@ -11,7 +11,7 @@ const REFACTOR_REVIEW = {
 describe('the refactor review view', () => {
   it('names the job it reviews so another window can rebuild the tab', () => {
     const file = makeOpenFile({
-      id: 'wt-1::refactor-review::job-1',
+      id: 'wt-1::refactor-review:job-1',
       worktreeId: 'wt-1',
       mode: 'refactor-review',
       refactorReview: REFACTOR_REVIEW

@@ -107,7 +107,14 @@ const OpenEditorTabCommand = z.object({
   type: z.literal('openEditorTab'),
   ...OnTab,
   fileId: z.string().min(1),
-  contentType: z.enum(['editor', 'diff', 'conflict-review', 'check-details', 'git-graph']),
+  contentType: z.enum([
+    'editor',
+    'diff',
+    'conflict-review',
+    'check-details',
+    'git-graph',
+    'refactor-review'
+  ]),
   file: EditorFileRecord.optional(),
   view: EditorViewRecord.optional(),
   groupId: z.string().min(1).optional(),

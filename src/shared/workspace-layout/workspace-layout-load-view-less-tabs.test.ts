@@ -38,7 +38,8 @@ function savedSession(): WorkspaceSessionState {
     entry('ghost-graph', 'git-graph', `${KEY}::git-graph`, 4),
     entry('ghost-html', 'editor', 'html-preview::/w/page.html', 4),
     entry('kept-diff', 'diff', '/w/b.ts', 5),
-    entry('ed-b', 'editor', '/w/b.ts', 6)
+    entry('ed-b', 'editor', '/w/b.ts', 6),
+    entry('ghost-refactor', 'refactor-review', `${KEY}::refactor-review:job-1`, 7)
   ]
   return {
     ...getDefaultWorkspaceSession(),
@@ -70,6 +71,12 @@ describe("main's layout load of view-less saved editor tabs", () => {
 
     expect(workspace.groups.map((group) => group.tabOrder)).toEqual([['ed-a', 'kept-diff', 'ed-b']])
     expect(workspace.tabs.map((tab) => tab.id).sort()).toEqual(['ed-a', 'ed-b', 'kept-diff'])
+  })
+
+  it('drops a refactor-review tab, whose plan lives only in memory', () => {
+    const workspace = load(savedSession()).layout.workspaces[KEY]!
+
+    expect(workspace.tabs.map((tab) => tab.id)).not.toContain('ghost-refactor')
   })
 
   it('writes the drop back on its next save, and a reload does not bring them back', () => {

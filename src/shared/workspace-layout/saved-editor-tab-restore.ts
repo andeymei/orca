@@ -2,13 +2,14 @@
 
 import type { Tab, TabContentType } from '../tab-types'
 
-/** Diff, conflict and check tabs: their documents live in memory only and are never saved. */
+/** Diff, conflict, check and review tabs: their documents live in memory only and are never saved. */
 export function isTransientEditorContentType(contentType: TabContentType): boolean {
   return (
     contentType === 'diff' ||
     contentType === 'conflict-review' ||
     contentType === 'check-details' ||
-    contentType === 'git-graph'
+    contentType === 'git-graph' ||
+    contentType === 'refactor-review'
   )
 }
 

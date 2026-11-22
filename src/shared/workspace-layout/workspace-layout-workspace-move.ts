@@ -15,6 +15,7 @@ import { removeTabFromWorkspace, withWorkspace } from './workspace-layout-remova
 import { withoutKey } from './stored-record-fields'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../layout-owner-switch'
 
+/** A review tab is left out: its entityId is a synthetic job id, not a file path, so a move must not rekey it. */
 export const EDITOR_KINDS: ReadonlySet<LayoutTab['kind']> = new Set<LayoutTab['kind']>([
   'editor',
   'diff',

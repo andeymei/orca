@@ -401,7 +401,9 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 `worktree` 是 worktree 选择器字符串（与运行时文件 API 的 `worktreeSelector` 同一个），
 `relativePath` 是相对工作区的路径。
 
-`state` 取值：`running` | `done` | `failed` | `cancelled`。
+`state` 取值：`running` | `done` | `failed` | `timed_out` | `cancelled`。
+超时单独成一个取值，因为它和 SDK 报错要走的处理不一样：超时值得直接重试，报错得先看错误信息。
+两者都塞进 `failed` 的话，界面上只剩"失败"两个字，用户分不出该重试哪一个。
 
 参数与结果类型放在 `src/shared/rpc-contract/refactor-params.ts`，并按仓库规矩跑
 `pnpm generate:rpc-params-catalog` 更新生成目录。

@@ -82,7 +82,11 @@
     - `RefactorProposeParams`：`{ worktree: string; relativePath: string; content: string; instruction?: string }`
     - `RefactorProposeResult`：`{ jobId: string }`
     - `RefactorJobIdParams`：`{ jobId: string }`
-    - `RefactorStatusResult`：`{ state: 'running' | 'done' | 'failed' | 'cancelled'; progress: string; warnings: string[] }`
+    - `RefactorStatusResult`：`{ state: 'running' | 'done' | 'failed' | 'timed_out' | 'cancelled'; progress: string; warnings: string[] }`
+      —— **`timed_out` 是独立取值**：计划 Global Constraints 要求"这一轮是怎么结束的必须体现在 `state` 里"，
+      而超时与 SDK 报错若都落在 `'failed'`，用户界面上看到的就都是"失败"，
+      只有 warnings 里的文字不同——那不算体现在 `state` 里。
+      Task 5 / 7 / 8 / 13 都按这个五值集合走，不要各自重抄。
     - `RefactorPlanResult`：`{ plan: RefactorPlan | null }`
     - `RefactorApplyParams`：`{ jobId: string; acceptedHunkIds: string[] }`
     - `RefactorApplyResult`：`{ applied: { path: string; hunksApplied: number }[]; refusals: { path: string; reason: string }[] }`
@@ -986,11 +990,13 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
   - `src/shared/refactor/refactor-prompt.ts` 导出 `buildRefactorPrompt(input: { relativePath: string; sourceRelativePath: string; scratchRelativeRoot: string; instruction?: string }): { system: string; user: string }`
   - `src/main/refactor/refactor-runner.ts` 导出：
     - `RefactorTurnResult`：`{ state: RefactorStatusResult['state']; manifest: RefactorManifest | null; progress: string; warnings: string[] }`
-      —— `state` 用 `RefactorStatusResult['state']` 的索引访问，不要把 `'running' | 'done' | 'failed' | 'cancelled'`
+      —— `state` 用 `RefactorStatusResult['state']` 的索引访问，不要把 `'running' | 'done' | 'failed' | 'timed_out' | 'cancelled'`
       重抄一遍（Task 7 的注册表也用这个类型）。
       **这一轮是怎么结束的必须体现在 `state` 里**：Task 8 拿它直接 `update` job 的状态。
       没有它的话，超时、SDK 报错、进程崩溃都会变成"正常结束"——用户看到的是"agent 什么都没产出"，
       而不是"agent 报错了"。
+      **超时是独立的 `'timed_out'`**，不是 `'failed'`——两者的处理动作不同（一个要重试，一个要看错误信息），
+      混在一起用户就没法只重试超时的那些。
     - `runRefactorTurn(input: { launch: RefactorAgentLaunch; scratchRoot: string; workspaceRoot: string; prompt: { system: string; user: string }; onProgress?: (text: string) => void; signal: AbortSignal }): Promise<RefactorTurnResult>`
       - **`workspaceRoot` 必须等于 `launch.cwd`**（传 `launch.cwd` 进去，不要另传一个）。
         闸门把相对路径按 `workspaceRoot` 解析，而 SDK 把相对路径按进程的 cwd 解析——
@@ -999,6 +1005,22 @@ git commit -m "feat(refactor): launch the refactoring agent without full access"
         **这一条要在代码里强制，不要只靠调用方记得**：加一个 `assertRefactorWorkspaceRoot(launch, workspaceRoot)`，
         不相等就抛错。这是安全边界，静默放过等于把闸门的围栏开一个口子。
         （调用方因此必须传 `launch.cwd`——Task 8 就是这么做的。）
+      - **`scratchRoot` 必须在 `workspaceRoot` 里面**：prompt 里告诉 agent 的暂存根是**相对**路径
+        （`<scratchRelativeRoot>`），而闸门与清单读取用的是**绝对**的 `scratchRoot`。
+        两者若不是同一个位置，闸门会拒绝 agent 每一次相对写入（相对路径按 `workspaceRoot` 解析），
+        而 runner 去读一个没人写过的清单——一轮看起来像"agent 什么都没产出"的正常失败。
+        加一个 `assertRefactorScratchRoot(workspaceRoot, scratchRoot)`：
+        `path.relative(workspaceRoot, scratchRoot)` 不得以 `..` 开头、不得是绝对路径。
+        Task 8 那边必须用 `path.join(workspaceRoot, scratchRelativeRoot)` 算这个值，不要各算各的。
+      - **闸门的权威性要在 runner 里再断言一次**：`launch.options.permissionMode` 必须是 `'default'`，
+        且 `launch.options.allowedTools` 里不能有裸工具名。
+        SDK 明确警告过（`CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`）：
+        "Bare allowedTools entries auto-approve the whole tool before the callback is consulted"，
+        `permissionMode: 'bypassPermissions'` 更是直接放行一切——
+        两种情况下 `canUseTool` 根本不会被调用，整个写闸门形同虚设。
+        Task 4 的 launch 今天是安全的，但 runner 是**接线 `canUseTool` 的那个模块**，
+        它的安全性不该依赖另一个模块的选项永远不变。
+        断言失败就抛错，不要降级成 warning。
     - `parseRefactorToolProgress(message: Record<string, unknown>, workspaceRoot: string): string | null` —— 从一条 SDK 消息里抽出进度文案；没有工具调用时返回 `null`。
       **第二个参数是工作区根**：进度文案里要显示**相对工作区**的路径，而工具入参给的是绝对路径。
       单独导出是为了能脱开 SDK 单测。
@@ -1071,6 +1093,26 @@ describe('parseRefactorToolProgress', () => {
   })
 })
 ```
+
+同一个测试文件里还要补上这几组用例（审查指出"判定逻辑不可测"是这一轮唯一的产品级缺陷）：
+
+- `describe('classifyRefactorResult')`
+  - `subtype: 'success'` 且 `is_error` 不为 true → `state: 'done'`，warnings 为空。
+  - `subtype: 'success'` 且 `is_error: true` → `state: 'failed'`，warnings 里带 `is_error` 的错误文本。
+  - 四种错误 subtype 各一条 → `state: 'failed'`，warnings 里同时有 `subtype` 与 `stop_reason`。
+- `describe('decideRefactorTurnOutcome')`
+  - 结果先到、之后才取消 → 采信结果（`'done'`），**后来的取消不回滚已完成的 turn**。
+  - 取消先到 → `'cancelled'`，warnings 含"任务已取消"。
+  - 没有结果、超时先到 → `'timed_out'`，warnings 含"任务超时"。
+  - 没有结果、崩溃先到 → `'failed'`，warnings 带崩溃信息。
+  - 没有结果、什么都没发生 → `'failed'`（不能默认成 `'done'`）。
+- `describe('parseRefactorToolProgress')` 补上四条分支：
+  `Read` 工具、`Edit`/`MultiEdit` 工具、未知工具名、`input` 里没有路径字段。
+  未知工具与缺路径都返回 `null`（不编造进度文案）；`Read` 与 `Write` 的文案不同。
+- **prompt 的断言不能只靠 `toContain` 子串**：上面 `buildRefactorPrompt` 的四条用例要改成
+  断**整句**（例如用正则匹配"只能写"与暂存根同现的那一句），
+  否则删掉"禁止写暂存目录以外"这句话、只要别处还出现过那个路径，测试照样通过。
+  断言要能在那句话被删掉时真的失败。
 
 - [ ] **Step 2: 跑测试确认它失败**
 
@@ -1157,7 +1199,8 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
   5. 结束后读 `<scratchRoot>/manifest.json`，用 `RefactorManifest.safeParse` 解析；解析失败返回 `manifest: null` 并在 `warnings` 里写明原因。
      读它也要带大小上限（清单是 agent 写的外部输入）：用 `readNodeFileWithinLimit(path, 1 * 1024 * 1024)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限按"解析失败"处理。
   6. 超时：`REFACTOR_TURN_TIMEOUT_MS = 300_000`（5 分钟）。到点中止并关连接，
-     **`state: 'failed'`**，warnings 写明"任务超时"。
+     **`state: 'timed_out'`**，warnings 写明"任务超时"。
+     超时不是 `'failed'`：超时值得单独重试，SDK 报错要看错误信息，混在一起就分不出该重试哪一个。
   7. `signal` 触发时同样中止并关连接，**`state: 'cancelled'`**，`warnings: ['任务已取消']`。
   8. 无论成功失败都要关闭连接（`close()` 走现成的退出证明 ladder）。
      **判定结果之前先把连接排空**：`close()` 返回 true 之后再定这一轮是成功还是失败。
@@ -1165,6 +1208,21 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      不排空就先看到退出事件，一次成功的 turn 会被报成失败。
      `close()` 返回 false 表示还没拿到退出证明，这时要读 `connection.exitVerdict` 看清根进程与后代树的证据，
      再决定这一轮算不算失败。
+     **`close()` 自己抛出时不能把判定结果一起丢掉**：把它包在 try/catch 里，
+     把异常写进 warnings 然后**照常返回已经算好的 verdict**——
+     连接关不掉是另一件事（进程可能还活着），它不该抹掉这一轮到底成功没成功的结论。
+     `close()` 返回 false 也要写一条 warning（"子进程未确认退出"），它同样是"没拿到退出证明"。
+  9. **判定逻辑要能被测试直接钉住**：把"这一轮怎么结束的"抽成**纯函数**并导出，
+     transport（开连接、发帧、等结果）留在 `runRefactorTurn` 里。
+     没有这一步，"排空再判定"这种一行重排就能把成功的 turn 全报成失败的地方，
+     没有任何一个测试会响。
+     两个纯函数：
+     - `classifyRefactorResult(result: SDKResultMessage): { state: 'done' | 'failed'; warnings: string[] }`
+       —— 收成功帧与四种错误帧，返回 `'done'` 或 `'failed'` 及 warnings。
+     - `decideRefactorTurnOutcome(input: { result: { state: 'done' | 'failed'; warnings: string[] } | null; cancelled: boolean; timedOut: boolean; fault: string | null }): { state: RefactorStatusResult['state']; warnings: string[] }`
+       —— 决定最终 state 与 warnings。**取消优先于结果**：取消先到就是 `'cancelled'`；
+       结果先到就采信结果（后来的取消不回滚一个已完成的 turn）；
+       结果没有而超时了就 `'timed_out'`；再没有而崩溃了就 `'failed'`。
 
 - [ ] **Step 5: 跑测试确认它通过**
 
@@ -1416,7 +1474,7 @@ git commit -m "feat(refactor): assemble the plan from the scratch files"
 - Consumes: Task 1 的 `RefactorStatusResult` 的 `state` 取值
 - Produces:
   - `RefactorJob`：`{ jobId: string; state: RefactorStatusResult['state']; progress: string; warnings: string[]; plan: RefactorPlan | null; diskContents: Map<string, string>; baselines: Map<string, string>; worktree: string; controller: AbortController; scratchRoot: string }`
-    - `state` 用 `RefactorStatusResult['state']` 的索引访问，不要把 `'running' | 'done' | 'failed' | 'cancelled'` 重抄一遍——两份拷贝会漂。
+    - `state` 用 `RefactorStatusResult['state']` 的索引访问，不要把 `'running' | 'done' | 'failed' | 'timed_out' | 'cancelled'` 重抄一遍——两份拷贝会漂。
     - `baselines` 是每个文件的**基准文本 B**（目标文件是编辑器缓冲区，其余文件是当时的磁盘内容）。
     - `diskContents` 是每个文件在**建 plan 那一刻**的磁盘内容 D，供接受时做陈旧判定。
     - `worktree` 是原始的 worktree 选择器字符串，写回时要用。
@@ -1718,6 +1776,13 @@ writeFileExplorerFile(
        任一条不过就**直接拒绝这次请求**（抛错），不要先建暂存目录再报错。
   4. `jobId` 用 `crypto.randomUUID()`。
   5. `scratchRoot = refactorScratchRoot(target.worktree.path, jobId)`，用 `fs.mkdir(scratchRoot, { recursive: true })` 建出来。
+     **prompt 里的 `scratchRelativeRoot` 必须取自 `refactorScratchRelativeRoot(jobId)`**——
+     它和 `scratchRoot` 是同一个目录的两种写法（相对 / 绝对），
+     两者一旦对不上，闸门会拒掉 agent 每一次写入、runner 又去读一个没人写过的清单，
+     表现为一轮"agent 什么都没产出"的正常失败。
+     `src/main/refactor/refactor-scratch.ts` 里加一条测试断言
+     `refactorScratchRoot(root, jobId) === path.join(root, refactorScratchRelativeRoot(jobId))`，
+     把这个约定钉住，别让两个函数各走各的。
   6. 写基准副本：`fs.writeFile(path.join(scratchRoot, '_source', params.relativePath), params.content)`，父目录先 `mkdir recursive`。
   7. **建 job**（Task 7 的注册表），建的时候就把目标文件的**基准文本**带上：
      `baselines: new Map([[params.relativePath, params.content]])`。
@@ -1739,7 +1804,7 @@ writeFileExplorerFile(
       **目标工作区必须在 handler 里解析**（第 1 步），不能推到后台：后台开始时 handler 的上下文已经结束了。
       账号策略可以在后台取——`runtime.requireStore().getSettings()` 拿的是长驻 store 的设置，不随 handler 结束而失效。
       **job 的 `state` 直接取 turn 的 `state`**（Task 5 的 `RefactorTurnResult.state`）：
-      turn 是 `'done'` 才建 plan 并把 job 标成 `'done'`；turn 是 `'failed'` / `'cancelled'` 就直接把那个状态
+      turn 是 `'done'` 才建 plan 并把 job 标成 `'done'`；turn 是 `'failed'` / `'timed_out'` / `'cancelled'` 就直接把那个状态
       和 turn 的 warnings 写进 job，**不要建 plan**（没有可信的产出）。
       把所有结束方式都当成 `'done'` 会让用户面对一个空白的审查界面。
       建 plan 时传的 `readBaseline` 是 `(path) => baselines.get(path) ?? 磁盘内容`——目标文件用用户眼前的缓冲区内容，其余文件用当时的磁盘内容。`readDiskContent` 是 `(path) => 磁盘内容`。
@@ -1749,6 +1814,11 @@ writeFileExplorerFile(
       `{ id: 目录名, files: [...] }`。只返回目录名是不够的——清单缺失时 builder 要靠它还原方案，
       知道有 `p1` 这个目录却不知道里面有哪些文件，兜底路径就无从下手。
       `scratchFiles` 读暂存文件时**必须带大小上限**：用 `readNodeFileWithinLimit(filePath, maxBytes)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限抛 `NodeFileReadTooLargeError`。
+      **`scratchFiles(proposalId, relativePath)` 必须先确认拼出来的路径还在暂存目录里**：
+      `proposalId` 来自 agent 写的 manifest，是外部输入；`..` 或绝对路径会拼到暂存目录外面去。
+      用 Task 3 的 `isPathInsideScratch(scratchRoot, path.resolve(scratchRoot, proposalId, relativePath))`
+      判一次，越界就当作读不到（返回 `null`），不要去读。
+      清单里的 `files` 路径另有 `isSafeRelativeRefactorPath` 兜底，但方案 id 这一层是它管不到的。
       上限取 **2 MB**（与运行时 `files.formatText` 的 `z.string().max(2 * 1024 * 1024)` 一致）。
       agent 写的文件是外部输入，不设上限就是让 agent 用一个巨型文件把主进程内存吃光；
       这个读取器还会挡住把路径换成 FIFO 的替换攻击。
@@ -2459,9 +2529,11 @@ Expected: FAIL，报模块不存在。
 - **tab 卸载时调 `refactorReviewStore.remove(jobId)`**（Task 11 的 store 是按 jobId 存 Map 的模块级单例，
   不删就会随着每次重构一直长）。「丢弃」按钮关 tab 时也会走到这里。
 - 用 Task 9 的 `pollRefactorJob` 轮询状态；`state === 'done'` 后用 `fetchRefactorPlan` 取 plan 并写进 store。
-- **`state` 是 `'failed'` 或 `'cancelled'` 时**：把 `warnings` **内联显示在 tab 里**（不是 toast——
+- **`state` 是 `'failed'` / `'timed_out'` 或 `'cancelled'` 时**：把 `warnings` **内联显示在 tab 里**（不是 toast——
   用户得能读、能理解、能重试），并停止轮询。轮询器在状态不是 `'running'` 时就会停，所以
   这一支必须由 tab 自己处理。
+  超时要单独给一句「超时了，重试会更快」之类的文案——它是三种结束里唯一值得直接重试的一种，
+  混在"失败"里用户会先去查日志。
 - 「接受全部方案」把 plan 里所有 hunk 标为接受，然后调 `applyRefactor`，成功后关掉这个 tab（用现成的关闭编辑 tab 的 store action）。
 - 「丢弃」调 `discardRefactor` 后关 tab。
 - **部分接受警告**：对每个方案，若它有 hunk 但被接受的 hunk 是真子集，在方案节点上显示提示"这个改动由 N 处修改共同组成，只接受其中一处可能无法编译"，并给一个"接受该方案全部改动"的按钮。
@@ -2485,6 +2557,14 @@ Expected: FAIL，报模块不存在。
   所以当前文件的缓冲区内容是 `editorDrafts[activeFile.id]`；
   **取不到（有 draft 才取得到）就退回磁盘内容**——没有未保存修改时 draft 是 undefined，
   这时该用文件在磁盘上的内容。
+  磁盘内容在 store 的 `fileContents[fileId]` 里（同样是按 file id 索引，
+  见 `src/renderer/src/components/editor/save/commands/useEditorCmdSaveRequest.ts:48-70`）：
+  `fileContents[activeFile.id]?.content`。
+  **取之前要判三件事**：`loaded.isBinary`（二进制文件不重构）、`loaded.loadError`（读失败）、
+  `loaded.isStale`（缓存已过期）。三者任一为真就把内容当空串处理，
+  别拿一份旧的或半截的内容去让 agent 重构。
+  最终内容 = `draft ?? (loaded 可用 ? loaded.content : '')`，
+  两者都没有时**禁用按钮**（没有内容可重构）。
 - 按钮在没有 Claude 登录态时也要能点——发起失败由 toast 报出来（失败就不开 tab，见 Interfaces）。
 
 - [ ] **Step 5: 写 fixture**

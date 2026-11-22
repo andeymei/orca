@@ -329,7 +329,8 @@ describe('the refactoring RPC methods', () => {
       path.join(root, 'src', 'foo.ts')
     )
     expect(await readBaseline('src/foo.ts')).toBe(sameFile ? 'the user buffer\n' : ORIGINAL)
-    expect(await readBaseline('src/bar.ts')).not.toBe('the user buffer\n')
+    // A file the manifest names and the job is not about gets its own disk content.
+    expect(await readBaseline('src/bar.ts')).toBe(ORIGINAL)
   })
 
   it('gives the buffer to a hardlinked twin of the file', async () => {
@@ -382,7 +383,14 @@ describe('the refactoring RPC methods', () => {
       path.join(root, 'src', 'Foo.ts'),
       path.join(root, 'src', 'foo.ts')
     )
-    expect(await readBaseline('src/foo.ts')).toBe(sameFile ? 'the user buffer\n' : null)
+    if (sameFile) {
+      // One file: the canonical path answers, and the buffer is its baseline.
+      expect(await readBaseline('src/foo.ts')).toBe('the user buffer\n')
+    } else {
+      // Two files: the manifest named another one, and a file with no baseline of its own
+      // gets its own disk content — not null, the file is there.
+      expect(await readBaseline('src/foo.ts')).toBe(ORIGINAL)
+    }
   })
 
   it('gives the buffer to a file that was replaced under it', async () => {

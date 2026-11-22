@@ -1949,21 +1949,29 @@ writeFileExplorerFile(
        inode 相同，只有 inode 键能认出来。不区分大小写的卷上两种拼法也落到同一个 inode。
        **inode 命中还要对一下"见证"**：inode 本身不是身份——文件被删了，文件系统会把它的 inode
        发给下一个建出来的文件。所以发起时记下**目标文件当时的磁盘内容**当见证，
-       命中 inode 键时再读那个文件现在的内容，见证对得上才算命中：
-       - 硬链接的另一个名字：同一个 inode，**内容也一样**，见证对得上，照样拿到缓冲区；
-       - 回收的 inode：那个文件有它自己的内容，见证对不上，inode 键不回答，
-         那个文件退回它自己的磁盘内容——**用户没保存的修改不会被写进无关的文件**。
-         这道门（回收的 inode）就是这么关上的：它需要删除 + inode 被回收 + 清单点名那个新文件，
-         而现在就算凑齐了，缓冲区也不会落到那个文件上。
-         两个键都存、都查，命中任意一个就算同一个文件；只用其中一个，另一个方向的漏查就会
-         重新变成"用户没保存的修改被悄悄抹掉"。
-         **查不到就是另一个文件**，退回它自己的磁盘内容——这时用户的缓冲区不参与。
-         **写法不同已经不再是入口**：不区分大小写的卷上两种拼法，规范路径和 inode 都认得出来，
-         用户没保存的修改不会再被悄悄抹掉。
-         **还开着的那道门是另一个文件**：RPC 只带**一个**文件的缓冲区（`relativePath` + `content`），
-         所以清单里**别的**文件拿到的基准只能是它自己的磁盘内容——这是契约的形状（一次一个缓冲区），
-         不是键的问题。用户如果在那个文件里也有没保存的修改，应用根本没见过这部分内容，
-         部分接受时它会被磁盘内容覆盖。
+       命中 inode 键时再读那个文件现在的内容，见证对得上才算命中。**两种情形**：
+       硬链接的另一个名字，同一个 inode，**内容也一样**，见证对得上，照样拿到缓冲区；
+       回收的 inode，那个文件有它自己的内容，见证对不上，inode 键不回答，
+       那个文件退回它自己的磁盘内容——**用户没保存的修改不会被写进无关的文件**。
+       这道门（回收的 inode）就是这么关上的：它需要删除 + inode 被回收 + 清单点名那个新文件，
+       而现在就算凑齐了，缓冲区也不会落到那个文件上。
+       两个键都存、都查：路径键命中就是命中，inode 键命中还要对一下见证。只用其中一个，
+       另一个方向的漏查就会重新变成"用户没保存的修改被悄悄抹掉"。
+       **查不到就是另一个文件**，退回它自己的磁盘内容——这时用户的缓冲区不参与。
+       **写法不同已经不再是入口**：不区分大小写的卷上两种拼法，规范路径和 inode 都认得出来，
+       用户没保存的修改不会再被悄悄抹掉。
+       **回收的 inode 这道门已经关上，但见证分不开"字节一样"的那一种**：见证就是目标文件当时的
+       磁盘内容，所以一个**内容与它一模一样**的文件（`git stash` 那种把同一份内容恢复到别的路径）
+       如果刚好拿到了被回收的 inode，见证就对得上，缓冲区还是会落到它身上。
+       内容就是见证本身，**分不开字节相同的副本**；能分开的只有 inode，而 inode 正是会被回收的那个。
+       **还开着的那道门是路径键**：路径键不看见证——用户评审期间保存了文件时那次保存就换了 inode，
+       路径键必须继续回答——所以目标文件在 turn 里被删掉又**在同一个路径上重建**时，
+       它会通过路径键拿到缓冲区，写回时旧缓冲区会落进新文件。
+       这是裁决本身带来的，不是键的问题；它和 inode 那道门不同，也不依赖分配器。
+       **还开着的那道门是另一个文件**：RPC 只带**一个**文件的缓冲区（`relativePath` + `content`），
+       所以清单里**别的**文件拿到的基准只能是它自己的磁盘内容——这是契约的形状（一次一个缓冲区），
+       不是键的问题。用户如果在那个文件里也有没保存的修改，应用根本没见过这部分内容，
+       部分接受时它会被磁盘内容覆盖。
   8. 把 `.orca/refactor/` 加进仓库本地的 exclude 文件（见下面「暂存目录不进版本库」）。
   9. 清理过期暂存目录（见下面「暂存目录清理」），并把被清理掉的 job 从注册表里摘掉。
   10. **立刻返回** `{ jobId }`。
@@ -2909,6 +2917,100 @@ git commit -m "feat(refactor): review the proposals and accept them by plan, fil
 
 **这里不要跑 `pnpm check:changed`**（Global Constraints 说了：整轮门禁由控制者在分支末尾统一跑，
 中途跑会把几十个无关文件的 related 测试拖进来）。
+
+---
+
+### Task 14: 闸门按物理位置判（真跑才发现的那个洞）
+
+**Files:**
+
+- Create: `src/main/refactor/refactor-physical-path.ts`
+- Test: `src/main/refactor/refactor-physical-path.test.ts`
+- Modify: `src/main/refactor/refactor-write-gate.ts`、`refactor-tool-hook.ts`、`refactor-runner.ts`、
+  `refactor-file-reads.ts`、`refactor-path-rules.ts`、
+  `src/main/runtime/rpc/methods/refactor/refactor-methods.ts`
+- Create: `src/main/refactor/refactor-tool-progress.ts`（进度文案从 runner 里搬出来，见下）
+
+**为什么会有这个任务：** Task 3 的闸门按**路径字符串**比较。分支末尾的一次真跑（对着真的 `claude` CLI）
+发现了一个单测永远发现不了的洞：macOS 上 `/tmp` 是 `/private/tmp` 的符号链接，
+**CLI 把它自己的工作目录解析成了真实路径**，而闸门拿 `workspaceRoot` 的字面写法做前缀比较 ——
+于是它把**物理上就在工作区里**的文件判成了工作区外，第一次读目标文件就被拒。
+写方向更糟：CLI 若把写路径也规范化，agent **连方案都写不出来**，那一轮没有 manifest、没有方案，
+失败看起来像"模型什么都没干"。
+
+**Interfaces:**
+
+- Produces:
+  - `resolvePhysicalPath(targetPath: string): Promise<string | null>` —— 一个路径**真正所在的位置**。
+    `null` 表示解不出来，调用方一律**拒绝**。
+  - `resolveRefactorGateRoots(input: { scratchRoot: string; workspaceRoot: string }): Promise<RefactorGateRoots>`
+    —— 两个根的**物理**位置。解析一次，之后每次工具调用都复用。
+- **改签名（调用方要跟着改）**：
+  - `isPathInsideScratch(scratchRoot: string, targetPath: string): Promise<boolean>`
+  - `isPathInsideWorkspace(workspaceRoot: string, targetPath: string): Promise<boolean>`
+  - `refactorToolAllowed(input: { toolName: string; toolInput: Record<string, unknown>; roots: RefactorGateRoots }): Promise<boolean>`
+    —— 参数从 `scratchRoot`/`workspaceRoot` 换成**已经解析好的** `roots`。
+
+- [ ] **Step 1: 写失败的测试**
+
+  `src/main/refactor/refactor-physical-path.test.ts`：
+
+  - `applies '..' to the directory a link points at, the way the kernel does` ——
+    内核**先跟符号链接、再套 `..`**，所以 `/ws/link/../secret` 在 `link → /etc` 时落在 `/secret`。
+    **Node 的 `fs.realpath` 在 macOS 上不是内核的解析器**：libc 先跟链接，
+    Node 的 JS 版**先把 `..` 折掉**。所以不能对整条路径调用 `realpath` ——
+    要把路径按 `..` 切成若干段，每段（不含 `..`）用 OS 的解析器解，`..` 由自己在两段之间套。
+  - `puts a file that is not there where the part of the path that is says` ——
+    写操作要写还不存在的文件，内核把它放在**确实存在的那一段**说的位置。
+  - `keeps the spelling of a path the disk has never seen`
+  - `refuses a path that is not absolute`
+
+  `src/main/refactor/refactor-write-gate.test.ts` 里加**成对**的两条：
+
+  - `allows a read of a file the CLI names by its real path` ——
+    **工作区根本身是符号链接时，读必须被允许**（这正是真跑踩到的那一类）。
+  - `denies a write through a link that leaves the scratch root` ——
+    **暂存根里指向外面的符号链接必须被拒**（这条也关掉了"暂存根检查是字面的"那条遗留）。
+  - `denies a write that climbs out of the scratch root through a link` ——
+    路径是手写的，因为 `path.join` 会把 `..` 折掉。
+
+- [ ] **Step 2: 跑测试确认它们失败**
+
+  Run: `pnpm test src/main/refactor --maxWorkers=2`
+  Expected: FAIL（新用例），其余照旧。
+
+- [ ] **Step 3: 实现**
+
+  `src/main/refactor/refactor-physical-path.ts`：
+
+  - `splitPhysicalPath(rawPath)` —— `path.parse` 是唯一把各段**按原样**留下的路径函数，
+    而 `..` 原样留着正是重点。
+  - `resolvePhysicalPath(targetPath)` —— 按 `..` 把路径切成若干"段"，
+    每段用 `realpath` 解（`realpath` 失败且是"确实不存在"时，逐步缩短前缀试，
+    最后退回字面拼接 —— 因为写操作要写还不存在的文件）。
+  - **解不出来就返回 `null`，调用方一律拒绝**：fail closed。
+
+  `refactor-write-gate.ts`：两个根解析成物理位置，比较也用物理位置；
+  比较必须带**分隔符**（`/ws/scratch` 与 `/ws/scratch-evil` 不是一回事）。
+  `refactor-tool-hook.ts` 与 runner 的 `canUseTool` 都改成 async，接收 `roots`。
+
+- [ ] **Step 4: 进度文案也按物理位置算**
+
+  真跑的第二个发现：进度文案用 `path.relative(workspaceRoot, target)` 算相对路径，
+  而 CLI 要的是规范化后的路径，于是用户在界面上看到
+  `正在读取 ../../../private/tmp/.../src/inventory.ts` —— 一串没用的 `../..`。
+  把这段搬进 `src/main/refactor/refactor-tool-progress.ts`（runner 撞上了仓库 300 行的 lint 上限），
+  先按**物理**工作区根算相对路径，再按字面写法算，最后才退回绝对路径。
+
+- [ ] **Step 5: 跑测试确认它们通过**
+
+  Run: `pnpm test src/main/refactor src/main/claude src/main/runtime/rpc/methods/refactor --maxWorkers=2`
+  Expected: PASS。
+
+- [ ] **Step 6: 用真的 CLI 再跑一次**
+
+  这一步**不能用单元测试代替**：真跑发现的正是"CLI 的路径处理"与"我们的"之间���不一致。
+  见 `.superpowers/sdd/2026-11-22-intelligent-refactor/end-to-end-run.md`。
 
 ---
 

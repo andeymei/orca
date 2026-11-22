@@ -7,7 +7,7 @@ import { RefactorManifest } from '../../shared/refactor/refactor-manifest'
 import type { RefactorStatusResult } from '../../shared/rpc-contract/refactor-params'
 import { refactorToolAllowed, refactorToolTargetPath } from './refactor-write-gate'
 import type { RefactorAgentLaunch } from './refactor-agent-launch'
-import { createRefactorToolHook } from './refactor-tool-hook'
+import { createRefactorToolHook, refactorToolDenyMessage } from './refactor-tool-hook'
 import {
   closeRefactorTurnConnection,
   type RefactorTurnConnection,
@@ -152,14 +152,15 @@ function resolveRefactorScratchRoot(workspaceRoot: string, scratchRoot: string):
 /**
  * The prompt names a relative scratch root while the gate and the manifest read use an absolute
  * one; when they are not the same directory every relative write is refused and the manifest is
- * read from a tree nobody wrote.
+ * read from a tree nobody wrote. The scratch root must be strictly inside the workspace: the
+ * workspace root itself would let the gate approve a write to the user's own sources.
  */
 function assertRefactorScratchRoot(workspaceRoot: string, scratchRoot: string): void {
   const relative = path.relative(path.resolve(workspaceRoot), scratchRoot)
   const [firstSegment] = relative.split(path.sep)
-  if (firstSegment === '..' || path.isAbsolute(relative)) {
+  if (relative === '' || firstSegment === '..' || path.isAbsolute(relative)) {
     throw new Error(
-      `refactor scratch root ${scratchRoot} is outside the workspace root ${workspaceRoot}`
+      `refactor scratch root ${scratchRoot} is not strictly inside the workspace root ${workspaceRoot}`
     )
   }
 }
@@ -231,11 +232,24 @@ export async function runRefactorTurn(input: {
   }
 
   const canUseTool: CanUseTool = (toolName, toolInput) => {
-    const allowed = refactorToolAllowed({ toolName, toolInput, scratchRoot, workspaceRoot })
-    // A null result leaves the tool blocked forever, so every call gets an explicit verdict.
-    return Promise.resolve(
-      allowed ? { behavior: 'allow' } : { behavior: 'deny', message: '该工具在此任务中不可用。' }
-    )
+    try {
+      const allowed = refactorToolAllowed({ toolName, toolInput, scratchRoot, workspaceRoot })
+      // A null result leaves the tool blocked forever, so every call gets an explicit verdict.
+      return Promise.resolve(
+        allowed
+          ? { behavior: 'allow' }
+          : {
+              behavior: 'deny',
+              message: refactorToolDenyMessage({ toolName, toolInput, scratchRoot })
+            }
+      )
+    } catch {
+      // Fail closed, and never throw: an unanswered callback leaves the tool blocked forever.
+      return Promise.resolve({
+        behavior: 'deny',
+        message: refactorToolDenyMessage({ toolName, toolInput, scratchRoot })
+      })
+    }
   }
 
   const onMessage = (message: Record<string, unknown>): void => {

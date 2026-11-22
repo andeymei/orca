@@ -12,18 +12,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Why the reason names the tool, the path and the scratch root: a refusal the agent cannot read
  * only makes it try another spelling, and the path is the thing it has to change.
+ * Why both layers share it: the hook and the callback decide the same thing, so a reason that
+ * only one of them carries leaves the other one saying nothing the agent can act on.
  */
-function refactorToolDenyReason(input: {
+export function refactorToolDenyMessage(input: {
   toolName: string
-  targetPath: string | null
+  toolInput: Record<string, unknown> | null
   scratchRoot: string
 }): string {
-  const target = input.targetPath ?? '未知的路径'
-  return `该工具在此任务中不可用：${input.toolName} 只能读工作区里的文件，只能写暂存目录 ${input.scratchRoot} 下的文件；被拒绝的路径：${target}。`
+  const target = refactorToolTargetPathOrNull(input.toolInput)
+  return `该工具在此任务中不可用：${input.toolName} 只能读工作区里的文件，只能写暂存目录 ${input.scratchRoot} 下的文件；被拒绝的路径：${target ?? '未知的路径'}。`
 }
 
 /** Why the try: a path that throws while it is read must not turn the refusal into an approval. */
-function refactorHookTargetPath(toolInput: Record<string, unknown>): string | null {
+function refactorToolTargetPathOrNull(toolInput: Record<string, unknown> | null): string | null {
+  if (!toolInput) {
+    return null
+  }
   try {
     return refactorToolTargetPath(toolInput)
   } catch {
@@ -42,36 +47,37 @@ export function createRefactorToolHook(input: {
   workspaceRoot: string
 }): HookCallbackMatcher[] {
   const { scratchRoot, workspaceRoot } = input
-  const deny = (toolName: string, targetPath: string | null): HookJSONOutput => ({
+  const deny = (toolName: string, toolInput: Record<string, unknown> | null): HookJSONOutput => ({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: refactorToolDenyReason({ toolName, targetPath, scratchRoot })
+      permissionDecisionReason: refactorToolDenyMessage({ toolName, toolInput, scratchRoot })
     }
   })
   const hook: HookCallback = async (hookInput) => {
     const toolName = hookInput.hook_event_name === 'PreToolUse' ? hookInput.tool_name : ''
-    let targetPath: string | null = null
+    let toolInput: Record<string, unknown> | null = null
+    if (hookInput.hook_event_name === 'PreToolUse' && isRecord(hookInput.tool_input)) {
+      toolInput = hookInput.tool_input
+    }
     try {
       if (hookInput.hook_event_name !== 'PreToolUse') {
         return {}
       }
-      const toolInput = hookInput.tool_input
       // Fail closed: without a path the gate cannot prove the call lands where it is allowed to.
-      if (!isRecord(toolInput)) {
+      if (!toolInput) {
         return deny(toolName, null)
       }
-      targetPath = refactorHookTargetPath(toolInput)
       const allowed = refactorToolAllowed({
         toolName,
         toolInput,
         scratchRoot,
         workspaceRoot
       })
-      return allowed ? {} : deny(toolName, targetPath)
+      return allowed ? {} : deny(toolName, toolInput)
     } catch {
       // Fail closed: an exception must never reach the CLI as an approval.
-      return deny(toolName, targetPath)
+      return deny(toolName, toolInput)
     }
   }
   // Why the block: a hook that cannot be delivered would leave the gate silent while the action

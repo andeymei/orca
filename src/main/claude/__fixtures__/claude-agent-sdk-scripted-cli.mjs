@@ -26,6 +26,8 @@ const report = {
   ),
   controlRequests: [],
   controlResponses: [],
+  // The answers this CLI sends back, so the shape a scenario exercises is visible in the report.
+  controlAnswers: [],
   userMessages: [],
   descendantPid: null
 }
@@ -90,6 +92,10 @@ const waitFor = (kind, requestId) => {
   return new Promise((resolve) => waiters.push({ kind, requestId, resolve }))
 }
 
+// A CLI that predates onFailure answers the initialize request without a capability key at all, so
+// the default answer carries none. A scenario that needs another shape states it in the scenario.
+const DEFAULT_CONTROL_ANSWER = { commands: [], models: [] }
+
 createInterface({ input: process.stdin }).on('line', (line) => {
   let frame
   try {
@@ -104,15 +110,20 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     if (process.env.ORCA_SDK_CONTRACT_IGNORE_CONTROL_REQUESTS) {
       return
     }
+    const answer = scenario.controlResponses?.[frame.request?.subtype] ?? DEFAULT_CONTROL_ANSWER
+    // Record the answer this CLI sends, so the shape it answered with is visible in the report.
+    report.controlAnswers.push({
+      request_id: frame.request_id,
+      subtype: frame.request?.subtype ?? null,
+      answer
+    })
+    writeReport()
     const response = {
       type: 'control_response',
       response: {
         subtype: 'success',
         request_id: frame.request_id,
-        response: scenario.controlResponses?.[frame.request?.subtype] ?? {
-          commands: [],
-          models: []
-        },
+        response: answer,
         // Requests the CLI resends to a client that (re)initializes while they wait.
         ...(scenario.pendingPermissionRequests?.[frame.request?.subtype]
           ? {

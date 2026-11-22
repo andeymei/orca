@@ -36,6 +36,7 @@ type ScriptedCliReport = {
     request: { subtype: string; hooks?: { PreToolUse?: RegisteredHook[] } }
   }[]
   controlResponses: { response: { request_id: string; response?: unknown } }[]
+  controlAnswers: { request_id: string; subtype: string | null; answer: unknown }[]
   userMessages: Record<string, unknown>[]
   descendantPid: number | null
 }
@@ -328,11 +329,20 @@ describe('Claude stream-json launch options', () => {
   }, 20_000)
 
   it('refuses the session when the CLI declares no hook capability at all', async () => {
-    // The fixture's default answer declares no capability, which is what a CLI that predates
-    // onFailure sends: it says nothing, rather than saying false.
-    const scenario = scriptScenario([{ awaitControlRequest: 'initialize' }, HOLD_OPEN])
+    // A CLI that predates onFailure says nothing about the capability: its answer carries no
+    // hook_on_failure_supported key, rather than saying false. The scenario states that shape here,
+    // so the fixture's own default cannot change what this case exercises.
+    const scenario = scriptScenario([{ awaitControlRequest: 'initialize' }, HOLD_OPEN], {
+      initialize: { commands: [], models: [] }
+    })
     const connection = await open(launchWithGate(scenario))
     await expect(connection.initializationResult()).rejects.toThrow(/does not honor onFailure/)
+    // The CLI really answered without the capability, so the refusal is about the shape this
+    // scenario declares rather than about what the fixture happens to default to.
+    const answer = readReportSafely(scenario)?.controlAnswers.find(
+      (entry) => entry.subtype === 'initialize'
+    )?.answer
+    expect(answer).toEqual({ commands: [], models: [] })
   }, 20_000)
 
   it('runs the hook the launch carried when the CLI asks for it', async () => {

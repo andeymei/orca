@@ -43,7 +43,7 @@ Orca 已有「Next Edit Suggestion」（NES，`docs/superpowers/specs/2026-11-17
 | 基准文本        | **编辑器缓冲区**的内容（B），磁盘内容（D）单独用于陈旧检测      | 你眼前看到什么，diff 就对着什么；但 agent 必须被明确告知 B 才是目标文件的权威内容（§6.3）                      |
 | diff 的唯一真相 | **应用自己算 hunk**（`diff` 包的 `diffLines`）                  | Monaco 自己的 hunk 分组和我们的可能不一致 → "点代码块 2、高亮的是块 3"。我们自己算，视图和接受逻辑共用一份数据 |
 | 接受语义        | **用被接受的 hunk 重算整份文件内容，再整体写回**                | 不做 patch 应用。我们有完整原文和每段的起止行，重算比维护偏移量简单也更不容易错                                |
-| 落地通道        | runtime RPC（`refactor.*`）                                     | 本地 / SSH / WSL 一条路。仓库规矩：凡涉及工作区的功能都必须能在远端主机上跑                                    |
+| 落地通道        | runtime RPC（`refactor.*`）                                     | 通道本身本地 / SSH / WSL 一条路；但**本期只支持本地工作区**——agent 是本地子进程，远端工作区跑不了（见 §13）    |
 | 任务进度        | `refactor.propose` 立刻返回 jobId，渲染层轮询 `refactor.status` | 结构化路径没有 turn 超时也没有进度订阅；轮询比新造一套订阅简单，且跨传输稳                                     |
 | 轮询间隔        | 1.5s                                                            | 重构是分钟级任务，1.5s 的进度延迟换来的实现复杂度不值得                                                        |
 
@@ -485,8 +485,15 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 - 一次任务最多 5 分钟、方案数与文件数有上限。
 - 只接受单个文件的"内容"，不处理文件的新增与删除（方案不能新建或删除文件）。
 - 不处理跨文件的重命名。
-- 远端主机（SSH / WSL）上，暂存目录和 agent 都跑在远端——这符合仓库的远端优先规矩，
-  但意味着远端上必须有可用的 Claude 安装与登录态。
+- **本期只支持本地工作区**。SSH / WSL 工作区的 `worktree.path` 是**远端机器上的路径**，
+  而重构 agent 是在这台机器上跑的本地子进程（`openClaudeStreamJsonConnection` 只 spawn 本地子进程），
+  它的 cwd 必须是本机上的目录，远端路径既起不来也读不到远端的源文件。
+  所以 `refactor.propose` 遇到非 `local` 的 `executionHostId` 直接拒绝，理由写明"远程主机上的重构暂不支持"。
+  仓库自己的结构化 Claude 也是同样的处理：
+  `src/main/runtime/agent-session/launch/structured-agent-launch-composition.ts:122-128`
+  写着 "structured sessions run on the local host, not `<hostId>`"。
+  远端要支持，正确做法是让**远端那台机器上的 orcad** 来跑这个特性（把方法注册进远端的运行时并转发过去），
+  那是另一个工作量的特性。
 - **重构 agent 不加载项目的 CLAUDE.md 与用户设置**。为了保证写闸门是写操作的唯一裁决者，
   这次运行用 SDK 的隔离模式（`settingSources: []`）：不加载 `user` / `project` / `local`
   三层设置文件。代价是 agent 看不到项目自己的约定，重构质量会打折扣；

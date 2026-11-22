@@ -1455,6 +1455,16 @@ writeFileExplorerFile(
 
 - `refactor.propose`：
   1. `const target = await runtime.resolveRuntimeFileTarget(params.worktree)` → `target.worktree.path` 是工作区绝对路径。
+     1.2. **只支持本地工作区**：`target.executionHostId` 必须是 `LOCAL_EXECUTION_HOST_ID`（`'local'`，
+     `src/shared/execution-host.ts:5`），否则**拒绝这次请求**，理由写清楚"远程主机上的重构暂不支持"。
+     理由不是偷懒，是结构性的：agent 是在**这台机器上**跑的本地子进程
+     （`openClaudeStreamJsonConnection` 只 spawn 本地子进程），它的 cwd 必须是本机上的目录；
+     而 SSH / WSL 工作区的 `worktree.path` 是**远端机器上的路径**，本地进程拿它当 cwd 起不来，
+     也读不到远端的源文件。仓库自己的结构化 Claude 也是同样的拒绝：
+     `src/main/runtime/agent-session/launch/structured-agent-launch-composition.ts:122-128`
+     写着 "structured sessions run on the local host, not <hostId>"。
+     远端要支持，得让**远端那台机器上的 orcad** 来跑这个特性（把方法注册进远端的运行时并转发过去），
+     那是另一个工作量的特性，不在本次范围内。
      1.5. **校验 `params.relativePath`**：它会直接拼进暂存目录的写入路径（`_source/<relativePath>`），
      所以必须先过两道：
      - `isSafeMobileRelativePath(params.relativePath)`（`src/main/runtime/files/mobile-file-kind.ts`）——

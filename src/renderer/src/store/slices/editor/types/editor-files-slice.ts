@@ -46,6 +46,8 @@ export type OpenFileOptions = {
   focusEditor?: boolean
   reopenId?: string
   selection?: EditorTabSelection
+  /** The name the unified tab carries; the file's own path when the open does not name one. */
+  tabLabel?: string
   /** Where in its group a reopened tab goes back to, when the open makes a new tab. */
   groupIndex?: number
 }

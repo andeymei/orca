@@ -16584,7 +16584,7 @@
           "discard": "丢弃",
           "discardFailed": "未能丢弃，重构任务可能仍在运行。",
           "failed": "重构失败",
-          "generated": "已生成 {{count}} 个方案",
+          "generated_other": "已生成 {{count}} 个方案",
           "generating": "正在生成",
           "loadingProposals": "正在读取重构建议",
           "noProposals": "还没有可审查的重构建议",
@@ -16600,7 +16600,7 @@
           "timedOut": "重构超时了，重新发起会更快",
           "wholeFile": "整个文件",
           "writeFailed": "写入失败，请重试。",
-          "written": "已写入 {{count}} 个文件"
+          "written_other": "已写入 {{count}} 个文件"
         },
         "RefactorTriggerButton": {
           "refactor": "智能重构"

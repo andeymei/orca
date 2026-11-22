@@ -27,13 +27,22 @@ export function statusLabel(
     case 'done':
       return plan
         ? t('auto.components.editor.RefactorReviewTab.generated', '{{count}} proposals generated', {
-            count: plan.proposals.length
+            count: plan.proposals.length,
+            defaultValue_one: '{{count}} proposal generated'
           })
         : t('auto.components.editor.RefactorReviewTab.loadingProposals', 'Loading the proposals')
     default:
       // Why: a job that ended badly says so in the notice below, not twice.
       return null
   }
+}
+
+/** What the toast says after a write that changed files. */
+export function writtenLabel(count: number, t: Translate): string {
+  return t('auto.components.editor.RefactorReviewTab.written', 'Wrote {{count}} files', {
+    count,
+    defaultValue_one: 'Wrote {{count}} file'
+  })
 }
 
 /** What the notice says about a job that ended without proposals. */

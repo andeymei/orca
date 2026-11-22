@@ -61,7 +61,7 @@ export function createOpenFileAction(
           get(),
           scratch.editorItemFileId,
           editorItemWorktreeId,
-          file.relativePath,
+          options?.tabLabel ?? file.relativePath,
           editorTabContentTypeForMode(file.mode),
           scratch.editorItemIsPreview,
           scratch.editorItemTargetGroupId,

@@ -266,6 +266,12 @@
           "cellCount_one": "{{count}} cell",
           "cellCount_other": "{{count}} cells"
         },
+        "RefactorReviewTab": {
+          "generated_one": "{{count}} proposal generated",
+          "generated_other": "{{count}} proposals generated",
+          "written_one": "Wrote {{count}} file",
+          "written_other": "Wrote {{count}} files"
+        },
         "RichMarkdownCodeBlock": {
           "026653f21f": "CSS",
           "13822cdfda": "Plain text",

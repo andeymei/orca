@@ -1,5 +1,5 @@
 import { Loader2, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -7,6 +7,12 @@ import { useTranslate } from '@/i18n/use-translate'
 
 import type { FileContent } from '../editor-panel-content-types'
 import { openRefactorReviewTab } from './refactor-review-tab-open'
+import {
+  beginRefactorStart,
+  endRefactorStart,
+  isRefactorStarting,
+  subscribeRefactorStarts
+} from './refactor-start-guard'
 
 export type RefactorTriggerButtonProps = {
   /** The file the refactoring would run on. */
@@ -30,18 +36,21 @@ export function RefactorTriggerButton({
   const t = useTranslate()
   const content = refactorSourceContent(drafts[fileId], fileContents[fileId])
   const label = t('auto.components.editor.RefactorTriggerButton.refactor', 'Refactor')
-  // Why the pending state: the propose request can take a while, and a second click would start a
-  // second agent turn on the same file.
-  const [starting, setStarting] = useState(false)
+  // Why the shared guard: the button unmounts when the user leaves the file, and a second start
+  // while the first request is in flight would run a second agent turn on the same file.
+  const readStarting = useCallback(
+    () => isRefactorStarting(worktreeId, relativePath),
+    [worktreeId, relativePath]
+  )
+  const starting = useSyncExternalStore(subscribeRefactorStarts, readStarting)
   const start = async (): Promise<void> => {
-    if (starting || content.length === 0) {
+    if (content.length === 0 || !beginRefactorStart(worktreeId, relativePath)) {
       return
     }
-    setStarting(true)
     try {
       await openRefactorReviewTab({ worktreeId, relativePath, content })
     } finally {
-      setStarting(false)
+      endRefactorStart(worktreeId, relativePath)
     }
   }
   return (

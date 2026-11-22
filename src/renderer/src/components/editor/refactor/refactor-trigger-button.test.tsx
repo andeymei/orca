@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileContent } from '../editor-panel-content-types'
 import { RefactorTriggerButton, refactorSourceContent } from './refactor-trigger-button'
+import { endRefactorStart, isRefactorStarting } from './refactor-start-guard'
 
 const mocks = vi.hoisted(() => ({
   openRefactorReviewTab:
@@ -27,8 +28,8 @@ function loaded(overrides: Partial<FileContent> = {}): FileContent {
   }
 }
 
-function renderTrigger(drafts: Record<string, string> = {}): void {
-  render(
+function renderTrigger(drafts: Record<string, string> = {}): ReturnType<typeof render> {
+  return render(
     <RefactorTriggerButton
       fileId="file-1"
       worktreeId="wt-1"
@@ -42,6 +43,8 @@ function renderTrigger(drafts: Record<string, string> = {}): void {
 beforeEach(() => {
   mocks.openRefactorReviewTab.mockReset()
   mocks.openRefactorReviewTab.mockResolvedValue(undefined)
+  // The guard lives outside the component, so a case that never settles its request would hold it.
+  endRefactorStart('wt-1', 'src/foo.ts')
 })
 
 afterEach(cleanup)
@@ -112,6 +115,29 @@ describe('the refactoring trigger', () => {
     fireEvent.click(button)
     expect(mocks.openRefactorReviewTab).toHaveBeenCalledTimes(1)
     finish()
+    await waitFor(() => expect(isRefactorStarting('wt-1', 'src/foo.ts')).toBe(false))
+  })
+
+  it('refuses a second start after the button was unmounted and mounted again', async () => {
+    let finish: () => void = () => {}
+    mocks.openRefactorReviewTab.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    const view = renderTrigger()
+    fireEvent.click(screen.getByRole('button', { name: 'Refactor' }))
+    await waitFor(() => expect(mocks.openRefactorReviewTab).toHaveBeenCalledTimes(1))
+    // The trigger only renders on an edit file, so leaving the file unmounts it mid-request.
+    view.unmount()
+    renderTrigger()
+    const button = screen.getByRole('button', { name: 'Refactor' })
+    expect(button.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(button)
+    expect(mocks.openRefactorReviewTab).toHaveBeenCalledTimes(1)
+    finish()
+    await waitFor(() => expect(isRefactorStarting('wt-1', 'src/foo.ts')).toBe(false))
   })
 
   it('cannot start a refactoring of a file it cannot read', () => {

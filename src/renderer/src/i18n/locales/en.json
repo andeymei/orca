@@ -17965,7 +17965,8 @@
           "discard": "Discard",
           "discardFailed": "The job could not be discarded and may still be running.",
           "failed": "Refactoring failed",
-          "generated": "{{count}} proposals generated",
+          "generated_one": "{{count}} proposal generated",
+          "generated_other": "{{count}} proposals generated",
           "generating": "Generating",
           "loadingProposals": "Loading the proposals",
           "noProposals": "No proposals to review yet",
@@ -17981,7 +17982,8 @@
           "timedOut": "The refactoring timed out; starting it again is usually faster",
           "wholeFile": "Whole file",
           "writeFailed": "The changes could not be written. Try again.",
-          "written": "Wrote {{count}} files"
+          "written_one": "Wrote {{count}} file",
+          "written_other": "Wrote {{count}} files"
         },
         "RefactorTriggerButton": {
           "refactor": "Refactor"

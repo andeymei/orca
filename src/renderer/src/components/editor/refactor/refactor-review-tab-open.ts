@@ -4,6 +4,7 @@ import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store/index'
 import { openWorkspaceEditorItem } from '@/store/slices/editor/tabs/workspace-editor-item'
 
+import { getRefactorReviewLabel } from '../editor-labels'
 import { proposeRefactor } from './refactor-runtime-client'
 
 /**
@@ -45,9 +46,9 @@ export async function openRefactorReviewTab(input: {
   const jobId = outcome.jobId
   const state = useAppStore.getState()
   const id = refactorReviewTabId(input.worktreeId, jobId)
-  // Why the file's own path: the tab strip names the view from it, and the file it reviews is
-  // what the user has to recognise.
-  const label = input.relativePath
+  // Why the marker: the strip and the Ctrl+Tab overlay both name this tab, and without one they
+  // would read exactly like the file tab the refactoring ran on.
+  const label = getRefactorReviewLabel(input.relativePath)
   const existing = state.unifiedTabsByWorktree?.[input.worktreeId]?.find(
     (tab) => tab.contentType === 'refactor-review' && tab.entityId === id
   )
@@ -67,12 +68,12 @@ export async function openRefactorReviewTab(input: {
   state.openFile(
     {
       filePath: id,
-      relativePath: label,
+      relativePath: input.relativePath,
       worktreeId: input.worktreeId,
       language: 'plaintext',
       mode: 'refactor-review',
       refactorReview: { jobId, worktreeId: input.worktreeId, relativePath: input.relativePath }
     },
-    { reopenId: id, preview: false }
+    { reopenId: id, preview: false, tabLabel: label }
   )
 }

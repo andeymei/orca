@@ -10,7 +10,12 @@ import { useAppStore } from '@/store/index'
 import type { RefactorProposal } from '../../../../../shared/refactor/refactor-types'
 import { RefactorHunkView } from './refactor-hunk-view'
 import { pollRefactorJob } from './refactor-job-poller'
-import { statusLabel, unfinishedJob, type ReviewJobState } from './refactor-review-job-status'
+import {
+  statusLabel,
+  unfinishedJob,
+  writtenLabel,
+  type ReviewJobState
+} from './refactor-review-job-status'
 import { RefactorPartialAcceptanceNotices, RefactorReviewNotices } from './refactor-review-notices'
 import { findHunk, firstHunkOf, partiallyAcceptedProposals } from './refactor-review-plan-selection'
 import { refactorHunksOfProposal, refactorReviewStore } from './refactor-review-store'
@@ -151,11 +156,7 @@ export function RefactorReviewTab({
         )
         return
       }
-      toast.success(
-        t('auto.components.editor.RefactorReviewTab.written', 'Wrote {{count}} files', {
-          count: result.applied.length
-        })
-      )
+      toast.success(writtenLabel(result.applied.length, t))
       closeTab()
     } catch (error) {
       setFailure(

@@ -16,6 +16,18 @@ function getBaseLabel(file: OpenFile, variant: EditorLabelVariant): string {
   }
 }
 
+/**
+ * The name of a refactoring review tab.
+ *
+ * Why one helper: the tab strip and the tab's own label are the same name in two surfaces, and
+ * each building its own is how they drift apart.
+ */
+export function getRefactorReviewLabel(name: string, t: Translate = translate): string {
+  return t('auto.components.editor.editorLabels.refactorReview', '{{name}} (refactoring)', {
+    name
+  })
+}
+
 function getDiffTabLabel(
   name: string,
   source: OpenFile['diffSource'],
@@ -56,11 +68,7 @@ export function getEditorDisplayLabel(
   }
 
   if (file.mode === 'refactor-review') {
-    // Why the file name: the tab is a view of that file, and the strip must not show it twice
-    // under the same name.
-    return t('auto.components.editor.editorLabels.refactorReview', '{{name}} (refactoring)', {
-      name: getBaseLabel(file, variant)
-    })
+    return getRefactorReviewLabel(getBaseLabel(file, variant), t)
   }
 
   if (file.mode === 'markdown-preview') {

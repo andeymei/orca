@@ -330,6 +330,19 @@ describe('starting a refactoring review', () => {
     )
   })
 
+  it('names the tab apart from the file it reviews, for the surfaces that read the label', async () => {
+    await openRefactorReviewTab({
+      worktreeId: 'wt-1',
+      relativePath: 'src/foo.ts',
+      content: 'const a = 1'
+    })
+    // The file keeps its own path; the tab that reviews it carries a name of its own.
+    expect(mocks.state.openFile).toHaveBeenCalledWith(
+      expect.objectContaining({ relativePath: 'src/foo.ts' }),
+      expect.objectContaining({ tabLabel: 'src/foo.ts (refactoring)' })
+    )
+  })
+
   it('opens no tab when the request was refused, and says why', async () => {
     mocks.proposeRefactor.mockResolvedValue({
       failure: 'refused',

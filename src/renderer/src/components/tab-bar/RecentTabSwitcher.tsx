@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, GitGraph, GitCompare, Globe2, TerminalSquare } from 'lucide-react'
 import { useAppStore } from '../../store/index'
 import { activateCyclableTab } from '../../hooks/ipc-tab-switch'
 import { getShortcutPlatform } from '../../hooks/useShortcutLabel'
@@ -19,6 +18,7 @@ import {
   normalizeCtrlTabOrderMode,
   type RecentTabSwitcherItem
 } from './recent-tab-switching'
+import { recentTabSwitcherIcon } from './recent-tab-switcher-icon'
 import { useTranslate } from '@/i18n/use-translate'
 import { addAppKeyListener, removeAppKeyListener } from '@/lib/keyboard/app-keyboard-router'
 import { cn } from '@/lib/class-names'
@@ -35,24 +35,11 @@ function consumeKeyboardEvent(event: KeyboardEvent): void {
 }
 
 function TabIcon({ item }: { item: RecentTabSwitcherItem }): React.JSX.Element {
-  const className = 'size-3.5 shrink-0 text-muted-foreground'
-  if (item.type === 'terminal') {
-    return <TerminalSquare className={className} />
-  }
-  if (item.type === 'browser') {
-    return <Globe2 className={className} />
-  }
-  if (item.contentType === 'git-graph') {
-    return <GitGraph className={className} />
-  }
-  if (
-    item.contentType === 'diff' ||
-    item.contentType === 'conflict-review' ||
-    item.contentType === 'check-details'
-  ) {
-    return <GitCompare className={className} />
-  }
-  return <FileText className={className} />
+  // Why createElement: the icon is picked at render time, and a JSX element would read as a
+  // component created during render.
+  return createElement(recentTabSwitcherIcon(item), {
+    className: 'size-3.5 shrink-0 text-muted-foreground'
+  })
 }
 
 export default function RecentTabSwitcher(): React.JSX.Element | null {

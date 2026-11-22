@@ -2146,6 +2146,9 @@ export function createRefactorReviewStore(): RefactorReviewStore
 
 内部两个 `Map`：`plans` 与 `selections`。`getSelection` 对不存在的 job 返回空选择（`acceptedHunkIds: new Set()`，`selectedHunkId: null`，`selectedFilePath: null`）。`toggleHunk` 与 `setHunkSelection` 都要先确保 plan 存在（没有 plan 就什么都不做）。模块底部导出 `export const refactorReviewStore = createRefactorReviewStore()`。
 
+**`toggleHunk` 与 `setHunkSelection` 只改 `acceptedHunkIds`，要保留 `selectedHunkId` 与 `selectedFilePath`**——
+用户点勾选框的时候，正在看的那个代码块不该从右区消失。改"当前看哪个"用 `setSelection`（整体替换选择）。
+
 同时导出 `refactorHunksOfProposal` 与 `refactorHunksOfFile`（把 proposal / file 里的 hunks 摊平）。
 
 - [ ] **Step 4: 跑测试确认它通过**

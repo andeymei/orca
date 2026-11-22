@@ -304,11 +304,13 @@ describe('applyRefactorHunks', () => {
     expect(applyRefactorHunks(original, hunks)).toBe(modified)
   })
 
-  it('keeps the later hunk correct when an earlier one is applied too', () => {
+  it('keeps the later hunk anchored when only the earlier one is applied', () => {
     const original = 'a\nb\nc\nd\n'
     const modified = 'A\nb\nC\nd\n'
     const hunks = computeRefactorHunks(original, modified)
-    expect(applyRefactorHunks(original, hunks)).toBe(modified)
+    expect(hunks).toHaveLength(2)
+    expect(applyRefactorHunks(original, [hunks[0]])).toBe('A\nb\nc\nd\n')
+    expect(applyRefactorHunks(original, [hunks[1]])).toBe('a\nb\nC\nd\n')
   })
 })
 ```

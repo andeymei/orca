@@ -943,7 +943,7 @@ export const REFACTOR_PERMISSION_SETTINGS = {
 那条 allow 规则会让写操作不再经过 `canUseTool` —— 闸门就绕过了。
 `blockWritesOutsideWorkingDirectories` 的 "No allow rule lifts it" 正是为这种情况准备的。
 
-三处选项各有理由，缺一个闸门就失效：
+四处选项各有理由，缺一个闸门就失效：
 
 - **`permissionMode: 'default'`** —— `'acceptEdits'` 会自动接受编辑（`claudeStructuredPermissionOptions` 的映射里写明了），
   `'auto'` 由分类器决定，`'bypassPermissions'` 什么都不问。只有 `'default'` 会把每个工具调用交给 `canUseTool`。

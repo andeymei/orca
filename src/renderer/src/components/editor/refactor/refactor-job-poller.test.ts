@@ -39,4 +39,52 @@ describe('pollRefactorJob', () => {
     stop()
     expect(calls).toBe(1)
   })
+
+  it('stops the schedule when the caller stops it while the job is still running', async () => {
+    vi.useFakeTimers()
+    let calls = 0
+    const stop = pollRefactorJob({
+      jobId: 'job-1',
+      intervalMs: 1000,
+      fetchStatus: async () => {
+        calls += 1
+        return { state: 'running', progress: '', warnings: [] }
+      },
+      onStatus: () => {}
+    })
+    await vi.advanceTimersByTimeAsync(1)
+    expect(vi.getTimerCount()).toBe(1)
+
+    stop()
+
+    // Why: the pending timer is the poll's life, so a cleared one means the poll is over.
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(calls).toBe(1)
+  })
+
+  it('does not poll again when the caller stops it while a poll is in flight', async () => {
+    vi.useFakeTimers()
+    const pending = Promise.withResolvers<RefactorStatusResult>()
+    let calls = 0
+    const seen: string[] = []
+    const stop = pollRefactorJob({
+      jobId: 'job-1',
+      intervalMs: 1000,
+      fetchStatus: async () => {
+        calls += 1
+        return pending.promise
+      },
+      onStatus: (status) => seen.push(status.state)
+    })
+    await vi.advanceTimersByTimeAsync(1)
+
+    stop()
+    pending.resolve({ state: 'running', progress: '', warnings: [] })
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(calls).toBe(1)
+    // Why: a closed tab must not be told about a job it no longer watches.
+    expect(seen).toEqual([])
+  })
 })

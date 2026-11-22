@@ -1,4 +1,5 @@
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
+import { RuntimeRpcCallError } from '@/runtime/rpc/calls/runtime-rpc-result'
 import { toRuntimeWorktreeSelector } from '@/runtime/rpc/targets/runtime-worktree-selector'
 import {
   RefactorApplyResult,
@@ -18,18 +19,28 @@ const REFACTOR_DISCARD_TIMEOUT_MS = 35_000
 
 const REFACTOR_TIMEOUT_MESSAGE = 'The refactoring request timed out.'
 
+/** Why a request could not start a job. */
+export type RefactorProposeFailure =
+  /** The runtime refused in its own words; the user reads them. */
+  | { failure: 'refused'; reason: string }
+  /** The runtime could not be reached, or its answer made no sense. */
+  | { failure: 'unreachable' }
+
+/** The job a request started, or why it started none. */
+export type RefactorProposeOutcome = { jobId: string } | RefactorProposeFailure
+
 /**
  * Start a refactoring job and answer its id.
  *
- * Why null instead of a throw: the caller opens a tab and a toast, and a failed start has no tab
- * to show an error in.
+ * Why an outcome instead of a throw: the caller opens a tab and a toast, and a failed start has
+ * no tab to show an error in — so the reason travels with the answer instead of on a stack.
  */
 export async function proposeRefactor(input: {
   worktreeId: string
   relativePath: string
   content: string
   instruction?: string
-}): Promise<string | null> {
+}): Promise<RefactorProposeOutcome> {
   try {
     const response = await callRefactorRpc<RefactorProposeResult>(
       'refactor.propose',
@@ -46,13 +57,21 @@ export async function proposeRefactor(input: {
     const parsed = RefactorProposeResult.safeParse(response)
     if (!parsed.success) {
       console.error('[refactor] The propose result does not parse.')
-      return null
+      return { failure: 'unreachable' }
     }
-    return parsed.data.jobId
+    return { jobId: parsed.data.jobId }
   } catch (error) {
     console.error('[refactor] The propose request failed.', { error: errorName(error) })
-    return null
+    return proposeFailure(error)
   }
+}
+
+/** Why the runtime started no job, in the words the user reads. */
+function proposeFailure(error: unknown): RefactorProposeFailure {
+  if (error instanceof RuntimeRpcCallError && error.message.length > 0) {
+    return { failure: 'refused', reason: error.message }
+  }
+  return { failure: 'unreachable' }
 }
 
 /**
@@ -153,8 +172,8 @@ export async function discardRefactor(jobId: string): Promise<boolean> {
 /**
  * Call the local runtime under a deadline the renderer keeps.
  *
- * Why the controller: the local branch of the transport drops the timeout, so the renderer aborts
- * the call itself and a request nobody waits for stops working in the runtime.
+ * Why the controller: the local branch of the transport drops the timeout but keeps the signal, so
+ * the renderer aborts the call itself and a request nobody waits for stops working in the runtime.
  */
 async function callRefactorRpc<TResult>(
   method: string,
@@ -183,7 +202,12 @@ async function callRefactorRpc<TResult>(
   }
 }
 
-/** The local branch of the transport drops the signal and the timeout, so the renderer keeps its own. */
+/**
+ * Why the renderer keeps the deadline: the local branch of the transport drops the timeout.
+ *
+ * Why no signal and why a rejection: there is no caller signal to honour, and a timeout has to
+ * reach the caller as a failure so a write can tell it from an answer.
+ */
 function settleBeforeDeadline<TResult>(
   call: Promise<TResult>,
   timeoutMs: number

@@ -221,7 +221,7 @@ export default function MonacoEditor({
 
   const codeCompletion = settings?.codeCompletion
   const nesFilesContext = useMonacoNesFilesContext({ worktreeId, filePath })
-  useMonacoNextEditSuggestions({
+  const nesMarkerCount = useMonacoNextEditSuggestions({
     filePath,
     relativePath,
     // Why: a mirror of another tab's record must not ask for plans of its own.
@@ -255,7 +255,8 @@ export default function MonacoEditor({
     [glyphClick]
   )
 
-  // Why: the glyph margin is off by default, so the `@ai` glyphs would draw nothing without it.
+  // Why: the glyph margin is off by default, so the `@ai` glyphs and the next-edit markers would
+  // draw nothing without it.
   useEffect(() => {
     if (!mountedEditor) {
       return
@@ -267,8 +268,8 @@ export default function MonacoEditor({
   }, [mountedEditor])
 
   useEffect(() => {
-    mountedEditor?.updateOptions({ glyphMargin: glyphs.length > 0 })
-  }, [glyphs.length, mountedEditor])
+    mountedEditor?.updateOptions({ glyphMargin: glyphs.length > 0 || nesMarkerCount > 0 })
+  }, [glyphs.length, nesMarkerCount, mountedEditor])
 
   const handleMount = useMonacoEditorMount({
     fileId,

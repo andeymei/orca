@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { editor, KeyCode, type IPosition } from 'monaco-editor/esm/vs/editor/editor.api.js'
 import type { RuntimeFileOperationArgs } from '@/runtime/files/runtime-file-client-types'
 import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
@@ -50,7 +50,7 @@ export function useMonacoNextEditSuggestions(params: {
   editorInstance: editor.IStandaloneCodeEditor | null
   /** The worktree that owns the file, for the related-file search; null when it cannot be resolved. */
   files: RuntimeFileOperationArgs | null
-}): void {
+}): number {
   const {
     filePath,
     relativePath,
@@ -62,22 +62,26 @@ export function useMonacoNextEditSuggestions(params: {
   } = params
   // Why: the request cannot be cancelled end to end, so a late answer is dropped by its generation.
   const generationRef = useRef(0)
+  // Why: the glyph margin is off by default, so the editor has to be told that a marker is in it.
+  const [markerCount, setMarkerCount] = useState(0)
   // Why: the provider asks the store by the model's own URI, so the binding has to carry that key.
   const modelKey = editorInstance?.getModel()?.uri.toString() ?? null
+  // Why: the list arrives as an array, so a fresh one would restart the feature every render.
+  const extensionsKey = enabledExtensions.join(',')
 
   useEffect(() => {
     // Why: an unbound model finds no plan, so a plan left over from a switched-off feature cannot show.
     if (!modelKey || !filePath || !enabled) {
       return
     }
-    if (!isExtensionEnabled(filePath, enabledExtensions)) {
+    if (!isExtensionEnabled(filePath, extensionsKey)) {
       return
     }
     nesPlanStore.bindModel(modelKey, filePath)
     return () => {
       nesPlanStore.unbindModel(modelKey)
     }
-  }, [modelKey, filePath, enabled, enabledExtensions])
+  }, [modelKey, filePath, enabled, extensionsKey])
 
   // The cleanup below clears the timer unconditionally; the rule cannot see that once a
   // subscription shares the effect with it.
@@ -86,7 +90,7 @@ export function useMonacoNextEditSuggestions(params: {
     if (!editorInstance || !modelKey || !filePath || !enabled) {
       return
     }
-    if (!isExtensionEnabled(filePath, enabledExtensions)) {
+    if (!isExtensionEnabled(filePath, extensionsKey)) {
       return
     }
 
@@ -114,7 +118,7 @@ export function useMonacoNextEditSuggestions(params: {
       // Why: the edit the cursor is on is the suggestion itself, so a marker would point at the
       // line the user is already on.
       const shown =
-        drawn && nesInlineCompletionForEdit(drawn, model) !== null
+        drawn && model && nesInlineCompletionForEdit(drawn, model) !== null
           ? nesPlanStore.editsForPath(filePath).filter((edit) => edit !== drawn)
           : nesPlanStore.editsForPath(filePath)
       markers = position
@@ -123,6 +127,7 @@ export function useMonacoNextEditSuggestions(params: {
           )
         : []
       collection.set(nesMarkerDecorations(markers))
+      setMarkerCount(markers.length)
     }
 
     const editAtCursor = (): NesEdit | null => {
@@ -314,6 +319,7 @@ export function useMonacoNextEditSuggestions(params: {
       releasePreview()
       collection.clear()
       handlersByEditor.delete(editorInstance)
+      setMarkerCount(0)
     }
   }, [
     editorInstance,
@@ -322,9 +328,11 @@ export function useMonacoNextEditSuggestions(params: {
     relativePath,
     enabled,
     triggerDelayMs,
-    enabledExtensions,
+    extensionsKey,
     files
   ])
+
+  return markerCount
 }
 
 /** The word under the cursor, which is the symbol the related-file search looks for. */
@@ -333,9 +341,9 @@ function identifierAtCursor(model: editor.ITextModel, position: IPosition): stri
   return word.word.length > 0 ? word.word : null
 }
 
-function isExtensionEnabled(filePath: string, enabledExtensions: readonly string[]): boolean {
+function isExtensionEnabled(filePath: string, extensionsKey: string): boolean {
   const extension = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase()
-  return enabledExtensions.some((entry) => entry.toLowerCase() === extension)
+  return extensionsKey.split(',').some((entry) => entry.toLowerCase() === extension)
 }
 
 /** The location after the cursor; the list cycles, so the last one leads back to the first. */

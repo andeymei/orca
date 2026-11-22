@@ -162,6 +162,24 @@ describe('validateNesEditPlan', () => {
     expect(plan.edits).toHaveLength(1)
   })
 
+  it('drops a replace that changes nothing', () => {
+    const plan = validateNesEditPlan(
+      {
+        edits: [
+          buildEdit({
+            kind: 'replace',
+            originalText: 'const answer = 42',
+            text: 'const answer = 42'
+          })
+        ]
+      },
+      { allowedPaths: [FILE_PATH] }
+    )
+
+    // Why: a suggestion that shows what the buffer already holds has nothing to offer.
+    expect(plan.edits).toEqual([])
+  })
+
   it('drops a replace that spans more than one line', () => {
     const plan = validateNesEditPlan(
       {

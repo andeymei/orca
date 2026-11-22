@@ -149,8 +149,12 @@ export function repairNesEditRanges(plan: NesEditPlan, request: NesRequest): Nes
       }
       return {
         ...edit,
-        originalText: covered,
-        text,
+        // Why: the editor compares the covered text with the buffer, so it must be the text the
+        // buffer holds — not the text the model quoted.
+        originalText: located.text,
+        // Why: the range starts at the code, so the replacement must not carry the indentation the
+        // model put in front of it.
+        text: located.text === covered ? text : stripLeadingWhitespace(text),
         range: {
           startLine: shown.startLine + located.startLine - 1,
           startColumn: located.startColumn,
@@ -194,14 +198,43 @@ function nesTextWithoutMarker(text: string): string {
 /**
  * Where the quoted text sits in the file, as the range it covers.
  *
- * The occurrence nearest the cursor wins, because the same line can appear twice and the edit
- * belongs where the developer is typing.
+ * A model that quotes a line with the wrong indentation still means that line, so the text is
+ * looked for without the whitespace in front of it before the edit is given up on.
  */
 function locateNesText(
   content: string,
   needle: string,
   cursorOffset: number
-): { startLine: number; startColumn: number; endLine: number; endColumn: number } | null {
+): NesLocatedText | null {
+  const exact = findNearestNesText(content, needle, cursorOffset)
+  if (exact) {
+    return exact
+  }
+  const trimmed = needle.trimStart()
+  if (trimmed.length === 0 || trimmed === needle) {
+    return null
+  }
+  return findNearestNesText(content, trimmed, cursorOffset)
+}
+
+/** Where the quoted text sits in the file, and the text the file holds there. */
+type NesLocatedText = {
+  startLine: number
+  startColumn: number
+  endLine: number
+  endColumn: number
+  text: string
+}
+
+/**
+ * The occurrence of the text nearest the cursor, because the same line can appear twice and the
+ * edit belongs where the developer is typing.
+ */
+function findNearestNesText(
+  content: string,
+  needle: string,
+  cursorOffset: number
+): NesLocatedText | null {
   const first = content.indexOf(needle)
   if (first === -1) {
     return null
@@ -225,8 +258,14 @@ function locateNesText(
     startLine: start.line,
     startColumn: start.column,
     endLine: end.line,
-    endColumn: end.column
+    endColumn: end.column,
+    text: content.slice(best, best + needle.length)
   }
+}
+
+/** The whitespace a model put in front of the text it quoted; the range starts at the code. */
+function stripLeadingWhitespace(text: string): string {
+  return text.replace(/^[ \t]+/, '')
 }
 
 /** The line and column an offset sits at, counted from the first line of the content. */

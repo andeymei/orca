@@ -144,6 +144,10 @@ function makeEdit(overrides: Partial<NesEdit> = {}): NesEdit {
   }
 }
 
+// Why: the hook re-runs its effect when this changes, so the harness hands it the same object
+// every render — the app's own context is memoized the same way.
+const FILES = { target: { kind: 'local' as const }, worktreeId: null, worktreePath: null }
+
 function renderHookFor(
   model: monaco.editor.ITextModel,
   options: { triggerDelayMs?: number } = {}
@@ -157,10 +161,30 @@ function renderHookFor(
       triggerDelayMs: options.triggerDelayMs ?? 0,
       enabledExtensions: ['ts'],
       editorInstance: fakeEditor.editorInstance,
-      files: { target: { kind: 'local' }, worktreeId: null, worktreePath: null }
+      files: FILES
     })
   )
   return { ...fakeEditor, unmount: view.unmount }
+}
+
+/** The hook's own view, for the tests that read what it reports. */
+function renderHookView(model: monaco.editor.ITextModel): {
+  count: () => number
+  unmount: () => void
+} {
+  const fakeEditor = createFakeEditor(model)
+  const view = renderHook(() =>
+    useMonacoNextEditSuggestions({
+      filePath: FILE_PATH,
+      relativePath: 'src/app.ts',
+      enabled: true,
+      triggerDelayMs: 0,
+      enabledExtensions: ['ts'],
+      editorInstance: fakeEditor.editorInstance,
+      files: FILES
+    })
+  )
+  return { count: () => view.result.current, unmount: view.unmount }
 }
 
 afterEach(() => {
@@ -221,6 +245,28 @@ describe('useMonacoNextEditSuggestions', () => {
     // Why: the context builder reads the language off the model, which is the authoritative one.
     // The model here carries no language contribution, so it reads as plaintext.
     expect(requestNesPlanMock.mock.calls[0][0].languageId).toBe('plaintext')
+    unmount()
+  })
+
+  it('reports the markers the plan left, so the editor can open the glyph margin for them', async () => {
+    const model = createModel('const a = 1\nconst b = 2')
+    requestNesPlanMock.mockResolvedValue({
+      edits: [
+        makeEdit({
+          kind: 'insert',
+          range: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 1 },
+          originalText: '',
+          text: 'const c = 3'
+        })
+      ]
+    })
+    collectRelatedFilesMock.mockResolvedValue([])
+
+    const { count, unmount } = renderHookView(model)
+
+    await waitFor(() => {
+      expect(count()).toBe(1)
+    })
     unmount()
   })
 

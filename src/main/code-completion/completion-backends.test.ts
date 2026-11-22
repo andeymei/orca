@@ -638,6 +638,44 @@ describe('repairNesEditRanges', () => {
     })
   })
 
+  it('finds a line the model quoted with the wrong indentation', () => {
+    const indented: NesRequest = {
+      ...REQUEST,
+      prefix: '\tconst a = 1\n\tconst b = 2',
+      suffix: '\n\tconst c = 3',
+      prefixStartLine: 40,
+      cursorLine: 41,
+      cursorColumn: 13
+    }
+    const plan = {
+      edits: [
+        {
+          id: 'e1',
+          path: FILE_PATH,
+          kind: 'replace' as const,
+          range: { startLine: 7, startColumn: 1, endLine: 7, endColumn: 1 },
+          // Why: the model quoted the line with one tab too many.
+          originalText: '\t\tconst b = 2',
+          text: '\t\tconst b = 2 and more',
+          label: 'extend the second constant'
+        }
+      ]
+    }
+
+    const repaired = repairNesEditRanges(plan, indented)
+
+    expect(repaired.edits[0].range).toEqual({
+      startLine: 41,
+      startColumn: 2,
+      endLine: 41,
+      endColumn: 13
+    })
+    // Why: the editor compares the covered text with the buffer, so the edit has to carry the text
+    // the buffer holds.
+    expect(repaired.edits[0].originalText).toBe('const b = 2')
+    expect(repaired.edits[0].text).toBe('const b = 2 and more')
+  })
+
   it('reads the text a model quoted up to the cursor as the text it covers', () => {
     const plan = {
       edits: [

@@ -147,6 +147,11 @@ function isApplicableNesEdit(edit: NesEdit, allowedPaths: ReadonlySet<string>): 
   if (edit.range.startLine !== edit.range.endLine) {
     return false
   }
+  // Why: an edit whose text is what its range already holds changes nothing, so there is nothing
+  // to show and nothing for the user to accept.
+  if (edit.text === edit.originalText) {
+    return false
+  }
   if (edit.kind === 'insert') {
     return edit.originalText === ''
   }

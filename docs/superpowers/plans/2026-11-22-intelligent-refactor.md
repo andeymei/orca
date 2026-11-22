@@ -1857,15 +1857,33 @@ Expected: FAIL，报模块不存在。
 
 - [ ] **Step 4: 写 fixture**
 
-`refactor-hunk-view.fixture.tsx` 导出一个默认组件，渲染两个 hunk：一个已接受、一个未接受。
+`refactor-hunk-view.fixture.tsx` 用**具名导出** + `defineFixture`，照
+`src/renderer/src/components/UpdateCard.fixture.tsx` 的写法：
+
+```tsx
+import { defineFixture } from '../../../component-fixtures/component-fixture'
+
+export const twoHunks = defineFixture({
+  width: 1280,
+  render: () => <>{/* 一个已接受、一个未接受 */}</>
+})
+```
+
+导入路径是 `'../../../component-fixtures/component-fixture'`（从 `components/editor/refactor/` 往上三级到 `src/renderer/src/`）。
+**用具名导出**：注册表把模块的每个导出各自当成一个 fixture，名字就是 `<组件 id>:<导出名>`
+（`src/renderer/src/component-fixtures/component-fixture-registry.ts:31-44`）。
 
 - [ ] **Step 5: 跑测试与截图**
 
 Run: `pnpm test src/renderer/src/components/editor/refactor/refactor-hunk-view.test.tsx --maxWorkers=2`
 Expected: PASS。
 
-Run: `pnpm fixtures:shot refactor/refactor-hunk-view`
+Run: `pnpm fixtures:shot editor/refactor/refactor-hunk-view`
 Expected: PNG 落在 `.cache/fixtures/`。**看图确认** diff 渲染正常（两侧都有内容、行号不空）。
+
+**fixture 的 id 是 `editor/refactor/refactor-hunk-view:<导出名>`**：注册表把 `src/renderer/src/` 下的路径去掉
+`components/` 前缀和 `.fixture.tsx` 后缀（`component-fixture-registry.ts:16-21`），
+所以路径前缀是 `editor/refactor/`，不是 `refactor/`。不带 `:` 的裸 id 会匹配该组件的**全部** fixture。
 
 - [ ] **Step 6: 提交**
 
@@ -1953,7 +1971,7 @@ Expected: FAIL，报模块不存在。
 Run: `pnpm test src/renderer/src/components/editor/refactor --maxWorkers=2`
 Expected: PASS。
 
-Run: `pnpm fixtures:shot refactor/refactor-review-tab`
+Run: `pnpm fixtures:shot editor/refactor/refactor-review-tab`
 Expected: PNG 落在 `.cache/fixtures/`。**看图确认**：左树的三级层次清楚、右边的 diff 不是空白。
 
 - [ ] **Step 6: 跑本地化脚本与提交**
@@ -1961,16 +1979,19 @@ Expected: PNG 落在 `.cache/fixtures/`。**看图确认**：左树的三级层�
 ```bash
 node config/scripts/localization/source-extraction/localize-renderer-strings.mjs
 pnpm tc:web
-pnpm check:changed
+pnpm check:changed --base=9127b3837e
 git add src/renderer/src/components/editor/refactor src/renderer/src/components/editor/EditorPanelHeader.tsx src/renderer/src/i18n
 git commit -m "feat(refactor): review the proposals and accept them by plan, file, or hunk"
 ```
+
+**`check:changed` 必须带 `--base=9127b3837e`**：默认基线是 `origin/main`，而 origin/main 不含本分支历史里
+那个大提交，changed 集合会混进几千个无关文件，vitest 的 "related" 步骤跑不完（实测 19 分钟仍未结束）。
 
 ---
 
 ## 完成标准
 
-- `pnpm check:changed` 通过。
+- `pnpm check:changed --base=9127b3837e` 通过。
 - `pnpm tc` 通过。
 - `pnpm test src/shared/refactor src/main/refactor src/renderer/src/components/editor/refactor --maxWorkers=2` 通过。
 - 人工验证：在一个真实文件上发起重构，agent 在 `.orca/refactor/<jobId>/` 写出暂存文件与 `manifest.json`；审查 tab 里能看到方案、理由和逐个代码块的 diff；分别用「全方案」「全文件」「单个代码块」接受各一次，源码文件按预期被改写；评审期间改动文件后接受会被拒绝。

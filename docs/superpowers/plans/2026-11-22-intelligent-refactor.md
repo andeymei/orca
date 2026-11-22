@@ -1517,7 +1517,16 @@ writeFileExplorerFile(
 
 - `refactor.plan`：从注册表取 job，返回 `{ plan: job.plan }`。
 
-- `refactor.apply`：从注册表取 job（没有 plan 就返回空 applied），调 `applyRefactorSelection`，把 job 上的 `diskContents` 传进去。**返回值里的 `refusals` 原样带回 RPC 结果**——spec §8.2 要求把"文件在评审期间被改动过"告诉用户，这个通道就是 `RefactorApplyResult.refusals`。写回用 `runtime.writeFileExplorerFile(worktree, relativePath, content, ...sshArgs, diskPrecondition)`。`worktree` 用 job 上存的原始 `worktree` 选择器字符串。
+- `refactor.apply`：从注册表取 job。**job 不存在或没有 plan 就直接抛错**（让 RPC 变成一次失败），
+  不要返回一个"空成功"——`RefactorApplyResult.refusals` 是必填数组，而每条 refusal 的 `path` 是
+  `min(1)` 的非空串，凑不出一个假的路径来表达"没有可写的文件"。
+  有 plan 就调 `applyRefactorSelection`，把 job 上的 `diskContents` 传进去。
+  **返回值里的 `refusals` 原样带回 RPC 结果**——spec §8.2 要求把"文件在评审期间被改动过"告诉用户，
+  这个通道就是 `RefactorApplyResult.refusals`。
+  写回用 `runtime.writeFileExplorerFile(worktree, relativePath, content, ...sshArgs, diskPrecondition)`。
+  `worktree` 用 job 上存的原始 `worktree` 选择器字符串。
+  写回用的 `relativePath` 来自 plan，而 plan 的路径来自清单，已经过 Task 6 的
+  `isSafeRelativeRefactorPath` 校验；不要在这里重写一套路径检查。
 
 - `refactor.discard`：job 还在 running 就 `controller.abort()`；然后删掉 `scratchRoot` 目录（`fs.rm(scratchRoot, { recursive: true, force: true })`），从注册表 `remove`，返回 `{ discarded: true }`。
 
@@ -1580,7 +1589,7 @@ git commit -m "feat(refactor): expose the refactoring runtime methods"
 
 - Consumes: Task 1 的 RPC 参数与结果类型；`callRuntimeRpc`（`src/renderer/src/runtime/rpc/calls/runtime-rpc-call.ts`）
 - Produces:
-  - `proposeRefactor(input: { worktree: string; relativePath: string; content: string; instruction?: string }): Promise<string>` —— 返回 jobId
+  - `proposeRefactor(input: { worktree: string; relativePath: string; content: string; instruction?: string }): Promise<string | null>` —— 返回 jobId；**失败时返回 `null`**，不要抛到 UI（发起失败的原因由调用方用 toast 告诉用户）
   - `fetchRefactorStatus(jobId: string): Promise<RefactorStatusResult>`
   - `fetchRefactorPlan(jobId: string): Promise<RefactorPlan | null>`
   - `applyRefactor(jobId: string, acceptedHunkIds: readonly string[]): Promise<RefactorApplyResult>`
@@ -2003,7 +2012,9 @@ git commit -m "feat(refactor): show one diff per refactoring hunk"
 - Consumes: Task 9 的客户端与轮询；Task 11 的 store；Task 12 的 `RefactorHunkView`；Task 1 的 `RefactorPlan`
 - Produces:
   - `RefactorReviewTab` 组件，props：`{ jobId: string; worktree: string; relativePath: string }`
-  - `openRefactorReviewTab(input: { worktree: string; relativePath: string; content: string; instruction?: string }): Promise<void>` —— 发起任务、拿到 jobId、开 tab
+  - `openRefactorReviewTab(input: { worktree: string; relativePath: string; content: string; instruction?: string }): Promise<void>` —— 发起任务、拿到 jobId、开 tab。
+    **发起失败（`proposeRefactor` 返回 `null`）时用 toast 报错，并且不要开 tab**——
+    远端工作区、路径不合法、没有 Claude 登录态都属于这一类。开了空 tab 只会让人以为界面坏了。
   - 虚拟 tab 的 id 用合成 id（如 `${worktreeId}::refactor-review:${jobId}`），`filePath` 填这个合成 id
     ——虚拟 tab 没有磁盘上的文件，`isVirtualEditorFile` 靠这一点区分它。照抄
     `src/renderer/src/lib/source-control/graph/git-graph-tab.ts` 里 `openGitGraph` 的写法：

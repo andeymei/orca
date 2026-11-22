@@ -920,8 +920,16 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
   - 没有 tool_use 就返回 `null`。
 
 - `runRefactorTurn`：
-  1. 用 `openClaudeStreamJsonConnection` 建立连接，`cwd: launch.cwd`，`options: launch.options`，`env: launch.env`。
-  2. `canUseTool` 回调：调用 `refactorToolAllowed({ toolName, toolInput: input, scratchRoot, workspaceRoot })`，允许返回 `{ behavior: 'allow' }`，拒绝返回 `{ behavior: 'deny', message: '该工具在此任务中不可用。' }`。
+  1. 用 `openClaudeStreamJsonConnection` 建立连接。**它的第一个参数就是 launch 对象**
+     （`ClaudeStreamJsonLaunch` = `{ pathToClaudeCodeExecutable, prefixArgs?, options, cwd, env?, envToDelete? }`），
+     Task 4 的 `RefactorAgentLaunch` 结构上正好对得上，直接把 `launch` 传进去即可，不要拆开重组。
+     第二个参数是 handlers：`{ onMessage?, canUseTool?, onFault?, onExit?, ... }`。
+     **`canUseTool` 属于 handlers，不是 options** —— 它由连接层转给 SDK 的 `canUseTool` 选项。
+  2. `canUseTool` 回调：`CanUseTool = (toolName: string, input: Record<string, unknown>, options: { signal: AbortSignal; suggestions?: PermissionUpdate[] }) => Promise<PermissionResult>`。
+     调 `refactorToolAllowed({ toolName, toolInput: input, scratchRoot, workspaceRoot })`，
+     允许返回 `{ behavior: 'allow' }`，拒绝返回 `{ behavior: 'deny', message: '该工具在此任务中不可用。' }`。
+     **必须显式返回 deny 对象，不能返回 `null`** —— SDK 的文档说 `null` 表示"不发响应"，
+     那个 elicitation 会永远挂起（sdk.d.ts:1558）。
   3. 发送 prompt：把 system 与 user 两段合成一条 SDK 用户消息帧，用 `connection.send(frame)` 投出去。帧的形状照 `src/main/claude/structured/claude-structured-dispatch.ts` 里已有的那条：
      ```ts
      {
@@ -933,7 +941,7 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      }
      ```
      system 与 user 合成一条，是因为 SDK 的用户消息只有 `content` 一个入口；两段之间用一个空行分隔。
-  4. 监听 SDK 消息：收到 `tool_use` 就更新进度并 `onProgress?.(text)`；收到 `type === 'result'` 就结束等待。
+  4. 监听 SDK 消息（`handlers.onMessage`）：收到 `tool_use` 就更新进度并 `onProgress?.(text)`；收到 `type === 'result'` 就结束等待。
      **结果帧要分成功与失败**：`SDKResultMessage = SDKResultSuccess | SDKResultError`。
      成功的帧是 `subtype: 'success'`；失败的帧是
      `subtype: 'error_during_execution' | 'error_max_turns' | 'error_max_budget_usd' | 'error_max_structured_output_retries'`，
@@ -941,6 +949,9 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      写进 `warnings` —— 否则这一轮报错会被当成正常结束，用户看到的是"agent 什么都没产出"，
      而不是"agent 报错了"。失败时如果暂存目录里已经有文件，仍然照常读清单（可能有部分产出），
      但警告里必须说明这一轮是失败结束的。
+     **也要接 `handlers.onFault` 与 `handlers.onExit`**：CLI 崩了或被杀掉的时候不会有 `result` 帧，
+     只等 `result` 就会一路挂到 5 分钟超时才罢休。两者任一触发就结束等待，
+     并把错误信息写进 `warnings`（`onExit` 的 `expected` 为 false 时说明是非预期退出，更该写明）。
   5. 结束后读 `<scratchRoot>/manifest.json`，用 `RefactorManifest.safeParse` 解析；解析失败返回 `manifest: null` 并在 `warnings` 里写明原因。
      读它也要带大小上限（清单是 agent 写的外部输入）：用 `readNodeFileWithinLimit(path, 1 * 1024 * 1024)`（`src/shared/file-content/node-bounded-file-reader.ts`），超限按"解析失败"处理。
   6. 超时：`REFACTOR_TURN_TIMEOUT_MS = 300_000`（5 分钟）。到点中止并关连接。

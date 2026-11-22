@@ -1924,14 +1924,20 @@ writeFileExplorerFile(
      把这个约定钉住，别让两个函数各走各的。
   6. 写基准副本：`fs.writeFile(path.join(scratchRoot, '_source', params.relativePath), params.content)`，父目录先 `mkdir recursive`。
   7. **建 job**（Task 7 的注册表），建的时候就把目标文件的**基准文本**带上：
-     `baselines: new Map([[params.relativePath, params.content]])`。
+     `baselines: new Map([[<目标文件的规范路径>, params.content]])`。
      其它文件的基准文本就是它们当时的磁盘内容。
      顺序很重要：基准在发起那一刻就已知，所以要在建 job 时就给，不能等 job 建好再补——
      那时候注册表里还没有这个 job，也没有地方放它。
-     **基准表的键只归一分隔符，不折叠大小写**：清单里的路径可能用 `\` 写成 `src\foo.ts`，
-     那要和 `src/foo.ts` 命中同一个基准；但 `src/Foo.ts` 和 `src/foo.ts` 在区分大小写的磁盘上是
-     两个文件，命中了就把一个文件的缓冲区写进了另一个文件。
-     查不到就退回磁盘内容（只丢用户未保存的编辑），方向是安全的。
+     **基准表的键是文件的身份，不是路径的写法**：清单里的路径可能把同一个文件写成不同的样子
+     （`src\foo.ts`、`src/foo.ts`、`src/Foo.ts`），而**它们是不是同一个文件只有文件系统知道**——
+     macOS 和 Windows 上 `src/Foo.ts` 与 `src/foo.ts` 是一个文件，Linux 上是两个。
+     所以键用 `fs.promises.realpath`（**不是 `realpathSync`**：同步的那个保留给定的写法，
+     在不区分大小写的卷上分不开两个拼法）算出来的规范路径。
+     查不到就是**另一个文件**，退回它自己的磁盘内容——这时用户的缓冲区不参与，是对的。
+     **查不到退回磁盘并不总是"安全"的**：在不区分大小写的卷上，写法不同往往还是同一个文件，
+     退回磁盘就等于拿保存过的版本当基准，用户没保存的修改会在**部分接受**时被悄悄抹掉
+     （`applyRefactorHunks` 只让基准决定用户**没有**接受的那几段）。
+     这就是为什么必须按身份查，而不是按键查。
   8. 把 `.orca/refactor/` 加进仓库本地的 exclude 文件（见下面「暂存目录不进版本库」）。
   9. 清理过期暂存目录（见下面「暂存目录清理」），并把被清理掉的 job 从注册表里摘掉。
   10. **立刻返回** `{ jobId }`。

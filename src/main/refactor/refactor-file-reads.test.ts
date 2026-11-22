@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { listScratchProposals, readScratchFile, readWorkspaceFile } from './refactor-file-reads'
+import {
+  listScratchProposals,
+  readScratchFile,
+  readWorkspaceFile,
+  unreadableReason
+} from './refactor-file-reads'
 
 const roots: string[] = []
 
@@ -95,5 +100,10 @@ describe('readWorkspaceFile', () => {
     const root = await scratchRoot()
     const read = await readWorkspaceFile(root, `${'a'.repeat(300)}.ts`)
     expect(read).toEqual({ status: 'unreadable', reason: '文件无法读取' })
+  })
+
+  it('names a permission problem the user can act on', () => {
+    expect(unreadableReason({ code: 'EACCES' })).toBe('文件无法读取（权限不足）')
+    expect(unreadableReason({ code: 'EPERM' })).toBe('文件无法读取（权限不足）')
   })
 })

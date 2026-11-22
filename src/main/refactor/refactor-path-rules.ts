@@ -23,17 +23,6 @@ export function refactorPathKey(filePath: string): string {
 }
 
 /**
- * The key a baseline is stored under: the separators are normalised, the case is not.
- *
- * Why not the case: a case-folded key makes `src/Foo.ts` and `src/foo.ts` one entry, and the
- * baseline of one file would then be written into the other. A miss falls back to the disk,
- * which costs only the user's unsaved edits.
- */
-export function refactorBaselineKey(relativePath: string): string {
-  return relativePath.split(/[\\/]/).join('/')
-}
-
-/**
  * A drive-relative path resolves against another drive's current directory, so it names no file
  * of this workspace. It is refused on every platform, not only where it happens to escape.
  */
@@ -53,7 +42,7 @@ export function assertSafeRefactorTargetPath(workspaceRoot: string, relativePath
   if (!isSafeRelativeRefactorPath(relativePath)) {
     throw new Error(
       hasUnsafePathSegment(relativePath)
-        ? '重构目标的路径含有不安全的片段'
+        ? '重构目标的路径有一段以空格或点结尾'
         : '重构目标必须是工作区内的相对路径'
     )
   }

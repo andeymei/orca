@@ -93,7 +93,12 @@ export const REFACTOR_METHODS = [
         scratchRoot,
         worktree: params.worktree,
         // The baseline of the target file is known now: it is the buffer the user is looking at.
-        baselines: refactorBaselineMap(params.relativePath, params.content)
+        // It is keyed by the file it names, so the manifest can spell the path differently.
+        baselines: await refactorBaselineMap({
+          workspaceRoot,
+          relativePath: params.relativePath,
+          content: params.content
+        })
       })
 
       await excludeRefactorScratchFromGit(workspaceRoot)

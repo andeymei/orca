@@ -78,6 +78,16 @@ function createRuntime(stub: {
   return runtime
 }
 
+/** Whether two paths name the same file here: the filesystem's own answer. */
+async function isSameFile(left: string, right: string): Promise<boolean> {
+  try {
+    const [leftStat, rightStat] = await Promise.all([fs.stat(left), fs.stat(right)])
+    return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino
+  } catch {
+    return false
+  }
+}
+
 function dispatch(
   runtime: OrcaRuntimeService,
   method: string,
@@ -129,7 +139,7 @@ describe('the refactoring RPC methods', () => {
 
   it('names the trailing space in a refused target path', async () => {
     // A trailing space is stripped by Windows before it reads the name, so the path means
-    // something else there; the user has to be told which part of the path is wrong.
+    // something else there; the user has to be told that a segment of the path ends wrongly.
     const root = await workspaceRoot()
     const runtime = createRuntime({ executionHostId: 'local', workspacePath: root })
     const response = await dispatch(runtime, 'refactor.propose', {
@@ -138,7 +148,7 @@ describe('the refactoring RPC methods', () => {
     })
     expect(response).toMatchObject({
       ok: false,
-      error: { message: '重构目标的路径含有不安全的片段' }
+      error: { message: '重构目标的路径有一段以空格或点结尾' }
     })
   })
 
@@ -285,20 +295,40 @@ describe('the refactoring RPC methods', () => {
   })
 
   it('finds the baseline when the manifest spells the path with another separator', async () => {
-    // The baseline is the buffer the user saw; the disk would drop their unsaved edits.
+    // A backslash is a separator on Windows and part of the name on POSIX, so the two spellings
+    // name the same file only on Windows; on POSIX the spelled path names a file that is not
+    // there, and it has no baseline.
     const root = await workspaceRoot()
-    const baselines = refactorBaselineMap('src/foo.ts', 'buffer\n')
+    const baselines = await refactorBaselineMap({
+      workspaceRoot: root,
+      relativePath: 'src/foo.ts',
+      content: 'buffer\n'
+    })
     const readBaseline = refactorBaselineReader({ baselines, workspaceRoot: root })
-    expect(await readBaseline('src\\foo.ts')).toBe('buffer\n')
+    const sameFile = await isSameFile(
+      path.join(root, 'src', 'foo.ts'),
+      path.join(root, 'src\\foo.ts')
+    )
+    expect(await readBaseline('src\\foo.ts')).toBe(sameFile ? 'buffer\n' : null)
   })
 
-  it("does not hand one file's buffer to a path that differs only in case", async () => {
-    // `src/Foo.ts` and `src/foo.ts` are two files on a case-sensitive disk; the baseline of one
-    // written into the other would be a silent overwrite.
+  it('gives the buffer to the file it names and to no other file', async () => {
+    // `src/Foo.ts` and `src/foo.ts` are one file on macOS and Windows and two files on Linux,
+    // and only the filesystem knows which. The buffer belongs to the one file either way.
     const root = await workspaceRoot()
-    const baselines = refactorBaselineMap('src/Foo.ts', 'the user buffer\n')
+    await fs.writeFile(path.join(root, 'src', 'Foo.ts'), ORIGINAL)
+    const baselines = await refactorBaselineMap({
+      workspaceRoot: root,
+      relativePath: 'src/Foo.ts',
+      content: 'the user buffer\n'
+    })
     const readBaseline = refactorBaselineReader({ baselines, workspaceRoot: root })
-    expect(await readBaseline('src/foo.ts')).not.toBe('the user buffer\n')
+    const sameFile = await isSameFile(
+      path.join(root, 'src', 'Foo.ts'),
+      path.join(root, 'src', 'foo.ts')
+    )
+    expect(await readBaseline('src/foo.ts')).toBe(sameFile ? 'the user buffer\n' : ORIGINAL)
+    expect(await readBaseline('src/bar.ts')).not.toBe('the user buffer\n')
   })
 
   it('refuses an apply on a job whose turn never produced a plan', async () => {

@@ -25,13 +25,25 @@ export type RefactorFileReadResult =
   | { status: 'missing' }
   | { status: 'unreadable'; reason: string }
 
+/** Whether the read failed for a permission reason, which the user can act on. */
+function isPermissionError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return false
+  }
+  const code = error.code
+  return code === 'EACCES' || code === 'EPERM'
+}
+
 /** Why the file could not be read, in the words the user reads. */
-function unreadableReason(error: unknown): string {
+export function unreadableReason(error: unknown): string {
   if (error instanceof NodeFileReadTooLargeError) {
     return '文件过大，无法安全读取'
   }
   if (error instanceof NodeFileNotRegularError) {
     return '文件不是普通文件，无法安全读取'
+  }
+  if (isPermissionError(error)) {
+    return '文件无法读取（权限不足）'
   }
   // The raw message is an errno with a path in it; it is not something to show a person.
   return '文件无法读取'
@@ -53,6 +65,8 @@ export async function readWorkspaceFile(
     if (isENOENT(error)) {
       return { status: 'missing' }
     }
+    // The errno stays in the log; the reason the user reads must not carry a path.
+    console.warn('[refactor] could not read a workspace file:', error)
     return { status: 'unreadable', reason: unreadableReason(error) }
   }
 }

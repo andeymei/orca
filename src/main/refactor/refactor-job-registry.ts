@@ -9,7 +9,7 @@ export type RefactorJob = {
   plan: RefactorPlan | null
   /** The disk content of each file at the moment the plan was built, for the staleness check. */
   diskContents: Map<string, string>
-  /** The baseline text of each file: the target file is the editor buffer, the rest the disk. */
+  /** The target file's baseline (the editor buffer), keyed by the file's identity on disk. */
   baselines: Map<string, string>
   /** The original worktree selector, replayed when the accepted changes are written back. */
   worktree: string

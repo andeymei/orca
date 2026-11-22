@@ -3009,7 +3009,7 @@ git commit -m "feat(refactor): review the proposals and accept them by plan, fil
 
 - [ ] **Step 6: 用真的 CLI 再跑一次**
 
-  这一步**不能用单元测试代替**：真跑发现的正是"CLI 的路径处理"与"我们的"之间���不一致。
+  这一步**不能用单元测试代替**：真跑发现的正是"CLI 的路径处理"与"我们的"之间的不一致。
   见 `.superpowers/sdd/2026-11-22-intelligent-refactor/end-to-end-run.md`。
 
 ---

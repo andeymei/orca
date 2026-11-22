@@ -84,6 +84,13 @@ export type OpenCheckRunDetailsState = {
   gitlabProjectRef?: GitLabProjectRef | null
 }
 
+/** Why: the review tab names the job and the file it reviews; the plan itself lives in the review store. */
+export type RefactorReviewState = {
+  jobId: string
+  worktreeId: string
+  relativePath: string
+}
+
 /** An editor tab's view, keyed by its mode, with exactly the open-file fields that mode uses today. The view is not saved. */
 export type EditorTabView =
   | { mode: 'edit'; conflict?: OpenConflictMetadata }
@@ -108,3 +115,4 @@ export type EditorTabView =
   | { mode: 'conflict-review'; conflictReview?: ConflictReviewState }
   | { mode: 'git-graph' }
   | { mode: 'check-details'; checkRunDetails?: OpenCheckRunDetailsState }
+  | { mode: 'refactor-review'; refactorReview?: RefactorReviewState }

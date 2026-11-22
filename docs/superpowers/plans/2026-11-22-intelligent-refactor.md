@@ -1277,11 +1277,21 @@ user 段包含目标文件的相对路径、暂存根的相对路径、用户的
      - `refactor-tool-hook.ts` 里注册一个 PreToolUse 回调，`matcher` 不设（匹配所有工具），
        拿 `tool_name` / `tool_input` 走**同一个** `refactorToolAllowed`，
        不允许就返回 `{ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: ... } }`。
+     - **matcher 必须设 `onFailure: 'block'`**。SDK 的契约（`sdk.d.ts:1014-1020` 与 `:5490`）：
+       默认的 `'continue'` 是"hook 失败了就报告一声，动作照做"——
+       回调送不到、CLI 侧超时、或者 CLI 根本不认 initialize 里的 `hooks` 字段，
+       闸门就一次都不会拒绝，工具照写。而此时设置层的 allow 规则又让 `canUseTool` 也不被问，
+       整个闸门等于没有。`'block'` 把这条也堵上：
+       "the query fails at startup on a Claude Code that does not support the option …
+       and the first prompt is sent only once those checks have passed."
+       也就是说**跑不了的 CLI 干脆不许跑这一轮**（回合失败，警告里带着 SDK 自己的话），
+       而不是让它在闸门缺席的情况下跑。
      - **回调的入参是 `HookInput`（一个联合类型）**，只有 `PreToolUseHookInput` 变体上才有
        `tool_name` / `tool_input`。所以要先判 `input.hook_event_name === 'PreToolUse'`，
        不是就放行（注册在 PreToolUse 下时轮不到别的变体，但类型上要收窄）。
      - **失败即拒绝**：回调里抛异常时返回 deny，不要让异常冒到 CLI 那边变成"放行"。
      - hook 的 `tool_input` 是 `unknown`，要先判断它是不是对象再交给裁决函数。
+     - 拒绝的理由里要带上**工具名与它想写的路径**，否则 agent 只能回去重读 prompt 才知道为什么被拒。
      - `canUseTool` 保留为第二层，两者共用同一个裁决函数。
      - 在 `runRefactorTurn` 里把 hook 挂上去：`launch.options` 是只读的，
        所以用 `{ ...launch, options: { ...launch.options, hooks: { PreToolUse: createRefactorToolHook({ scratchRoot, workspaceRoot }) } } }`

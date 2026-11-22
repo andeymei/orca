@@ -22,6 +22,7 @@ export type TabContentType =
   | 'conflict-review'
   | 'check-details'
   | 'git-graph'
+  | 'refactor-review'
   | 'agent-session'
   | 'browser'
   | 'simulator'

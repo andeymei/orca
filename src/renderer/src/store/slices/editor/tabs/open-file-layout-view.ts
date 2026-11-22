@@ -35,6 +35,8 @@ function editorTabViewOf(file: OpenFile): EditorTabView | null {
       return { mode: 'git-graph' }
     case 'check-details':
       return { mode: 'check-details', ...pickStoredFields(file, ['checkRunDetails']) }
+    case 'refactor-review':
+      return { mode: 'refactor-review', ...pickStoredFields(file, ['refactorReview']) }
   }
 }
 

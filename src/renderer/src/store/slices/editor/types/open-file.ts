@@ -15,7 +15,8 @@ import type {
   ConflictReviewState,
   DiffSource,
   OpenCheckRunDetailsState,
-  OpenConflictMetadata
+  OpenConflictMetadata,
+  RefactorReviewState
 } from '../../../../../../shared/editor-tab-view-types'
 
 export type BranchCompareLike = Pick<
@@ -83,6 +84,8 @@ export type OpenFile = {
   fileContentReloadNonce?: number
   /** Why: CI check-details tabs are virtual editor tabs backed by fetched PR check-run metadata, not a file on disk. */
   checkRunDetails?: OpenCheckRunDetailsState
+  /** Why: a refactor review tab is virtual too; it names the job whose proposals it shows. */
+  refactorReview?: RefactorReviewState
   // Only host-mirrored tabs may be culled on omission; locally opened tabs survive.
   mirroredFromRuntimeSession?: boolean
   // Read-only is orthogonal to mode: logs cannot edit/autosave/rename; persist only true.
@@ -91,7 +94,14 @@ export type OpenFile = {
   csvPreviewOnly?: boolean
   /** Why: explicit live tail, only meaningful for a read-only local log. */
   liveTail?: boolean
-  mode: 'edit' | 'diff' | 'conflict-review' | 'markdown-preview' | 'check-details' | 'git-graph'
+  mode:
+    | 'edit'
+    | 'diff'
+    | 'conflict-review'
+    | 'markdown-preview'
+    | 'check-details'
+    | 'git-graph'
+    | 'refactor-review'
 }
 
 export type MarkdownViewMode = 'source' | 'rich' | 'preview'

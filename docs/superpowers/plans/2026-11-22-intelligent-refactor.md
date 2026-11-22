@@ -13,7 +13,9 @@
 ## Global Constraints
 
 - 跨平台：不硬编码 `e.metaKey`；快捷键用 `monaco.KeyMod.CtrlCmd`；路径一律用 `path.join` / `path.resolve` / `path.relative`。
-- 远端优先：所有工作区读写走 runtime RPC，参数用 `worktree` + `relativePath`（沿用 `WorktreeSelector` 形状），本地 / SSH / WSL 一条路。
+- 工作区读写走 runtime RPC，参数用 `worktree` + `relativePath`（沿用 `WorktreeSelector` 形状）。
+  **但本特性只支持本地工作区**：agent 是本地子进程，远端（SSH / WSL）工作区的路径在另一台机器上，
+  `refactor.propose` 遇到非 `local` 的 `executionHostId` 直接拒绝（见 Task 8）。
 - 类型放 `.ts`，不放 `.d.ts`（`src/shared/` 与 `src/preload/` CI 强制）。
 - 新文件不得使用 `helpers` / `utils` / `common` / `misc` 命名；按领域概念命名。
 - 注释：只写代码本身没说清的原因，一行，写"为什么"不写"怎么做"。
@@ -21,10 +23,11 @@
 - 不默认加测试。本计划列出的测试都是纯逻辑、会在改动被回退时失效、且硬编码期望值的。
 - 测试用 `pnpm test <path> --maxWorkers=2`，不要裸跑 vitest。
 - 类型检查 `pnpm tc:node`（main + shared）与 `pnpm tc:web`（renderer）。
-- 提交前必须跑 `pnpm check:changed`，不得 `--no-verify`。
+- 整条分支跑完前必须跑一次 `pnpm check:changed`，不得 `--no-verify`。
   **基线用 `pnpm check:changed --base=9127b3837e`**（本分支起点，merge-base 就是它）。
   不要用默认的 `origin/main`：origin/main 停在 `f90dab5edf`，不含本分支历史里那个 NES 大提交，
   changed 集合会混进别人的几千个文件，vitest 的 "related" 步骤要跑 19 分钟。
+  单个任务只跑自己路径的测试、类型检查与 lint；整轮门禁由控制者在分支末尾统一跑。
 - 改了 RPC 方法后必须跑 `pnpm generate:rpc-params-catalog` 并提交生成物。
 - 不在本计划内新增仓库根目录条目。
 

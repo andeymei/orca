@@ -2292,6 +2292,9 @@ Expected: FAIL，报模块不存在。
 - **tab 卸载时调 `refactorReviewStore.remove(jobId)`**（Task 11 的 store 是按 jobId 存 Map 的模块级单例，
   不删就会随着每次重构一直长）。「丢弃」按钮关 tab 时也会走到这里。
 - 用 Task 9 的 `pollRefactorJob` 轮询状态；`state === 'done'` 后用 `fetchRefactorPlan` 取 plan 并写进 store。
+- **`state` 是 `'failed'` 或 `'cancelled'` 时**：把 `warnings` **内联显示在 tab 里**（不是 toast——
+  用户得能读、能理解、能重试），并停止轮询。轮询器在状态不是 `'running'` 时就会停，所以
+  这一支必须由 tab 自己处理。
 - 「接受全部方案」把 plan 里所有 hunk 标为接受，然后调 `applyRefactor`，成功后关掉这个 tab（用现成的关闭编辑 tab 的 store action）。
 - 「丢弃」调 `discardRefactor` 后关 tab。
 - **部分接受警告**：对每个方案，若它有 hunk 但被接受的 hunk 是真子集，在方案节点上显示提示"这个改动由 N 处修改共同组成，只接受其中一处可能无法编译"，并给一个"接受该方案全部改动"的按钮。

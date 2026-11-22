@@ -169,6 +169,7 @@ if (preflightReady) {
   state.osOpenedDocuments.capture(process.argv)
   registerMainProcessIpcHandlers()
   installMainProcessQuitHandlers()
+
   void app.whenReady().then(async () => {
     try {
       await initializeMainProcessReady({

@@ -330,11 +330,45 @@ export function parseNesPlanText(
 
 /** The answer of a model, as JSON; null when it is not JSON at all. */
 function parseNesPlanJson(text: string): unknown {
+  const answer = text.slice(0, NES_COMPLETION_OUTPUT_LIMIT)
   try {
-    return JSON.parse(text.slice(0, NES_COMPLETION_OUTPUT_LIMIT))
+    return JSON.parse(answer)
   } catch {
-    return null
+    // Why: a small model writes a quote inside a string as two quotes, and the answer it meant
+    // is the one the editor would have drawn. A JSON string cannot hold a bare quote, so the
+    // pair is always the model trying to write an escaped one.
+    try {
+      return JSON.parse(repairJsonStringQuotes(answer))
+    } catch {
+      return null
+    }
   }
+}
+
+/** Rewrites the doubled quotes a model writes inside a JSON string as escaped ones. */
+export function repairJsonStringQuotes(text: string): string {
+  let out = ''
+  let inString = false
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (character === '\\' && inString && index + 1 < text.length) {
+      out += character + text[index + 1]
+      index += 1
+      continue
+    }
+    if (character === '"') {
+      if (inString && text[index + 1] === '"') {
+        out += '\\"'
+        index += 1
+        continue
+      }
+      inString = !inString
+      out += character
+      continue
+    }
+    out += character
+  }
+  return out
 }
 
 /** The plan a completion stream carries; the finishing step and the usage fields differ per protocol. */

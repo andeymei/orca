@@ -255,6 +255,24 @@ describe('completion backends', () => {
     expect(result.plan?.edits).toEqual([])
   })
 
+  it('reads an answer whose quotes inside a string were written twice', async () => {
+    // Why: a small model writes a quote inside a string as two quotes, and the answer it meant
+    // is the one the editor would have drawn.
+    // The answer as the model wrote it: the quotes inside the string are doubled.
+    const brokenAnswer =
+      '{"edits":[{"id":"e1","path":"/repo/src/foo.ts","kind":"insert",' +
+      '"range":{"startLine":41,"startColumn":1,"endLine":41,"endColumn":1},' +
+      '"originalText":"","text":" log.info(""hello"");","label":"add the log line"}]}'
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      sseResponse([anthropicTextEvent(brokenAnswer)])
+    )
+    const backend = createAnthropicMessagesBackend(CONFIG, { fetchImpl })
+
+    const result = await backend.plan(REQUEST, new AbortController().signal)
+
+    expect(result.plan?.edits[0]?.text).toBe(' log.info("hello");')
+  })
+
   it('reads an OpenAI chat stream and returns the validated plan', async () => {
     const planJson = JSON.stringify(MODEL_PLAN)
     const fetchImpl = vi.fn<typeof fetch>(async () =>

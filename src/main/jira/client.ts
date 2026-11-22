@@ -196,6 +196,7 @@ export function clearToken(siteId: string): void {
   deleteToken(siteId)
   clearAttachmentImagesForSite(siteId)
   const file = getSiteFile()
+
   writeSiteFile({ ...file, sites: file.sites.filter((site) => site.id !== siteId) })
 }
 

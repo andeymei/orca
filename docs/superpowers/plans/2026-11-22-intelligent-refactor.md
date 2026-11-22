@@ -1899,7 +1899,16 @@ git commit -m "feat(refactor): track what the user accepts in the review"
 
 - Consumes: Task 1 的 `RefactorHunk`；`DiffViewer`（**从 `src/renderer/src/components/editor/editor-lazy-views.ts` 导入**，不要直接从 `diff/monaco-view/DiffViewer` 导入——仓库里同一个模块套第二层 lazy 会造成独立的边界和重挂载，参见该文件的注释）；`detectLanguage`（`src/shared/editor-language/editor-language-detect.ts`，签名 `detectLanguage(filePath: string, content?: string): string`）
 - Produces:
-  - `RefactorHunkView` 组件，props：`{ hunk: RefactorHunk; filePath: string; relativePath: string; accepted: boolean; sideBySide: boolean; onToggleAccepted: () => void; disabled?: boolean }`
+  - `RefactorHunkView` 组件，props：`{ hunk: RefactorHunk; filePath: string; relativePath: string; ownerKey: string; accepted: boolean; sideBySide: boolean; onToggleAccepted: () => void; disabled?: boolean }`
+    - `ownerKey` 是**拥有这批 model 的那个 tab 的 id**（Task 13 的合成 id `${worktreeId}::refactor-review:${jobId}`）。
+      它有两个用处，缺一不可：
+      1. `modelKey` 必须唯一到「tab + 文件 + 代码块」这一级。**hunk 的 id 是每个文件各自从 `h1` 开始的**，
+         两个文件都有 `h1`；而 `modelKey` 会变成 Monaco model 的 URI
+         （`diff:original:<encoded modelKey>:<generation>`，见 `diff-monaco-model-disposal.ts:77-92`），
+         同 key 就是同一个 model——第二个 diff 会显示第一个文件的内容。
+         所以 `modelKey` 用 `refactor-hunk:${ownerKey}:${relativePath}:${hunk.id}`。
+      2. `modelOwnerKey` 传 `ownerKey`（不是 `modelKey`）。这样这个 tab 的所有 hunk model 归同一个 owner，
+         关掉 tab 时能一次性回收；每个 hunk 各自当 owner 会让 model 留着不释放。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -1920,6 +1929,7 @@ it('shows the absolute line range of the hunk', () => {
       }}
       filePath="/repo/src/foo.ts"
       relativePath="src/foo.ts"
+      ownerKey="wt-1::refactor-review:job-1"
       accepted={false}
       sideBySide
       onToggleAccepted={() => {}}
@@ -1953,7 +1963,8 @@ Expected: FAIL，报模块不存在。
   - `modifiedContent={hunk.modifiedText}`
   - `language={detectLanguage(relativePath)}`
   - `filePath` / `relativePath` 传相对路径
-  - `modelKey={`refactor-hunk:${hunk.id}`}`
+  - `modelKey={`refactor-hunk:${ownerKey}:${relativePath}:${hunk.id}`}`
+  - `modelOwnerKey={ownerKey}`
   - `sideBySide={sideBySide}`
   - `editable={false}`
 
@@ -2057,6 +2068,8 @@ Expected: FAIL，报模块不存在。
 `refactor-review-tab.tsx`：
 
 - 左侧 `refactor-proposal-tree.tsx`，右侧当前选中的 hunk 的 `RefactorHunkView`。
+  `RefactorHunkView` 的 `ownerKey` 传**这个 tab 的合成 id**（`${worktreeId}::refactor-review:${jobId}`）——
+  它决定 Monaco model 的 key 与归属，见 Task 12 的 Interfaces。
 - **「查看完整文件」切换**（spec §9.2 要求）：切到整文件视角时，右区显示整个文件的 `DiffViewer`——
   `originalContent` 用 `file.originalContent`（基准文本），
   `modifiedContent` 用 `applyRefactorHunks(file.originalContent, file.hunks)`（Task 2 的函数，渲染层可用）。

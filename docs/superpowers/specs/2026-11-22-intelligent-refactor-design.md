@@ -93,7 +93,8 @@ Orca 已有「Next Edit Suggestion」（NES，`docs/superpowers/specs/2026-11-17
   │ ③ openClaudeStreamJsonConnection(                             │
   │      cwd = 工作区根,                                           │
   │      options = { permissionMode:'default',                     │
-  │                   allowedTools:[Read,Grep,Glob,Write,Edit] }, │
+  │                   disallowedTools:[Bash,Task],                  │
+  │                   settingSources:[] },                        │
   │      canUseTool = 写闸门：Write/Edit 只放行暂存目录内 )        │
   │ ④ agent 读 _source 下的 F（以及它想看的其它文件）              │
   │    写 .orca/refactor/<jobId>/<proposalId>/<相对路径>            │
@@ -194,7 +195,13 @@ export const RefactorHunk = z.object({
 
 - `cwd` = 工作区根目录（agent 要能读工作区里的其它文件）。
 - `options.permissionMode = 'default'`（不设 `dangerously-skip-permissions`）。
-- `options.allowedTools = ['Read','Grep','Glob','Write','Edit']`。
+- **不给 `options.allowedTools`**。SDK 对 `allowedTools` 的定义是"自动放行、不再询问"，
+  而 `canUseTool` 是"每次工具执行前调用"——把 `Write`/`Edit` 列进 `allowedTools`，
+  CLI 可能就绕过写闸门直接放行写操作，agent 就能改用户的真实源码。
+  闸门必须是唯一裁决者，所以一个工具都不许被预先自动放行。
+- `options.disallowedTools = ['Bash','Task']`（脱离路径模型的两个逃逸口，从模型上下文里去掉）。
+- `options.settingSources = []`（SDK 隔离模式，不加载用户/项目/本地的 Claude 设置；
+  否则用户自己写的 `permissions.allow: ["Write"]` 同样会被自动放行）。
 
 `allowedTools` / `disallowedTools` 目前不在 `ClaudeStructuredSdkOptions` 里，需要加进这个 Pick
 类型。SDK 支持这两个字段，且 `claude-structured-launch-args.ts` 的 `OWNED_FLAGS` 已经把它们挡在
@@ -205,10 +212,13 @@ export const RefactorHunk = z.object({
 `handlers.canUseTool` 回调逐个工具调用裁决：
 
 - `Read` / `Grep` / `Glob`：放行（限制在工作区内）。
-- `Write` / `Edit`：**目标路径必须落在 `.orca/refactor/<jobId>/` 之内**，否则拒绝。
+- `Write` / `Edit` / `MultiEdit`：**目标路径必须落在 `.orca/refactor/<jobId>/` 之内**，否则拒绝。
+  `MultiEdit` 必须放行——它是 Claude Code 真实存在的编辑工具，拒掉它等于堵死一条正当的编辑路径。
 - 其它工具：拒绝（`Bash`、`Task`、MCP 工具都不给）。
 
 路径裁决必须做**规范化后再比较**（resolve 相对路径、消除 `..`），不能只做字符串前缀匹配。
+另外要逐段拒绝**末尾带点或空格**的分量：Win32 在识别 `.` / `..` 之前先剥掉它们，
+`.. ` 对操作系统就是"上一级目录"，而 Node 的 `path.win32.resolve` 不剥。
 
 ### 6.3 prompt
 
@@ -404,16 +414,16 @@ tab 上只存 `jobId` 和 `worktreeId`，其余状态按 jobId 拉。
 
 ### 11.2 main
 
-| 文件                                                                       | 作用                                                               |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `src/main/refactor/refactor-job-registry.ts`                               | job 状态、取消句柄、警告                                           |
-| `src/main/refactor/refactor-agent-launch.ts`                               | 解析 Claude 可执行文件 / 账号 / env，拼 SDK 启动参数               |
-| `src/main/refactor/refactor-write-gate.ts`                                 | `canUseTool` 写闸门                                                |
-| `src/main/refactor/refactor-runner.ts`                                     | 驱动一次 agent turn，超时与取消                                    |
-| `src/main/refactor/refactor-plan-builder.ts`                               | 读清单 + 读暂存文件 + 读基准文本 → 组装 RefactorPlan               |
-| `src/main/refactor/refactor-scratch-cleanup.ts`                            | 清理过期暂存目录                                                   |
-| `src/main/runtime/rpc/methods/refactor/refactor-methods.ts`                | 5 个 RPC 方法                                                      |
-| `src/main/claude/structured/launch/claude-structured-launch-resolution.ts` | `ClaudeStructuredSdkOptions` 加 `allowedTools` / `disallowedTools` |
+| 文件                                                                       | 作用                                                                                                |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `src/main/refactor/refactor-job-registry.ts`                               | job 状态、取消句柄、警告                                                                            |
+| `src/main/refactor/refactor-agent-launch.ts`                               | 解析 Claude 可执行文件 / 账号 / env，拼 SDK 启动参数                                                |
+| `src/main/refactor/refactor-write-gate.ts`                                 | `canUseTool` 写闸门                                                                                 |
+| `src/main/refactor/refactor-runner.ts`                                     | 驱动一次 agent turn，超时与取消                                                                     |
+| `src/main/refactor/refactor-plan-builder.ts`                               | 读清单 + 读暂存文件 + 读基准文本 → 组装 RefactorPlan                                                |
+| `src/main/refactor/refactor-scratch-cleanup.ts`                            | 清理过期暂存目录                                                                                    |
+| `src/main/runtime/rpc/methods/refactor/refactor-methods.ts`                | 5 个 RPC 方法                                                                                       |
+| `src/main/claude/structured/launch/claude-structured-launch-resolution.ts` | `ClaudeStructuredSdkOptions` 加 `allowedTools` / `disallowedTools`（`settingSources` 已在 Pick 里） |
 
 ### 11.3 renderer
 

@@ -2228,6 +2228,8 @@ Expected: FAIL，报模块不存在。
   `modifiedContent` 用 `applyRefactorHunks(file.originalContent, file.hunks)`（Task 2 的函数，渲染层可用）。
   也就是说整文件视角显示的是**该方案改完之后的全文**，不是别的方案的结果。
 - 顶部：文件名、「接受全部方案」、「丢弃」按钮、进度文案。
+- **tab 卸载时调 `refactorReviewStore.remove(jobId)`**（Task 11 的 store 是按 jobId 存 Map 的模块级单例，
+  不删就会随着每次重构一直长）。「丢弃」按钮关 tab 时也会走到这里。
 - 用 Task 9 的 `pollRefactorJob` 轮询状态；`state === 'done'` 后用 `fetchRefactorPlan` 取 plan 并写进 store。
 - 「接受全部方案」把 plan 里所有 hunk 标为接受，然后调 `applyRefactor`，成功后关掉这个 tab（用现成的关闭编辑 tab 的 store action）。
 - 「丢弃」调 `discardRefactor` 后关 tab。

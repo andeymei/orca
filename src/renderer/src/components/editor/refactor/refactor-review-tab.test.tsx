@@ -185,6 +185,8 @@ beforeEach(() => {
   mocks.state.openFile.mockClear()
   mocks.toastError.mockClear()
   mocks.toastSuccess.mockClear()
+  mocks.applyRefactor.mockClear()
+  mocks.discardRefactor.mockClear()
   mocks.fetchRefactorStatus.mockResolvedValue({ state: 'done', progress: '', warnings: [] })
   mocks.fetchRefactorPlan.mockResolvedValue(null)
   mocks.applyRefactor.mockResolvedValue({
@@ -269,6 +271,36 @@ describe('the refactor review tab', () => {
     await waitFor(() =>
       expect(mocks.state.closeFile).toHaveBeenCalledWith('wt-1::refactor-review:job-1')
     )
+  })
+
+  it('releases the job after a successful write', async () => {
+    renderTab()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
+    await waitFor(() => expect(mocks.discardRefactor).toHaveBeenCalledWith('job-1'))
+  })
+
+  it('keeps the job when the write was refused, so the user can read why', async () => {
+    mocks.applyRefactor.mockResolvedValue({
+      applied: [],
+      refusals: [{ path: 'src/foo.ts', reason: '文件在评审期间被改动过，请重新生成重构建议' }]
+    })
+    renderTab()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
+    await waitFor(() =>
+      expect(screen.getByText('文件在评审期间被改动过，请重新生成重构建议')).toBeTruthy()
+    )
+    expect(mocks.discardRefactor).not.toHaveBeenCalled()
+  })
+
+  it('keeps the job when the write failed', async () => {
+    mocks.applyRefactor.mockRejectedValue(new Error('the write did not go through'))
+    renderTab()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
+    await waitFor(() => expect(screen.getByText('the write did not go through')).toBeTruthy())
+    expect(mocks.discardRefactor).not.toHaveBeenCalled()
   })
 
   it('says the outcome may be partial when the apply deadline passes', async () => {

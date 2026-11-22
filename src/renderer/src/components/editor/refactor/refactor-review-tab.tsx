@@ -160,6 +160,9 @@ export function RefactorReviewTab({
             return
           }
           toast.success(writtenLabel(result.applied.length, t))
+          // Why the order: the tab closes on success, so the release starts before the component
+          // goes away.
+          releaseRefactorJob(jobId)
           closeTab()
         } catch (error) {
           const message = applyFailureMessage(error, t)
@@ -329,6 +332,21 @@ async function runAndClear(work: () => Promise<void>, clear: () => void): Promis
   } finally {
     clear()
   }
+}
+
+/**
+ * Releases a finished job and the scratch tree it wrote.
+ *
+ * Why it is not awaited: the tab closes on success, and the release has to start before the
+ * component goes away. `discardRefactor` answers false instead of throwing, so the call cannot be
+ * lost and cannot leave an unhandled rejection behind.
+ */
+function releaseRefactorJob(jobId: string): void {
+  void discardRefactor(jobId).then((discarded) => {
+    if (!discarded) {
+      console.error('[refactor] The finished job could not be released.')
+    }
+  })
 }
 
 /**

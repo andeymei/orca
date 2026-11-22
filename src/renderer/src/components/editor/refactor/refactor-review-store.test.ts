@@ -64,6 +64,26 @@ const twoFilePlan: RefactorPlan = {
   ]
 }
 
+/** A plan with three hunks in one file, so the accepted set can grow one hunk at a time. */
+const threeHunkPlan: RefactorPlan = {
+  jobId: 'job-3',
+  sourcePath: 'src/foo.ts',
+  proposals: [
+    {
+      id: 'p1',
+      title: 't',
+      rationale: 'r',
+      files: [
+        {
+          path: 'src/foo.ts',
+          originalContent: 'a\n',
+          hunks: [hunk('h1'), hunk('h2'), hunk('h3')]
+        }
+      ]
+    }
+  ]
+}
+
 describe('the refactor review store', () => {
   it('starts with nothing accepted', () => {
     const store = createRefactorReviewStore()
@@ -90,8 +110,35 @@ describe('the refactor review store', () => {
   it('drops the selection with the plan', () => {
     const store = createRefactorReviewStore()
     store.setPlan('job-1', plan)
+    store.setHunkSelection('job-1', ['h1'], true)
     store.remove('job-1')
     expect(store.getPlan('job-1')).toBeNull()
+    expect(store.getSelection('job-1').acceptedHunkIds.size).toBe(0)
+  })
+
+  it('keeps the hunks it already accepted when another set is accepted', () => {
+    const store = createRefactorReviewStore()
+    store.setPlan('job-3', threeHunkPlan)
+    store.setHunkSelection('job-3', ['h1', 'h2'], true)
+    store.setHunkSelection('job-3', ['h3'], true)
+    expect([...store.getSelection('job-3').acceptedHunkIds].sort()).toEqual(['h1', 'h2', 'h3'])
+  })
+
+  it('drops the selection when the job is planned again', () => {
+    const store = createRefactorReviewStore()
+    store.setPlan('job-1', plan)
+    store.setHunkSelection('job-1', ['h1'], true)
+    store.setPlan('job-1', plan)
+    expect(store.getSelection('job-1').acceptedHunkIds.size).toBe(0)
+  })
+
+  it('hands out a copy of the selection, so a caller cannot change the store through it', () => {
+    const store = createRefactorReviewStore()
+    store.setPlan('job-1', plan)
+    store.toggleHunk('job-1', 'h1')
+    const selection = store.getSelection('job-1')
+    selection.acceptedHunkIds.add('h2')
+    expect(store.getSelection('job-1').acceptedHunkIds.has('h2')).toBe(false)
   })
 
   it('gives back every hunk of a file when the file is unticked', () => {

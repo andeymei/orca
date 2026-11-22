@@ -1,20 +1,18 @@
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useSyncExternalStore } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { useTranslate } from '@/i18n/use-translate'
+import { recomputeOn } from '@/lib/recompute-on'
 
 import type {
   RefactorFileProposal,
   RefactorHunk,
   RefactorProposal
 } from '../../../../../shared/refactor/refactor-types'
-import {
-  refactorHunksOfFile,
-  refactorHunksOfProposal,
-  refactorReviewStore
-} from './refactor-review-store'
+import { refactorHunksOfProposal, refactorReviewStore } from './refactor-review-store'
 
 export type RefactorProposalTreeProps = {
   /** The job whose plan the tree shows. */
@@ -30,7 +28,8 @@ export function RefactorProposalTree({
     [jobId]
   )
   const plan = useSyncExternalStore(subscribe, () => refactorReviewStore.getPlan(jobId))
-  const selection = useSyncExternalStore(subscribe, () => refactorReviewStore.getSelection(jobId))
+  const revision = useSyncExternalStore(subscribe, () => refactorReviewStore.getRevision(jobId))
+  const selection = recomputeOn([revision], () => refactorReviewStore.getSelection(jobId))
 
   if (!plan) {
     return null
@@ -63,6 +62,11 @@ function ProposalNode({
   const hunks = refactorHunksOfProposal(proposal)
   const hunkIds = hunks.map((hunk) => hunk.id)
   const rationale = proposal.rationale.trim()
+  const acceptLabel = t(
+    'auto.components.editor.RefactorProposalTree.acceptProposal',
+    '接受方案 {{title}}',
+    { title: proposal.title }
+  )
   return (
     <div className="flex items-start gap-2">
       <Checkbox
@@ -71,16 +75,18 @@ function ProposalNode({
         onCheckedChange={(next) =>
           refactorReviewStore.setHunkSelection(jobId, hunkIds, next === true)
         }
-        aria-label={t(
-          'auto.components.editor.RefactorProposalTree.acceptProposal',
-          '接受方案 {{title}}',
-          { title: proposal.title }
-        )}
+        // Why: two proposals can carry the same title, so the id is what tells their boxes apart.
+        aria-label={`${acceptLabel} · ${proposal.id}`}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 py-1">
         <Collapsible defaultOpen>
           <CollapsibleTrigger asChild>
-            <button className="group flex w-full items-start gap-1 text-left">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="group h-auto w-full items-start justify-start text-left"
+            >
               <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium" title={proposal.title}>
@@ -95,14 +101,13 @@ function ProposalNode({
                     : t('auto.components.editor.RefactorProposalTree.noRationale', '未给出理由')}
                 </span>
               </span>
-            </button>
+            </Button>
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="mt-1 flex flex-col gap-1">
               {proposal.files.map((file) => (
                 <FileNode
                   key={file.path}
-                  proposal={proposal}
                   file={file}
                   jobId={jobId}
                   acceptedHunkIds={acceptedHunkIds}
@@ -117,18 +122,16 @@ function ProposalNode({
 }
 
 function FileNode({
-  proposal,
   file,
   jobId,
   acceptedHunkIds
 }: {
-  proposal: RefactorProposal
   file: RefactorFileProposal
   jobId: string
   acceptedHunkIds: Set<string>
 }): React.JSX.Element {
   const t = useTranslate()
-  const hunks = refactorHunksOfFile(proposal, file.path)
+  const hunks = file.hunks
   const hunkIds = hunks.map((hunk) => hunk.id)
   return (
     <div className="ml-4 flex items-start gap-2">
@@ -144,13 +147,18 @@ function FileNode({
           { path: file.path }
         )}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 py-0.5">
         <Collapsible defaultOpen>
           <CollapsibleTrigger asChild>
-            <button className="group flex w-full items-center gap-1 text-left">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="group h-auto w-full items-center justify-start text-left"
+            >
               <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-              <span className="truncate font-mono text-xs">{file.path}</span>
-            </button>
+              <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
+            </Button>
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="flex flex-col gap-0.5">
@@ -198,14 +206,16 @@ function HunkNode({
           { path: filePath, index: position }
         )}
       />
-      <button
-        className="truncate text-xs text-muted-foreground hover:text-foreground"
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
         onClick={() => showHunk(jobId, hunk.id, filePath)}
       >
         {t('auto.components.editor.RefactorProposalTree.hunkLabel', '代码块 {{index}}', {
           index: position
         })}
-      </button>
+      </Button>
     </div>
   )
 }

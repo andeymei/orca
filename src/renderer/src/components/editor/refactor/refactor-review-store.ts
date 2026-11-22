@@ -25,6 +25,7 @@ export type RefactorReviewStore = {
   getPlan(jobId: string): RefactorPlan | null
   /** Replaces the whole selection: what is accepted and what the right pane shows. */
   setSelection(jobId: string, selection: RefactorReviewSelection): void
+  /** A copy of the selection: a caller cannot change the store through what it was handed. */
   getSelection(jobId: string): RefactorReviewSelection
   /** Accepts one hunk, or gives it back when it was already accepted. */
   toggleHunk(jobId: string, hunkId: string): void
@@ -34,6 +35,14 @@ export type RefactorReviewStore = {
   remove(jobId: string): void
   /** Tells the tab that shows the job that its plan or selection changed. */
   subscribe(jobId: string, listener: () => void): () => void
+  /**
+   * How often the job changed.
+   *
+   * Why it exists: the selection is handed out as a copy, and a fresh copy cannot be the snapshot
+   * of `useSyncExternalStore`. A tree watches the revision and reads the selection again when it
+   * moves.
+   */
+  getRevision(jobId: string): number
 }
 
 /** The selection a job that was never reviewed has. */
@@ -45,12 +54,23 @@ function emptySelection(): RefactorReviewSelection {
   }
 }
 
+/** A selection the caller cannot change the store through. */
+function copyOf(selection: RefactorReviewSelection): RefactorReviewSelection {
+  return {
+    acceptedHunkIds: new Set(selection.acceptedHunkIds),
+    selectedHunkId: selection.selectedHunkId,
+    selectedFilePath: selection.selectedFilePath
+  }
+}
+
 export function createRefactorReviewStore(): RefactorReviewStore {
   const plans = new Map<string, RefactorPlan>()
   const selections = new Map<string, RefactorReviewSelection>()
+  const revisions = new Map<string, number>()
   const listeners = new Map<string, Set<() => void>>()
 
   const notify = (jobId: string): void => {
+    revisions.set(jobId, (revisions.get(jobId) ?? 0) + 1)
     const jobListeners = listeners.get(jobId)
     if (!jobListeners) {
       return
@@ -93,18 +113,20 @@ export function createRefactorReviewStore(): RefactorReviewStore {
 
   return {
     setPlan(jobId: string, plan: RefactorPlan): void {
-      // Why: a job's plan is built once, so the selection made against it stays valid.
       plans.set(jobId, plan)
+      // Why: a hunk id of the old plan can name a different hunk of the new one, so the accepted
+      // set of the old plan cannot survive it.
+      selections.delete(jobId)
       notify(jobId)
     },
     getPlan(jobId: string): RefactorPlan | null {
       return plans.get(jobId) ?? null
     },
     setSelection(jobId: string, selection: RefactorReviewSelection): void {
-      storeSelection(jobId, selection)
+      storeSelection(jobId, copyOf(selection))
     },
     getSelection(jobId: string): RefactorReviewSelection {
-      return selectionOf(jobId)
+      return copyOf(selectionOf(jobId))
     },
     toggleHunk(jobId: string, hunkId: string): void {
       // Why: without a plan there is nothing to accept, so the tick is ignored.
@@ -150,6 +172,9 @@ export function createRefactorReviewStore(): RefactorReviewStore {
           listeners.delete(jobId)
         }
       }
+    },
+    getRevision(jobId: string): number {
+      return revisions.get(jobId) ?? 0
     }
   }
 }

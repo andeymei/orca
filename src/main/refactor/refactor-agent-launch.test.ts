@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { REFACTOR_DISALLOWED_TOOLS, resolveRefactorAgentLaunch } from './refactor-agent-launch'
+import {
+  REFACTOR_DISALLOWED_TOOLS,
+  REFACTOR_PERMISSION_SETTINGS,
+  resolveRefactorAgentLaunch
+} from './refactor-agent-launch'
 
 describe('resolveRefactorAgentLaunch', () => {
   it('runs the agent in the workspace without bypassing the permission gate', async () => {
@@ -40,5 +44,20 @@ describe('resolveRefactorAgentLaunch', () => {
     for (const tool of ['Bash', 'PowerShell', 'Task', 'Agent', 'WebFetch', 'WebSearch']) {
       expect(launch.options.disallowedTools).toContain(tool)
     }
+  })
+
+  it('refuses reads and writes outside the working directory at the cli level', async () => {
+    const launch = await resolveRefactorAgentLaunch({
+      cwd: '/repo',
+      deps: {
+        resolveCommand: () => ({ command: '/usr/bin/claude', prefixArgs: [] }),
+        resolveAuthPolicy: () => ({ account: 'system' })
+      }
+    })
+    expect(launch.options.settings).toBe(REFACTOR_PERMISSION_SETTINGS)
+    expect(REFACTOR_PERMISSION_SETTINGS.permissions.blockReadsOutsideWorkingDirectories).toBe(true)
+    expect(REFACTOR_PERMISSION_SETTINGS.permissions.blockWritesOutsideWorkingDirectories).toBe(true)
+    expect(REFACTOR_PERMISSION_SETTINGS.permissions.disableBypassPermissionsMode).toBe('disable')
+    expect(REFACTOR_PERMISSION_SETTINGS.permissions.disableAutoMode).toBe('disable')
   })
 })

@@ -1,3 +1,4 @@
+import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/runtime-auth/claude-structured-auth-policy'
 import type { ClaudeEnvDeps } from '../claude/structured/launch/claude-structured-child-env'
 import {
@@ -20,6 +21,22 @@ export const REFACTOR_DISALLOWED_TOOLS: readonly string[] = [
   'WebFetch',
   'WebSearch'
 ]
+
+/**
+ * The CLI's own fence, one layer below the gate. The managed settings tier is still read from disk
+ * even in isolation mode, and no allow rule lifts a block, so an IT-managed allow rule cannot buy a
+ * write past the gate either.
+ */
+export const REFACTOR_PERMISSION_SETTINGS = {
+  permissions: {
+    // A read the CLI never asks about would skip the gate's workspace fence.
+    blockReadsOutsideWorkingDirectories: true,
+    // The working directory is the workspace root and the scratch tree lives under it.
+    blockWritesOutsideWorkingDirectories: true,
+    disableBypassPermissionsMode: 'disable',
+    disableAutoMode: 'disable'
+  }
+} satisfies Settings
 
 export type RefactorAgentLaunch = {
   pathToClaudeCodeExecutable: string
@@ -52,7 +69,8 @@ export async function resolveRefactorAgentLaunch(input: {
       permissionMode: 'default',
       disallowedTools: [...REFACTOR_DISALLOWED_TOOLS],
       // SDK isolation mode: a user setting that auto-allows a write tool would bypass the gate.
-      settingSources: []
+      settingSources: [],
+      settings: REFACTOR_PERMISSION_SETTINGS
     }
   }
 }

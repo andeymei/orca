@@ -140,11 +140,18 @@ export function planOverProposalLimitWarning(dropped: number, limit: number): st
   )
 }
 
-/** More files in one proposal than the review tab can show. */
+/**
+ * More files in one proposal than the review tab can show.
+ *
+ * Why the noun follows the number: i18next resolves plural suffixes from the catalog, never from
+ * the default value, and the main process has no English catalog -- the inline fallback is all
+ * an English reader ever gets. So the sentence reads the same for one dropped proposal and for
+ * five, the way the Chinese does.
+ */
 export function planOverFileLimitWarning(dropped: number, limit: number): string {
   return translateMain(
     'refactor.plan.overFileLimit',
-    'The review shows at most {{limit}} files per proposal; {{dropped}} proposals could not be shown.',
+    'The review shows at most {{limit}} files per proposal; {{dropped}} of the proposals could not be shown.',
     { limit, dropped }
   )
 }

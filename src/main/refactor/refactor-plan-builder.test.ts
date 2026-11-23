@@ -594,7 +594,7 @@ describe('buildRefactorPlan', () => {
     })
     expect(result.plan.proposals).toHaveLength(0)
     expect(result.warnings).toEqual([
-      'The review shows at most 5 files per proposal; 2 proposals could not be shown.'
+      'The review shows at most 5 files per proposal; 2 of the proposals could not be shown.'
     ])
   })
 
@@ -625,7 +625,7 @@ describe('buildRefactorPlan', () => {
     })
     expect(result.warnings).toEqual([
       'Proposal p3 changes the same file as proposal p2; the later one was dropped: src/g.ts',
-      'The review shows at most 5 files per proposal; 1 proposals could not be shown.'
+      'The review shows at most 5 files per proposal; 1 of the proposals could not be shown.'
     ])
   })
 

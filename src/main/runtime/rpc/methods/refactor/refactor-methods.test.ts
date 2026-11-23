@@ -135,7 +135,10 @@ describe('the refactoring RPC methods', () => {
       ...PROPOSE_PARAMS,
       relativePath: 'C:foo'
     })
-    expect(response).toMatchObject({ ok: false, error: { message: '重构目标必须位于工作区内' } })
+    expect(response).toMatchObject({
+      ok: false,
+      error: { message: 'The refactoring target must be inside the workspace' }
+    })
   })
 
   it('names the trailing space in a refused target path', async () => {
@@ -149,7 +152,9 @@ describe('the refactoring RPC methods', () => {
     })
     expect(response).toMatchObject({
       ok: false,
-      error: { message: '重构目标的路径有一段以空格或点结尾' }
+      error: {
+        message: 'The path of the refactoring target has a segment that ends with a space or a dot'
+      }
     })
   })
 
@@ -171,7 +176,10 @@ describe('the refactoring RPC methods', () => {
     const response = await dispatch(runtime, 'refactor.propose', PROPOSE_PARAMS)
     expect(response).toMatchObject({
       ok: false,
-      error: { message: '远程主机上的重构暂不支持：请在本机的工作区发起重构。' }
+      error: {
+        message:
+          'Refactoring on a remote host is not supported: start it in a workspace on this machine.'
+      }
     })
   })
 
@@ -185,7 +193,10 @@ describe('the refactoring RPC methods', () => {
     })
     expect(response).toMatchObject({
       ok: false,
-      error: { message: '远程主机上的重构暂不支持：请在本机的工作区发起重构。' }
+      error: {
+        message:
+          'Refactoring on a remote host is not supported: start it in a workspace on this machine.'
+      }
     })
   })
 
@@ -225,7 +236,12 @@ describe('the refactoring RPC methods', () => {
       ok: true,
       result: {
         applied: [],
-        refusals: [{ path: 'src/foo.ts', reason: '文件在评审期间被改动过，请重新生成重构建议' }]
+        refusals: [
+          {
+            path: 'src/foo.ts',
+            reason: 'The file changed during the review; generate the refactoring suggestions again'
+          }
+        ]
       }
     })
   })
@@ -244,7 +260,7 @@ describe('the refactoring RPC methods', () => {
     })
     expect(response).toMatchObject({
       ok: true,
-      result: { applied: [], refusals: [{ path: 'src/foo.ts', reason: '文件已被删除' }] }
+      result: { applied: [], refusals: [{ path: 'src/foo.ts', reason: 'The file was deleted' }] }
     })
   })
 
@@ -264,7 +280,12 @@ describe('the refactoring RPC methods', () => {
       ok: true,
       result: {
         applied: [],
-        refusals: [{ path: 'src/foo.ts', reason: '文件不是有效的 UTF-8 文本，无法安全写入' }]
+        refusals: [
+          {
+            path: 'src/foo.ts',
+            reason: 'The file is not valid UTF-8 text and cannot be written safely'
+          }
+        ]
       }
     })
   })
@@ -289,7 +310,10 @@ describe('the refactoring RPC methods', () => {
       result: {
         applied: [],
         refusals: [
-          { path: 'src/foo.ts', reason: '写入失败：Workspace host changed; refresh and try again' }
+          {
+            path: 'src/foo.ts',
+            reason: 'The write failed: Workspace host changed; refresh and try again'
+          }
         ]
       }
     })
@@ -441,7 +465,7 @@ describe('the refactoring RPC methods', () => {
     })
     expect(response).toMatchObject({
       ok: false,
-      error: { message: '重构任务还没有可评审的方案' }
+      error: { message: 'The refactoring task has no proposals to review yet' }
     })
   })
 
@@ -472,7 +496,9 @@ describe('the refactoring RPC methods', () => {
       ok: true,
       result: {
         applied: [{ path: 'src/foo.ts', hunksApplied: 1 }],
-        refusals: [{ path: 'src/bar.ts', reason: '重构任务已取消，该文件未写入' }]
+        refusals: [
+          { path: 'src/bar.ts', reason: 'The refactoring was cancelled; the file was not written' }
+        ]
       }
     })
   })
@@ -499,7 +525,9 @@ describe('the refactoring RPC methods', () => {
       ok: true,
       result: {
         applied: [],
-        refusals: [{ path: 'src/foo.ts', reason: '重构任务已取消，该文件未写入' }]
+        refusals: [
+          { path: 'src/foo.ts', reason: 'The refactoring was cancelled; the file was not written' }
+        ]
       }
     })
   })

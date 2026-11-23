@@ -2,6 +2,13 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk'
 import { openClaudeStreamJsonConnection } from '../claude/claude-stream-json-connection'
+import {
+  manifestBadShapeMessage,
+  manifestNotJsonMessage,
+  manifestProposalBadShapeMessage,
+  manifestProposalBadShapeNumberedMessage,
+  manifestReadFailedMessage
+} from './refactor-messages'
 import { readNodeFileWithinLimit } from '../../shared/file-content/node-bounded-file-reader'
 import {
   RefactorManifestDocument,
@@ -73,24 +80,33 @@ export async function readRefactorManifest(scratchRoot: string): Promise<{
     text = read.buffer.toString('utf8')
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
-    return { manifest: null, warnings: [`读取清单失败：${reason}`] }
+    return {
+      manifest: null,
+      warnings: [manifestReadFailedMessage(reason)]
+    }
   }
   let parsedJson: unknown
   try {
     parsedJson = JSON.parse(text)
   } catch {
-    return { manifest: null, warnings: ['清单不是合法的 JSON'] }
+    return {
+      manifest: null,
+      warnings: [manifestNotJsonMessage()]
+    }
   }
   const document = RefactorManifestDocument.safeParse(parsedJson)
   if (!document.success) {
-    return { manifest: null, warnings: ['清单的形状不符合约定'] }
+    return {
+      manifest: null,
+      warnings: [manifestBadShapeMessage()]
+    }
   }
   const proposals: RefactorManifestProposal[] = []
   const warnings: string[] = []
   for (const [index, raw] of document.data.proposals.entries()) {
     const proposal = RefactorManifestProposal.safeParse(raw)
     if (!proposal.success) {
-      warnings.push(`清单里的${describeManifestProposal(raw, index)}不符合约定，已丢弃`)
+      warnings.push(manifestProposalWarning(raw, index))
       continue
     }
     proposals.push(proposal.data)
@@ -99,14 +115,16 @@ export async function readRefactorManifest(scratchRoot: string): Promise<{
 }
 
 /**
- * The name of a proposal that did not parse.
+ * The warning of a proposal that did not parse.
  *
  * Why the id: the user has to know which proposal was dropped, and the id is what the plan and
  * the review tab name a proposal by.
  */
-function describeManifestProposal(raw: unknown, index: number): string {
+function manifestProposalWarning(raw: unknown, index: number): string {
   const identifier = RefactorManifestProposal.pick({ id: true }).safeParse(raw)
-  return identifier.success ? `方案 ${identifier.data.id}` : `第 ${index + 1} 个方案`
+  return identifier.success
+    ? manifestProposalBadShapeMessage(identifier.data.id)
+    : manifestProposalBadShapeNumberedMessage(index + 1)
 }
 
 /**

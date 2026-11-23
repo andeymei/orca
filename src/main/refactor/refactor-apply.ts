@@ -5,6 +5,12 @@ import type {
   RefactorPlan
 } from '../../shared/refactor/refactor-types'
 import { getDiskBaselineSignature } from '../../shared/file-write/disk-baseline-signature'
+import {
+  applyCancelledMessage,
+  applyFileChangedMessage,
+  applyFileMissingMessage,
+  applyWriteFailedMessage
+} from './refactor-messages'
 import type { RefactorFileReadResult } from './refactor-file-reads'
 
 export type RefactorApplyPrecondition = {
@@ -33,11 +39,6 @@ export type RefactorApplySelectionResult = {
   applied: { path: string; hunksApplied: number }[]
   refusals: { path: string; reason: string }[]
 }
-
-const FILE_CHANGED_REASON = '文件在评审期间被改动过，请重新生成重构建议'
-const FILE_MISSING_REASON = '文件已被删除'
-const WRITE_FAILED_REASON = '写入失败'
-const CANCELLED_REASON = '重构任务已取消，该文件未写入'
 
 type FileSelection = {
   file: RefactorFileProposal
@@ -87,7 +88,7 @@ export async function applyRefactorSelection(
     const { file, hunks } = selection
     const current = await input.readCurrent(file.path)
     if (current.status === 'missing') {
-      refusals.push({ path: file.path, reason: FILE_MISSING_REASON })
+      refusals.push({ path: file.path, reason: applyFileMissingMessage() })
       continue
     }
     if (current.status === 'unreadable') {
@@ -99,13 +100,13 @@ export async function applyRefactorSelection(
     // user never saved), or the user's saved baseline (the user saved during the review). Only
     // neither means somebody really changed the file.
     if (current.content !== disk && current.content !== file.originalContent) {
-      refusals.push({ path: file.path, reason: FILE_CHANGED_REASON })
+      refusals.push({ path: file.path, reason: applyFileChangedMessage() })
       continue
     }
     if (input.signal?.aborted === true) {
       // The task was cancelled: nothing new starts, and the files that were not written say so.
       for (const pending of selections.slice(index)) {
-        refusals.push({ path: pending.file.path, reason: CANCELLED_REASON })
+        refusals.push({ path: pending.file.path, reason: applyCancelledMessage() })
       }
       break
     }
@@ -117,7 +118,7 @@ export async function applyRefactorSelection(
       allowMissing: false
     })
     if (!written) {
-      refusals.push({ path: file.path, reason: WRITE_FAILED_REASON })
+      refusals.push({ path: file.path, reason: applyWriteFailedMessage() })
       continue
     }
     applied.push({ path: file.path, hunksApplied: hunks.length })

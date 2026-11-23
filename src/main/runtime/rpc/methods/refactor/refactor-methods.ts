@@ -43,21 +43,27 @@ import {
   removeExpiredRefactorJobs
 } from '../../../../refactor/refactor-scratch-cleanup'
 import { claudeStructuredAuthPolicyForSettings } from '../../../../claude-accounts/runtime-auth/claude-structured-auth-policy'
+import {
+  applyFileChangedMessage,
+  applyFileMissingMessage,
+  applyNotUtf8Message,
+  applyWriteFailedWithReasonMessage,
+  methodsJobNotFoundMessage,
+  methodsNoPlanMessage,
+  methodsRefactorNotFoundMessage,
+  methodsRemoteWorkspaceRefusedMessage
+} from '../../../../refactor/refactor-messages'
 import { resolveStructuredAgentCommand } from '../../../../native-chat/structured-agent-command-resolution'
-
-const REMOTE_WORKSPACE_REFUSAL = '远程主机上的重构暂不支持：请在本机的工作区发起重构。'
-
-const FILE_CHANGED_REASON = '文件在评审期间被改动过，请重新生成重构建议'
 
 /** Why the file is refused, in the words the user reads. */
 function diskConflictReason(conflict: FileWriteDiskConflict): string {
   if (conflict === 'changed') {
-    return FILE_CHANGED_REASON
+    return applyFileChangedMessage()
   }
   if (conflict === 'missing') {
-    return '文件已被删除'
+    return applyFileMissingMessage()
   }
-  return '文件不是有效的 UTF-8 文本，无法安全写入'
+  return applyNotUtf8Message()
 }
 
 export const REFACTOR_METHODS = [
@@ -72,7 +78,7 @@ export const REFACTOR_METHODS = [
       // The agent is a child process on this machine, so a remote workspace's paths belong to
       // another machine: its cwd could not be started and its sources could not be read.
       if (target.executionHostId !== LOCAL_EXECUTION_HOST_ID) {
-        throw new Error(REMOTE_WORKSPACE_REFUSAL)
+        throw new Error(methodsRemoteWorkspaceRefusedMessage())
       }
       const workspaceRoot = target.worktree.path
       await assertSafeRefactorTargetPath(workspaceRoot, params.relativePath)
@@ -208,7 +214,11 @@ export const REFACTOR_METHODS = [
     handler: (params): RefactorStatusResult => {
       const job = refactorJobRegistry.get(params.jobId)
       if (!job) {
-        return { state: 'failed', progress: '', warnings: ['任务不存在'] }
+        return {
+          state: 'failed',
+          progress: '',
+          warnings: [methodsJobNotFoundMessage()]
+        }
       }
       return { state: job.state, progress: job.progress, warnings: job.warnings }
     }
@@ -231,14 +241,14 @@ export const REFACTOR_METHODS = [
       // A missing job or plan is a failed call: every refusal names a path, so there is no
       // honest way to report "nothing to write" as a success.
       if (!job) {
-        throw new Error('重构任务不存在')
+        throw new Error(methodsRefactorNotFoundMessage())
       }
       if (!job.plan) {
-        throw new Error('重构任务还没有可评审的方案')
+        throw new Error(methodsNoPlanMessage())
       }
       const target = await runtime.resolveRuntimeFileTarget(job.worktree)
       if (target.executionHostId !== LOCAL_EXECUTION_HOST_ID) {
-        throw new Error(REMOTE_WORKSPACE_REFUSAL)
+        throw new Error(methodsRemoteWorkspaceRefusedMessage())
       }
       const workspaceRoot = target.worktree.path
       // The apply stops when the client goes away or the job is discarded: both mean that no
@@ -277,7 +287,9 @@ export const REFACTOR_METHODS = [
             // file rather than a failure of the whole apply.
             refusalReasons.set(
               relativePath,
-              `写入失败：${error instanceof Error ? error.message : String(error)}`
+              applyWriteFailedWithReasonMessage(
+                error instanceof Error ? error.message : String(error)
+              )
             )
             return false
           }

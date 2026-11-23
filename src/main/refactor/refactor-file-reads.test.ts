@@ -99,11 +99,11 @@ describe('readWorkspaceFile', () => {
     // The reason lands in the review tab; an errno with a path in it is not a message to show.
     const root = await scratchRoot()
     const read = await readWorkspaceFile(root, `${'a'.repeat(300)}.ts`)
-    expect(read).toEqual({ status: 'unreadable', reason: '文件无法读取' })
+    expect(read).toEqual({ status: 'unreadable', reason: 'The file cannot be read' })
   })
 
   it('names a permission problem the user can act on', () => {
-    expect(unreadableReason({ code: 'EACCES' })).toBe('文件无法读取（权限不足）')
-    expect(unreadableReason({ code: 'EPERM' })).toBe('文件无法读取（权限不足）')
+    expect(unreadableReason({ code: 'EACCES' })).toBe('The file cannot be read (permission denied)')
+    expect(unreadableReason({ code: 'EPERM' })).toBe('The file cannot be read (permission denied)')
   })
 })

@@ -186,7 +186,7 @@ describe('applyRefactorSelection', () => {
       write: async () => true
     })
     expect(second.applied).toEqual([])
-    expect(second.refusals[0].reason).toContain('改动过')
+    expect(second.refusals[0].reason).toContain('changed during the review')
   })
 
   it('names a file that cannot be read instead of calling it deleted', async () => {
@@ -194,11 +194,16 @@ describe('applyRefactorSelection', () => {
       plan,
       diskContents: new Map([['src/foo.ts', original]]),
       acceptedHunkIds: [hunks[0].id],
-      readCurrent: async () => ({ status: 'unreadable', reason: '文件过大，无法安全读取' }),
+      readCurrent: async () => ({
+        status: 'unreadable',
+        reason: 'The file is too large to be read safely'
+      }),
       write: async () => true
     })
     expect(result.applied).toEqual([])
-    expect(result.refusals).toEqual([{ path: 'src/foo.ts', reason: '文件过大，无法安全读取' }])
+    expect(result.refusals).toEqual([
+      { path: 'src/foo.ts', reason: 'The file is too large to be read safely' }
+    ])
   })
 
   it('names a file that is gone', async () => {
@@ -209,7 +214,7 @@ describe('applyRefactorSelection', () => {
       readCurrent: async () => ({ status: 'missing' }),
       write: async () => true
     })
-    expect(result.refusals).toEqual([{ path: 'src/foo.ts', reason: '文件已被删除' }])
+    expect(result.refusals).toEqual([{ path: 'src/foo.ts', reason: 'The file was deleted' }])
   })
 
   it('refuses the files that were not written when the task is cancelled', async () => {
@@ -249,7 +254,7 @@ describe('applyRefactorSelection', () => {
     expect(writes).toEqual(['src/foo.ts'])
     expect(result.applied).toEqual([{ path: 'src/foo.ts', hunksApplied: 1 }])
     expect(result.refusals).toEqual([
-      { path: 'src/bar.ts', reason: '重构任务已取消，该文件未写入' }
+      { path: 'src/bar.ts', reason: 'The refactoring was cancelled; the file was not written' }
     ])
   })
 
@@ -271,7 +276,7 @@ describe('applyRefactorSelection', () => {
     expect(writes).toEqual([])
     expect(result.applied).toEqual([])
     expect(result.refusals).toEqual([
-      { path: 'src/foo.ts', reason: '重构任务已取消，该文件未写入' }
+      { path: 'src/foo.ts', reason: 'The refactoring was cancelled; the file was not written' }
     ])
   })
 })

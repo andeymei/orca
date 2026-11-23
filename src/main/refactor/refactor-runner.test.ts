@@ -99,7 +99,7 @@ describe('readRefactorManifest', () => {
     const root = await scratchRootWithManifest({ note: '这个清单没有方案。' })
     const read = await readRefactorManifest(root)
     expect(read.manifest).toBeNull()
-    expect(read.warnings).toEqual(['清单的形状不符合约定'])
+    expect(read.warnings).toEqual(['The manifest does not have the expected shape'])
   })
 
   it('fails the whole manifest when it is not JSON', async () => {
@@ -107,7 +107,7 @@ describe('readRefactorManifest', () => {
     await writeFile(path.join(root, 'manifest.json'), '{ not json', 'utf8')
     const read = await readRefactorManifest(root)
     expect(read.manifest).toBeNull()
-    expect(read.warnings).toEqual(['清单不是合法的 JSON'])
+    expect(read.warnings).toEqual(['The manifest is not valid JSON'])
   })
 })
 
@@ -128,7 +128,7 @@ describe('parseRefactorToolProgress', () => {
       },
       roots
     )
-    expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
+    expect(text).toBe('Writing .orca/refactor/job-1/p1/src/foo.ts')
   })
 
   it('names the file a read tool is reading', () => {
@@ -147,7 +147,7 @@ describe('parseRefactorToolProgress', () => {
       },
       roots
     )
-    expect(text).toBe('正在读取 .orca/refactor/job-1/p1/src/foo.ts')
+    expect(text).toBe('Reading .orca/refactor/job-1/p1/src/foo.ts')
   })
 
   it('names an edit as a write', () => {
@@ -166,7 +166,7 @@ describe('parseRefactorToolProgress', () => {
       },
       roots
     )
-    expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
+    expect(text).toBe('Writing .orca/refactor/job-1/p1/src/foo.ts')
   })
 
   it('names a multi-edit as a write', () => {
@@ -185,7 +185,7 @@ describe('parseRefactorToolProgress', () => {
       },
       roots
     )
-    expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
+    expect(text).toBe('Writing .orca/refactor/job-1/p1/src/foo.ts')
   })
 
   it('returns null for an unknown tool name', () => {
@@ -238,7 +238,7 @@ describe('parseRefactorToolProgress', () => {
       },
       roots
     )
-    expect(text).toBe('正在写入 .orca/refactor/job-1/p1/src/foo.ts')
+    expect(text).toBe('Writing .orca/refactor/job-1/p1/src/foo.ts')
   })
 
   it('returns null for a message with no tool use', () => {
@@ -277,7 +277,7 @@ describe('parseRefactorToolProgress', () => {
       },
       workspaceRoots
     )
-    expect(text).toBe('正在读取 src/foo.ts')
+    expect(text).toBe('Reading src/foo.ts')
   })
 })
 
@@ -344,7 +344,7 @@ describe('decideRefactorTurnOutcome', () => {
         timedOut: false,
         fault: null
       })
-    ).toEqual({ state: 'cancelled', warnings: ['任务已取消'] })
+    ).toEqual({ state: 'cancelled', warnings: ['The task was cancelled'] })
   })
 
   it('reports a timeout on its own, because a timeout is worth retrying', () => {
@@ -355,7 +355,7 @@ describe('decideRefactorTurnOutcome', () => {
         timedOut: true,
         fault: null
       })
-    ).toEqual({ state: 'timed_out', warnings: ['任务超时'] })
+    ).toEqual({ state: 'timed_out', warnings: ['The task timed out'] })
   })
 
   it('reports a crash with what the crash said', () => {
@@ -377,7 +377,7 @@ describe('decideRefactorTurnOutcome', () => {
         timedOut: false,
         fault: null
       })
-    ).toEqual({ state: 'failed', warnings: ['这一轮没有结束'] })
+    ).toEqual({ state: 'failed', warnings: ['The turn did not end'] })
   })
 })
 

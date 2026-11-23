@@ -1,4 +1,9 @@
 import type { ClaudeStreamJsonConnectionHandlers } from '../claude/claude-stream-json-connection'
+import {
+  turnConnectionCloseFailedMessage,
+  turnConnectionRootStillRunningMessage,
+  turnConnectionUnconfirmedExitMessage
+} from './refactor-messages'
 import type { RefactorAgentLaunch } from './refactor-agent-launch'
 
 /** The part of the connection a turn drives; the real connection satisfies it structurally. */
@@ -29,13 +34,15 @@ export async function closeRefactorTurnConnection(
     if (proven !== false) {
       return []
     }
-    const warnings = ['子进程未确认退出']
+    const warnings = [turnConnectionUnconfirmedExitMessage()]
     const exitVerdict = connection.exitVerdict
     if (exitVerdict && exitVerdict.root !== 'exited') {
-      warnings.push(`根进程未退出：${exitVerdict.root}，后代树：${exitVerdict.tree}`)
+      warnings.push(turnConnectionRootStillRunningMessage(exitVerdict.root, exitVerdict.tree))
     }
     return warnings
   } catch (error) {
-    return [`关闭连接失败：${error instanceof Error ? error.message : String(error)}`]
+    return [
+      turnConnectionCloseFailedMessage(error instanceof Error ? error.message : String(error))
+    ]
   }
 }

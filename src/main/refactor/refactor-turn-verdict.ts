@@ -1,4 +1,12 @@
 import type { RefactorStatusResult } from '../../shared/rpc-contract/refactor-params'
+import {
+  turnVerdictCancelledMessage,
+  turnVerdictEndedInErrorMessage,
+  turnVerdictFaultMessage,
+  turnVerdictNoResultMessage,
+  turnVerdictStopReasonMessage,
+  turnVerdictTimedOutMessage
+} from './refactor-messages'
 
 /** How the turn ended, before the reason it ended is folded into the job state. */
 export type RefactorTurnVerdict = {
@@ -37,10 +45,10 @@ export function classifyRefactorResult(result: RefactorResultFrame): RefactorTur
   if (subtype === 'success' && result.is_error !== true) {
     return { state: 'done', warnings: [] }
   }
-  const stop = stopReason.length > 0 ? `（停止原因：${stopReason}）` : ''
+  const stop = stopReason.length > 0 ? turnVerdictStopReasonMessage(stopReason) : ''
   return {
     state: 'failed',
-    warnings: [`这一轮以错误结束：${refactorFailureDetail(result, subtype)}${stop}`]
+    warnings: [turnVerdictEndedInErrorMessage(refactorFailureDetail(result, subtype), stop)]
   }
 }
 
@@ -52,7 +60,7 @@ export function classifyRefactorResult(result: RefactorResultFrame): RefactorTur
 export function refactorFaultDetail(error: Error): string {
   const cause: unknown = error.cause
   if (cause instanceof Error && cause.message.length > 0 && cause.message !== error.message) {
-    return `${error.message}：${cause.message}`
+    return `${error.message}: ${cause.message}`
   }
   return error.message
 }
@@ -82,16 +90,28 @@ export function decideRefactorTurnOutcome(input: {
   fault: string | null
 }): { state: RefactorStatusResult['state']; warnings: string[] } {
   if (input.cancelled) {
-    return { state: 'cancelled', warnings: ['任务已取消'] }
+    return {
+      state: 'cancelled',
+      warnings: [turnVerdictCancelledMessage()]
+    }
   }
   if (input.result) {
     return { state: input.result.state, warnings: [...input.result.warnings] }
   }
   if (input.timedOut) {
-    return { state: 'timed_out', warnings: ['任务超时'] }
+    return {
+      state: 'timed_out',
+      warnings: [turnVerdictTimedOutMessage()]
+    }
   }
   if (input.fault) {
-    return { state: 'failed', warnings: [`这一轮没有正常结束：${input.fault}`] }
+    return {
+      state: 'failed',
+      warnings: [turnVerdictFaultMessage(input.fault)]
+    }
   }
-  return { state: 'failed', warnings: ['这一轮没有结束'] }
+  return {
+    state: 'failed',
+    warnings: [turnVerdictNoResultMessage()]
+  }
 }

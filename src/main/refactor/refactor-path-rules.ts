@@ -1,4 +1,9 @@
 import path from 'node:path'
+import {
+  pathRulesNotRelativeMessage,
+  pathRulesOutsideWorkspaceMessage,
+  pathRulesUnsafeSegmentMessage
+} from './refactor-messages'
 import { isSafeMobileRelativePath } from '../runtime/files/mobile-file-kind'
 import {
   hasUnsafePathSegment,
@@ -43,14 +48,14 @@ export async function assertSafeRefactorTargetPath(
   if (!isSafeRelativeRefactorPath(relativePath)) {
     throw new Error(
       hasUnsafePathSegment(relativePath)
-        ? '重构目标的路径有一段以空格或点结尾'
-        : '重构目标必须是工作区内的相对路径'
+        ? pathRulesUnsafeSegmentMessage()
+        : pathRulesNotRelativeMessage()
     )
   }
   const resolvesOutside =
     isWindowsDriveRelativePath(relativePath) ||
     !(await isPathInsideWorkspace(workspaceRoot, path.resolve(workspaceRoot, relativePath)))
   if (resolvesOutside) {
-    throw new Error('重构目标必须位于工作区内')
+    throw new Error(pathRulesOutsideWorkspaceMessage())
   }
 }

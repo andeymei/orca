@@ -24569,6 +24569,75 @@
       "detail": "Safe graphics mode disables hardware acceleration and WebGL for this Orca version. Terminals and 3D content may render more slowly. Keep Running leaves graphics settings unchanged."
     }
   },
+  "refactor": {
+    "apply": {
+      "cancelled": "The refactoring was cancelled; the file was not written",
+      "fileChanged": "The file changed during the review; generate the refactoring suggestions again",
+      "fileMissing": "The file was deleted",
+      "notUtf8": "The file is not valid UTF-8 text and cannot be written safely",
+      "writeFailed": "The write failed",
+      "writeFailedWithReason": "The write failed: {{reason}}"
+    },
+    "fileReads": {
+      "notRegular": "The file is not a regular file and cannot be read safely",
+      "permissionDenied": "The file cannot be read (permission denied)",
+      "tooLarge": "The file is too large to be read safely",
+      "unreadable": "The file cannot be read"
+    },
+    "manifest": {
+      "badShape": "The manifest does not have the expected shape",
+      "notJson": "The manifest is not valid JSON",
+      "proposalBadShape": "The proposal {{id}} in the manifest does not have the expected shape; it was dropped",
+      "proposalBadShapeNumbered": "The proposal number {{index}} in the manifest does not have the expected shape; it was dropped",
+      "readFailed": "The manifest could not be read: {{reason}}"
+    },
+    "methods": {
+      "jobNotFound": "The task does not exist",
+      "noPlan": "The refactoring task has no proposals to review yet",
+      "refactorNotFound": "The refactoring task does not exist",
+      "remoteWorkspaceRefused": "Refactoring on a remote host is not supported: start it in a workspace on this machine."
+    },
+    "pathRules": {
+      "notRelative": "The refactoring target must be a relative path inside the workspace",
+      "outsideWorkspace": "The refactoring target must be inside the workspace",
+      "unsafeSegment": "The path of the refactoring target has a segment that ends with a space or a dot"
+    },
+    "plan": {
+      "baselineUnreadable": "Proposal {{id}}: its baseline cannot be read; it was dropped: {{path}}",
+      "cancelled": "Proposal {{id}}: the refactoring was cancelled; it was dropped",
+      "cancelledJob": "The refactoring was cancelled",
+      "diskUnreadable": "Proposal {{id}}: its content on disk cannot be read; it was dropped: {{path}}",
+      "duplicateFile": "Proposal {{id}} lists the same file twice; it was dropped: {{path}}",
+      "duplicateId": "Proposal {{id}} repeats an id; it was dropped",
+      "filesFromTree": "Proposal {{id}} does not list its files in the manifest; they were restored from the scratch directory",
+      "noFiles": "Proposal {{id}} names no file; it was dropped",
+      "overFileLimit": "The review shows at most {{limit}} files per proposal; {{dropped}} could not be shown.",
+      "overProposalLimit": "The review shows at most {{limit}} proposals; {{dropped}} could not be shown.",
+      "pathOutsideWorkspace": "Proposal {{id}} names a file outside the workspace; it was dropped: {{path}}",
+      "restoredNoReason": "Proposal {{id}} was restored from the scratch directory; the agent gave no reason",
+      "sameFile": "Proposal {{id}} changes the same file as proposal {{owner}}; the later one was dropped: {{path}}",
+      "scratchUnreadable": "Proposal {{id}}: its scratch file cannot be read; it was dropped: {{path}}",
+      "sourceIgnored": "Proposal {{id}} is the baseline copy and was ignored",
+      "unsafeId": "Proposal {{id}} has an id that is not a safe relative path; it was dropped"
+    },
+    "progress": {
+      "reading": "Reading {{path}}",
+      "writing": "Writing {{path}}"
+    },
+    "turnConnection": {
+      "closeFailed": "The connection could not be closed: {{reason}}",
+      "rootStillRunning": "The root process did not exit: {{root}}; the descendant tree: {{tree}}",
+      "unconfirmedExit": "The child process did not confirm that it exited"
+    },
+    "turnVerdict": {
+      "cancelled": "The task was cancelled",
+      "endedInError": "The turn ended in an error: {{detail}}{{stop}}",
+      "fault": "The turn did not end normally: {{fault}}",
+      "noResult": "The turn did not end",
+      "stopReason": "(stopped because: {{reason}})",
+      "timedOut": "The task timed out"
+    }
+  },
   "localBuild": {
     "chooseTitle": "Choose a Local Orca Build",
     "chooseButton": "Choose Build",

@@ -283,13 +283,22 @@ describe('the refactor review tab', () => {
   it('keeps the job when the write was refused, so the user can read why', async () => {
     mocks.applyRefactor.mockResolvedValue({
       applied: [],
-      refusals: [{ path: 'src/foo.ts', reason: '文件在评审期间被改动过，请重新生成重构建议' }]
+      refusals: [
+        {
+          path: 'src/foo.ts',
+          reason: 'The file changed during the review; generate the refactoring suggestions again'
+        }
+      ]
     })
     renderTab()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
     await waitFor(() =>
-      expect(screen.getByText('文件在评审期间被改动过，请重新生成重构建议')).toBeTruthy()
+      expect(
+        screen.getByText(
+          'The file changed during the review; generate the refactoring suggestions again'
+        )
+      ).toBeTruthy()
     )
     expect(mocks.discardRefactor).not.toHaveBeenCalled()
   })
@@ -316,13 +325,22 @@ describe('the refactor review tab', () => {
   it('keeps the tab open and says why when the write is refused', async () => {
     mocks.applyRefactor.mockResolvedValue({
       applied: [],
-      refusals: [{ path: 'src/foo.ts', reason: '文件在评审期间被改动过，请重新生成重构建议' }]
+      refusals: [
+        {
+          path: 'src/foo.ts',
+          reason: 'The file changed during the review; generate the refactoring suggestions again'
+        }
+      ]
     })
     renderTab()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
     await waitFor(() =>
-      expect(screen.getByText('文件在评审期间被改动过，请重新生成重构建议')).toBeTruthy()
+      expect(
+        screen.getByText(
+          'The file changed during the review; generate the refactoring suggestions again'
+        )
+      ).toBeTruthy()
     )
     expect(mocks.state.closeFile).not.toHaveBeenCalled()
   })
@@ -331,10 +349,10 @@ describe('the refactor review tab', () => {
     mocks.fetchRefactorStatus.mockResolvedValue({
       state: 'failed',
       progress: '',
-      warnings: ['Claude 未登录']
+      warnings: ['Claude is not signed in']
     })
     renderTab()
-    expect(await screen.findByText('Claude 未登录')).toBeTruthy()
+    expect(await screen.findByText('Claude is not signed in')).toBeTruthy()
   })
 
   it('shows the warnings of a job that succeeded', async () => {
@@ -343,10 +361,14 @@ describe('the refactor review tab', () => {
     mocks.fetchRefactorStatus.mockResolvedValue({
       state: 'done',
       progress: '',
-      warnings: ['方案 p1 是从暂存目录还原的，agent 未给出理由']
+      warnings: ['Proposal p1 was restored from the scratch directory; the agent gave no reason']
     })
     renderTab()
-    expect(await screen.findByText('方案 p1 是从暂存目录还原的，agent 未给出理由')).toBeTruthy()
+    expect(
+      await screen.findByText(
+        'Proposal p1 was restored from the scratch directory; the agent gave no reason'
+      )
+    ).toBeTruthy()
   })
 
   it('shows no notice when a job that succeeded carries no warning', async () => {
@@ -413,7 +435,8 @@ describe('starting a refactoring review', () => {
   it('opens no tab when the request was refused, and says why', async () => {
     mocks.proposeRefactor.mockResolvedValue({
       failure: 'refused',
-      reason: '远程主机上的重构暂不支持'
+      reason:
+        'Refactoring on a remote host is not supported: start it in a workspace on this machine.'
     })
     await openRefactorReviewTab({
       worktreeId: 'wt-1',
@@ -421,6 +444,8 @@ describe('starting a refactoring review', () => {
       content: 'const a = 1'
     })
     expect(mocks.state.openFile).not.toHaveBeenCalled()
-    expect(mocks.toastError).toHaveBeenCalledWith('远程主机上的重构暂不支持')
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      'Refactoring on a remote host is not supported: start it in a workspace on this machine.'
+    )
   })
 })

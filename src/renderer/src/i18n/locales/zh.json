@@ -22930,6 +22930,75 @@
       "detail": "安全图形模式会为此 Orca 版本停用硬件加速和 WebGL。终端和 3D 内容的渲染可能会变慢。选择“继续运行”不会更改图形设置"
     }
   },
+  "refactor": {
+    "apply": {
+      "cancelled": "重构任务已取消，该文件未写入",
+      "fileChanged": "文件在评审期间被改动过，请重新生成重构建议",
+      "fileMissing": "文件已被删除",
+      "notUtf8": "文件不是有效的 UTF-8 文本，无法安全写入",
+      "writeFailed": "写入失败",
+      "writeFailedWithReason": "写入失败：{{reason}}"
+    },
+    "fileReads": {
+      "notRegular": "文件不是普通文件，无法安全读取",
+      "permissionDenied": "文件无法读取（权限不足）",
+      "tooLarge": "文件过大，无法安全读取",
+      "unreadable": "文件无法读取"
+    },
+    "manifest": {
+      "badShape": "清单的形状不符合约定",
+      "notJson": "清单不是合法的 JSON",
+      "proposalBadShape": "清单里的方案 {{id}} 不符合约定，已丢弃",
+      "proposalBadShapeNumbered": "清单里的第 {{index}} 个方案不符合约定，已丢弃",
+      "readFailed": "读取清单失败：{{reason}}"
+    },
+    "methods": {
+      "jobNotFound": "任务不存在",
+      "noPlan": "重构任务还没有可评审的方案",
+      "refactorNotFound": "重构任务不存在",
+      "remoteWorkspaceRefused": "远程主机上的重构暂不支持：请在本机的工作区发起重构。"
+    },
+    "pathRules": {
+      "notRelative": "重构目标必须是工作区内的相对路径",
+      "outsideWorkspace": "重构目标必须位于工作区内",
+      "unsafeSegment": "重构目标的路径有一段以空格或点结尾"
+    },
+    "plan": {
+      "baselineUnreadable": "方案 {{id}} 的基准内容读不到，已丢弃：{{path}}",
+      "cancelled": "方案 {{id}} 的重构任务已取消，已丢弃",
+      "cancelledJob": "重构任务已取消",
+      "diskUnreadable": "方案 {{id}} 的磁盘内容读不到，已丢弃：{{path}}",
+      "duplicateFile": "方案 {{id}} 重复列出了同一个文件，已丢弃：{{path}}",
+      "duplicateId": "方案 {{id}} 的编号重复，已丢弃",
+      "filesFromTree": "方案 {{id}} 在清单里没有列出文件，已按暂存目录还原",
+      "noFiles": "方案 {{id}} 没有文件，已丢弃",
+      "overFileLimit": "每个方案最多展示 {{limit}} 个文件，{{dropped}} 个方案无法展示。",
+      "overProposalLimit": "评审最多展示 {{limit}} 个方案，{{dropped}} 个无法展示。",
+      "pathOutsideWorkspace": "方案 {{id}} 的文件路径不在工作区内，已丢弃：{{path}}",
+      "restoredNoReason": "方案 {{id}} 是从暂存目录还原的，agent 未给出理由",
+      "sameFile": "方案 {{id}} 与方案 {{owner}} 改同一个文件，已丢弃后者：{{path}}",
+      "scratchUnreadable": "方案 {{id}} 的暂存文件读不到，已丢弃：{{path}}",
+      "sourceIgnored": "方案 {{id}} 是基准副本，已忽略",
+      "unsafeId": "方案 {{id}} 的编号不是安全的相对路径，已丢弃"
+    },
+    "progress": {
+      "reading": "正在读取 {{path}}",
+      "writing": "正在写入 {{path}}"
+    },
+    "turnConnection": {
+      "closeFailed": "关闭连接失败：{{reason}}",
+      "rootStillRunning": "根进程未退出：{{root}}，后代树：{{tree}}",
+      "unconfirmedExit": "子进程未确认退出"
+    },
+    "turnVerdict": {
+      "cancelled": "任务已取消",
+      "endedInError": "这一轮以错误结束：{{detail}}{{stop}}",
+      "fault": "这一轮没有正常结束：{{fault}}",
+      "noResult": "这一轮没有结束",
+      "stopReason": "（停止原因：{{reason}}）",
+      "timedOut": "任务超时"
+    }
+  },
   "profileState": {
     "startupRecovery": {
       "quitButton": "退出",

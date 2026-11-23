@@ -92,7 +92,7 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    expect(result.warnings.some((warning) => warning.includes('改同一个文件'))).toBe(true)
+    expect(result.warnings.some((warning) => warning.includes('changes the same file'))).toBe(true)
   })
 
   it('checks the conflict before it reads, so the dropped proposal is never read', async () => {
@@ -162,7 +162,7 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    expect(result.warnings.some((warning) => warning.includes('改同一个文件'))).toBe(true)
+    expect(result.warnings.some((warning) => warning.includes('changes the same file'))).toBe(true)
   })
 
   it('treats a backslash-spelled path as the same file', async () => {
@@ -183,7 +183,7 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    expect(result.warnings.some((warning) => warning.includes('改同一个文件'))).toBe(true)
+    expect(result.warnings.some((warning) => warning.includes('changes the same file'))).toBe(true)
   })
 
   it('drops the second proposal when two proposals share an id', async () => {
@@ -204,7 +204,7 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    expect(result.warnings.some((warning) => warning.includes('编号重复'))).toBe(true)
+    expect(result.warnings.some((warning) => warning.includes('repeats an id'))).toBe(true)
     expect(result.diskContents.has('src/other.ts')).toBe(false)
   })
 
@@ -337,7 +337,9 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(
-      result.warnings.some((warning) => warning.includes('_source') && warning.includes('基准副本'))
+      result.warnings.some(
+        (warning) => warning.includes('_source') && warning.includes('the baseline copy')
+      )
     ).toBe(true)
   })
 
@@ -357,7 +359,9 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    const reasonWarnings = result.warnings.filter((warning) => warning.includes('agent 未给出理由'))
+    const reasonWarnings = result.warnings.filter((warning) =>
+      warning.includes('the agent gave no reason')
+    )
     expect(reasonWarnings).toHaveLength(1)
     expect(reasonWarnings[0]).toContain('p1')
     expect(reasonWarnings[0]).not.toContain('p2')
@@ -387,7 +391,7 @@ describe('buildRefactorPlan', () => {
     })
     expect(reads).toBe(0)
     expect(result.plan.proposals).toHaveLength(0)
-    expect(result.warnings.some((warning) => warning.includes('已取消'))).toBe(true)
+    expect(result.warnings.some((warning) => warning.includes('was cancelled'))).toBe(true)
   })
 
   it('takes the file list of a proposal the manifest does not name from the scratch tree', async () => {
@@ -407,7 +411,9 @@ describe('buildRefactorPlan', () => {
     expect(result.plan.proposals).toHaveLength(1)
     expect(result.plan.proposals[0].rationale).toBe('两处规则相同。')
     expect(result.plan.proposals[0].files.map((file) => file.path)).toEqual(['src/foo.ts'])
-    expect(result.warnings.some((warning) => warning.includes('没有列出文件'))).toBe(true)
+    expect(result.warnings.some((warning) => warning.includes('does not list its files'))).toBe(
+      true
+    )
   })
 
   it('does not say the agent gave no reason when the manifest named the proposal', async () => {
@@ -424,7 +430,9 @@ describe('buildRefactorPlan', () => {
       listScratchProposals: async () => [{ id: 'p1', files: ['src/foo.ts'] }],
       scratchFiles: async () => 'a\nB\n'
     })
-    expect(result.warnings.some((warning) => warning.includes('agent 未给出理由'))).toBe(false)
+    expect(result.warnings.some((warning) => warning.includes('the agent gave no reason'))).toBe(
+      false
+    )
   })
 
   it('keeps a proposal whose file list is empty, even when the tree holds files for it', async () => {
@@ -443,7 +451,7 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals).toHaveLength(0)
-    expect(result.warnings.some((warning) => warning.includes('没有文件'))).toBe(true)
+    expect(result.warnings.some((warning) => warning.includes('names no file'))).toBe(true)
   })
 
   it('drops the proposals past the limit and says how many were dropped', async () => {
@@ -474,8 +482,10 @@ describe('buildRefactorPlan', () => {
       'p4',
       'p5'
     ])
-    const limitWarnings = result.warnings.filter((warning) => warning.includes('超出方案数量上限'))
-    expect(limitWarnings).toEqual(['有 1 个方案超出方案数量上限（最多 5 个），已丢弃'])
+    const limitWarnings = result.warnings.filter((warning) =>
+      warning.includes('at most 5 proposals')
+    )
+    expect(limitWarnings).toEqual(['The review shows at most 5 proposals; 1 could not be shown.'])
   })
 
   it('drops the proposals past the limit on the scratch tree path too', async () => {
@@ -504,8 +514,10 @@ describe('buildRefactorPlan', () => {
       'p4',
       'p5'
     ])
-    const limitWarnings = result.warnings.filter((warning) => warning.includes('超出方案数量上限'))
-    expect(limitWarnings).toEqual(['有 1 个方案超出方案数量上限（最多 5 个），已丢弃'])
+    const limitWarnings = result.warnings.filter((warning) =>
+      warning.includes('at most 5 proposals')
+    )
+    expect(limitWarnings).toEqual(['The review shows at most 5 proposals; 1 could not be shown.'])
   })
 
   it('warns once about the proposals past the limit, not once per proposal', async () => {
@@ -529,7 +541,9 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals).toHaveLength(5)
-    expect(result.warnings).toEqual(['有 495 个方案超出方案数量上限（最多 5 个），已丢弃'])
+    expect(result.warnings).toEqual([
+      'The review shows at most 5 proposals; 495 could not be shown.'
+    ])
   })
 
   it('warns once about the proposals that name too many files, not once per proposal', async () => {
@@ -559,7 +573,9 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals).toHaveLength(0)
-    expect(result.warnings).toEqual(['有 2 个方案的文件数超出上限（最多 5 个文件），已丢弃'])
+    expect(result.warnings).toEqual([
+      'The review shows at most 5 files per proposal; 2 could not be shown.'
+    ])
   })
 
   it('keeps a warning of its own for a proposal dropped for a reason the user can act on', async () => {
@@ -588,8 +604,8 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.warnings).toEqual([
-      '方案 p3 与方案 p2 改同一个文件，已丢弃后者：src/g.ts',
-      '有 1 个方案的文件数超出上限（最多 5 个文件），已丢弃'
+      'Proposal p3 changes the same file as proposal p2; the later one was dropped: src/g.ts',
+      'The review shows at most 5 files per proposal; 1 could not be shown.'
     ])
   })
 
@@ -615,7 +631,9 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals).toHaveLength(0)
-    expect(result.warnings.some((warning) => warning.includes('文件数超出上限'))).toBe(true)
+    expect(
+      result.warnings.some((warning) => warning.includes('at most 5 files per proposal'))
+    ).toBe(true)
   })
 
   it('drops a proposal of the scratch tree that names more files than the limit', async () => {
@@ -636,6 +654,8 @@ describe('buildRefactorPlan', () => {
       scratchFiles: async () => 'b\n'
     })
     expect(result.plan.proposals).toHaveLength(0)
-    expect(result.warnings.some((warning) => warning.includes('文件数超出上限'))).toBe(true)
+    expect(
+      result.warnings.some((warning) => warning.includes('at most 5 files per proposal'))
+    ).toBe(true)
   })
 })

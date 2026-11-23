@@ -26,21 +26,25 @@ describe('the notices of the review tab', () => {
     renderNotices({
       state: 'done',
       progress: '',
-      warnings: ['方案 p1 是从暂存目录还原的，agent 未给出理由']
+      warnings: ['Proposal p1 was restored from the scratch directory; the agent gave no reason']
     })
-    expect(screen.getByText('方案 p1 是从暂存目录还原的，agent 未给出理由')).toBeTruthy()
+    expect(
+      screen.getByText(
+        'Proposal p1 was restored from the scratch directory; the agent gave no reason'
+      )
+    ).toBeTruthy()
   })
 
   it('reads the warnings of a job that succeeded as information, not as a failure', () => {
     renderNotices({
       state: 'done',
       progress: '',
-      warnings: ['有 1 个方案超出方案数量上限，已丢弃']
+      warnings: ['The review shows at most 5 proposals; 1 could not be shown.']
     })
     expect(screen.queryByText('Refactoring failed')).toBeNull()
-    expect(screen.getByText('有 1 个方案超出方案数量上限，已丢弃').className).not.toContain(
-      'text-destructive'
-    )
+    expect(
+      screen.getByText('The review shows at most 5 proposals; 1 could not be shown.').className
+    ).not.toContain('text-destructive')
   })
 
   it('shows nothing when a job that succeeded has no warnings', () => {
@@ -48,9 +52,9 @@ describe('the notices of the review tab', () => {
   })
 
   it('shows the label and the warnings of a job that failed', () => {
-    renderNotices({ state: 'failed', progress: '', warnings: ['Claude 未登录'] })
+    renderNotices({ state: 'failed', progress: '', warnings: ['Claude is not signed in'] })
     expect(screen.getByText('Refactoring failed')).toBeTruthy()
-    expect(screen.getByText('Claude 未登录')).toBeTruthy()
+    expect(screen.getByText('Claude is not signed in')).toBeTruthy()
   })
 
   it('shows the label of a job that failed even when it carries no warning', () => {

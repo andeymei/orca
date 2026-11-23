@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { progressReadingMessage, progressWritingMessage } from './refactor-messages'
 import { refactorToolTargetPath, type RefactorGateRoots } from './refactor-write-gate'
 
 const WRITE_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit'])
@@ -41,10 +42,10 @@ function refactorToolProgressText(
   }
   const relative = refactorProgressRelativePath(roots, target)
   if (toolName === 'Read') {
-    return `正在读取 ${relative}`
+    return progressReadingMessage(relative)
   }
   if (WRITE_TOOL_NAMES.has(toolName)) {
-    return `正在写入 ${relative}`
+    return progressWritingMessage(relative)
   }
   return null
 }

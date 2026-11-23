@@ -5,6 +5,12 @@ import {
   NodeFileReadTooLargeError,
   readNodeFileWithinLimit
 } from '../../shared/file-content/node-bounded-file-reader'
+import {
+  fileReadsNotRegularMessage,
+  fileReadsPermissionDeniedMessage,
+  fileReadsTooLargeMessage,
+  fileReadsUnreadableMessage
+} from './refactor-messages'
 import { isENOENT } from '../ipc/filesystem/access/filesystem-path-containment'
 import { isPathInsideScratch } from './refactor-write-gate'
 
@@ -37,16 +43,16 @@ function isPermissionError(error: unknown): boolean {
 /** Why the file could not be read, in the words the user reads. */
 export function unreadableReason(error: unknown): string {
   if (error instanceof NodeFileReadTooLargeError) {
-    return '文件过大，无法安全读取'
+    return fileReadsTooLargeMessage()
   }
   if (error instanceof NodeFileNotRegularError) {
-    return '文件不是普通文件，无法安全读取'
+    return fileReadsNotRegularMessage()
   }
   if (isPermissionError(error)) {
-    return '文件无法读取（权限不足）'
+    return fileReadsPermissionDeniedMessage()
   }
   // The raw message is an errno with a path in it; it is not something to show a person.
-  return '文件无法读取'
+  return fileReadsUnreadableMessage()
 }
 
 /** A workspace file's current disk content, or why it could not be read. */

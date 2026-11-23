@@ -172,8 +172,8 @@ describe('closeRefactorTurnConnection', () => {
       ...connection(async () => false),
       exitVerdict: { root: 'live', tree: 'live' }
     })
-    expect(warnings.join('\n')).toContain('子进程未确认退出')
-    expect(warnings.join('\n')).toContain('根进程未退出：live')
+    expect(warnings.join('\n')).toContain('The child process did not confirm that it exited')
+    expect(warnings.join('\n')).toContain('The root process did not exit: live')
   })
 
   it('turns a throwing close into a warning instead of letting it escape', async () => {
@@ -182,7 +182,9 @@ describe('closeRefactorTurnConnection', () => {
         throw new Error('the connection refused to close')
       })
     )
-    expect(warnings.join('\n')).toContain('关闭连接失败：the connection refused to close')
+    expect(warnings.join('\n')).toContain(
+      'The connection could not be closed: the connection refused to close'
+    )
   })
 })
 
@@ -202,7 +204,9 @@ describe('runRefactorTurn', () => {
     })
     expect(turn.state).toBe('done')
     expect(turn.manifest?.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
-    expect(turn.warnings.join('\n')).toContain('关闭连接失败：the connection refused to close')
+    expect(turn.warnings.join('\n')).toContain(
+      'The connection could not be closed: the connection refused to close'
+    )
   })
 
   it('keeps the verdict when the close cannot prove the child exited', async () => {
@@ -218,7 +222,7 @@ describe('runRefactorTurn', () => {
       })
     })
     expect(turn.state).toBe('done')
-    expect(turn.warnings.join('\n')).toContain('子进程未确认退出')
+    expect(turn.warnings.join('\n')).toContain('The child process did not confirm that it exited')
   })
 
   it('drives the refusal path when the CLI refuses the hook that keeps the gate', async () => {

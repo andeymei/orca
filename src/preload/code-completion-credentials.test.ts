@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CODE_COMPLETION_CREDENTIAL_CHANNELS } from '../shared/code-completion/code-completion-credential-channels'
 import { CODE_COMPLETION_SUGGESTION_CHANNELS } from '../shared/code-completion/code-completion-suggestion-outcome'
+import { CODE_COMPLETION_METRIC_CHANNELS } from '../shared/code-completion/code-completion-metrics'
 import { codeCompletionApi } from './api/code-completion-bridge'
 
 const invoke = vi.hoisted(() => vi.fn(async () => ({ configured: true, protection: null })))
 vi.mock('electron', () => ({ ipcRenderer: { invoke } }))
 
 describe('Code completion credential bridge', () => {
-  it('exposes only status, write and report operations', async () => {
+  it('exposes only status, write, report and metric operations', async () => {
     expect(await codeCompletionApi.getStatus()).toEqual({ configured: true, protection: null })
     await codeCompletionApi.saveApiKey('fake-key')
     await codeCompletionApi.clearApiKey()
@@ -20,7 +21,8 @@ describe('Code completion credential bridge', () => {
       'getStatus',
       'saveApiKey',
       'clearApiKey',
-      'reportSuggestionOutcome'
+      'reportSuggestionOutcome',
+      'recordMetric'
     ])
   })
 
@@ -41,6 +43,9 @@ describe('Code completion credential bridge', () => {
       getCredentialStatus: 'codeCompletion:getCredentialStatus',
       saveApiKey: 'codeCompletion:saveApiKey',
       clearApiKey: 'codeCompletion:clearApiKey'
+    })
+    expect(CODE_COMPLETION_METRIC_CHANNELS).toEqual({
+      recordMetric: 'codeCompletion:recordMetric'
     })
   })
 })

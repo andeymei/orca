@@ -85,10 +85,14 @@ describe('code completion settings on load', () => {
     expect(store.getSettings().codeCompletion).toEqual({
       enabled: true,
       protocol: 'anthropic-messages',
+      responseMode: 'inline',
       baseUrl: '',
       model: '',
       triggerDelayMs: 500,
       autoImport: true,
+      contextPrefixChars: 6000,
+      contextSuffixChars: 2000,
+      displayDeadlineMs: 4000,
       enabledExtensions: DEFAULT_EXTENSIONS
     })
   })
@@ -111,10 +115,14 @@ describe('code completion settings on load', () => {
     expect(store.getSettings().codeCompletion).toEqual({
       enabled: false,
       protocol: 'openai-chat',
+      responseMode: 'inline',
       baseUrl: 'https://api.test',
       model: 'a-model',
       triggerDelayMs: 250,
       autoImport: false,
+      contextPrefixChars: 6000,
+      contextSuffixChars: 2000,
+      displayDeadlineMs: 4000,
       enabledExtensions: ['ts']
     })
   })

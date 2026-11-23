@@ -88,8 +88,10 @@ const MODEL_PLAN = {
 }
 
 function createRuntime(settings?: Partial<CodeCompletionSettings>): OrcaRuntimeService {
+  // Why: these tests are about the plan the endpoint answers with; the inline mode is the default
+  // now, and it asks the model for the text at the cursor instead of for a plan of edits.
   const codeCompletion = settings
-    ? { ...getDefaultCodeCompletionSettings(), ...settings }
+    ? { ...getDefaultCodeCompletionSettings(), responseMode: 'plan', ...settings }
     : undefined
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reads requireStore().getSettings().codeCompletion and the dispatcher reads getRuntimeId.
   const runtime = {

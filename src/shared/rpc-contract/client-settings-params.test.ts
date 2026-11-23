@@ -12,10 +12,14 @@ describe('settings.update params', () => {
     expect(parsed.codeCompletion).toEqual({
       enabled: false,
       protocol: 'openai-chat',
+      responseMode: 'inline',
       baseUrl: '',
       model: '',
       triggerDelayMs: 120,
       autoImport: true,
+      contextPrefixChars: 6000,
+      contextSuffixChars: 2000,
+      displayDeadlineMs: 4000,
       enabledExtensions: [
         'ts',
         'tsx',

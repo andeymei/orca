@@ -3119,6 +3119,32 @@ hunk 是按 `B` 算出来的，把它们写到 `D` 上和写到 `B` 上不是同
 那是**设计变更**（RPC 契约 + 语义），不是一次修复，要先有规格上的决定。
 常见情况是覆盖的（规格 §6：按基准写盘本来就会把用户未保存的修改一起存进去）。
 
+**10. 主进程的文案要能在没有 Electron 的地方读。**
+上一条把主进程的文案本地化之后，`src/main/refactor/refactor-messages.ts` 和
+`refactor-plan-messages.ts` 就从 `src/main/i18n/main-i18n.ts` 取 `translateMain`；
+那个模块 import 了 `system-language.ts`，后者 `import { app } from 'electron'`。
+runtime 跑在 orcad（无头）里、CLI 跑在纯 Node 上，两边都没有 Electron ——
+`check-runtime-electron-ratchet` 闸门因此报红（`src/main/i18n/system-language.ts`）。
+改法：把主进程的 i18n 拆成两半。
+`src/main/i18n/main-i18n-translation.ts` 拿 i18next 实例、`translateMain`、
+`setMainPluginLanguagePacks` 和十个语言包的懒加载（**都不需要 Electron**）；
+`main-i18n.ts` 留下 `getMainSystemLocale`、`setMainUiLanguage`、`prepareEarlyMainUiLanguage`
+和 `system-language.ts` 那个 import（**边界就在这里**），并把前者原样再导出 ——
+所以全仓库没有一处 import 改路径，五个引用 `main-i18n` 的测试文件一个都不用改。
+两个文案模块改从 translation 那半取词。
+**实例只有一个**：谁创建、谁再导出，语言、插件语言包和已加载的目录的行为与之前完全一样；
+语言目录也只有 Electron 侧会加载（只有 `setMainUiLanguage` 会换语言，而它只被
+`src/main/index.ts`、`src/main/ipc/*`、`src/main/startup/*` 调用），
+所以 runtime 和 CLI 走不到那十个 `import()`。
+
+**11. "主进程没有英文目录"不是"这里不能用复数"的理由 —— 那条注释说的是假话。**
+`planOverFileLimitWarning` 上面那段注释说"i18next 只从目录里取复数后缀，从不取默认值，
+而主进程没有英文目录 —— 英文读者永远只拿到内联兜底"，所以复数形式在这里用不了。
+**那是假的**：`createOrcaI18n` 的 `translate` 自己把 `defaultValue_one` 从选项里取出来，
+英文复数规则说是"one"的时候它就用那个（仓库里有大约 400 处这么用）。
+**真的理由**是：计的是**方案**不是文件，名词跟在数字后面，所以一句话在一和五的时候读起来一样，
+跟中文一样。文案本身不动。
+
 ---
 
 ## 完成标准

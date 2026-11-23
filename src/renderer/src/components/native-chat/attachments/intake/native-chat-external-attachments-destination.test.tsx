@@ -126,6 +126,7 @@ function Probe({
     caret,
     setCaret,
     resolveAttachmentOwner: external.resolveAttachmentOwner,
+    resolveLandingTarget: external.resolveLandingTarget,
     attachResolvedPaths: attachments.attachResolvedPaths,
     attachCopiedFiles: external.attachExternalPaths,
     captureExternalPaths: () => external.captureExternalDrop(undefined, { focus: false }),

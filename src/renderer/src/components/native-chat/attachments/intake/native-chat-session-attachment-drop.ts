@@ -1,12 +1,9 @@
 import { basename } from '@/lib/path'
 import { extractIpcErrorMessage } from '@/runtime/errors/ipc-error'
 import { describeDropSkipReason } from '@/lib/files/drop/drop-skip-reason-copy'
-import { isImageDropPath } from '../../../../../../shared/image-path-paste'
 import type { NativeChatAttachmentFocusOptions } from '../uploads/native-chat-resolved-path-ownership'
-import {
-  nativeChatAttachFailedNotice,
-  nativeChatAttachmentOwnerChangedNotice
-} from './native-chat-attachment-notices'
+import { nativeChatAttachmentOwnerChangedNotice } from './native-chat-attachment-notices'
+import { applyLandedAttachmentChips } from './native-chat-landed-attachment-chips'
 import {
   prepareNativeChatSessionAttachmentUpload,
   uploadNativeChatSessionAttachmentPaths
@@ -101,34 +98,12 @@ export async function attachNativeChatSessionAttachmentPaths(args: {
     args.setNotice(nativeChatAttachmentOwnerChangedNotice())
     return
   }
-  const notAttached: { name: string; reason: string }[] = []
-  const references: { id: string; path: string }[] = []
-  for (const { path, chipId } of pending) {
-    const storedPath = stored.get(path)
-    if (!storedPath) {
-      if (args.chips.drop(chipId)) {
-        notAttached.push({ name: basename(path), reason: reasons.get(path) ?? '' })
-      }
-      continue
-    }
-    if (isImageDropPath(storedPath)) {
-      args.chips.resolve(chipId, storedPath, null, args.options)
-      continue
-    }
-    references.push({ id: chipId, path: storedPath })
-  }
-  // Insertions clear notices, so report failures afterward.
-  if (references.length > 0) {
-    args.chips.attachReferences(references, args.options)
-  }
-  if (notAttached.length > 0) {
-    const [first] = notAttached
-    const shared = notAttached.every(({ reason }) => reason === first?.reason) ? first?.reason : ''
-    args.setNotice(
-      nativeChatAttachFailedNotice(
-        notAttached.map(({ name }) => name),
-        shared
-      )
-    )
-  }
+  applyLandedAttachmentChips({
+    pending,
+    landed: stored,
+    reasons,
+    chips: args.chips,
+    options: args.options,
+    setNotice: args.setNotice
+  })
 }

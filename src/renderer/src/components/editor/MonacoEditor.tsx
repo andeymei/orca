@@ -248,8 +248,7 @@ export default function MonacoEditor({
     [glyphClick]
   )
 
-  // Why: the glyph margin is off by default, so the `@ai` glyphs and the next-edit markers would
-  // draw nothing without it.
+  // Why: the glyph margin is off by default, so the `@ai` glyphs would draw nothing without it.
   useEffect(() => {
     if (!mountedEditor) {
       return
@@ -261,8 +260,8 @@ export default function MonacoEditor({
   }, [mountedEditor])
 
   useEffect(() => {
-    mountedEditor?.updateOptions({ glyphMargin: glyphs.length > 0 || nes.markerCount > 0 })
-  }, [glyphs.length, nes.markerCount, mountedEditor])
+    mountedEditor?.updateOptions({ glyphMargin: glyphs.length > 0 })
+  }, [glyphs.length, mountedEditor])
 
   const handleMount = useMonacoEditorMount({
     fileId,

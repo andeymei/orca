@@ -26,8 +26,6 @@ export function useMonacoNesFeature(params: {
   passiveMirror: boolean
   editorInstance: editor.IStandaloneCodeEditor | null
 }): {
-  /** The edits that carry a gutter marker. */
-  markerCount: number
   /** The edit the cursor cannot show, when the plan holds one the user should look at. */
   nextEdit: NesNextEdit | null
 } {

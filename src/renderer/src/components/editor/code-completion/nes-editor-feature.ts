@@ -2,8 +2,7 @@ import { editor, KeyCode } from 'monaco-editor/esm/vs/editor/editor.api.js'
 import { fireNesInlineCompletionsChanged, nesInlineCompletionForEdit } from './nes-inline-provider'
 import { createNesEditorActions } from './nes-editor-actions'
 import type { NesTabDecision } from './nes-key-routing'
-import { refreshNesMarkers } from './nes-marker-refresh'
-import { createNesMarkerDecorations, type NesLocationMarker } from './nes-location-markers'
+import { refreshNesNextEdit } from './nes-next-edit-refresh'
 import { createNesMetricTracker } from './nes-metric-tracker'
 import { nesPlanStore } from './nes-plan-store'
 import type { NesNextEdit } from './nes-next-edit'
@@ -47,8 +46,6 @@ export type NesFeatureParams = {
   contextSuffixChars: number
   displayDeadlineMs: number
   completionModel: string
-  /** How many edits carry a gutter marker. */
-  onMarkersChanged: (count: number) => void
   /** The edit the cursor cannot show, when the plan holds one the user should look at. */
   onNextEditChanged: (
     next: NesNextEdit | null | ((previous: NesNextEdit | null) => NesNextEdit | null)
@@ -57,7 +54,7 @@ export type NesFeatureParams = {
 
 /**
  * The feature in the editor: it watches the editor, asks for a plan and keeps the plan, the
- * gutter markers and the shortcuts in step with it.
+ * the places it predicts and the shortcuts in step with it.
  */
 export function startNesFeature(params: NesFeatureParams): { dispose: () => void } {
   const {
@@ -86,8 +83,8 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
 
   let timer: ReturnType<typeof setTimeout> | null = null
   let previewRelease: (() => void) | null = null
-  let markers: NesLocationMarker[] = []
-  const collection = createNesMarkerDecorations(editorInstance, markers)
+  /** The places the plan predicts somewhere other than the cursor. */
+  let locations: NesEdit[] = []
 
   const tracker = createNesMetricTracker({
     editorInstance,
@@ -109,7 +106,7 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
     onCarryOver: (edits) => {
       nesPlanStore.setLocalPlan(filePath, { edits })
       fireNesInlineCompletionsChanged()
-      refreshMarkers()
+      refreshLocations()
     }
   })
 
@@ -125,13 +122,11 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
     }
   }
 
-  const refreshMarkers = (): void => {
-    markers = refreshNesMarkers({
+  const refreshLocations = (): void => {
+    locations = refreshNesNextEdit({
       editorInstance,
       filePath,
       modelKey,
-      collection,
-      onMarkersChanged: params.onMarkersChanged,
       onNextEditChanged: params.onNextEditChanged
     })
   }
@@ -151,13 +146,13 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
     releasePreview()
     nesPlanStore.remove(filePath)
     fireNesInlineCompletionsChanged()
-    refreshMarkers()
+    refreshLocations()
   }
 
   const actions = createNesEditorActions({
     editorInstance,
     editAtCursor,
-    markers: () => markers,
+    locations: () => locations,
     dropPlan,
     releasePreview,
     showPreview: (release) => {
@@ -196,11 +191,11 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
       return
     }
     if (asked.blocked) {
-      // Why: the markers re-read the stored plan, so a request that was never made must not
+      // Why: the places re-read the stored plan, so a request that was never made must not
       // leave the old one behind. The local suggestions stay: they came from the file.
       nesPlanStore.removeModelPlan(filePath)
       fireNesInlineCompletionsChanged()
-      refreshMarkers()
+      refreshLocations()
       reportNesSuggestionOutcome({
         outcome: 'blocked',
         editCount: 0,
@@ -212,12 +207,12 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
     if (plan) {
       nesPlanStore.setPlan(filePath, plan)
     } else {
-      // Why: the markers re-read the stored plan, so a failed request must not leave the old
+      // Why: the places re-read the stored plan, so a failed request must not leave the old
       // one. The local suggestions stay: they came from the file.
       nesPlanStore.removeModelPlan(filePath)
     }
     fireNesInlineCompletionsChanged()
-    refreshMarkers()
+    refreshLocations()
     // Why: a request that failed is reported by the main process, which knows why it failed;
     // reporting it here as "the model had nothing to propose" would say the opposite.
     if (plan) {
@@ -250,8 +245,8 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
 
   const contentSubscription = editorInstance.onDidChangeModelContent(scheduleTick)
   const cursorSubscription = editorInstance.onDidChangeCursorPosition(() => {
-    // Why: the marker list drops the edit under the cursor, so it follows the cursor.
-    refreshMarkers()
+    // Why: the list of places drops the edit under the cursor, so it follows the cursor.
+    refreshLocations()
     // Why: a cursor move leaves the text alone, so the plan the request made still applies to
     // it. Asking again would cost a request per arrow key and cancel the answer in flight.
   })
@@ -267,24 +262,6 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
     cancelScheduledTick()
     dropPlan()
   })
-  const mouseSubscription = editorInstance.onMouseDown((event) => {
-    if (event.target.type !== editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-      return
-    }
-    // Why: a right click asks for a context menu, so only the left button jumps.
-    if (!event.event.leftButton) {
-      return
-    }
-    const lineNumber = event.target.position?.lineNumber
-    if (!lineNumber) {
-      return
-    }
-    const marker = markers.find((candidate) => candidate.lineNumber === lineNumber)
-    if (marker) {
-      actions.jump(marker)
-    }
-  })
-
   // Why: the content sync lands before this effect subscribes, so opening a file would never ask.
   scheduleTick()
 
@@ -295,7 +272,7 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
     acceptLine: actions.acceptLine,
     jump: actions.jumpToNextLocation,
     preview: actions.preview,
-    hasNextLocation: () => markers.length > 0
+    hasNextLocation: () => locations.length > 0
   })
 
   return {
@@ -307,13 +284,10 @@ export function startNesFeature(params: NesFeatureParams): { dispose: () => void
       contentSubscription.dispose()
       cursorSubscription.dispose()
       keySubscription.dispose()
-      mouseSubscription.dispose()
       releasePreview()
       tracker.dispose()
       renameWatcher.dispose()
-      collection.clear()
       handlersByEditor.delete(editorInstance)
-      params.onMarkersChanged(0)
       params.onNextEditChanged(null)
     }
   }

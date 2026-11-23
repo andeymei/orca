@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import type * as AttachmentOwnerModule from '../uploads/native-chat-attachment-owner'
 import type * as SessionAttachmentUploadModule from '../uploads/native-chat-session-attachment-upload'
+import type * as LandingTargetModule from '../uploads/native-chat-attachment-landing-target'
+import type * as WorkspaceLandingModule from '@/runtime/files/imports/workspace-attachment-landing'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -17,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   resolveNativeChatAttachmentOwnerForWorktree: vi.fn(),
   prepareNativeChatSessionAttachmentUpload: vi.fn(),
   uploadNativeChatSessionAttachmentPaths: vi.fn(),
+  resolveNativeChatLandingTargetForOwner: vi.fn(),
+  landWorkspaceAttachments: vi.fn(),
   toastLoading: vi.fn()
 }))
 
@@ -39,6 +43,16 @@ vi.mock('../uploads/native-chat-session-attachment-upload', async (importOrigina
   ...(await importOriginal<typeof SessionAttachmentUploadModule>()),
   prepareNativeChatSessionAttachmentUpload: mocks.prepareNativeChatSessionAttachmentUpload,
   uploadNativeChatSessionAttachmentPaths: mocks.uploadNativeChatSessionAttachmentPaths
+}))
+
+vi.mock('../uploads/native-chat-attachment-landing-target', async (importOriginal) => ({
+  ...(await importOriginal<typeof LandingTargetModule>()),
+  resolveNativeChatLandingTargetForOwner: mocks.resolveNativeChatLandingTargetForOwner
+}))
+
+vi.mock('@/runtime/files/imports/workspace-attachment-landing', async (importOriginal) => ({
+  ...(await importOriginal<typeof WorkspaceLandingModule>()),
+  landWorkspaceAttachments: mocks.landWorkspaceAttachments
 }))
 
 import { useNativeChatExternalAttachments } from './use-native-chat-external-attachments'
@@ -155,6 +169,12 @@ async function renderProbe(args: {
 beforeEach(() => {
   mocks.stat.mockReset().mockResolvedValue(undefined)
   mocks.resolveNativeChatAttachmentOwnerForWorktree.mockReset().mockReturnValue({ kind: 'local' })
+  mocks.resolveNativeChatLandingTargetForOwner.mockReset().mockReturnValue(null)
+  mocks.landWorkspaceAttachments.mockReset().mockResolvedValue({
+    copied: [],
+    skipped: [],
+    failed: []
+  })
   vi.stubGlobal('api', { fs: { stat: mocks.stat } })
 })
 
@@ -228,5 +248,66 @@ describe('useNativeChatExternalAttachments', () => {
     act(() => probe.latest().attachExternalPaths([token!]))
 
     expect(takeBrowserAttachmentFile(token!)).toBeNull()
+  })
+  it("lands an external file in the chat's workspace and attaches the path it landed at", async () => {
+    mocks.resolveNativeChatLandingTargetForOwner.mockReturnValue({
+      worktreeId: 'worktree-1',
+      workspacePath: '/ws',
+      runtimeEnvironmentId: null,
+      connectionId: null,
+      expectedExecutionHostId: 'local'
+    })
+    mocks.landWorkspaceAttachments.mockResolvedValue({
+      copied: [{ sourcePath: '/external/a.txt', workspacePath: '/ws/.orca/drops/a.txt' }],
+      skipped: [],
+      failed: []
+    })
+    const attachResolvedPaths = vi.fn()
+    const pendingChips = noPendingChips()
+    const probe = await renderProbe({
+      structuredWorktreeId: 'worktree-1',
+      attachResolvedPaths,
+      pendingChips
+    })
+
+    await act(async () => {
+      probe.latest().attachExternalPaths(['/external/a.txt'])
+    })
+
+    expect(mocks.landWorkspaceAttachments).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourcePaths: ['/external/a.txt'],
+        workspacePath: '/ws',
+        worktreeId: 'worktree-1'
+      })
+    )
+    expect(pendingChips.attachReferences).toHaveBeenCalledWith(
+      [{ id: '1', path: '/ws/.orca/drops/a.txt' }],
+      undefined
+    )
+    expect(attachResolvedPaths).not.toHaveBeenCalled()
+  })
+
+  it('keeps a file the browser holds on its own route, since it has no path to copy', async () => {
+    mocks.resolveNativeChatLandingTargetForOwner.mockReturnValue({
+      worktreeId: 'worktree-1',
+      workspacePath: '/ws',
+      runtimeEnvironmentId: null,
+      connectionId: null,
+      expectedExecutionHostId: 'local'
+    })
+    const [token] = holdBrowserAttachmentFiles([new File(['a'], 'a.txt')])
+    const attachResolvedPaths = vi.fn()
+    const probe = await renderProbe({
+      structuredWorktreeId: 'worktree-1',
+      attachResolvedPaths
+    })
+
+    await act(async () => {
+      probe.latest().attachExternalPaths([token!])
+    })
+
+    expect(mocks.landWorkspaceAttachments).not.toHaveBeenCalled()
+    expect(attachResolvedPaths).toHaveBeenCalledWith([token!], undefined, expect.anything())
   })
 })

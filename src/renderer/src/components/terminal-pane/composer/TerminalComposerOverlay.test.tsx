@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { Worktree } from '../../../../../shared/worktree/types'
-import { joinRuntimeTerminalDropDir } from '../input/file-drop/terminal-drop-worktree-path'
+import { workspaceAttachmentDropDir } from '@/runtime/files/imports/workspace-attachment-landing'
 import {
   dropTerminalComposerAttachments,
   pasteTerminalComposerAttachments
@@ -199,7 +199,7 @@ describe('terminal composer overlay', () => {
     const host = vi.mocked(pasteTerminalComposerAttachments).mock.calls[0]?.[0]
     expect(host?.workspacePath).toBe(WORKTREE_PATH)
     // The attachment lands in that worktree's staging directory, not in the cwd's.
-    expect(joinRuntimeTerminalDropDir(host?.workspacePath ?? '')).toBe(
+    expect(workspaceAttachmentDropDir(host?.workspacePath ?? '')).toBe(
       `${WORKTREE_PATH}/.orca/drops`
     )
   })

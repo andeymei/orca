@@ -12,7 +12,7 @@ import {
 } from '../../../../../shared/native-chat/native-chat-image-reference'
 import { focusTerminalTabSurface } from '../input/focus/focus-terminal-tab-surface'
 import { captureTerminalDropTransportOwner } from '../input/file-drop/terminal-drop-transport-owner'
-import { resolveTerminalDropWorktreePath } from '../input/file-drop/terminal-drop-worktree-path'
+import { resolveWorktreePathOnOwnerHost } from '@/lib/workspace/ownership/worktree-path-on-owner-host'
 import type { PtyTransport } from '../pty-transport/pty-transport-types'
 import {
   dropTerminalComposerAttachments,
@@ -125,7 +125,7 @@ export function TerminalComposerOverlay({
       // The SSH connection is gone; nothing can land on it.
       return null
     }
-    const workspacePath = resolveTerminalDropWorktreePath(
+    const workspacePath = resolveWorktreePathOnOwnerHost(
       worktreeId,
       owner?.runtimeEnvironmentId ? undefined : cwd,
       owner?.executionHostId,

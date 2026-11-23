@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import * as z from 'zod'
 import { salvagingArray } from '../zod-salvage'
 
 export const NES_MAX_EDITS = 5

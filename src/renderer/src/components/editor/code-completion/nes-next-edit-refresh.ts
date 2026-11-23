@@ -1,49 +1,43 @@
 import type { editor } from 'monaco-editor'
 import { nesInlineCompletionForEdit } from './nes-inline-provider'
-import {
-  nesLocationMarkers,
-  nesMarkerDecorations,
-  type NesLocationMarker
-} from './nes-location-markers'
+import { nesOtherLocations } from './nes-other-locations'
 import { nesNextEditNotice, type NesNextEdit } from './nes-next-edit'
 import { nesPlanStore } from './nes-plan-store'
+import type { NesEdit } from '../../../../../shared/code-completion/code-completion-types'
 
 /**
- * The markers the plan's edits carry, and the notice that names the place the cursor cannot show.
+ * The places the plan predicts, and the notice that names the place the cursor cannot show.
  *
- * Why the edit under the cursor leaves the list: it is the suggestion itself, so a marker would
- * point the user at the line they are already on.
+ * Why the edit under the cursor leaves the list: it is the suggestion itself, so a place the
+ * person is already on would say nothing.
  */
-export function refreshNesMarkers(input: {
+export function refreshNesNextEdit(input: {
   editorInstance: editor.IStandaloneCodeEditor
   /** The file the plan belongs to. */
   filePath: string
   /** The key the plan store binds the model under. */
   modelKey: string
-  collection: editor.IEditorDecorationsCollection
-  onMarkersChanged: (count: number) => void
   onNextEditChanged: (
     next: NesNextEdit | null | ((previous: NesNextEdit | null) => NesNextEdit | null)
   ) => void
-}): NesLocationMarker[] {
+}): NesEdit[] {
   const position = input.editorInstance.getPosition()
   const model = input.editorInstance.getModel()
   const drawn = position && model ? editAtCursor(input.modelKey, position) : null
   const drawnIsDrawable = Boolean(
     drawn && model && nesInlineCompletionForEdit(drawn, model) !== null
   )
-  const shown = drawnIsDrawable
-    ? nesPlanStore.editsForPath(input.filePath).filter((edit) => edit !== drawn)
-    : nesPlanStore.editsForPath(input.filePath)
-  const markers = position
-    ? nesLocationMarkers(shown, position).sort((left, right) => left.lineNumber - right.lineNumber)
+  const edits = nesPlanStore.editsForPath(input.filePath)
+  const locations = position
+    ? nesOtherLocations(
+        drawnIsDrawable ? edits.filter((edit) => edit !== drawn) : edits,
+        position
+      ).sort((left, right) => left.range.startLine - right.range.startLine)
     : []
-  input.collection.set(nesMarkerDecorations(markers))
-  input.onMarkersChanged(markers.length)
   const notice = nesNextEditNotice({
     drawn,
     drawnIsDrawable,
-    markers,
+    locations,
     cursor: position
   })
   input.onNextEditChanged((previous) => {
@@ -60,7 +54,7 @@ export function refreshNesMarkers(input: {
     }
     return notice
   })
-  return markers
+  return locations
 }
 
 /** The edit of the bound file whose range ends at the cursor, if there is one. */

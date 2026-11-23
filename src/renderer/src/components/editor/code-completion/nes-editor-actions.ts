@@ -3,7 +3,7 @@ import type { NesEdit } from '../../../../../shared/code-completion/code-complet
 import { applyNesEdit, previewNesEdit } from './nes-edit-application'
 import { nesInlineCompletionForEdit } from './nes-inline-provider'
 import { decideNesTabAction, type NesTabDecision } from './nes-key-routing'
-import type { NesLocationMarker } from './nes-location-markers'
+import { nesNextLocationAfter } from './nes-other-locations'
 import type { NesMetricTracker } from './nes-metric-tracker'
 
 export type NesEditorActions = {
@@ -16,7 +16,7 @@ export type NesEditorActions = {
   /** Takes the next line of the suggestion. */
   acceptLine: () => void
   /** Moves the cursor to the place the edit starts. */
-  jump: (marker: NesLocationMarker) => void
+  jump: (location: NesEdit) => void
   /** Moves the cursor to the next place the plan predicts. */
   jumpToNextLocation: () => void
   /** Draws the change the plan proposes over the code, while the key is held. */
@@ -33,8 +33,8 @@ export function createNesEditorActions(input: {
   editorInstance: editor.IStandaloneCodeEditor
   /** The edit of the bound file whose range ends at the cursor. */
   editAtCursor: () => NesEdit | null
-  /** The markers the plan's edits carry. */
-  markers: () => NesLocationMarker[]
+  /** The places the plan predicts somewhere other than the cursor. */
+  locations: () => NesEdit[]
   /** Drops the plan and everything that came with it. */
   dropPlan: () => void
   /** Takes the preview widget away. */
@@ -51,7 +51,7 @@ export function createNesEditorActions(input: {
       model !== null && edit !== null && nesInlineCompletionForEdit(edit, model) !== null
     return decideNesTabAction({
       hasInlineSuggestion,
-      hasOtherLocations: input.markers().length > 0
+      hasOtherLocations: input.locations().length > 0
     })
   }
 
@@ -91,18 +91,18 @@ export function createNesEditorActions(input: {
     input.tracker.partial()
   }
 
-  const jump = (marker: NesLocationMarker): void => {
+  const jump = (location: NesEdit): void => {
     // Why: the edit's range end is where the edit becomes the anchor, so the ghost text shows there.
     input.editorInstance.setPosition({
-      lineNumber: marker.edit.range.endLine,
-      column: marker.edit.range.endColumn
+      lineNumber: location.range.endLine,
+      column: location.range.endColumn
     })
   }
 
   const jumpToNextLocation = (): void => {
     const position = input.editorInstance.getPosition()
-    const markers = input.markers()
-    const next = position ? nextMarkerAfter(markers, position) : null
+    const locations = input.locations()
+    const next = position ? nesNextLocationAfter(locations, position) : null
     if (next) {
       jump(next)
     }
@@ -124,23 +124,4 @@ export function createNesEditorActions(input: {
   }
 
   return { decide, accept, acceptWord, acceptLine, jump, jumpToNextLocation, preview }
-}
-
-/** The location after the cursor; the list cycles, so the last one leads back to the first. */
-function nextMarkerAfter(
-  markers: readonly NesLocationMarker[],
-  position: { lineNumber: number; column: number }
-): NesLocationMarker | null {
-  if (markers.length === 0) {
-    return null
-  }
-  const after = markers.find((marker) => isAfterCursor(marker.edit, position))
-  return after ?? markers[0]
-}
-
-function isAfterCursor(edit: NesEdit, position: { lineNumber: number; column: number }): boolean {
-  if (edit.range.endLine !== position.lineNumber) {
-    return edit.range.endLine > position.lineNumber
-  }
-  return edit.range.endColumn > position.column
 }

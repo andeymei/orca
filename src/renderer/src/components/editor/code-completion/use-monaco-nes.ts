@@ -28,8 +28,6 @@ export function useMonacoNextEditSuggestions(params: {
   /** The live editor — the hook needs its model, its cursor and its decoration collection. */
   editorInstance: editor.IStandaloneCodeEditor | null
 }): {
-  /** The edits that carry a gutter marker. */
-  markerCount: number
   /** The edit the cursor cannot show, when the plan holds one the user should look at. */
   nextEdit: NesNextEdit | null
 } {
@@ -45,8 +43,6 @@ export function useMonacoNextEditSuggestions(params: {
     completionModel,
     editorInstance
   } = params
-  // Why: the glyph margin is off by default, so the editor has to be told that a marker is in it.
-  const [markerCount, setMarkerCount] = useState(0)
   // Why: the plan can hold an edit the cursor cannot show, and a marker alone reads as nothing
   // happened, so the notice names the place.
   const [nextEdit, setNextEdit] = useState<NesNextEdit | null>(null)
@@ -87,7 +83,6 @@ export function useMonacoNextEditSuggestions(params: {
       contextSuffixChars,
       displayDeadlineMs,
       completionModel,
-      onMarkersChanged: setMarkerCount,
       onNextEditChanged: (next) => setNextEdit(next)
     })
     return () => {
@@ -107,7 +102,7 @@ export function useMonacoNextEditSuggestions(params: {
     completionModel
   ])
 
-  return { markerCount, nextEdit }
+  return { nextEdit }
 }
 
 function isExtensionEnabled(filePath: string, extensionsKey: string): boolean {

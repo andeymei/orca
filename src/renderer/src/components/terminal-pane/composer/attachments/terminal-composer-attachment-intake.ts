@@ -1,11 +1,11 @@
 import { userNamedFileAccess } from '@/lib/files/access/local-file-access'
 import { basename } from '@/lib/path'
 import type { TerminalComposerAttachment } from '@/store/slices/terminal-composer/terminal-composer'
+import { landWorkspaceAttachments } from '@/runtime/files/imports/workspace-attachment-landing'
 import { AGENT_SESSION_ATTACHMENT_MAX_BYTES } from '../../../../../../shared/agent-session/agent-session-attachments'
 import { isImageDropPath } from '../../../../../../shared/image-path-paste'
 import { createNonSecureContextUuid } from '../../../../../../shared/non-secure-context-uuid'
 import type { TerminalComposerAgentSession } from '../terminal-composer-agent-path'
-import { copyTerminalComposerAttachmentsToWorkspace } from './terminal-composer-workspace-copy'
 
 export type TerminalComposerIntakeHost = {
   /** The workspace root that owns the terminal. */
@@ -111,7 +111,7 @@ async function landAttachments(
   if (withinLimit.length === 0) {
     return { attachments: [], failed }
   }
-  const copy = await copyTerminalComposerAttachmentsToWorkspace({
+  const copy = await landWorkspaceAttachments({
     sourcePaths: withinLimit,
     workspacePath: host.workspacePath,
     worktreeId: host.worktreeId,

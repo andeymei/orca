@@ -1,9 +1,15 @@
 import { stageNativeChatPendingImage } from '../drafts/native-chat-draft-attachment-staging'
 import { translate } from '@/i18n/i18n'
+import { basename } from '@/lib/path'
+import { landWorkspaceAttachments } from '@/runtime/files/imports/workspace-attachment-landing'
 import { setNativeChatPasteFailure } from '../composer/controls/native-chat-composer-notice'
-import { nativeChatLocalAttachmentUnsupportedNotice } from '../attachments/intake/native-chat-attachment-notices'
+import {
+  nativeChatAttachFailedNotice,
+  nativeChatLocalAttachmentUnsupportedNotice
+} from '../attachments/intake/native-chat-attachment-notices'
 import { prepareNativeChatSessionAttachmentUpload } from '../attachments/uploads/native-chat-session-attachment-upload'
 import type { NativeChatAttachmentOwner } from '../attachments/uploads/native-chat-attachment-owner'
+import type { NativeChatAttachmentLandingTarget } from '../attachments/uploads/native-chat-attachment-landing-target'
 
 type ClipboardImageOwner =
   | Extract<NativeChatAttachmentOwner, { kind: 'local' | 'runtime-session' }>
@@ -22,11 +28,17 @@ export function ownerAcceptsClipboardImage(
 
 /** Save locally or in the paired chat store after checking server support. */
 async function clipboardImageSaveArgs(
-  owner: ClipboardImageOwner
+  owner: ClipboardImageOwner,
+  landsInWorkspace: boolean
 ): Promise<
   | { ok: true; args: Parameters<typeof window.api.ui.saveClipboardImageAsTempFile>[0] }
   | { ok: false; notice: string; cause: NativeChatClipboardImageFailureCause }
 > {
+  // The workspace copy carries the bytes to the host that owns the workspace, so the image
+  // only has to reach this machine first.
+  if (landsInWorkspace) {
+    return { ok: true, args: {} }
+  }
   if (owner.kind === 'local') {
     return {
       ok: true,
@@ -51,6 +63,38 @@ async function clipboardImageSaveArgs(
 /** `serverTooOld`: the chat's paired server keeps no attachments, so it could never take one. */
 export type NativeChatClipboardImageFailureCause = 'serverTooOld' | 'failed'
 
+/** Copy the saved image into the workspace that owns the chat and report the path it landed at. */
+async function landClipboardImage(
+  tempPath: string,
+  target: NativeChatAttachmentLandingTarget,
+  report: { setNotice: (notice: string, cause: NativeChatClipboardImageFailureCause) => void }
+): Promise<{ status: 'saved'; tempPath: string } | { status: 'failed' }> {
+  const name = basename(tempPath)
+  try {
+    const result = await landWorkspaceAttachments({
+      sourcePaths: [tempPath],
+      workspacePath: target.workspacePath,
+      worktreeId: target.worktreeId,
+      runtimeEnvironmentId: target.runtimeEnvironmentId,
+      connectionId: target.connectionId,
+      expectedExecutionHostId: target.expectedExecutionHostId,
+      expectedSshTargetId: target.expectedSshTargetId,
+      expectedSshConnectionGeneration: target.expectedSshConnectionGeneration
+    })
+    const landed = result.copied[0]?.workspacePath
+    if (!landed) {
+      const reason = result.failed[0]?.reason ?? result.skipped[0]?.reason ?? ''
+      report.setNotice(nativeChatAttachFailedNotice([name], reason), 'failed')
+      return { status: 'failed' }
+    }
+    return { status: 'saved', tempPath: landed }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : ''
+    report.setNotice(nativeChatAttachFailedNotice([name], reason), 'failed')
+    return { status: 'failed' }
+  }
+}
+
 /** Save the clipboard image where the owner's agent can read it. Every failure is reported. */
 export async function saveNativeChatClipboardImage(
   owner: NativeChatAttachmentOwner,
@@ -63,21 +107,27 @@ export async function saveNativeChatClipboardImage(
     ) => void
     /** The image has somewhere to go, now that any server it goes to has said it takes one. */
     ready?: () => void
-  }
+  },
+  landingTarget?: NativeChatAttachmentLandingTarget | null
 ): Promise<{ status: 'saved'; tempPath: string } | { status: 'empty' | 'failed' }> {
   if (!ownerAcceptsClipboardImage(owner)) {
     report.setNotice(nativeChatLocalAttachmentUnsupportedNotice(), 'failed')
     return { status: 'failed' }
   }
   try {
-    const target = await clipboardImageSaveArgs(owner)
+    const target = await clipboardImageSaveArgs(owner, Boolean(landingTarget))
     if (!target.ok) {
       report.setNotice(target.notice, target.cause)
       return { status: 'failed' }
     }
     report.ready?.()
     const tempPath = await window.api.ui.saveClipboardImageAsTempFile(target.args)
-    return tempPath ? { status: 'saved', tempPath } : { status: 'empty' }
+    if (!tempPath) {
+      return { status: 'empty' }
+    }
+    return landingTarget
+      ? await landClipboardImage(tempPath, landingTarget, report)
+      : { status: 'saved', tempPath }
   } catch (error) {
     // Report failed saves; silent SSH disconnects would look like a broken paste.
     setNativeChatPasteFailure(
@@ -102,21 +152,26 @@ export async function saveNativeChatPastedClipboardImage(
     canNotify: () => boolean
     setNotice: (notice: string, errorText?: string) => void
     ready?: () => void
-  }
+  },
+  landingTarget?: NativeChatAttachmentLandingTarget | null
 ): ReturnType<typeof saveNativeChatClipboardImage> {
-  const saved = await saveNativeChatClipboardImage(owner, {
-    ready: paste.ready,
-    setNotice: (notice, cause, errorText) => {
-      if ((cause === 'serverTooOld' && paste.besideText) || !paste.canNotify()) {
-        return
+  const saved = await saveNativeChatClipboardImage(
+    owner,
+    {
+      ready: paste.ready,
+      setNotice: (notice, cause, errorText) => {
+        if ((cause === 'serverTooOld' && paste.besideText) || !paste.canNotify()) {
+          return
+        }
+        if (errorText) {
+          paste.setNotice(notice, errorText)
+        } else {
+          paste.setNotice(notice)
+        }
       }
-      if (errorText) {
-        paste.setNotice(notice, errorText)
-      } else {
-        paste.setNotice(notice)
-      }
-    }
-  })
+    },
+    landingTarget
+  )
   return saved.status === 'saved' &&
     owner.kind === 'local' &&
     owner.stagingScope &&

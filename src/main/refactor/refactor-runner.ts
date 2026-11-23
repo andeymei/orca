@@ -68,6 +68,11 @@ export type RefactorTurnResult = {
  *
  * Why the whole document is still checked: a manifest without a `proposals` array holds nothing
  * that can be kept, so it fails as a whole.
+ *
+ * Why a manifest that lost every proposal reads as missing: it says nothing the scratch tree
+ * cannot say better, so the tree speaks — a plan builder reads a missing manifest as "rebuild
+ * the proposals from the scratch tree". A manifest that really holds no proposal keeps its
+ * meaning: the agent said it has nothing to show.
  */
 export async function readRefactorManifest(scratchRoot: string): Promise<{
   manifest: RefactorManifest | null
@@ -110,6 +115,9 @@ export async function readRefactorManifest(scratchRoot: string): Promise<{
       continue
     }
     proposals.push(proposal.data)
+  }
+  if (proposals.length === 0 && document.data.proposals.length > 0) {
+    return { manifest: null, warnings }
   }
   return { manifest: { proposals }, warnings }
 }

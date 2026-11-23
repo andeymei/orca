@@ -95,6 +95,28 @@ describe('readRefactorManifest', () => {
     expect(read.warnings).toEqual([])
   })
 
+  it('reads as missing when every proposal was dropped, so the scratch tree speaks', async () => {
+    const root = await scratchRootWithManifest({
+      proposals: [
+        { id: 'p1', rationale: '这个方案没有标题。' },
+        { id: 'p2', title: '合并读取' }
+      ]
+    })
+    const read = await readRefactorManifest(root)
+    expect(read.manifest).toBeNull()
+    expect(read.warnings).toEqual([
+      'The proposal p1 in the manifest does not have the expected shape; it was dropped',
+      'The proposal p2 in the manifest does not have the expected shape; it was dropped'
+    ])
+  })
+
+  it('keeps a manifest that really holds no proposal', async () => {
+    const root = await scratchRootWithManifest({ proposals: [] })
+    const read = await readRefactorManifest(root)
+    expect(read.manifest).toEqual({ proposals: [] })
+    expect(read.warnings).toEqual([])
+  })
+
   it('fails the whole manifest when it holds no proposals array', async () => {
     const root = await scratchRootWithManifest({ note: '这个清单没有方案。' })
     const read = await readRefactorManifest(root)
@@ -322,6 +344,17 @@ describe('classifyRefactorResult', () => {
   it('reads a frame it does not recognise as failed', () => {
     expect(classifyRefactorResult({ subtype: 'something_new' }).state).toBe('failed')
   })
+
+  it('says the refactoring ended in an error, in the words the user reads', () => {
+    const verdict = classifyRefactorResult({
+      subtype: 'error_during_execution',
+      is_error: true,
+      stop_reason: 'stopped_at_error_during_execution'
+    })
+    expect(verdict.warnings).toEqual([
+      'The refactoring ended in an error: error_during_execution(stopped because: stopped_at_error_during_execution)'
+    ])
+  })
 })
 
 describe('decideRefactorTurnOutcome', () => {
@@ -369,6 +402,18 @@ describe('decideRefactorTurnOutcome', () => {
     expect(outcome.warnings.join('\n')).toContain('the claude process exited with code 1')
   })
 
+  it('says the refactoring did not finish normally when the turn crashed', () => {
+    const outcome = decideRefactorTurnOutcome({
+      result: null,
+      cancelled: false,
+      timedOut: false,
+      fault: 'the claude process exited with code 1'
+    })
+    expect(outcome.warnings).toEqual([
+      'The refactoring did not finish normally: the claude process exited with code 1'
+    ])
+  })
+
   it('does not report a turn that never ended as done', () => {
     expect(
       decideRefactorTurnOutcome({
@@ -377,7 +422,7 @@ describe('decideRefactorTurnOutcome', () => {
         timedOut: false,
         fault: null
       })
-    ).toEqual({ state: 'failed', warnings: ['The turn did not end'] })
+    ).toEqual({ state: 'failed', warnings: ['The refactoring did not finish'] })
   })
 })
 

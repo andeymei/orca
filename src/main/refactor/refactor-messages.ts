@@ -187,7 +187,7 @@ export function turnVerdictTimedOutMessage(): string {
 
 /** The turn ended without a verdict. */
 export function turnVerdictNoResultMessage(): string {
-  return translateMain('refactor.turnVerdict.noResult', 'The turn did not end')
+  return translateMain('refactor.turnVerdict.noResult', 'The refactoring did not finish')
 }
 
 /** The turn ended for a reason the SDK named. */
@@ -201,16 +201,20 @@ export function turnVerdictStopReasonMessage(reason: string): string {
 export function turnVerdictEndedInErrorMessage(detail: string, stop: string): string {
   return translateMain(
     'refactor.turnVerdict.endedInError',
-    'The turn ended in an error: {{detail}}{{stop}}',
+    'The refactoring ended in an error: {{detail}}{{stop}}',
     { detail, stop }
   )
 }
 
 /** The turn crashed, and the crash said what happened. */
 export function turnVerdictFaultMessage(fault: string): string {
-  return translateMain('refactor.turnVerdict.fault', 'The turn did not end normally: {{fault}}', {
-    fault
-  })
+  return translateMain(
+    'refactor.turnVerdict.fault',
+    'The refactoring did not finish normally: {{fault}}',
+    {
+      fault
+    }
+  )
 }
 
 /** A refactoring cannot run on a remote host. */

@@ -24611,7 +24611,7 @@
       "duplicateId": "Proposal {{id}} repeats an id; it was dropped",
       "filesFromTree": "Proposal {{id}} does not list its files in the manifest; they were restored from the scratch directory",
       "noFiles": "Proposal {{id}} names no file; it was dropped",
-      "overFileLimit": "The review shows at most {{limit}} files per proposal; {{dropped}} could not be shown.",
+      "overFileLimit": "The review shows at most {{limit}} files per proposal; {{dropped}} proposals could not be shown.",
       "overProposalLimit": "The review shows at most {{limit}} proposals; {{dropped}} could not be shown.",
       "pathOutsideWorkspace": "Proposal {{id}} names a file outside the workspace; it was dropped: {{path}}",
       "restoredNoReason": "Proposal {{id}} was restored from the scratch directory; the agent gave no reason",
@@ -24631,9 +24631,9 @@
     },
     "turnVerdict": {
       "cancelled": "The task was cancelled",
-      "endedInError": "The turn ended in an error: {{detail}}{{stop}}",
-      "fault": "The turn did not end normally: {{fault}}",
-      "noResult": "The turn did not end",
+      "endedInError": "The refactoring ended in an error: {{detail}}{{stop}}",
+      "fault": "The refactoring did not finish normally: {{fault}}",
+      "noResult": "The refactoring did not finish",
       "stopReason": "(stopped because: {{reason}})",
       "timedOut": "The task timed out"
     }

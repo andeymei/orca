@@ -144,7 +144,7 @@ export function planOverProposalLimitWarning(dropped: number, limit: number): st
 export function planOverFileLimitWarning(dropped: number, limit: number): string {
   return translateMain(
     'refactor.plan.overFileLimit',
-    'The review shows at most {{limit}} files per proposal; {{dropped}} could not be shown.',
+    'The review shows at most {{limit}} files per proposal; {{dropped}} proposals could not be shown.',
     { limit, dropped }
   )
 }

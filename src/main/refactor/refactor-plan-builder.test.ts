@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { buildRefactorPlan } from './refactor-plan-builder'
 import { isSafeRelativeRefactorPath } from './refactor-path-rules'
+import { readRefactorManifest } from './refactor-runner'
+import type { RefactorManifest } from '../../shared/refactor/refactor-manifest'
 
 const workspaceRoot = '/repo'
 const scratchRoot = '/repo/.orca/refactor/job-1'
@@ -20,6 +25,21 @@ describe('isSafeRelativeRefactorPath', () => {
 })
 
 describe('buildRefactorPlan', () => {
+  /**
+   * A scratch root that holds the manifest the agent wrote, read through the app's own reader.
+   *
+   * Why the reader reads it: the plan builder takes the manifest it is given, so a plan-level
+   * claim about what a broken manifest leads to has to start from what the reader made of it.
+   */
+  async function scratchRootWithManifest(manifest: unknown): Promise<{
+    root: string
+    read: { manifest: RefactorManifest | null; warnings: string[] }
+  }> {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'refactor-plan-'))
+    await writeFile(path.join(root, 'manifest.json'), JSON.stringify(manifest), 'utf8')
+    return { root, read: await readRefactorManifest(root) }
+  }
+
   it('builds a plan with hunks against the baseline', async () => {
     const result = await buildRefactorPlan({
       jobId: 'job-1',
@@ -574,7 +594,7 @@ describe('buildRefactorPlan', () => {
     })
     expect(result.plan.proposals).toHaveLength(0)
     expect(result.warnings).toEqual([
-      'The review shows at most 5 files per proposal; 2 could not be shown.'
+      'The review shows at most 5 files per proposal; 2 proposals could not be shown.'
     ])
   })
 
@@ -605,7 +625,7 @@ describe('buildRefactorPlan', () => {
     })
     expect(result.warnings).toEqual([
       'Proposal p3 changes the same file as proposal p2; the later one was dropped: src/g.ts',
-      'The review shows at most 5 files per proposal; 1 could not be shown.'
+      'The review shows at most 5 files per proposal; 1 proposals could not be shown.'
     ])
   })
 
@@ -657,5 +677,80 @@ describe('buildRefactorPlan', () => {
     expect(
       result.warnings.some((warning) => warning.includes('at most 5 files per proposal'))
     ).toBe(true)
+  })
+
+  it('takes the proposal from the scratch tree when every proposal of the manifest was dropped', async () => {
+    // The agent's work must not be lost because of a manifest defect: a manifest that lost every
+    // proposal says nothing the tree cannot say better.
+    const { root, read } = await scratchRootWithManifest({
+      proposals: [{ id: 'p1', rationale: '这个方案没有标题。' }]
+    })
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: read.manifest,
+      scratchRoot: root,
+      workspaceRoot,
+      readBaseline: async () => 'a\nb\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [{ id: 'p1', files: ['src/foo.ts'] }],
+      scratchFiles: async () => 'a\nB\n'
+    })
+    expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
+    expect(result.plan.proposals[0].files.map((file) => file.path)).toEqual(['src/foo.ts'])
+    expect(result.warnings).toEqual([
+      'Proposal p1 was restored from the scratch directory; the agent gave no reason'
+    ])
+  })
+
+  it('takes no proposal from the scratch tree when the manifest really holds none', async () => {
+    // A manifest that holds no proposal is the agent saying it has nothing to show, and it keeps
+    // that meaning: the tree is not a second chance for it.
+    const { root, read } = await scratchRootWithManifest({ proposals: [] })
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: read.manifest,
+      scratchRoot: root,
+      workspaceRoot,
+      readBaseline: async () => 'a\nb\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => [{ id: 'p1', files: ['src/foo.ts'] }],
+      scratchFiles: async () => 'a\nB\n'
+    })
+    expect(result.plan.proposals).toHaveLength(0)
+    expect(result.warnings).toEqual([])
+  })
+
+  it('takes the proposal that fits from the manifest when another one was dropped', async () => {
+    // The manifest path stays the manifest path: one bad proposal does not cost the good one its
+    // title and its reason, and the tree is not consulted at all.
+    const { root, read } = await scratchRootWithManifest({
+      proposals: [
+        { id: 'p1', title: '提取校验', rationale: '两处规则相同。', files: ['src/foo.ts'] },
+        { id: 'p2', rationale: '这个方案没有标题。' }
+      ]
+    })
+    let treeReads = 0
+    const result = await buildRefactorPlan({
+      jobId: 'job-1',
+      sourcePath: 'src/foo.ts',
+      manifest: read.manifest,
+      scratchRoot: root,
+      workspaceRoot,
+      readBaseline: async () => 'a\nb\n',
+      readDiskContent: async () => 'a\n',
+      listScratchProposals: async () => {
+        treeReads += 1
+        return [{ id: 'p1', files: ['src/other.ts'] }]
+      },
+      scratchFiles: async () => 'a\nB\n'
+    })
+    expect(result.plan.proposals.map((proposal) => proposal.id)).toEqual(['p1'])
+    expect(result.plan.proposals[0].title).toBe('提取校验')
+    expect(result.plan.proposals[0].rationale).toBe('两处规则相同。')
+    expect(result.plan.proposals[0].files.map((file) => file.path)).toEqual(['src/foo.ts'])
+    expect(treeReads).toBe(0)
+    expect(result.warnings).toEqual([])
   })
 })

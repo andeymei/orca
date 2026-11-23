@@ -1,4 +1,4 @@
-import { translateMain } from '../i18n/main-i18n'
+import { translateMain } from '../i18n/main-i18n-translation'
 import { REFACTOR_SOURCE_DIRECTORY_NAME } from './refactor-scratch'
 
 /**
@@ -143,10 +143,8 @@ export function planOverProposalLimitWarning(dropped: number, limit: number): st
 /**
  * More files in one proposal than the review tab can show.
  *
- * Why the noun follows the number: i18next resolves plural suffixes from the catalog, never from
- * the default value, and the main process has no English catalog -- the inline fallback is all
- * an English reader ever gets. So the sentence reads the same for one dropped proposal and for
- * five, the way the Chinese does.
+ * Why the noun follows the number: the count is of proposals, and the Chinese puts the count
+ * first, so the sentence reads the same at one and at five.
  */
 export function planOverFileLimitWarning(dropped: number, limit: number): string {
   return translateMain(

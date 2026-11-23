@@ -1,4 +1,4 @@
-import { translateMain } from '../i18n/main-i18n'
+import { translateMain } from '../i18n/main-i18n-translation'
 
 /**
  * The copy the main process shows the user.

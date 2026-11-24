@@ -1,6 +1,8 @@
 import type { AgentSessionStatusSummary } from '../../../../shared/agent-session/agent-session-wire'
-import type { AgentSessionBackgroundSession } from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
-import type { AgentSessionBackgroundState } from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
+import type {
+  AgentSessionBackgroundSession,
+  AgentSessionBackgroundState
+} from '../../../../shared/agent-session/lifecycle/agent-session-background-session'
 import type { AgentSessionConversationView } from '../../../../shared/agent-session/lifecycle/agent-session-conversation-view'
 
 /** A profile can hold many chats; the picker shows the newest ones and searches the rest. */

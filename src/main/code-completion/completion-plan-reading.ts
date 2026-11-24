@@ -6,7 +6,7 @@ import {
   type NesRequest
 } from '../../shared/code-completion/code-completion-types'
 import { NES_CURSOR_MARKER } from '../../shared/code-completion/code-completion-prompt'
-import { nesAllowedPaths } from './completion-backend'
+import { nesAllowedPaths } from './nes-allowed-paths'
 
 /** The spec caps a completion answer; a longer one is dropped as a parse failure. */
 const NES_COMPLETION_OUTPUT_LIMIT = 8000

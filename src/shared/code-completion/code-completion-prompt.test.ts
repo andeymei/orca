@@ -117,7 +117,7 @@ describe('buildNesUserPrompt', () => {
   })
 })
 
-describe('buildNesSystemPrompt', () => {
+describe('buildNesSystemPrompt with auto import', () => {
   it('asks for the missing import when auto import is on', () => {
     const prompt = buildNesSystemPrompt({ autoImport: true })
 

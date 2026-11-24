@@ -80,11 +80,6 @@ export function completionTokenCount(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
 }
 
-/** The absolute paths a plan may name: the edited file and the related files. */
-export function nesAllowedPaths(input: NesRequest): string[] {
-  return [input.filePath, ...input.relatedFiles.map((relatedFile) => relatedFile.path)]
-}
-
 /**
  * Who answers a request: the protocol, the endpoint, the model, the auto-import switch and the
  * shape the answer has. Two backends with different identities answer differently, so an answer is

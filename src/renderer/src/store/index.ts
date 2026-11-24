@@ -35,7 +35,6 @@ import { createAgentStatusSlice } from './slices/agent-status/agent-status'
 import { createPaneForegroundAgentSlice } from './slices/agent-status/pane-foreground-agent'
 import { createDiffCommentsSlice } from './slices/diff-comments/create-diff-comments-slice'
 import { createAiInstructionsSlice } from './slices/ai-instructions/create-ai-instructions-slice'
-import { createBackgroundAgentsSlice } from './slices/background-agents/create-background-agents-slice'
 import { createDetectedAgentsSlice } from './slices/agent-inventory/create-detected-agents-slice'
 import { createRuntimeDetectedAgentsSlice } from './slices/agent-inventory/runtime-detected-agents'
 import { createWorktreeNavHistorySlice } from './slices/ui/workspace-navigation-history'
@@ -137,7 +136,6 @@ export const useAppStore = create<AppState>()(
           ...createPaneForegroundAgentSlice(...a),
           ...createDiffCommentsSlice(...a),
           ...createAiInstructionsSlice(...a),
-          ...createBackgroundAgentsSlice(...a),
           ...createDetectedAgentsSlice(...a),
           ...createRuntimeDetectedAgentsSlice(...a),
           ...createWorktreeNavHistorySlice(...a),

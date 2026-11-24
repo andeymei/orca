@@ -49,7 +49,7 @@ The spec is a vision document; these are the input classes it implies. Each is p
 - Consumes: nothing from other tasks.
 - Produces: the renderer store no longer has a `BackgroundAgentsSlice`. `src/renderer/src/store/types.ts` exports `AppState` without that member.
 
-- [ ] **Step 1: Delete the two directories**
+- [x] **Step 1: Delete the two directories**
 
 ```bash
 git rm -r -f src/renderer/src/components/background-agents src/renderer/src/store/slices/background-agents
@@ -59,7 +59,7 @@ The `-f` is required: `BackgroundAgentComposer.tsx`, `BackgroundAgentComposer.te
 
 Expect: 36 tracked files removed (34 in the panel directory, 2 in the store slice directory).
 
-- [ ] **Step 2: Remove the slice from `src/renderer/src/store/types.ts`**
+- [x] **Step 2: Remove the slice from `src/renderer/src/store/types.ts`**
 
 Delete the import line:
 
@@ -69,7 +69,7 @@ import type { BackgroundAgentsSlice } from './slices/background-agents/create-ba
 
 and delete the `BackgroundAgentsSlice &` member from the `AppState` intersection (it sits at line 89, between the neighbouring slice members).
 
-- [ ] **Step 3: Remove the slice from `src/renderer/src/store/index.ts`**
+- [x] **Step 3: Remove the slice from `src/renderer/src/store/index.ts`**
 
 Delete the import:
 
@@ -79,7 +79,7 @@ import { createBackgroundAgentsSlice } from './slices/background-agents/create-b
 
 and delete the spread `...createBackgroundAgentsSlice(...a),` from the slice composition (line 140).
 
-- [ ] **Step 4: Remove the slice from `src/renderer/src/store/testing/app-store-test-fixture.ts`**
+- [x] **Step 4: Remove the slice from `src/renderer/src/store/testing/app-store-test-fixture.ts`**
 
 Delete the import:
 
@@ -89,12 +89,12 @@ import { createBackgroundAgentsSlice } from '../slices/background-agents/create-
 
 and delete the spread `...createBackgroundAgentsSlice(...a),` (line 109). The `createTestStore()` helper must still compile and produce a store without background-agent state.
 
-- [ ] **Step 5: Typecheck the renderer**
+- [x] **Step 5: Typecheck the renderer**
 
 Run: `pnpm tc:web`
 Expected: PASS. The panel's React components are gone but nothing else imported them yet — the right sidebar still references `BackgroundAgentsPanel`, so expect **this task to fail typecheck** with an error that `BackgroundAgentsPanel` cannot be found at `right-sidebar-panel-content.tsx:13`. That is the expected signal that Task 1's deletions are visible to the rest of the app; Task 2 fixes it. If it fails with anything _other_ than the missing `BackgroundAgentsPanel` import, fix that first.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A src/renderer/src/components/background-agents src/renderer/src/store
@@ -124,7 +124,7 @@ git commit -m "refactor(renderer): delete the background agents panel and its st
 - Consumes: Task 1's removal of the renderer panel (the sidebar's lazy import now points at a deleted file — this task fixes it).
 - Produces: the `PreloadApi` type no longer has a `claudeAgents` member. `window.api.claudeAgents` no longer exists. The IPC channels `claudeAgents:list`, `claudeAgents:readDetails`, `claudeAgents:dispatch`, `claudeAgents:cancelDispatch`, `claudeAgents:stop`, `claudeAgents:remove` are no longer registered.
 
-- [ ] **Step 1: Remove the panel from the right sidebar**
+- [x] **Step 1: Remove the panel from the right sidebar**
 
 In `src/renderer/src/components/right-sidebar/right-sidebar-panel-content.tsx`, delete:
 
@@ -157,7 +157,7 @@ and remove `Bot` from the `lucide-react` import, leaving:
 import { Plug, Files, GitBranch, ListChecks, Workflow } from 'lucide-react'
 ```
 
-- [ ] **Step 2: Delete the IPC handler and its registration**
+- [x] **Step 2: Delete the IPC handler and its registration**
 
 ```bash
 git rm -r src/main/ipc/claude-agents
@@ -171,7 +171,7 @@ import { registerClaudeAgentsHandlers } from '../claude-agents/claude-agents'
 
 and the call `registerClaudeAgentsHandlers()` (line 294).
 
-- [ ] **Step 3: Delete the preload API and its registrations**
+- [x] **Step 3: Delete the preload API and its registrations**
 
 ```bash
 git rm src/preload/api/claude-agents-api.ts src/preload/api/claude-agents-bridge.ts
@@ -181,7 +181,7 @@ In `src/preload/api-types.ts`, delete the import `import type { ClaudeAgentsApi 
 
 In `src/preload/index.ts`, delete the import `import { claudeAgentsApi } from './api/claude-agents-bridge'` and the registration line `claudeAgents: claudeAgentsApi,`.
 
-- [ ] **Step 4: Delete the web-client stub and its registration**
+- [x] **Step 4: Delete the web-client stub and its registration**
 
 ```bash
 git rm src/renderer/src/web/preload-api/web-claude-agents-api.ts
@@ -189,7 +189,7 @@ git rm src/renderer/src/web/preload-api/web-claude-agents-api.ts
 
 In `src/renderer/src/web/web-preload-api.ts`, delete the import `import { createWebClaudeAgentsApi } from './preload-api/web-claude-agents-api'` and the registration line `claudeAgents: createWebClaudeAgentsApi(),`.
 
-- [ ] **Step 5: Delete the E2E spec**
+- [x] **Step 5: Delete the E2E spec**
 
 ```bash
 git rm tests/e2e/claude-background-agents.spec.ts
@@ -197,12 +197,12 @@ git rm tests/e2e/claude-background-agents.spec.ts
 
 This spec is the only E2E for the panel. It is guarded by `ORCA_REAL_CLAUDE_CLI_TEST=1` and skipped in CI, so removing it loses no CI coverage.
 
-- [ ] **Step 6: Typecheck all projects**
+- [x] **Step 6: Typecheck all projects**
 
 Run: `pnpm tc`
 Expected: PASS. This is the first task where the whole tree typechecks with the panel gone.
 
-- [ ] **Step 7: Run the tests that guard AI Vault**
+- [x] **Step 7: Run the tests that guard AI Vault**
 
 ```bash
 pnpm test src/renderer/src/lib/agent-session/resume --maxWorkers=2
@@ -211,7 +211,7 @@ pnpm test src/main/ipc/ai-vault --maxWorkers=2
 
 Expected: PASS. `claude-running-agent.test.ts` and `ai-vault-running-agents.test.ts` must still pass — they do not touch the panel, but they prove the resume path was not collaterally damaged.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A src/renderer/src/components/right-sidebar src/main/ipc src/preload src/renderer/src/web tests/e2e
@@ -239,7 +239,7 @@ git commit -m "refactor: unwire the background agents panel from the sidebar, IP
 - Consumes: Task 2's removal of the IPC handler that was the only caller of `listClaudeBackgroundAgentsOrNull`.
 - Produces: `src/shared/claude-background-agents.ts` exports exactly the 14 symbols listed in Global Constraints. `claude-background-agent-list.ts` exports `listClaudeBackgroundAgents`, `CLAUDE_BACKGROUND_AGENTS_ARGS`, `CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS`, `ClaudeBackgroundAgentAllFlagMemory`, `ClaudeBackgroundAgentDependencies` — and no longer `listClaudeBackgroundAgentsOrNull`.
 
-- [ ] **Step 1: Delete the four panel-only main-process modules**
+- [x] **Step 1: Delete the four panel-only main-process modules**
 
 ```bash
 git rm src/main/claude/background-agents/claude-background-agent-commands.ts \
@@ -253,7 +253,7 @@ git rm src/main/claude/background-agents/claude-background-agent-commands.ts \
 
 These four own `claude --bg` dispatch, `claude stop`, `claude rm`, the job-state reader and the remote roster. `claude-background-agent-list.ts` and `claude-background-agent-environment.ts` **stay** — they are the AI Vault path.
 
-- [ ] **Step 2: Delete `listClaudeBackgroundAgentsOrNull` from `claude-background-agent-list.ts`**
+- [x] **Step 2: Delete `listClaudeBackgroundAgentsOrNull` from `claude-background-agent-list.ts`**
 
 Delete the whole exported function (lines 84-99 in the current file):
 
@@ -274,7 +274,7 @@ export async function listClaudeBackgroundAgentsOrNull(
 
 Keep `listClaudeBackgroundAgents` unchanged — it is the AI Vault entry point. Keep `readLocalClaudeBackgroundAgentListing` and the `LocalClaudeBackgroundAgentListing` type as they are: `listClaudeBackgroundAgents` still reads `listing.status === 'ready'`.
 
-- [ ] **Step 3: Drop the matching test block**
+- [x] **Step 3: Drop the matching test block**
 
 In `src/main/claude/background-agents/claude-background-agent-list.test.ts`, delete the `describe('listClaudeBackgroundAgentsOrNull', ...)` block (lines 262-304) and remove `listClaudeBackgroundAgentsOrNull` from the import list, leaving:
 
@@ -287,7 +287,7 @@ import {
 
 The `describe('listClaudeBackgroundAgents')` and `describe('a CLI that does not know --all')` blocks stay — they cover the AI Vault path and the `--all` downgrade.
 
-- [ ] **Step 4: Trim `src/shared/claude-background-agents.ts`**
+- [x] **Step 4: Trim `src/shared/claude-background-agents.ts`**
 
 Delete these exports (each is used only by code deleted in Tasks 1-3):
 
@@ -305,7 +305,7 @@ Keep `isRecord` exported — it is used inside this file by `parseClaudeBackgrou
 
 Two comments reference the panel and must be reworded, not left dangling: the comment above `readClaudeBackgroundAgentFailureMessage` says "trimmed to what a panel can show", and the comment above `readLocalClaudeBackgroundAgentListing` in the list file says "the panel must not show that as an empty list". Change "panel" to "caller" in each.
 
-- [ ] **Step 5: Verify no dangling references**
+- [x] **Step 5: Verify no dangling references**
 
 ```bash
 grep -rn "listClaudeBackgroundAgentsOrNull\|ClaudeBackgroundAgentDetail\|ClaudeAgentsScope\|readClaudeAgentsScope\|ClaudeBackgroundAgentListResult\|ClaudeBackgroundAgentCommandResult\|ClaudeBackgroundAgentDispatchArgs\|ClaudeBackgroundAgentIdArgs\|CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE\|CLAUDE_BACKGROUND_AGENT_ID_PATTERN\|CLAUDE_BACKGROUND_AGENT_DISPATCH_LINE_PATTERN\|readClaudeBackgroundAgentDispatchedId" src/ tests/
@@ -313,7 +313,7 @@ grep -rn "listClaudeBackgroundAgentsOrNull\|ClaudeBackgroundAgentDetail\|ClaudeA
 
 Expected: **no output**. Every hit means a deleted symbol is still referenced.
 
-- [ ] **Step 6: Write the paired-host test**
+- [x] **Step 6: Write the paired-host test**
 
 Create `src/main/ai-vault/runtime-claude-background-agents.test.ts`. This path is the paired-host half of the running-agents contract and has no test today; the trim touches the module it depends on, so it needs one. Follow the mocking convention of the sibling `src/main/ai-vault/runtime-session-search-call.test.ts`.
 
@@ -360,7 +360,7 @@ describe('listRuntimeClaudeBackgroundAgents', () => {
 
 The second case pins the distinction the whole feature rests on: a host that could not report must not be read as a host that runs nothing, or a running conversation gets copied into a duplicate session.
 
-- [ ] **Step 7: Run the shared and AI Vault tests**
+- [x] **Step 7: Run the shared and AI Vault tests**
 
 ```bash
 pnpm test src/shared/claude-background-agents.test.ts --maxWorkers=2
@@ -372,12 +372,12 @@ pnpm test src/renderer/src/lib/agent-session/resume --maxWorkers=2
 
 Expected: PASS. `src/shared/claude-background-agents.test.ts` keeps both its describe blocks (`parseClaudeBackgroundAgents` and `readClaudeBackgroundAgentsListing`) — both functions are in the keep-set, so no test needs removing.
 
-- [ ] **Step 8: Typecheck**
+- [x] **Step 8: Typecheck**
 
 Run: `pnpm tc`
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add -A src/shared/claude-background-agents.ts src/shared/claude-background-agents.test.ts src/main/claude/background-agents src/main/ai-vault/runtime-claude-background-agents.test.ts
@@ -402,21 +402,21 @@ git commit -m "refactor: keep only the agent listing that AI Vault resumes again
 - Consumes: Task 2's removal of the sidebar activity item (the tab id is no longer reachable from the UI).
 - Produces: `'background-agents'` is no longer a valid `RightSidebarTab` anywhere. `normalizeRightSidebarTab('background-agents')` returns `'explorer'`; `normalizeRightSidebarRoute('background-agents')` returns `{ rightSidebarTab: 'explorer', rightSidebarExplorerView: 'files' }`; `UiUpdate` drops a `rightSidebarTab` of `'background-agents'` as one absent field.
 
-- [ ] **Step 1: Remove the union member**
+- [x] **Step 1: Remove the union member**
 
 In `src/shared/ui-chrome-types.ts`, delete `| 'background-agents'` from the `RightSidebarTab` union (line 101).
 
-- [ ] **Step 2: Remove the renderer route branch**
+- [x] **Step 2: Remove the renderer route branch**
 
 In `src/renderer/src/store/slices/right-sidebar/right-sidebar-route.ts`, delete the line `tab === 'background-agents' ||` (line 40) from the accepted-tab list inside `normalizeRightSidebarRoute`.
 
-- [ ] **Step 3: Remove the persisted-state branch**
+- [x] **Step 3: Remove the persisted-state branch**
 
 In `src/main/persistence/applying-settings/ui-selection-normalization.ts`, delete the line `tab === 'background-agents' ||` (line 67) from `normalizeRightSidebarTab`.
 
 With that branch gone, a persisted `'background-agents'` falls through to the existing fallback `return getDefaultUIState().rightSidebarTab`, which is `'explorer'` (`src/shared/constants.ts:170`). **No migration code is needed** — this is the fallback, not new behavior.
 
-- [ ] **Step 4: Remove the RPC schema entry**
+- [x] **Step 4: Remove the RPC schema entry**
 
 In `src/shared/rpc-contract/client-ui-params.ts`, delete the `'background-agents',` entry from the `STATIC_RIGHT_SIDEBAR_TABS` array (line 44).
 
@@ -427,7 +427,7 @@ schema 保留该 tab  -> ACCEPTED, data={"rightSidebarTab":"background-agents","
 schema 删除该 tab  -> ACCEPTED, data={"sidebarWidth":300}
 ```
 
-- [ ] **Step 5: Write the persisted-tab test**
+- [x] **Step 5: Write the persisted-tab test**
 
 Create `src/main/persistence/applying-settings/ui-selection-normalization.test.ts`. The normalizer is a pure function with no store or filesystem dependency, so it gets its own light test file rather than joining the heavy `persistence-ui-state.test.ts` integration suite (whose siblings all spin up a SQLite store and mock the SSH parser).
 
@@ -448,7 +448,7 @@ describe('normalizeRightSidebarTab', () => {
 
 The second case pins that the fallback did not swallow the normal path — without it, a normalizer that always returned `'explorer'` would pass the first test.
 
-- [ ] **Step 6: Write the old-client wire test**
+- [x] **Step 6: Write the old-client wire test**
 
 In `src/shared/rpc-contract/client-ui-params.test.ts` (create it — no test file exists for this module), add:
 
@@ -469,7 +469,7 @@ describe('UiUpdate', () => {
 
 This pins Review Focus #2: an older client's payload is not rejected wholesale.
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 ```bash
 pnpm test src/main/persistence/applying-settings/ui-selection-normalization.test.ts --maxWorkers=2
@@ -478,12 +478,12 @@ pnpm test src/shared/rpc-contract/client-ui-params.test.ts --maxWorkers=2
 
 Expected: PASS.
 
-- [ ] **Step 8: Typecheck**
+- [x] **Step 8: Typecheck**
 
 Run: `pnpm tc`
 Expected: PASS. The `AssertNoMissingValues` parity check in `src/main/runtime/rpc/methods/client-state/ui-state-schema-parity-checks.ts` compares `PersistedUIState`'s `rightSidebarTab` union against the RPC schema's value domain — removing the member from both sides keeps them in agreement. If typecheck reports a parity error, the two sides drifted: check that `ui-chrome-types.ts` and `client-ui-params.ts` were both edited.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/shared/ui-chrome-types.ts src/shared/rpc-contract/client-ui-params.ts \
@@ -510,7 +510,7 @@ git commit -m "refactor: drop the background agents tab id from every representa
 - Consumes: Task 2's removal of the components that referenced these keys.
 - Produces: no locale catalog references the panel's strings.
 
-- [ ] **Step 1: Delete the panel's string block from `en.json`**
+- [x] **Step 1: Delete the panel's string block from `en.json`**
 
 In `src/renderer/src/i18n/locales/en.json`, delete the whole `"backgroundAgents": { ... }` object (starts at line 20142, ends with the `"send": "Send"` line followed by `},`).
 
@@ -518,7 +518,7 @@ Delete the `"backgroundAgents": "Background agents"` entry (line 15213) from the
 
 **Do not touch** the `terminalComposer.enterHint` line in this file — it is the unrelated uncommitted work from a different task.
 
-- [ ] **Step 2: Verify the JSON is still valid and the keys are gone**
+- [x] **Step 2: Verify the JSON is still valid and the keys are gone**
 
 ```bash
 node -e "JSON.parse(require('fs').readFileSync('src/renderer/src/i18n/locales/en.json','utf8')); console.log('valid json')"
@@ -527,7 +527,7 @@ grep -c "backgroundAgents" src/renderer/src/i18n/locales/en.json
 
 Expected: `valid json`, then `0`.
 
-- [ ] **Step 3: Verify no other locale file needs editing**
+- [x] **Step 3: Verify no other locale file needs editing**
 
 ```bash
 for f in src/renderer/src/i18n/locales/*.json; do echo "$(basename $f): $(grep -c backgroundAgents $f)"; done
@@ -535,7 +535,7 @@ for f in src/renderer/src/i18n/locales/*.json; do echo "$(basename $f): $(grep -
 
 Expected: every file reports `0`.
 
-- [ ] **Step 4: Delete the three design documents**
+- [x] **Step 4: Delete the three design documents**
 
 ```bash
 git rm docs/superpowers/specs/2026-11-15-claude-background-agents-supervisor-design.md \
@@ -545,7 +545,7 @@ git rm docs/superpowers/specs/2026-11-15-claude-background-agents-supervisor-des
 
 Do **not** delete `docs/superpowers/specs/2026-11-18-terminal-agent-rich-text-composer-design.md` — it is the terminal composer's design and carries unrelated uncommitted edits. Do not delete the new `docs/superpowers/specs/2026-11-24-remove-background-agents-panel-design.md` or this plan.
 
-- [ ] **Step 5: Run the localization gates**
+- [x] **Step 5: Run the localization gates**
 
 ```bash
 pnpm verify:localization-extraction
@@ -554,7 +554,7 @@ pnpm verify:localization-catalogs
 
 Expected: PASS. `verify:localization-extraction` is the gate that fails when a catalog key has no source reference — it is why the keys must be deleted rather than left behind.
 
-- [ ] **Step 6: Confirm the runtime catalog is untouched**
+- [x] **Step 6: Confirm the runtime catalog is untouched**
 
 ```bash
 git diff --stat src/renderer/src/i18n/en-runtime-required.json
@@ -562,7 +562,7 @@ git diff --stat src/renderer/src/i18n/en-runtime-required.json
 
 Expected: **no output**. It never contained these keys.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/renderer/src/i18n/locales/en.json docs/superpowers
@@ -582,7 +582,7 @@ git commit -m "refactor: remove the background agents strings and design docs"
 - Consumes: every prior task.
 - Produces: a green branch.
 
-- [ ] **Step 1: Typecheck every project**
+- [x] **Step 1: Typecheck every project**
 
 ```bash
 pnpm tc
@@ -590,7 +590,7 @@ pnpm tc
 
 Expected: PASS — all five tsconfig projects.
 
-- [ ] **Step 2: Run the tests that guard the surviving feature**
+- [x] **Step 2: Run the tests that guard the surviving feature**
 
 ```bash
 pnpm test src/shared/claude-background-agents.test.ts --maxWorkers=2
@@ -604,7 +604,7 @@ pnpm test src/shared/rpc-contract/client-ui-params.test.ts --maxWorkers=2
 
 Expected: PASS. The first five are the AI Vault guard set; the last two cover the tab-id removal.
 
-- [ ] **Step 3: Confirm the feature is gone from the source tree**
+- [x] **Step 3: Confirm the feature is gone from the source tree**
 
 ```bash
 grep -rn "background-agents\|BackgroundAgents\|backgroundAgents" src/ tests/ --include="*.ts" --include="*.tsx" --include="*.json"
@@ -620,7 +620,7 @@ Within those files the surviving symbols are `ClaudeBackgroundAgent`, `ClaudeBac
 
 Any hit **outside** those files and symbols is a missed reference. The panel-specific names that must appear nowhere are `BackgroundAgentsPanel`, `BackgroundAgentListScreen`, `BackgroundAgentComposer`, `BackgroundAgentRow`, `BackgroundAgentDispatchRow`, `BackgroundAgentEmptyState`, `BackgroundAgentHostNotice`, `BackgroundAgentAgentScreen`, `BackgroundAgentRemoteTerminal`, `createBackgroundAgentsSlice`, `BackgroundAgentsSlice`, `ClaudeAgentsApi`, `claudeAgentsApi`, `createWebClaudeAgentsApi`, `registerClaudeAgentsHandlers`.
 
-- [ ] **Step 4: Confirm the AI Vault chain is intact**
+- [x] **Step 4: Confirm the AI Vault chain is intact**
 
 ```bash
 grep -rn "listRunningAgents" src/main/ipc/ai-vault/ai-vault-resume.ts src/preload/api/ai-vault-bridge.ts src/renderer/src/lib/agent-session/resume/history/claude-running-agent.ts
@@ -629,7 +629,7 @@ grep -n "aiVault.listRunningAgents" src/main/runtime/rpc/methods/history/ai-vaul
 
 Expected: every line present. This is Review Focus #3 and #4 — the resume path and the paired-host contract must be byte-for-byte intact.
 
-- [ ] **Step 5: Run the lint gate**
+- [x] **Step 5: Run the lint gate**
 
 ```bash
 pnpm lint
@@ -637,7 +637,7 @@ pnpm lint
 
 Expected: PASS — all 46 steps, including `verify:localization-extraction` and `verify:localization-catalogs`.
 
-- [ ] **Step 6: Run the pre-push gate**
+- [x] **Step 6: Run the pre-push gate**
 
 ```bash
 pnpm check:changed
@@ -645,7 +645,7 @@ pnpm check:changed
 
 Expected: PASS — typecheck, unit tests, changed-code quality, format and the selected verify checks.
 
-- [ ] **Step 7: Confirm the unrelated uncommitted work is intact**
+- [x] **Step 7: Confirm the unrelated uncommitted work is intact**
 
 ```bash
 git status --porcelain
@@ -682,7 +682,7 @@ Expected: the following files still show as modified, exactly as they did before
 
 `src/renderer/src/i18n/locales/en.json` is **not** in this list — Task 5 committed it along with the panel's keys, so its only remaining change (the `terminalComposer.enterHint` line) is now committed as part of the removal commit. That is expected and harmless: the line survives in the committed file.
 
-- [ ] **Step 8: Manual confirmation (requires a running app)**
+- [x] **Step 8: Manual confirmation (requires a running app)**
 
 Run: `pnpm dev`
 

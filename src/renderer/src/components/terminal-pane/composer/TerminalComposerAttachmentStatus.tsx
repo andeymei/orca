@@ -1,5 +1,5 @@
 import { FileX, Hourglass, X } from 'lucide-react'
-import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useTranslate, type Translate } from '@/i18n/use-translate'
 import type { TerminalComposerAttachment } from '@/store/slices/terminal-composer/terminal-composer'
 

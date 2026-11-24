@@ -8,7 +8,7 @@ import {
 import '../../../src/shared/ai-vault/contracts/ai-vault-types'
 import '../../../src/shared/ai-vault/search/ai-vault-search-test-fixture'
 import { setSessionSearchService } from '../../../src/main/ai-vault-search/session-search-service-registry'
-import './release-checkout'
+import './release-checkouts/release-checkout'
 import './release-fixture-setup'
 
 afterEach(() => setSessionSearchService(null))

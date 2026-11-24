@@ -7,7 +7,7 @@ import {
   LOCAL_EXECUTION_HOST_ID,
   toRuntimeExecutionHostId,
   toSshExecutionHostId
-} from '../../../../../../shared/execution-host'
+} from '../../../../../../shared/execution-host/execution-host'
 import type { AppState } from '../../../../store/types'
 import type { NativeChatAttachmentOwner } from './native-chat-attachment-owner'
 

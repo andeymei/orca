@@ -31,7 +31,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
-import { electronIsolatedKeychainArgs } from '../../../src/shared/electron-isolated-profile-switches.ts'
+import { electronIsolatedKeychainArgs } from '../../../src/shared/app-lifecycle/launch/electron-isolated-profile-switches.ts'
 
 const scriptDir = import.meta.dirname
 const repoRoot = resolve(scriptDir, '..', '..')

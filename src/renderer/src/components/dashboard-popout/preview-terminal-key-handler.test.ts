@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from 'vitest'
-import type { PreviewShortcutContext } from './preview-terminal-shortcuts'
-import { installPreviewTerminalKeyHandler } from './preview-terminal-key-handler'
+import type { PreviewShortcutContext } from '../standalone-terminal/input/preview-terminal-shortcuts'
+import { installPreviewTerminalKeyHandler } from '../standalone-terminal/input/preview-terminal-key-handler'
 
 vi.mock('@/lib/keyboard/shortcut-platform', () => ({
   getShortcutPlatform: () => 'darwin'

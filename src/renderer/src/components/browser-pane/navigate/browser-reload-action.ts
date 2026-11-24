@@ -1,5 +1,9 @@
-import { issueBrowserGuestNavigation } from '../host-guest/browser-guest-metadata-cache'
-import { BROWSER_GUEST_RECOVERY_ERROR_CODE } from '../host-guest/browser-page-guest-recovery'
+import {
+  cachedBrowserGuestMetadata,
+  issueBrowserGuestNavigation
+} from '../host-guest/metadata/browser-guest-metadata-cache'
+import { BROWSER_GUEST_RECOVERY_ERROR_CODE } from '../host-guest/recovery/browser-page-guest-recovery'
+import { browserGuestHasNothingToReload } from '../../../../../shared/browser/guest-lifecycle/browser-guest-reloadability'
 
 export type BrowserReloadTrigger = 'button' | 'reload' | 'hard-reload'
 
@@ -31,19 +35,32 @@ export function resolveBrowserReloadIntent(
   return trigger === 'hard-reload' ? 'hard-reload' : 'reload'
 }
 
-export type BrowserPageWebviewReloadResult = 'reloaded' | 'guest-missing' | 'not-ready'
+export type BrowserPageWebviewReloadResult =
+  | 'reloaded'
+  | 'guest-missing'
+  | 'not-ready'
+  | 'nothing-to-reload'
 
 /** getWebContentsId separates destroyed guests needing recovery from live pre-dom-ready guests already loading; reload throws for both. */
 export function reloadBrowserPageWebview(
   webview: Electron.WebviewTag,
   { ignoreCache }: { ignoreCache: boolean }
 ): BrowserPageWebviewReloadResult {
+  // No page yet while it waits for its profile's extensions; it loads once they are ready.
+  if (webview.dataset.orcaAttachWaiting) {
+    return 'not-ready'
+  }
   try {
     webview.getWebContentsId()
   } catch {
     return 'guest-missing'
   }
   try {
+    // A restored page stopped before its first commit holds only the initial empty entry.
+    const metadata = cachedBrowserGuestMetadata(webview)
+    if (metadata && !metadata.errorPage && browserGuestHasNothingToReload(metadata)) {
+      return 'nothing-to-reload'
+    }
     if (ignoreCache) {
       issueBrowserGuestNavigation(webview, () => webview.reloadIgnoringCache())
     } else {

@@ -4,7 +4,7 @@ import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store/index'
 import { openWorkspaceEditorItem } from '@/store/slices/editor/tabs/workspace-editor-item'
 
-import { getRefactorReviewLabel } from '../editor-labels'
+import { getRefactorReviewLabel } from '../panel/header/editor-labels'
 import { proposeRefactor } from './refactor-runtime-client'
 
 /**

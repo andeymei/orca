@@ -12,7 +12,7 @@ import {
   materializeReleaseCheckout,
   releaseModuleExport,
   resolveBaselineReleaseRef
-} from './release-checkout'
+} from './release-checkouts/release-checkout'
 
 // Single-use pairing must survive a downgrade, accept rows an older host made, and stay invisible to old clients.
 const SUITE_TIMEOUT_MS = 180_000

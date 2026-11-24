@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { toWebTerminalSurfaceTabId } from '../../../../shared/workspace-layout/terminal-surface-id'
-import { buildRetractedMirroredTabSweepPatch } from './agent-status-primitives'
+import { buildRetractedMirroredTabSweepPatch } from './agent-status/agent-status-primitives'
 import { LEAF_ID, makeState } from './testing/web-session-tabs-sync.test-fixture'
 
 const MIRRORED_TAB = toWebTerminalSurfaceTabId('host-tab-1')

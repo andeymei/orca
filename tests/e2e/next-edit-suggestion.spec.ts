@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
-import type { Page } from '@stablyai/playwright-test'
+import { expect, type Page } from '@stablyai/playwright-test'
 import {
   DEFAULT_CONTEXT_PREFIX_CHARS,
   DEFAULT_CONTEXT_SUFFIX_CHARS,
   DEFAULT_DISPLAY_DEADLINE_MS
 } from '../../src/shared/code-completion/code-completion-settings'
-import { test, expect } from './helpers/orca-app'
-import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
+import { test } from './desktop/electron-fixtures/orca-app'
+import { waitForActiveWorktree, waitForSessionReady } from './desktop/renderer-probes/store'
 
 /** The text the mock's edit proposes. */
 const MOCK_EDIT_TEXT = '42'

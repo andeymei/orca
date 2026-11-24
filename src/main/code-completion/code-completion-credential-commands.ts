@@ -8,18 +8,20 @@ import {
 import { savedCredentialUnreadable } from '../credentials/saved-credential-readability'
 import type { CodeCompletionCredentialsStatus } from '../../shared/code-completion/code-completion-credentials-status'
 
-export function getCodeCompletionCredentialStatus(): CodeCompletionCredentialsStatus {
-  const configured = hasCodeCompletionApiKey()
+export async function getCodeCompletionCredentialStatus(): Promise<CodeCompletionCredentialsStatus> {
+  const configured = await hasCodeCompletionApiKey()
   return {
     configured,
-    protection: configured ? getCodeCompletionApiKeyProtection() : null,
+    protection: configured ? await getCodeCompletionApiKeyProtection() : null,
     unreadable: configured
-      ? savedCredentialUnreadable(codeCompletionApiKeyEnvelopeFile())
+      ? await savedCredentialUnreadable(codeCompletionApiKeyEnvelopeFile())
       : undefined
   }
 }
 
-export function saveCodeCompletionApiKeyCredential(key: unknown): CodeCompletionCredentialsStatus {
+export async function saveCodeCompletionApiKeyCredential(
+  key: unknown
+): Promise<CodeCompletionCredentialsStatus> {
   // IPC values remain untrusted despite the declared type.
   if (typeof key !== 'string') {
     throw new Error('Code completion API key must be a string')
@@ -29,11 +31,11 @@ export function saveCodeCompletionApiKeyCredential(key: unknown): CodeCompletion
   if (/[\r\n]/.test(trimmed)) {
     throw new Error('Code completion API key must be a single line')
   }
-  saveCodeCompletionApiKey(trimmed)
+  await saveCodeCompletionApiKey(trimmed)
   return getCodeCompletionCredentialStatus()
 }
 
-export function clearCodeCompletionApiKeyCredential(): CodeCompletionCredentialsStatus {
-  clearCodeCompletionApiKey()
+export async function clearCodeCompletionApiKeyCredential(): Promise<CodeCompletionCredentialsStatus> {
+  await clearCodeCompletionApiKey()
   return getCodeCompletionCredentialStatus()
 }

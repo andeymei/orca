@@ -1,6 +1,6 @@
 import type { NesRequest } from '../../shared/code-completion/code-completion-types'
 import { findCodeCompletionSecretAround } from '../../shared/code-completion/code-completion-secret-scan'
-import { PrioritySemaphore } from '../../shared/priority-semaphore'
+import { PrioritySemaphore } from '../../shared/concurrency/priority-semaphore'
 import { emptyCompletionUsage, type NesBackend, type NesBackendResult } from './completion-backend'
 import { completionCache, completionCacheKey, type CompletionCache } from './completion-cache'
 

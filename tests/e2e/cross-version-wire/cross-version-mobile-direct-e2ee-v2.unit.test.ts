@@ -14,7 +14,7 @@ import {
   importReleaseCheckoutModule,
   materializeReleaseCheckout,
   resolveBaselineReleaseRef
-} from './release-checkout'
+} from './release-checkouts/release-checkout'
 
 // Updated phones must authenticate direct E2EE v2 and route sealed RPCs against the released host without requiring v2.
 const SUITE_TIMEOUT_MS = 180_000

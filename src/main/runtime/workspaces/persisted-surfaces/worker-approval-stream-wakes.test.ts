@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import { OrchestrationDb } from '../../orchestration/db/orchestration-db'
-import { isOrcaSessionId } from '../../../../shared/orca-session-address'
+import { isOrcaSessionId } from '../../../../shared/agent-session/identity/orca-session-address'
 
 const CHAT = 'claude_11111111_1111_4111_8111_111111111111'
 

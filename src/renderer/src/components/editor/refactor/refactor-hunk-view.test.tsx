@@ -70,7 +70,7 @@ vi.mock('../useContextualCopySetup', () => ({
   useContextualCopySetup: () => ({ setupCopy: vi.fn(), toastNode: null })
 }))
 // DiffViewer hands its filePath to the plugin-syntax lookup; that is where the workspace path shows up.
-vi.mock('../use-plugin-syntax-language', () => ({
+vi.mock('../monaco/use-plugin-syntax-language', () => ({
   usePluginSyntaxLanguage: (filePath: string, coreLanguage: string) => {
     captured.pluginSyntaxPaths.push(filePath)
     return coreLanguage
@@ -79,7 +79,7 @@ vi.mock('../use-plugin-syntax-language', () => ({
 vi.mock('../../diff-comments/useDiffCommentDecorator', () => ({
   useDiffCommentDecorator: vi.fn()
 }))
-vi.mock('@/hooks/use-document-dark-theme', () => ({ useDocumentDarkTheme: () => false }))
+vi.mock('@/hooks/theme/use-document-dark-theme', () => ({ useDocumentDarkTheme: () => false }))
 vi.mock('../diff/monaco-view/diff-editor-line-number-options', () => ({
   applyDiffEditorLineNumberOptions: () => ({ dispose: vi.fn() })
 }))

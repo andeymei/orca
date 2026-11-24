@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { GENERAL_SETTING_ANCHORS } from '../general/general-setting-anchors'
-import type { GlobalSettings } from '../../../../../shared/global-settings-types'
+import type { GlobalSettings } from '../../../../../shared/settings/global-settings-types'
 import {
   DEFAULT_CONTEXT_PREFIX_CHARS,
   DEFAULT_CONTEXT_SUFFIX_CHARS,

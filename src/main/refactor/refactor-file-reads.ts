@@ -11,7 +11,7 @@ import {
   fileReadsTooLargeMessage,
   fileReadsUnreadableMessage
 } from './refactor-messages'
-import { isENOENT } from '../ipc/filesystem/access/filesystem-path-containment'
+import { isENOENT } from '../filesystem/local-file-io/filesystem-path-containment'
 import { isPathInsideScratch } from './refactor-write-gate'
 
 /** The agent's own output is untrusted input: an unbounded read lets it exhaust the main process. */

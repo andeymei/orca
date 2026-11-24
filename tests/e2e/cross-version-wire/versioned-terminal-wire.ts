@@ -2,7 +2,7 @@ import {
   importReleaseCheckoutModule,
   materializeReleaseCheckout,
   type ReleaseCheckout
-} from './release-checkout'
+} from './release-checkouts/release-checkout'
 
 // Keep cross-build structural views minimal so legitimate internal differences cannot bind the harness to one version.
 

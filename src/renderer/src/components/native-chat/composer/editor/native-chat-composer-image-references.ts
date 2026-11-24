@@ -15,7 +15,7 @@ import {
   imageReferenceInsertion,
   imageReferenceToken,
   withoutImageReference
-} from '../../../../../../shared/native-chat/native-chat-image-reference'
+} from '../../../../../../shared/native-chat/attachments/native-chat-image-reference'
 import { withoutImageReferenceNodes } from '@/components/prompt-editor/prompt-editor-nodes'
 
 /** A chip for each image at the caret, or after the draft when the editor takes no input. */

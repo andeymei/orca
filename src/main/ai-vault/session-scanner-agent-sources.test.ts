@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { AI_VAULT_AGENT_SOURCES } from './session-scanner-agent-sources'
-import { isDiscoverableSessionFile } from './session-file-discovery'
+import { AI_VAULT_AGENT_SOURCES } from './discovery/session-scanner-agent-sources'
+import { isDiscoverableSessionFile } from './discovery/session-file-discovery'
 
 const PROJECTS_DIR = '/home/user/.claude/projects'
 const LIVE = `${PROJECTS_DIR}/-srv-app/84693fdb-e203-4b59-81b1-ce59940554aa.jsonl`

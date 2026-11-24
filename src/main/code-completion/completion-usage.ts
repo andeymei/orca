@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { writeSecureFile } from '../../shared/secure-storage/secure-file'
-import { salvagingRecord } from '../../shared/zod-salvage'
+import { salvagingRecord } from '../../shared/validation/zod-salvage'
 import { emptyCompletionUsage, type CompletionUsage } from './completion-backend'
 
 /** A total older than this is never read; the file keeps a window instead of growing forever. */

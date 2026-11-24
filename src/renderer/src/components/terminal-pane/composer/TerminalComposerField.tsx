@@ -8,15 +8,15 @@ import {
   PromptImageLabelContext,
   type PromptImageLabel
 } from '@/components/prompt-editor/prompt-editor-labels'
-import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
+import { ShortcutKeyCombo } from '../../ui/ShortcutKeyCombo'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getScreenSubmitModifierLabel } from '@/lib/keyboard/screen-submit-shortcut'
 import { useTranslate } from '@/i18n/use-translate'
 import type { TerminalComposerAttachment } from '@/store/slices/terminal-composer/terminal-composer'
-import { clipboardEventPromptText } from '../../../../../shared/native-chat/input/native-chat-clipboard-event'
-import { isImageDropPath } from '../../../../../shared/image-path-paste'
-import { createNonSecureContextUuid } from '../../../../../shared/non-secure-context-uuid'
+import { clipboardEventPromptText } from '../../../../../shared/native-chat/input/composer/native-chat-clipboard-event'
+import { isImageDropPath } from '../../../../../shared/terminal/input/image-path-paste'
+import { createNonSecureContextUuid } from '../../../../../shared/identifiers/non-secure-context-uuid'
 import {
   pasteTerminalComposerAttachments,
   type TerminalComposerIntakeHost,

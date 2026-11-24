@@ -9,7 +9,7 @@ import { useAppStore } from '@/store'
 import {
   splitImageReferences,
   withoutImageReference
-} from '../../../../../shared/native-chat/native-chat-image-reference'
+} from '../../../../../shared/native-chat/attachments/native-chat-image-reference'
 import { focusTerminalTabSurface } from '../input/focus/focus-terminal-tab-surface'
 import { captureTerminalDropTransportOwner } from '../input/file-drop/terminal-drop-transport-owner'
 import { resolveWorktreePathOnOwnerHost } from '@/lib/workspace/ownership/worktree-path-on-owner-host'

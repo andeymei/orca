@@ -14,7 +14,15 @@ export function TerminalComposerPortal({
   const { activePane, cwd, managerRef, paneTransportsRef, tabId, worktreeId } = controller
   const paneKey = activePane ? makePaneKey(tabId, activePane.leafId) : null
   const agent = useAppStore((state) =>
-    paneKey ? resolveTerminalComposerAgentType(state, paneKey) : null
+    paneKey
+      ? resolveTerminalComposerAgentType(
+          {
+            paneForegroundAgentByPaneKey: state.paneForegroundAgentByPaneKey,
+            agentStatusByPaneKey: state.agentStatusByPaneKey
+          },
+          paneKey
+        )
+      : null
   )
   if (!activePane?.container || !paneKey) {
     return null

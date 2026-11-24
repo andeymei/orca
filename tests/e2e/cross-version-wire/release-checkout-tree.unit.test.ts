@@ -13,10 +13,10 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as currentProcessHost from '@orca/process-host'
-import { importReleaseCheckoutModule } from './release-checkout'
-import { extractReleaseCheckoutTree } from './release-checkout-tree'
-import { prepareReleaseSnapshotSource } from './release-checkout-prefetch'
-import { LOCAL_RELEASE_GIT_ENV } from './release-checkout-process'
+import { importReleaseCheckoutModule } from './release-checkouts/release-checkout'
+import { extractReleaseCheckoutTree } from './release-checkouts/release-checkout-tree'
+import { prepareReleaseSnapshotSource } from './release-checkouts/release-checkout-prefetch'
+import { LOCAL_RELEASE_GIT_ENV } from './release-checkouts/release-checkout-process'
 
 const temporaryRoots: string[] = []
 

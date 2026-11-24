@@ -3,7 +3,7 @@
 import {
   OPENS_EVERY_STRUCTURED_CHAT,
   projectStructuredAiVaultSessions
-} from '../../ai-vault/structured-session-ownership'
+} from '../../ai-vault/structured-sessions/structured-session-ownership'
 import { withoutSupersededClaudeTranscripts } from '../../../shared/ai-vault/scanning/claude-superseded-transcript'
 import type { AiVaultListResult } from '../../../shared/ai-vault/contracts/ai-vault-types'
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createTestStore, seedStore } from '../testing/app-store-test-fixture'
 import { createStoreCascadesMockApi } from '../testing/app-store-cascade-api.test-fixture'
-import { makeTab } from './terminal-tab.test-fixture'
+import { makeTab } from './testing/terminal-tab.test-fixture'
 import { makeWorktree } from '../slices/worktrees/worktree.test-fixture'
 
 vi.mock('sonner', () => ({

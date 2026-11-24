@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LayoutApplyParams } from './workspace-layout-params'
+import { LayoutApplyParams } from './workspace-layout/workspace-layout-params'
 
 const open = (view: unknown) => ({
   command: {

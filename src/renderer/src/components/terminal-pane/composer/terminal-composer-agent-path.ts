@@ -1,4 +1,4 @@
-import { isWslUncPath } from '../../../../../shared/wsl-paths'
+import { isWslUncPath } from '../../../../../shared/file-access/wsl-paths'
 import { toLocalWslDropPath } from '../input/file-drop/terminal-drop-local-wsl'
 import { isWslShellOverride } from '../input/paste/terminal-paste-runtime'
 

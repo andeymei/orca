@@ -2,8 +2,8 @@
 import type { editor } from 'monaco-editor'
 import { afterEach, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
-import { installMonacoEditorInputBindings } from './monaco-editor-input-bindings'
-import { MONACO_PASTE_MAX_BYTES } from './monaco-large-text-paste'
+import { installMonacoEditorInputBindings } from './monaco/monaco-editor-input-bindings'
+import { MONACO_PASTE_MAX_BYTES } from './monaco/monaco-large-text-paste'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('@/store', () => ({ useAppStore: { getState: vi.fn() } }))

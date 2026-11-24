@@ -15,13 +15,19 @@ import {
 } from '../../../src/main/ai-vault-search/session-search-service-registry'
 import { AI_VAULT_AGENTS } from '../../../src/shared/ai-vault/contracts/ai-vault-types'
 import { redactForTransport } from '../../../src/shared/ai-vault/search/ai-vault-search-transport'
-import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
+import { LEGACY_SEARCH_AGENTS } from '../../../src/shared/ai-vault/search/ai-vault-search-agent-compatibility'
+import {
+  importReleaseCheckoutModule,
+  materializeReleaseCheckout
+} from './release-checkouts/release-checkout'
 import { prepareReleaseFixtures } from './release-fixture-setup'
 
 const PRE_QODER_HOSTS = ['v1.4.211', 'b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c']
 const QODER_HOST = 'f97ca2a49d9c711dab54a656a7f8a47ae6c6749c'
-const LEGACY_AGENTS = AI_VAULT_AGENTS.filter(
-  (agent) => !['codebuddy', 'zcode', 'qoder', 'jcode', 'kiro'].includes(agent)
+// What a host of that era understands: the frozen list, plus the trio Qoder proved.
+const LEGACY_HOST_AGENTS = AI_VAULT_AGENTS.filter((agent) => LEGACY_SEARCH_AGENTS.includes(agent))
+const QODER_HOST_AGENTS = AI_VAULT_AGENTS.filter(
+  (agent) => LEGACY_SEARCH_AGENTS.includes(agent) || ['codebuddy', 'zcode', 'qoder'].includes(agent)
 )
 afterEach(() => setSessionSearchService(null))
 
@@ -79,7 +85,7 @@ test.each(PRE_QODER_HOSTS)(
       page: { cursor: 'legacy-next-page', hasMore: true }
     })
     expect(service.search).toHaveBeenLastCalledWith(
-      { query: 'proof', limit: 20, filters: { agents: LEGACY_AGENTS } },
+      { query: 'proof', limit: 20, filters: { agents: LEGACY_HOST_AGENTS } },
       undefined
     )
     const nextPage = await searchSessionService(
@@ -88,7 +94,12 @@ test.each(PRE_QODER_HOSTS)(
     )
     expect(responseParser.safeParse(nextPage)).toHaveProperty('success', true)
     expect(service.search).toHaveBeenLastCalledWith(
-      { query: 'proof', cursor: 'legacy-next-page', limit: 20, filters: { agents: LEGACY_AGENTS } },
+      {
+        query: 'proof',
+        cursor: 'legacy-next-page',
+        limit: 20,
+        filters: { agents: LEGACY_HOST_AGENTS }
+      },
       undefined
     )
     const client = createSessionSearchClient(
@@ -131,7 +142,7 @@ test.each(PRE_QODER_HOSTS)(
     expect(call).toHaveBeenCalledTimes(2)
     expect(call).toHaveBeenLastCalledWith(
       'aiVault.searchSessions',
-      expect.objectContaining({ filters: { agents: LEGACY_AGENTS }, within })
+      expect.objectContaining({ filters: { agents: LEGACY_HOST_AGENTS }, within })
     )
     call.mockClear()
     expect(
@@ -216,7 +227,7 @@ test('the shipped Qoder capability proves its historical trio while withholding 
   expect(call).toHaveBeenLastCalledWith(
     'aiVault.searchSessions',
     expect.objectContaining({
-      filters: { agents: AI_VAULT_AGENTS.filter((agent) => !['jcode', 'kiro'].includes(agent)) }
+      filters: { agents: QODER_HOST_AGENTS }
     })
   )
 })

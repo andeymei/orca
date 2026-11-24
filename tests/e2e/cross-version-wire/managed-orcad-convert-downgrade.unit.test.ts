@@ -1,6 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { normalizeSshTarget } from '../../../src/main/persistence/leasing-ssh-ptys/ssh-normalization'
-import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
+import {
+  importReleaseCheckoutModule,
+  materializeReleaseCheckout
+} from './release-checkouts/release-checkout'
 
 // Pin pre-conversion readers: orcadFence must retain relay access and project rows on rollback; owner would hide them (#24975, #24979).
 const LAST_RELAY_ONLY_REF = 'v1.4.218'

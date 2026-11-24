@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { comparePublishedFieldOccurrences } from './published-field-shape'
-import { resolveBaselineReleaseRef } from './release-checkout'
+import { resolveBaselineReleaseRef } from './release-checkouts/release-checkout'
 import {
   JOURNEY_INPUTS,
   JOURNEY_STEPS,

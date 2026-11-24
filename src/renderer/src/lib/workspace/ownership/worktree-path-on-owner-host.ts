@@ -4,7 +4,7 @@ import {
   parseExecutionHostId,
   toRuntimeExecutionHostId,
   type ExecutionHostId
-} from '../../../../../shared/execution-host'
+} from '../../../../../shared/execution-host/execution-host'
 import { resolveExactWorktreeRoute } from './worktree-owner-route'
 
 /**

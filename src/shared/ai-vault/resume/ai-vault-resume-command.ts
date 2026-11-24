@@ -3,9 +3,10 @@ import { quoteCmdDoubleQuoted } from '../../shell/launch/shell-argument-quoting'
 import {
   isAntigravityReferenceSession,
   antigravityTranscriptReferencePrompt
-} from '../../antigravity-session-origin'
+} from '../../agent-session/lifecycle/provider-handles/antigravity-session-origin'
 import { normalizeAiVaultResumeFilePath } from './ai-vault-resume-path'
-import { ompTranscriptProfileArgs } from '../../omp-profile'
+import { ompTranscriptProfileArgs } from '../../agent-launch/startup/omp-profile'
+import { hermesStateDbProfileArgs } from '../../agent-launch/startup/hermes-profile'
 import { TUI_AGENT_CONFIG } from '../../agent-launch/catalog/tui-agent-config'
 import {
   clearEnvCommand,
@@ -44,14 +45,19 @@ export function buildAiVaultResumeCommand(args: {
         ? quoteStartupArg(resumeTarget, shell)
         : quoteShellArg(resumeTarget, platform)
   // Profile names are [a-z0-9._-] only, literal in every shell like `--resume`.
-  const ompProfileArgs = agent === 'omp' ? ompTranscriptProfileArgs(resumeTarget) : []
+  const profileArgs =
+    agent === 'omp'
+      ? ompTranscriptProfileArgs(resumeTarget)
+      : agent === 'hermes'
+        ? hermesStateDbProfileArgs(resumeFilePath)
+        : []
   const referencePath = normalizeAiVaultResumeFilePath(resumeFilePath ?? undefined, platform)
   const resumeCommand =
     isAntigravityReferenceSession({ agent, filePath: referencePath }) && referencePath
       ? `${baseCommand} --prompt-interactive ${quoteResumeArg(antigravityTranscriptReferencePrompt(referencePath), platform, shell)}`
       : buildAgentResumeInvocation(
           agent,
-          [baseCommand, ...ompProfileArgs].join(' '),
+          [baseCommand, ...profileArgs].join(' '),
           sessionArg,
           sessionId
         )
@@ -227,15 +233,27 @@ function buildAgentResumeInvocation(
     case 'prime-agent':
       return `${baseCommand} --resume ${sessionArg}`
     case 'claude':
-      // The CLI continues a resumed conversation under a new session id when it supersedes the
-      // one it was given, and names that new session "<title> (2)": the conversation then shows
-      // up twice, under two names. Pinning the id keeps the conversation where it is.
       return pinnedClaudeResume(baseCommand, sessionArg, sessionId)
     case 'antigravity':
       return `${baseCommand} --conversation ${sessionArg}`
     case 'kiro':
       return `${baseCommand} --resume-id ${sessionArg}`
   }
+}
+
+/**
+ * The resume that keeps the conversation's own id.
+ *
+ * The CLI continues a resumed conversation under a new session id when it supersedes the one it
+ * was given, and names that new session "<title> (2)": the conversation then shows up twice,
+ * under two names. Pinning the id keeps the conversation where it is.
+ */
+function pinnedClaudeResume(baseCommand: string, sessionArg: string, sessionId: string): string {
+  if (!pinnableClaudeSessionId(sessionId)) {
+    return `${baseCommand} --resume ${sessionArg}`
+  }
+  // The id is already quoted for the shell this command runs in.
+  return `${baseCommand} --resume ${sessionArg} --fork-session --session-id ${sessionArg}`
 }
 
 function codexHomeEnvPrefix(
@@ -265,19 +283,4 @@ function quoteResumeArg(
 /** Use quoteStartupArg for fish: sh quoting would halve path backslashes and reject a trailing one, with or without an explicit shell. */
 function quoteShellArg(value: string, platform: NodeJS.Platform): string {
   return platform === 'win32' ? quoteCmdDoubleQuoted(value) : quoteStartupArg(value, 'posix')
-}
-
-/**
- * The resume that keeps the conversation's own id.
- *
- * The CLI continues a resumed conversation under a new session id when it supersedes the one it
- * was given, and names that new session "<title> (2)": the conversation then shows up twice,
- * under two names. Pinning the id keeps the conversation where it is.
- */
-function pinnedClaudeResume(baseCommand: string, sessionArg: string, sessionId: string): string {
-  if (!pinnableClaudeSessionId(sessionId)) {
-    return `${baseCommand} --resume ${sessionArg}`
-  }
-  // The id is already quoted for the shell this command runs in.
-  return `${baseCommand} --resume ${sessionArg} --fork-session --session-id ${sessionArg}`
 }

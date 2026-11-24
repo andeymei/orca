@@ -1,5 +1,5 @@
 import { basename } from '@/lib/path'
-import { isImageDropPath } from '../../../../../../shared/image-path-paste'
+import { isImageDropPath } from '../../../../../../shared/terminal/input/image-path-paste'
 import { stageNativeChatDraftFile } from '../../drafts/native-chat-draft-attachment-staging'
 import { nativeChatPendingAttachmentScope } from '../chips/native-chat-pending-attachment-scopes'
 import { nativeChatAttachFailedNotice } from './native-chat-attachment-notices'

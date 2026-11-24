@@ -12,13 +12,16 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import { CHECKOUT_FORMAT, type CheckoutLockOptions } from './release-checkout-publication'
+import {
+  CHECKOUT_FORMAT,
+  type CheckoutLockOptions
+} from './release-checkouts/release-checkout-publication'
 import {
   MAX_SHARED_RELEASE_SEEDS,
   pruneSharedReleaseSources,
   withReleaseSourceLease
-} from './release-source-retention'
-import { copySharedReleaseSource } from './release-source-cache'
+} from './release-checkouts/release-source-retention'
+import { copySharedReleaseSource } from './release-checkouts/release-source-cache'
 
 const roots: string[] = []
 async function scratch() {

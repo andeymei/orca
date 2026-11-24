@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { agentSessionRecordFixture } from '../../agent-session-record-test-fixture'
-import { agentSessionConversationView } from '../../../../shared/agent-session/lifecycle/agent-session-conversation-view'
+import { agentSessionRecordFixture } from '../../testing/agent-session-record-test-fixture'
+import { agentSessionConversationView } from '../../../../shared/agent-session/lifecycle/leases/agent-session-conversation-view'
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../../../shared/agent-session/agent-session-wire'
 import { listStructuredBackgroundSessions } from './structured-agent-session-background-sessions'

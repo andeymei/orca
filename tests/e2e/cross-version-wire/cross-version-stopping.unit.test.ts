@@ -3,7 +3,7 @@ import {
   importReleaseCheckoutModule,
   importWorkingTreeModuleCopy,
   materializeReleaseCheckout
-} from './release-checkout'
+} from './release-checkouts/release-checkout'
 
 // Pin pre-Stopping readers: optional status/mainAgent flags must remain plain working rows to old desktop/mobile clients.
 // Current clients must not infer Stopping from an old host that sends no flag.
@@ -11,7 +11,7 @@ const PRE_CHANGE_REF = 'v1.4.214'
 const SUITE_TIMEOUT_MS = 180_000
 const STATUS_FOLD = 'src/shared/structured-agent-session-agent-status.ts'
 // Both builds load a copy in the checkout cache, out of reach of `mobile/tsconfig.json`.
-const PHONE_ROW_READER = 'mobile/src/worktree/agent-row-display.ts'
+const PHONE_ROW_READER = 'mobile/src/worktree/agent-lineage/agent-row-display.ts'
 
 const WORKTREE_ID = 'repo::/worktree'
 const NOW = 1_000_000

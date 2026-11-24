@@ -12,12 +12,12 @@ import {
   discardNativeChatQueuedEdit
 } from '../../queue/editing/native-chat-queued-edit-draft'
 import { readNativeChatComposerDraft } from '../../drafts/native-chat-composer-draft-store'
-import {
-  clearNativeChatComposerDraftsForTests,
-  clearNativeChatAttachmentCacheForTests
-} from '../../drafts/native-chat-draft-reset'
+import { clearNativeChatComposerDraftsForTests } from '../../drafts/native-chat-draft-reset'
 import { useNativeChatFileAttachmentActions } from './use-native-chat-file-attachment-actions'
-import { nativeChatPendingAttachmentSnapshot } from '../chips/native-chat-pending-attachment-cache'
+import {
+  dropNativeChatPendingAttachmentsWhere,
+  nativeChatPendingAttachmentSnapshot
+} from '../chips/native-chat-pending-attachment-cache'
 import { nativeChatImagesHoldSend } from '../chips/native-chat-image-reattach'
 import { readNativeChatDraftCache } from '../../drafts/native-chat-draft-views'
 import { useNativeChatExternalAttachments } from './use-native-chat-external-attachments'
@@ -198,8 +198,8 @@ afterEach(() => {
   act(() => root.unmount())
   container.remove()
   releaseNativeChatStagedFiles('drop-test')
-  clearNativeChatAttachmentCacheForTests()
   clearNativeChatComposerDraftsForTests()
+  dropNativeChatPendingAttachmentsWhere(() => true)
   vi.unstubAllGlobals()
 })
 

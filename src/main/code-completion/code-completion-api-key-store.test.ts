@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _resetSecretStoreForTests, setSecretStore } from '../../shared/secret-store'
+import { _resetSecretStoreForTests, setSecretStore } from '../../shared/secure-storage/secret-store'
 import type * as CodeCompletionApiKeyStore from './code-completion-api-key-store'
 
 const safeStorageMock = vi.hoisted(() => ({
@@ -11,31 +11,36 @@ const safeStorageMock = vi.hoisted(() => ({
 beforeEach(() => setSecretStore({ ...safeStorageMock, describeProtectionGap: () => null }))
 
 const files = new Map<string, Buffer>()
-const existsSyncMock = vi.fn()
-const readFileSyncMock = vi.fn()
-const rmSyncMock = vi.fn()
-const hardenExistingSecureFileMock = vi.fn()
-const writeSecureFileMock = vi.fn()
-const homedirMock = vi.fn(() => '/home/test')
+const rmMock = vi.fn()
 
-vi.mock('node:fs', () => ({
-  existsSync: existsSyncMock,
-  readFileSync: readFileSyncMock,
-  rmSync: rmSyncMock
+vi.mock('node:fs/promises', () => ({
+  readFile: async (path: string) => {
+    const contents = files.get(path)
+    if (!contents) {
+      throw new Error(`ENOENT: no such file or directory, open '${path}'`)
+    }
+    return contents
+  },
+  rm: rmMock
 }))
 
 vi.mock('node:os', () => ({
-  homedir: homedirMock
+  homedir: () => '/home/test'
 }))
 
-vi.mock('node:path', () => ({
-  join: (...parts: string[]) => parts.join('/')
-}))
+vi.mock('node:path', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:path')>()
+  return { ...actual, join: (...parts: string[]) => parts.join('/') }
+})
 
-vi.mock('../../shared/secure-storage/secure-file', () => ({
-  hardenExistingSecureFile: hardenExistingSecureFileMock,
-  writeSecureFile: writeSecureFileMock,
-  isUnreadableError: () => false
+vi.mock('../credentials/credential-file-io', () => ({
+  credentialFileExists: async (path: string) => files.has(path),
+  hardenCredentialFile: async () => {},
+  inCredentialFileOrder: async (_path: string, run: () => Promise<unknown>) => run(),
+  stageCredentialFile: async (path: string, data: string | Buffer) => {
+    files.set(path, Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8'))
+    return true
+  }
 }))
 
 const storePath = '/home/test/.orca/code-completion-api-key.enc'
@@ -48,27 +53,16 @@ async function loadStore(): Promise<typeof CodeCompletionApiKeyStore> {
 describe('code completion api key store', () => {
   beforeEach(() => {
     files.clear()
-    existsSyncMock.mockImplementation((path: string) => files.has(path))
-    readFileSyncMock.mockImplementation((path: string) => files.get(path) ?? Buffer.alloc(0))
-    rmSyncMock.mockImplementation((path: string) => {
+    rmMock.mockImplementation(async (path: string) => {
       files.delete(path)
     })
-    writeSecureFileMock.mockImplementation((path: string, contents: string) => {
-      files.set(path, Buffer.from(contents, 'utf8'))
-      return true
-    })
-    existsSyncMock.mockClear()
-    readFileSyncMock.mockClear()
-    rmSyncMock.mockClear()
-    hardenExistingSecureFileMock.mockClear()
-    writeSecureFileMock.mockClear()
+    rmMock.mockClear()
     safeStorageMock.isEncryptionAvailable.mockReset()
     safeStorageMock.encryptString.mockReset()
     safeStorageMock.decryptString.mockReset()
     safeStorageMock.isEncryptionAvailable.mockReturnValue(true)
     safeStorageMock.encryptString.mockImplementation((value: string) => Buffer.from(value))
     safeStorageMock.decryptString.mockImplementation((value: Buffer) => value.toString('utf8'))
-    homedirMock.mockReturnValue('/home/test')
   })
 
   afterEach(() => {
@@ -79,35 +73,33 @@ describe('code completion api key store', () => {
   it('reports no key before one is saved', async () => {
     const store = await loadStore()
 
-    expect(store.hasCodeCompletionApiKey()).toBe(false)
-    expect(store.readCodeCompletionApiKey()).toBeNull()
-    expect(store.getCodeCompletionApiKeyProtection()).toBeNull()
+    await expect(store.hasCodeCompletionApiKey()).resolves.toBe(false)
+    await expect(store.readCodeCompletionApiKey()).resolves.toBeNull()
+    await expect(store.getCodeCompletionApiKeyProtection()).resolves.toBeNull()
     expect(files.size).toBe(0)
   })
 
   it('saves and reads a key back', async () => {
     const store = await loadStore()
 
-    store.saveCodeCompletionApiKey('secret-key')
+    await store.saveCodeCompletionApiKey('secret-key')
 
-    expect(writeSecureFileMock).toHaveBeenCalledWith(
-      storePath,
-      expect.stringContaining('orca-code-completion-api-key:v1:encrypted:'),
-      expect.anything()
+    expect(files.get(storePath)?.toString('utf8')).toContain(
+      'orca-code-completion-api-key:v1:encrypted:'
     )
     const reloaded = await loadStore()
-    expect(reloaded.readCodeCompletionApiKey()).toBe('secret-key')
-    expect(reloaded.hasCodeCompletionApiKey()).toBe(true)
-    expect(reloaded.getCodeCompletionApiKeyProtection()).toBe('sealed')
+    await expect(reloaded.readCodeCompletionApiKey()).resolves.toBe('secret-key')
+    await expect(reloaded.hasCodeCompletionApiKey()).resolves.toBe(true)
+    await expect(reloaded.getCodeCompletionApiKeyProtection()).resolves.toBe('sealed')
   })
 
   it('rejects an empty key', async () => {
     const store = await loadStore()
 
-    expect(() => store.saveCodeCompletionApiKey('   ')).toThrow(
+    await expect(store.saveCodeCompletionApiKey('   ')).rejects.toThrow(
       'Code completion API key is required'
     )
-    expect(writeSecureFileMock).not.toHaveBeenCalled()
+    expect(files.size).toBe(0)
   })
 
   it('reports a plaintext key as unsealed when the keyring is unavailable', async () => {
@@ -115,21 +107,21 @@ describe('code completion api key store', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const store = await loadStore()
 
-    store.saveCodeCompletionApiKey('secret-key')
+    await store.saveCodeCompletionApiKey('secret-key')
 
     const reloaded = await loadStore()
-    expect(reloaded.getCodeCompletionApiKeyProtection()).toBe('plaintext')
+    await expect(reloaded.getCodeCompletionApiKeyProtection()).resolves.toBe('plaintext')
   })
 
   it('clears a saved key', async () => {
     const store = await loadStore()
-    store.saveCodeCompletionApiKey('secret-key')
+    await store.saveCodeCompletionApiKey('secret-key')
 
-    store.clearCodeCompletionApiKey()
+    await store.clearCodeCompletionApiKey()
 
-    expect(rmSyncMock).toHaveBeenCalledWith(storePath, { force: true })
+    expect(rmMock).toHaveBeenCalledWith(storePath, { force: true })
     const reloaded = await loadStore()
-    expect(reloaded.hasCodeCompletionApiKey()).toBe(false)
-    expect(reloaded.readCodeCompletionApiKey()).toBeNull()
+    await expect(reloaded.hasCodeCompletionApiKey()).resolves.toBe(false)
+    await expect(reloaded.readCodeCompletionApiKey()).resolves.toBeNull()
   })
 })

@@ -7,7 +7,10 @@ import { DeviceRegistry } from '../../../src/main/runtime/rpc/server/pairing/dev
 
 import type { DeviceEntry } from '../../../src/main/runtime/rpc/server/pairing/device-entry'
 import { DEVICE_REGISTRY_FILENAME } from '../../../src/main/runtime/rpc/server/pairing/mobile-pairing-files'
-import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
+import {
+  importReleaseCheckoutModule,
+  materializeReleaseCheckout
+} from './release-checkouts/release-checkout'
 
 // Across downgrade, preserve ephemeral key rows and token auth; only hosts advertising the capability may receive session-only registration.
 // The last release without session-only keys; a newer baseline would itself drop the row.

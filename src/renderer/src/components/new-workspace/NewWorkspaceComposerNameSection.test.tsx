@@ -4,7 +4,7 @@ import React from 'react'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NewWorkspaceComposerNameSection } from './NewWorkspaceComposerNameSection'
+import { NewWorkspaceComposerNameSection } from './composer/NewWorkspaceComposerNameSection'
 
 vi.mock('@/components/new-workspace/SmartWorkspaceNameField', () => ({
   default: ({ value, selectedSource }: { value: string; selectedSource?: { label: string } }) => (

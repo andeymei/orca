@@ -5,11 +5,11 @@ import { AGENT_TUI_CLEAR_INPUT_MAX } from '../../../../../shared/agent-launch/st
 import {
   NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS,
   NATIVE_CHAT_SUBMIT_DELAY_MS
-} from '../../../../../shared/native-chat/input/native-chat-answer-stepping'
+} from '../../../../../shared/native-chat/input/questions/native-chat-answer-stepping'
 import {
   buildNativeChatPasteBytes,
   NATIVE_CHAT_SUBMIT
-} from '../../../../../shared/native-chat/input/native-chat-paste-bytes'
+} from '../../../../../shared/native-chat/input/composer/native-chat-paste-bytes'
 import { wrapTerminalBracketedPasteText } from '../../../../../shared/terminal/input/terminal-bracketed-paste-text'
 import { buildTerminalComposerWrites, useTerminalComposerSend } from './use-terminal-composer-send'
 

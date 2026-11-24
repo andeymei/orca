@@ -6,7 +6,7 @@ import {
   AI_VAULT_AGENTS,
   AI_VAULT_AGENT_LABELS
 } from '../../../../shared/ai-vault/contracts/ai-vault-types'
-import { AI_VAULT_AGENT_SOURCES } from '../../session-scanner-agent-sources'
+import { AI_VAULT_AGENT_SOURCES } from '../../discovery/session-scanner-agent-sources'
 import { parseQoderSessionFile } from './session-scanner-qoder-parser'
 
 describe('Qoder China build rows', () => {

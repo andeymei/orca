@@ -2,12 +2,15 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { importReleaseCheckoutModule, type ReleaseCheckout } from './release-checkout'
+import {
+  importReleaseCheckoutModule,
+  type ReleaseCheckout
+} from './release-checkouts/release-checkout'
 import {
   collectPackageImports,
   installMissingPackageStandIns,
   type PackageImports
-} from './release-missing-packages'
+} from './release-checkouts/release-missing-packages'
 
 const temporaryRoots: string[] = []
 

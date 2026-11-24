@@ -7,7 +7,7 @@ import {
 } from '../../../shared/claude-background-agents'
 import { resolveCommandOnLocalPath } from '../../ipc/command-path/command-path-resolver'
 import { hostShellEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
-import { UNKNOWN_OPTION_DIAGNOSTIC } from '../claude-cli-flag-support'
+import { UNKNOWN_OPTION_DIAGNOSTIC } from '../cli-capabilities/claude-cli-flag-support'
 import { backgroundAgentCommandEnvironment } from './claude-background-agent-environment'
 
 /**

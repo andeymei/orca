@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { AiVaultAgentSource } from '../../session-scanner-agent-sources'
-import { sessionRootDirs } from '../../session-scanner-roots'
+import type { AiVaultAgentSource } from '../../discovery/session-scanner-agent-sources'
+import { sessionRootDirs } from '../../discovery/session-scanner-roots'
 import type { AiVaultScanOptions } from '../../session-scanner-types'
 import { SUBAGENT_DIR_NAME } from '../claude/session-scanner-subagent-transcripts'
 

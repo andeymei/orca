@@ -1,14 +1,14 @@
-/** Rows that are not part of the conversation but happened during it, such as a worker's approval:
- *  each draws after the newest message that came before it, so it stays at its own time. */
+/** Timed rows on the desktop's transcript slots: each draws after the newest message before it. */
 import { useMemo } from 'react'
 import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
+import { anchorNativeChatTimedRows } from '../../../../../../shared/native-chat/transcript/native-chat-timed-row-anchors'
 
 export type NativeChatTimedRow = { key: string; at: number; node: React.ReactNode }
 
 export type NativeChatTimedRowPlacement = {
   /** Keyed by message id: the rows drawn after that message, oldest first. */
   afterMessage: ReadonlyMap<string, readonly NativeChatTimedRow[]>
-  /** Rows no loaded message precedes, drawn at the end of the conversation. */
+  /** Rows in a conversation with no dated message, drawn at its end. */
   unplaced: readonly NativeChatTimedRow[]
 }
 
@@ -16,19 +16,12 @@ export type NativeChatTimedRowPlacement = {
 const FIELD = '\u0000'
 const ROW = '\u0001'
 
-/** The message each row follows: the last top-level message at or before its time; null for none. */
-function anchorNativeChatTimedRows(
-  slots: readonly NativeChatTranscriptSlot[],
-  rows: readonly NativeChatTimedRow[]
-): [key: string, messageId: string | null][] {
-  const dated = slots.flatMap((slot) =>
-    slot.kind === 'message' && slot.depth === 0 && slot.message.timestamp !== null
+function datedMessages(slots: readonly NativeChatTranscriptSlot[]): { id: string; at: number }[] {
+  return slots.flatMap((slot) =>
+    slot.kind === 'message' && slot.message.timestamp !== null
       ? [{ id: slot.message.id, at: slot.message.timestamp }]
       : []
   )
-  return rows
-    .toSorted((a, b) => a.at - b.at)
-    .map((row) => [row.key, dated.findLast((message) => message.at <= row.at)?.id ?? null])
 }
 
 /** Stable while no row changes the message it follows, so streaming text does not redraw every row. */
@@ -38,7 +31,7 @@ export function useNativeChatTimedRows(
 ): NativeChatTimedRowPlacement | null {
   // A string, so the memo below sees a change only when some row's anchor does.
   const anchors = rows?.length
-    ? anchorNativeChatTimedRows(slots, rows)
+    ? anchorNativeChatTimedRows(datedMessages(slots), rows)
         .map(([key, messageId]) => `${key}${FIELD}${messageId ?? ''}`)
         .join(ROW)
     : ''

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTranslate } from '@/i18n/use-translate'
 
-import type { FileContent } from '../editor-panel-content-types'
+import type { FileContent } from '../loading/editor-panel-content-types'
 import { openRefactorReviewTab } from './refactor-review-tab-open'
 import {
   beginRefactorStart,

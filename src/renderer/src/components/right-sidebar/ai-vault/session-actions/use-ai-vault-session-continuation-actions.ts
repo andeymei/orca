@@ -4,11 +4,9 @@ import { translate } from '@/i18n/i18n'
 import { isAiVaultDatabaseAgent } from '../../../../../../shared/ai-vault/contracts/ai-vault-session-handoff'
 import type { AiVaultSession } from '../../../../../../shared/ai-vault/contracts/ai-vault-types'
 import type { Worktree } from '../../../../../../shared/worktree/types'
-import type { AgentSessionContinuationRequest } from '@/lib/agent-session/context/agent-session-continuation'
-import {
-  loadDatabaseAiVaultSessionContinuation,
-  prepareAiVaultSessionContinuation
-} from './ai-vault-session-continuation'
+import type { AgentSessionContinuationRequest } from '../../../../../../shared/agent-session/conversation-context/agent-session-continuation'
+import { loadDatabaseAiVaultSessionContinuation } from './ai-vault-session-continuation'
+import { prepareAiVaultSessionContinuation } from '../../../../../../shared/ai-vault/resume/ai-vault-session-continuation'
 import {
   notifyAiVaultSessionNoContinuationContext,
   resolveAiVaultSessionLaunchTargetOrNotify

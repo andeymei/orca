@@ -19,7 +19,7 @@ describe('settings.update params', () => {
       autoImport: true,
       contextPrefixChars: 6000,
       contextSuffixChars: 2000,
-      displayDeadlineMs: 4000,
+      displayDeadlineMs: 10_000,
       enabledExtensions: [
         'ts',
         'tsx',

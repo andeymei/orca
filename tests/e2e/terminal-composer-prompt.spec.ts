@@ -74,7 +74,7 @@ test('the terminal composer writes a multi-line prompt and then Enter', async ({
   const field = editor.locator('[data-prompt-editor="true"]')
   await field.click()
   await field.pressSequentially('first line')
-  await field.press('Enter')
+  await field.press('Shift+Enter')
   await field.pressSequentially('second line')
 
   await clearTerminalPtyWriteLog(electronApp)

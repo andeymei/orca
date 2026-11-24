@@ -23745,7 +23745,7 @@
     "placeholder": "Ajanına yaz",
     "open": "Ajanına mesaj gönder",
     "collapse": "Oluşturucuyu daralt",
-    "enterHint": "Enter yeni satır açar",
+    "enterHint": "Shift+Enter yeni satır açar",
     "sendHint": "ile gönder",
     "uploadFailed": "Dosya eklenemedi",
     "hostChanged": "Sunucu değişti, bu yüzden mesaj gönderilmedi",

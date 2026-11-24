@@ -71,12 +71,18 @@ function setup(overrides: Partial<TerminalComposerFieldProps> = {}) {
 }
 
 describe('terminal composer field', () => {
-  it('turns Enter into a line break and never sends', () => {
+  it('breaks the line on Shift+Enter and never sends', () => {
     const { editor, fieldRef, onSend } = setup()
-    fireEvent.keyDown(editor, { key: 'Enter' })
+    fireEvent.keyDown(editor, { key: 'Enter', shiftKey: true })
     expect(onSend).not.toHaveBeenCalled()
     // The line broke instead.
     expect(fieldRef.current?.value()).toBe('\n')
+  })
+
+  it('sends on Enter', () => {
+    const { editor, onSend } = setup()
+    fireEvent.keyDown(editor, { key: 'Enter' })
+    expect(onSend).toHaveBeenCalledOnce()
   })
 
   it('sends on Mod+Enter', () => {

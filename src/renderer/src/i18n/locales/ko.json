@@ -23520,7 +23520,7 @@
     "placeholder": "에이전트에게 메시지 쓰기",
     "open": "에이전트에게 메시지 보내기",
     "collapse": "컴포저 접기",
-    "enterHint": "Enter로 줄바꿈",
+    "enterHint": "Shift+Enter로 줄바꿈",
     "sendHint": "로 보내기",
     "uploadFailed": "파일을 첨부하지 못했습니다",
     "hostChanged": "호스트가 바뀌어 메시지를 보내지 못했습니다",

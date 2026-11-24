@@ -23452,7 +23452,7 @@
     "placeholder": "給代理程式發訊息",
     "open": "給代理程式發訊息",
     "collapse": "收起輸入框",
-    "enterHint": "Enter 換行",
+    "enterHint": "Shift+Enter 換行",
     "sendHint": "傳送",
     "uploadFailed": "附件新增失敗",
     "hostChanged": "主機已改變，訊息沒有傳送",

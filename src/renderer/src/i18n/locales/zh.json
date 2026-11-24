@@ -24007,7 +24007,7 @@
     "placeholder": "给智能体发消息",
     "open": "给智能体发消息",
     "collapse": "收起输入框",
-    "enterHint": "回车换行",
+    "enterHint": "Shift+Enter 换行",
     "sendHint": "发送",
     "uploadFailed": "附件添加失败",
     "hostChanged": "宿主已改变，消息没有发送",

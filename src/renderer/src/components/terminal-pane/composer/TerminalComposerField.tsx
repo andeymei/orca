@@ -179,16 +179,18 @@ export function TerminalComposerField({
       if (event.key !== 'Enter') {
         return false
       }
-      if (event.metaKey || event.ctrlKey) {
+      if (event.shiftKey && !event.metaKey && !event.ctrlKey) {
         event.preventDefault()
-        // An upload in flight would be dropped from the message, so the send waits for it.
-        if (!uploading) {
-          onSend()
-        }
+        // Shift+Enter breaks the line; Enter sends, the way every other composer answers.
+        editor.commands.setHardBreak()
         return true
       }
-      // Enter always breaks the line; the agent is sent with Mod+Enter.
-      editor.commands.setHardBreak()
+      // Enter sends, and so does the Mod chord.
+      event.preventDefault()
+      // An upload in flight would be dropped from the message, so the send waits for it.
+      if (!uploading) {
+        onSend()
+      }
       return true
     },
     [onDismiss, onSend, uploading]
@@ -312,7 +314,7 @@ export function TerminalComposerField({
           {t('terminalComposer.send', 'Send')}
         </Button>
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{t('terminalComposer.enterHint', 'Enter for a new line')}</span>
+          <span>{t('terminalComposer.enterHint', 'Shift+Enter for a new line')}</span>
           <span className="flex items-center gap-1">
             <ShortcutKeyCombo
               keys={[getScreenSubmitModifierLabel(), 'Enter']}

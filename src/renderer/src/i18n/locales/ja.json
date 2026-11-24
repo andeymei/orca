@@ -23528,7 +23528,7 @@
     "placeholder": "Agent にメッセージを書く",
     "open": "Agent にメッセージを送る",
     "collapse": "コンポーザーを折りたたむ",
-    "enterHint": "Enter で改行",
+    "enterHint": "Shift+Enter で改行",
     "sendHint": "で送信",
     "uploadFailed": "ファイルを添付できませんでした",
     "hostChanged": "ホストが変わったため、メッセージは送信されませんでした",

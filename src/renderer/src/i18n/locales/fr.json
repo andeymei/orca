@@ -24234,7 +24234,7 @@
     "placeholder": "Écrire à l’agent",
     "open": "Envoyer un message à l’agent",
     "collapse": "Réduire le composeur",
-    "enterHint": "Entrée pour une nouvelle ligne",
+    "enterHint": "Shift+Entrée pour une nouvelle ligne",
     "sendHint": "pour envoyer",
     "uploadFailed": "Impossible de joindre le fichier",
     "hostChanged": "L’hôte a changé, le message n’a donc pas été envoyé",

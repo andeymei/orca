@@ -24850,7 +24850,7 @@
     "placeholder": "Escreva para o agente",
     "open": "Enviar uma mensagem ao agente",
     "collapse": "Recolher o compositor",
-    "enterHint": "Enter para uma nova linha",
+    "enterHint": "Shift+Enter para uma nova linha",
     "sendHint": "para enviar",
     "uploadFailed": "Não foi possível anexar o arquivo",
     "hostChanged": "O host mudou, então a mensagem não foi enviada",

@@ -16,7 +16,7 @@ import { backgroundAgentCommandEnvironment } from './claude-background-agent-env
  * `--json` alone prints the **active** sessions only. `--all` adds the completed background
  * sessions, so a caller can tell a finished agent from one that is still writing.
  */
-export const CLAUDE_BACKGROUND_AGENTS_ARGS: readonly string[] = ['agents', '--json', '--all']
+const CLAUDE_BACKGROUND_AGENTS_ARGS: readonly string[] = ['agents', '--json', '--all']
 
 /** The listing a CLI that does not know `--all` can still answer. */
 const CLAUDE_BACKGROUND_AGENTS_ARGS_WITHOUT_ALL: readonly string[] = ['agents', '--json']
@@ -24,8 +24,8 @@ const CLAUDE_BACKGROUND_AGENTS_ARGS_WITHOUT_ALL: readonly string[] = ['agents', 
 /** The option that asks the CLI for the completed sessions too. */
 const ALL_OPTION = '--all'
 
-/** The listing is a local daemon query; a wedged CLI must not hold the picker open. */
-export const CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS = 5_000
+/** The listing is a local daemon query; a wedged CLI must not hold the caller open. */
+const CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS = 5_000
 
 /**
  * Remembers that a CLI refused `--all`.

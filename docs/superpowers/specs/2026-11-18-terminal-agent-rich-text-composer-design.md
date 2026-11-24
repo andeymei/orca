@@ -301,7 +301,7 @@ E2E（`tests/e2e/`）：终端面板展开 composer → 输入多行 → `Mod+En
 - **原生 chat composer**：共用件抽出后仍是同一套编辑器；原生 chat 的行为、草稿、图片编号不变。
 - **终端拖放**：拆出「解析路径」这一步后与 composer 共用；拖放的现有行为不变。
 - **keybindings**：新增一个 action（`terminal.toggleComposer`），进设置页的快捷键列表。
-- **背景 agent 监管器**（`docs/superpowers/specs/2026-11-15-claude-background-agents-supervisor-design.md`）：面板里的派发 composer 仍走 `claude --bg "<prompt>"`，**不在本设计范围内**。若日后要给它也加附件，可以复用本设计的「落到工作区 + 路径引用」这一段。
+- **背景 agent 监管器**：该面板已于 2026-11-25 整体移除（原设计：`docs/superpowers/specs/2026-11-15-claude-background-agents-supervisor-design.md`），`claude --bg` 的派发 composer 一并消失，**不在本设计范围内**。
 
 ## 13. 明确的取舍记录
 

@@ -47,13 +47,12 @@ pnpm -C mobile install --frozen-lockfile   # mobile/ has its own lockfile; build
 
 Details: `docs/development.md` (per-OS packages, dev profiles, Linux/Docker, troubleshooting).
 
-**Git over the network needs the local proxy.** Direct GitHub access fails here with
-`Error in the HTTP2 framing layer`. Prefix remote operations with:
+**Git over the network needs HTTP/1.1.** Direct GitHub access fails here with
+`Error in the HTTP2 framing layer` when git negotiates HTTP/2. This network routes
+directly — no proxy. Prefix remote operations with:
 
 ```bash
 git -c http.version=HTTP/1.1 \
-    -c http.proxy=http://127.0.0.1:7890 \
-    -c https.proxy=http://127.0.0.1:7890 \
     <fetch|pull|push|clone|ls-remote>
 ```
 

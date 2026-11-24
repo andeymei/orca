@@ -60,7 +60,7 @@ describe('updateSettings codeCompletion', () => {
       enabledExtensions: DEFAULT_EXTENSIONS,
       contextPrefixChars: 6000,
       contextSuffixChars: 2000,
-      displayDeadlineMs: 4000
+      displayDeadlineMs: 10_000
     })
   })
 

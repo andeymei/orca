@@ -92,7 +92,7 @@ describe('code completion settings on load', () => {
       autoImport: true,
       contextPrefixChars: 6000,
       contextSuffixChars: 2000,
-      displayDeadlineMs: 4000,
+      displayDeadlineMs: 10_000,
       enabledExtensions: DEFAULT_EXTENSIONS
     })
   })
@@ -122,7 +122,7 @@ describe('code completion settings on load', () => {
       autoImport: false,
       contextPrefixChars: 6000,
       contextSuffixChars: 2000,
-      displayDeadlineMs: 4000,
+      displayDeadlineMs: 10_000,
       enabledExtensions: ['ts']
     })
   })

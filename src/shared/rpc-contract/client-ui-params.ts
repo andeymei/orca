@@ -41,7 +41,6 @@ export const STATIC_RIGHT_SIDEBAR_TABS = [
   'explorer',
   'search',
   'vault',
-  'background-agents',
   'workspaces',
   'pr-checks',
   'source-control',

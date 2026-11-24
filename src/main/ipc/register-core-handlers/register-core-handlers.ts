@@ -34,7 +34,6 @@ import { registerWslHostHandlers } from '../wsl/wsl-host-handlers'
 import { registerEphemeralVmHandlers } from '../ephemeral-vm'
 import { registerAiVaultHandlers } from '../ai-vault/ai-vault'
 import { registerAiVaultSearchHandlers } from '../ai-vault/ai-vault-search'
-import { registerClaudeAgentsHandlers } from '../claude-agents/claude-agents'
 import { registerNativeChatHandlers } from '../native-chat'
 import { registerNotificationHandlers } from '../notifications'
 import { registerNotebookHandlers } from '../notebook'
@@ -291,7 +290,6 @@ export function registerCoreHandlers(
   configureRuntimeAiVaultSessionDelete((environmentId, args) =>
     deleteRuntimeAiVaultSession(getRuntimeEnvironmentRegistryRoot(), environmentId, args)
   )
-  registerClaudeAgentsHandlers()
   registerNativeChatHandlers()
   registerClipboardHandlers(store, {
     localChatAttachmentStore: async () => {

@@ -15,7 +15,8 @@ one remote:
 
 Upstream `stablyai/orca` is **not** a remote in this checkout and is not part of the workflow.
 `origin/main` is the single source of truth: the local `main` tracks it and the working tree is
-kept byte-identical to it. Branch your work off `main`.
+kept byte-identical to it. Work directly on `main` — see
+[Local development workflow](#local-development-workflow).
 
 A local branch `base/v1.4.256` is kept as a reference to the last release tag. That tag was cut from
 a release-prep branch and **diverges from `main`** (~200 commits / ~5,800 files behind), so it is
@@ -28,6 +29,50 @@ version bumps are maintainer-managed and happen on release-prep branches, so **t
 `AGENTS.md` is the canonical rulebook for this repo and is read alongside this file. It is short;
 read it fully. The sections below cover the commands and the architecture, which `AGENTS.md` assumes
 you already know.
+
+## Local development workflow
+
+**Do not create a branch and do not create a worktree — edit directly on `main`.** The working
+tree is the branch, `origin/main` is the only remote, and a second checkout only creates a second
+source of truth to reconcile. This overrides the global rule that allows manual worktrees.
+
+**A task is not finished until it is pushed and installed locally.** In this order:
+
+1. `pnpm check:changed` — the pre-push gate; it must pass before every push.
+2. Push to `origin/main`.
+3. Package the app for this machine and install it over `/Applications/Orca.app`.
+
+On Apple Silicon the package must be an arm64 build. The canonical builder config pins the mac
+target to `arch: ['x64', 'arm64']`, and electron-builder's `--arm64` flag does **not** narrow a
+per-target arch list — a plain `--mac` run still attempts the Intel slice and fails on the missing
+x64 optional dependencies. `config/electron-builder-mac-arm64.config.cjs` narrows the target to
+arm64 (the tracked x64 twin is `config/electron-builder-mac-x64.config.cjs`).
+
+```bash
+# 1. assets — the same list pack-fast.mjs runs
+for s in build:packages ensure:electron-runtime build:native build:wsl-guest \
+         build:cli build:electron-vite build:web-from-renderer build:mobile-web; do
+  pnpm run "$s" || break
+done
+
+# 2. package (arm64)
+eval "$(node --input-type=module -e "
+  import { getLocalBuildIdentity } from './config/scripts/desktop-distribution/macos/build-mac-local.mjs'
+  const id = getLocalBuildIdentity()
+  console.log('export ORCA_BUILD_COMMIT=' + id.commit)
+  console.log('export ORCA_LOCAL_BUILD_VERSION=' + id.version)
+")"
+ORCA_REUSE_PREPARED_NATIVE_RUNTIME=1 \
+  pnpm exec electron-builder --config config/electron-builder-mac-arm64.config.cjs --mac --arm64 --dir
+
+# 3. install + verify
+node config/scripts/desktop-distribution/macos/mac-app-install.mjs --source dist/mac-arm64/Orca.app
+ORCA_BACKGROUND_LAUNCH=1 \
+  node config/scripts/runtime-verification/macos/packaged-app-smoke.mjs /Applications/Orca.app --quick
+```
+
+`mac-app-install.mjs` keeps the previous app as `/Applications/Orca.app.bak-*` (newest 3) and
+stops the running copy before replacing it.
 
 ## Setup
 

@@ -68,9 +68,9 @@ describe('listClaudeBackgroundAgents', () => {
     )
   })
 
-  it('asks for the completed agents too, because the Completed section and the delete path need them', async () => {
-    // Why: `--json` prints the active sessions only, so without `--all` the Completed section is
-    // permanently empty and `claude rm` is unreachable.
+  it('asks for the completed agents too, because a finished agent still has to be recognizable', async () => {
+    // Why: `--json` prints the active sessions only, so without `--all` a finished agent is
+    // missing from the listing and cannot be told apart from one that was never there.
     const seen: { args?: readonly string[] } = {}
     await listClaudeBackgroundAgents({
       runCommand: async (spec: ProcessSpec) => {

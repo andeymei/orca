@@ -35,8 +35,8 @@ export type PromptEditorProps = {
   ariaLabel?: string
   /**
    * Runs before ProseMirror's own key handling; returning true stops it.
-   * Enter splits the paragraph on its own, so a consumer that wants Enter to mean
-   * something else has to claim the key here.
+   * ProseMirror splits the paragraph on Enter and hard-breaks the line on Shift+Enter,
+   * so a consumer that wants either key to mean something else has to claim it here.
    */
   handleKeyDown?: (event: KeyboardEvent, editor: Editor) => boolean
   /** The editor owns the document, so it reports it; the text facade alone cannot carry pills. */
@@ -116,8 +116,8 @@ export function PromptEditor({
           view.dispatch(view.state.tr.replaceSelection(new Slice(content.content, 1, 1)))
           return true
         },
-        // ProseMirror splits the paragraph on Enter; a consumer that means something else by
-        // Enter has to claim the key before that happens.
+        // ProseMirror splits the paragraph on Enter and hard-breaks the line on Shift+Enter;
+        // a consumer that means something else by either has to claim the key before that happens.
         handleKeyDown: (_view, event) => {
           const handler = handleKeyDownRef.current
           const currentEditor = editorRef.current
@@ -161,7 +161,14 @@ export function PromptEditor({
             },
             // Why the view and not the command: the command waits for a frame, and a panel
             // that opens with its caret nowhere is a panel the user has to click into.
-            focus: () => editor.view.focus(),
+            // Why the guard: tiptap hands back a stand-in view when the editor has no DOM
+            // yet, and asking that stand-in to focus throws.
+            focus: () => {
+              if (editor.isDestroyed) {
+                return
+              }
+              editor.view.focus()
+            },
             // The document goes back to one empty paragraph, and the caret stays in it.
             clear: () => {
               editor.commands.clearContent()

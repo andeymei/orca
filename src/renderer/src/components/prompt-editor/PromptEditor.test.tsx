@@ -17,8 +17,8 @@ const emptyDocument: JSONContent = { type: 'doc', content: [{ type: 'paragraph' 
 function renderEditor(
   initialDocument: JSONContent = emptyDocument,
   inputRef = createRef<PromptEditorInput>()
-): { inputRef: RefObject<PromptEditorInput | null> } {
-  render(
+): { inputRef: RefObject<PromptEditorInput | null>; unmount: () => void } {
+  const { unmount } = render(
     <PromptEditor
       inputRef={inputRef}
       initialDocument={initialDocument}
@@ -26,7 +26,7 @@ function renderEditor(
       placeholder="Message"
     />
   )
-  return { inputRef }
+  return { inputRef, unmount }
 }
 
 describe('prompt editor', () => {
@@ -105,5 +105,23 @@ describe('prompt editor', () => {
       inputRef.current!.insertImageReference?.('a1', 'shot.png')
     })
     expect(inputRef.current!.value).toContain('[Image](orca-image:a1)')
+  })
+
+  // The background agents panel asked its composer for focus the moment the screen opened, and
+  // the editor was not there yet; tiptap threw and the panel's error boundary took it down.
+  it('does not throw when the editor is gone', async () => {
+    vi.useFakeTimers()
+    try {
+      const { inputRef, unmount } = renderEditor()
+      const input = inputRef.current!
+      unmount()
+      // Tiptap destroys the editor a tick after the tree goes away.
+      await act(async () => {
+        vi.advanceTimersByTime(5)
+      })
+      expect(() => input.focus()).not.toThrow()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

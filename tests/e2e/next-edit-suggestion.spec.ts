@@ -3,6 +3,11 @@ import { rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import type { Page } from '@stablyai/playwright-test'
+import {
+  DEFAULT_CONTEXT_PREFIX_CHARS,
+  DEFAULT_CONTEXT_SUFFIX_CHARS,
+  DEFAULT_DISPLAY_DEADLINE_MS
+} from '../../src/shared/code-completion/code-completion-settings'
 import { test, expect } from './helpers/orca-app'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 
@@ -15,7 +20,7 @@ const ACCEPT_EDIT_COLUMN = 11
 /** The jump case's first line holds eleven characters, so the edit lands on column 12. */
 const JUMP_EDIT_COLUMN = 12
 
-/** The seven fields the settings block carries; the normalizer resets every field it is not given. */
+/** The eleven fields the settings block carries; the normalizer resets every field it is not given. */
 const CODE_COMPLETION_SETTINGS = {
   enabled: true,
   // Why: without this the literal widens to `string`, which the settings type does not accept.
@@ -23,7 +28,11 @@ const CODE_COMPLETION_SETTINGS = {
   model: 'e2e-model',
   triggerDelayMs: 0,
   autoImport: false,
-  enabledExtensions: ['ts']
+  enabledExtensions: ['ts'],
+  responseMode: 'inline' as const,
+  contextPrefixChars: DEFAULT_CONTEXT_PREFIX_CHARS,
+  contextSuffixChars: DEFAULT_CONTEXT_SUFFIX_CHARS,
+  displayDeadlineMs: DEFAULT_DISPLAY_DEADLINE_MS
 }
 
 /**

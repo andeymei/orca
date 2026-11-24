@@ -26,6 +26,11 @@ const anthropicTextDelta = z.object({
   delta: z.object({ text: z.string() })
 })
 
+const anthropicThinkingDelta = z.object({
+  type: z.literal('content_block_delta'),
+  delta: z.object({ thinking: z.string() })
+})
+
 // Why a record: a null count is legal, and one of them must not discard the others.
 const anthropicUsageEvent = z.object({
   type: z.string(),
@@ -121,13 +126,15 @@ async function requestPlan(
       result: { plan: null, usage: emptyCompletionUsage(), failure: 'unparsed' }
     }
   }
-  const plan = nesPlanFromAnswer(config, anthropicStreamText(events), input)
+  const text = anthropicStreamText(events)
+  const plan = nesPlanFromAnswer(config, text, input)
   return {
     ok: true,
     result: {
       plan,
       usage: anthropicStreamUsage(events),
-      ...(plan ? {} : { failure: 'unparsed' })
+      ...(plan ? {} : { failure: 'unparsed' }),
+      ...(text || !anthropicStreamThinking(events) ? {} : { reasoned: true })
     }
   }
 }
@@ -167,4 +174,16 @@ function anthropicStreamText(events: readonly unknown[]): string {
     }
   }
   return text
+}
+
+/** The reasoning the model streamed before it answered; empty when it answered straight away. */
+function anthropicStreamThinking(events: readonly unknown[]): string {
+  let thinking = ''
+  for (const event of events) {
+    const parsed = anthropicThinkingDelta.safeParse(event)
+    if (parsed.success) {
+      thinking += parsed.data.delta.thinking
+    }
+  }
+  return thinking
 }

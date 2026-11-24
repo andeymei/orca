@@ -26,8 +26,11 @@ export const MAX_CONTEXT_CHARS = 40000
  * Why a deadline at all: a suggestion that arrives after the person has moved on is noise, and
  * the request that brings it costs time and tokens. Zero turns the deadline off, which is the
  * right setting for an endpoint that answers slowly and for a person who waits for the answer.
+ *
+ * Why so long: a model that reasons before it answers spends seconds thinking, and a deadline
+ * that throws the answer away leaves the person with nothing.
  */
-export const DEFAULT_DISPLAY_DEADLINE_MS = 4000
+export const DEFAULT_DISPLAY_DEADLINE_MS = 10_000
 export const MAX_DISPLAY_DEADLINE_MS = 60000
 
 const DEFAULT_ENABLED_EXTENSIONS = [

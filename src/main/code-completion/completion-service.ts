@@ -20,6 +20,8 @@ export const NES_COMPLETION_MAX_CONCURRENT_REQUESTS = 4
 export type CompletionPlanOutcome =
   | 'suggested'
   | 'declined'
+  /** The endpoint reasoned instead of answering, and the reasoning took the answer's room. */
+  | 'reasoned'
   | 'unparsed'
   | 'failed'
   | 'abandoned'
@@ -104,9 +106,15 @@ export function createCompletionService(options: {
       cache.set(key, outcome.result.plan)
       // Why: a plan that carries no edit shows nothing, so as far as the user is concerned it is
       // a decline; the difference between the two answers is not worth the user's attention.
+      // An endpoint that reasoned instead of answering is a different fault, and it says so.
       return {
         ...outcome.result,
-        outcome: outcome.result.plan.edits.length > 0 ? 'suggested' : 'declined'
+        outcome:
+          outcome.result.plan.edits.length > 0
+            ? 'suggested'
+            : outcome.result.reasoned
+              ? 'reasoned'
+              : 'declined'
       }
     }
   }

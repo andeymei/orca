@@ -40,6 +40,13 @@ export type NesBackendResult = {
   usage: CompletionUsage
   /** Set when the answer carries no plan, so the caller can say which it was. */
   failure?: NesPlanFailure
+  /**
+   * The endpoint reasoned before it answered, and the reasoning took the room the answer needed.
+   *
+   * Why: an endpoint whose model thinks first spends the budget on the thinking, and the empty
+   * answer it leaves behind looks exactly like a model with nothing to propose.
+   */
+  reasoned?: boolean
 }
 
 export type NesBackend = {

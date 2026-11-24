@@ -108,8 +108,13 @@ export const NES_RESPONSE_MODES = ['inline', 'plan'] as const
 
 export type NesResponseMode = (typeof NES_RESPONSE_MODES)[number]
 
-/** An inline answer is a short snippet, so it needs a few tokens and not a plan's worth. */
-export const NES_INLINE_MAX_TOKENS = 96
+/**
+ * An inline answer is a short snippet, so it needs a few tokens and not a plan's worth.
+ *
+ * The budget covers the reasoning too: a model that thinks before it answers spends the
+ * answer's room on the thinking, and the answer never arrives.
+ */
+export const NES_INLINE_MAX_TOKENS = 1024
 
 /** A plan names up to five edits with their ranges, so it needs room to write them out. */
 export const NES_PLAN_MAX_TOKENS = 8000

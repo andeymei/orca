@@ -1,17 +1,17 @@
 import { stripInheritedAgentSessionEnv } from '../../../shared/agent-launch/startup/parent-agent-session-env'
 
 /**
- * A panel's agent is not a Claude background job.
+ * An Orca-run command is not a Claude background job.
  *
  * The PTY path deletes the inherited job dir for the same reason: a pane is never a Claude
  * background job, and a job dir the CLI inherits would make it treat the command as part of one.
  */
-const PANEL_JOB_DIR_ENV_KEY = 'CLAUDE_JOB_DIR'
+const ORCA_JOB_DIR_ENV_KEY = 'CLAUDE_JOB_DIR'
 
 /**
- * The environment the panel's Claude Code commands run in.
+ * The environment Orca's own Claude Code commands run in.
  *
- * A panel command is Orca's own, not part of the agent session that happens to be running Orca.
+ * Such a command is Orca's own, not part of the agent session that happens to be running Orca.
  * The stamps are the repo's own list, and the inherited job dir goes with them: a client that
  * carries them answers with the ambient session instead of the command — the attach client showed
  * the ambient session's recap, which redrew the screen and dropped what the user was typing.
@@ -27,6 +27,6 @@ const PANEL_JOB_DIR_ENV_KEY = 'CLAUDE_JOB_DIR'
 export function backgroundAgentCommandEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const commandEnv: NodeJS.ProcessEnv = { ...env }
   stripInheritedAgentSessionEnv(commandEnv)
-  delete commandEnv[PANEL_JOB_DIR_ENV_KEY]
+  delete commandEnv[ORCA_JOB_DIR_ENV_KEY]
   return commandEnv
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   parseClaudeBackgroundAgents,
+  readClaudeBackgroundAgentFailureMessage,
   readClaudeBackgroundAgentsListing
 } from './claude-background-agents'
 
@@ -91,5 +92,17 @@ describe('readClaudeBackgroundAgentsListing', () => {
       ok: false,
       message: 'the Claude Code CLI did not print an agent list'
     })
+  })
+})
+
+describe('readClaudeBackgroundAgentFailureMessage', () => {
+  it('says the fallback when the CLI said nothing at all', () => {
+    expect(readClaudeBackgroundAgentFailureMessage('   ', 'the CLI failed')).toBe('the CLI failed')
+  })
+
+  it('truncates a failure reason too long to read', () => {
+    const message = readClaudeBackgroundAgentFailureMessage('x'.repeat(1000), 'the CLI failed')
+    expect(message).toHaveLength(501)
+    expect(message.endsWith('…')).toBe(true)
   })
 })

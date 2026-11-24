@@ -3,7 +3,6 @@ import type { ProcessResult, ProcessSpec } from '@orca/process-host/process-spec
 import { PARENT_AGENT_SESSION_STAMP_ENV_KEYS } from '../../../shared/agent-launch/startup/parent-agent-session-env'
 import {
   listClaudeBackgroundAgents,
-  listClaudeBackgroundAgentsOrNull,
   type ClaudeBackgroundAgentAllFlagMemory
 } from './claude-background-agent-list'
 
@@ -132,8 +131,8 @@ describe('listClaudeBackgroundAgents', () => {
 
 describe('a CLI that does not know --all', () => {
   it('asks again without the option and still lists the agents', async () => {
-    // Why: a CLI without `--all` still knows `--json`, so the panel keeps working with an empty
-    // Completed section instead of no roster at all.
+    // Why: a CLI without `--all` still knows `--json`, so the listing still works with the active
+    // sessions alone instead of no roster at all.
     const seen: (readonly string[])[] = []
     const runCommand = vi.fn(async (spec: ProcessSpec): Promise<ProcessResult> => {
       seen.push(spec.args ?? [])
@@ -195,14 +194,13 @@ describe('a CLI that does not know --all', () => {
     const runCommand = vi.fn(async (_spec: ProcessSpec): Promise<ProcessResult> =>
       result({ code: 1, stderr: 'not installed' })
     )
-    await expect(
-      listClaudeBackgroundAgentsOrNull({
-        runCommand,
-        resolveCommand: async () => '/usr/local/bin/claude-broken',
-        resolveEnvironment: async () => ({}),
-        allFlagMemory: allFlagMemory()
-      })
-    ).rejects.toThrow('not installed')
+    const agents = await listClaudeBackgroundAgents({
+      runCommand,
+      resolveCommand: async () => '/usr/local/bin/claude-broken',
+      resolveEnvironment: async () => ({}),
+      allFlagMemory: allFlagMemory()
+    })
+    expect(agents).toEqual([])
     expect(runCommand).toHaveBeenCalledTimes(1)
   })
 
@@ -210,14 +208,13 @@ describe('a CLI that does not know --all', () => {
     const runCommand = vi.fn(async (_spec: ProcessSpec): Promise<ProcessResult> =>
       result({ code: 1, stderr: "error: unknown option '--bogus'" })
     )
-    await expect(
-      listClaudeBackgroundAgentsOrNull({
-        runCommand,
-        resolveCommand: async () => '/usr/local/bin/claude-other-flag',
-        resolveEnvironment: async () => ({}),
-        allFlagMemory: allFlagMemory()
-      })
-    ).rejects.toThrow("unknown option '--bogus'")
+    const agents = await listClaudeBackgroundAgents({
+      runCommand,
+      resolveCommand: async () => '/usr/local/bin/claude-other-flag',
+      resolveEnvironment: async () => ({}),
+      allFlagMemory: allFlagMemory()
+    })
+    expect(agents).toEqual([])
     expect(runCommand).toHaveBeenCalledTimes(1)
   })
 
@@ -227,18 +224,17 @@ describe('a CLI that does not know --all', () => {
     const runCommand = vi.fn(async (_spec: ProcessSpec): Promise<ProcessResult> =>
       result({ code: null, timedOut: true, stderr: "error: unknown option '--all'" })
     )
-    await expect(
-      listClaudeBackgroundAgentsOrNull({
-        runCommand,
-        resolveCommand: async () => '/usr/local/bin/claude-slow',
-        resolveEnvironment: async () => ({}),
-        allFlagMemory: allFlagMemory()
-      })
-    ).rejects.toThrow('the Claude Code CLI timed out')
+    const agents = await listClaudeBackgroundAgents({
+      runCommand,
+      resolveCommand: async () => '/usr/local/bin/claude-slow',
+      resolveEnvironment: async () => ({}),
+      allFlagMemory: allFlagMemory()
+    })
+    expect(agents).toEqual([])
     expect(runCommand).toHaveBeenCalledTimes(1)
   })
 
-  it('fails when the CLI refuses the option and the retry fails too', async () => {
+  it('asks once more when the CLI refuses the option and the retry fails too', async () => {
     const seen: (readonly string[])[] = []
     const runCommand = vi.fn(async (spec: ProcessSpec): Promise<ProcessResult> => {
       seen.push(spec.args ?? [])
@@ -247,70 +243,13 @@ describe('a CLI that does not know --all', () => {
       }
       return result({ code: 1, stderr: 'the CLI fell over' })
     })
-    await expect(
-      listClaudeBackgroundAgentsOrNull({
-        runCommand,
-        resolveCommand: async () => '/usr/local/bin/claude-falls-over',
-        resolveEnvironment: async () => ({}),
-        allFlagMemory: allFlagMemory()
-      })
-    ).rejects.toThrow('the CLI fell over')
-    expect(runCommand).toHaveBeenCalledTimes(2)
-  })
-})
-
-describe('listClaudeBackgroundAgentsOrNull', () => {
-  it('says the machine has no CLI when the CLI is not installed', async () => {
-    const agents = await listClaudeBackgroundAgentsOrNull({
-      runCommand: async () => {
-        throw new Error('the CLI must not run')
-      },
-      resolveCommand: async () => null,
-      resolveEnvironment: async () => ({})
+    const agents = await listClaudeBackgroundAgents({
+      runCommand,
+      resolveCommand: async () => '/usr/local/bin/claude-falls-over',
+      resolveEnvironment: async () => ({}),
+      allFlagMemory: allFlagMemory()
     })
-    expect(agents).toBeNull()
-  })
-
-  it('fails loudly when the CLI cannot answer', async () => {
-    await expect(
-      listClaudeBackgroundAgentsOrNull({
-        runCommand: async () => result({ code: 1, stderr: 'not installed' }),
-        resolveCommand: async () => '/usr/local/bin/claude',
-        resolveEnvironment: async () => ({})
-      })
-    ).rejects.toThrow('not installed')
-  })
-
-  it('says the CLI failed when the CLI said nothing', async () => {
-    await expect(
-      listClaudeBackgroundAgentsOrNull({
-        runCommand: async () => result({ code: 1, stderr: '   ' }),
-        resolveCommand: async () => '/usr/local/bin/claude',
-        resolveEnvironment: async () => ({})
-      })
-    ).rejects.toThrow('the Claude Code CLI failed')
-  })
-
-  it('fails loudly when the CLI answers with something that is not a list', async () => {
-    await expect(
-      listClaudeBackgroundAgentsOrNull({
-        runCommand: async () => result({ stdout: 'not json' }),
-        resolveCommand: async () => '/usr/local/bin/claude',
-        resolveEnvironment: async () => ({})
-      })
-    ).rejects.toThrow('did not print JSON')
-  })
-
-  it('truncates a failure reason the panel cannot show', async () => {
-    const message = await listClaudeBackgroundAgentsOrNull({
-      runCommand: async () => result({ code: 1, stderr: 'x'.repeat(1000) }),
-      resolveCommand: async () => '/usr/local/bin/claude',
-      resolveEnvironment: async () => ({})
-    }).then(
-      () => null,
-      (error: Error) => error.message
-    )
-    expect(message).toHaveLength(501)
-    expect(message?.endsWith('…')).toBe(true)
+    expect(agents).toEqual([])
+    expect(runCommand).toHaveBeenCalledTimes(2)
   })
 })

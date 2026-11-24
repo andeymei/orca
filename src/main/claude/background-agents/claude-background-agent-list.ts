@@ -11,11 +11,10 @@ import { UNKNOWN_OPTION_DIAGNOSTIC } from '../claude-cli-flag-support'
 import { backgroundAgentCommandEnvironment } from './claude-background-agent-environment'
 
 /**
- * The listing the panel asks the CLI for.
+ * The listing of the agents this machine's Claude Code runs.
  *
- * `--json` alone prints the **active** sessions only, so the Completed section would always be
- * empty and `claude rm` would be unreachable. `--all` adds the completed background sessions,
- * which is what the Completed section and the delete path need.
+ * `--json` alone prints the **active** sessions only. `--all` adds the completed background
+ * sessions, so a caller can tell a finished agent from one that is still writing.
  */
 export const CLAUDE_BACKGROUND_AGENTS_ARGS: readonly string[] = ['agents', '--json', '--all']
 
@@ -79,25 +78,6 @@ export async function listClaudeBackgroundAgents(
   return listing.status === 'ready' ? listing.agents : []
 }
 
-/**
- * The same agents, or null when this machine has no Claude Code CLI to ask.
- *
- * A CLI that is installed but cannot answer throws: the panel keeps the list it already had
- * instead of showing an empty one.
- */
-export async function listClaudeBackgroundAgentsOrNull(
-  dependencies: ClaudeBackgroundAgentDependencies = {}
-): Promise<ClaudeBackgroundAgent[] | null> {
-  const listing = await readLocalClaudeBackgroundAgentListing(dependencies)
-  if (listing.status === 'unsupported') {
-    return null
-  }
-  if (listing.status === 'error') {
-    throw new Error(listing.message)
-  }
-  return listing.agents
-}
-
 async function readLocalClaudeBackgroundAgentListing(
   dependencies: ClaudeBackgroundAgentDependencies
 ): Promise<LocalClaudeBackgroundAgentListing> {
@@ -130,8 +110,8 @@ async function readLocalClaudeBackgroundAgentListing(
     !memory.refused(program) &&
     refusedAllOption(result.stderr)
   ) {
-    // Why: a CLI that does not know `--all` still knows `--json`, so the panel keeps working with
-    // an empty Completed section instead of no roster at all. The downgrade is remembered, so the
+    // Why: a CLI that does not know `--all` still knows `--json`, so the listing still works with
+    // the active sessions alone instead of no roster at all. The downgrade is remembered, so the
     // next poll does not pay the failed spawn again.
     memory.remember(program)
     result = await run({ ...spec, args: CLAUDE_BACKGROUND_AGENTS_ARGS_WITHOUT_ALL })
@@ -146,7 +126,7 @@ async function readLocalClaudeBackgroundAgentListing(
     }
   }
   // Why: a CLI that answered with something else did not report "no agents", it reported nothing
-  // anybody can read, and the panel must not show that as an empty list.
+  // anybody can read, and the caller must not read that as an empty list.
   const listing = readClaudeBackgroundAgentsListing(result.stdout)
   if (!listing.ok) {
     return { status: 'error', message: listing.message }

@@ -1,28 +1,6 @@
-import { stripAnsiEscapeSequences } from './ansi-escape-sequences'
-
 const CLAUDE_BACKGROUND_AGENT_KINDS = ['background', 'interactive'] as const
 const CLAUDE_BACKGROUND_AGENT_STATES = ['working', 'blocked', 'done', 'failed', 'stopped'] as const
 const CLAUDE_BACKGROUND_AGENT_STATUSES = ['busy', 'idle', 'waiting'] as const
-
-/** The short id the CLI hands out; it may be used as a path segment, so nothing else may. */
-export const CLAUDE_BACKGROUND_AGENT_ID_PATTERN = /^[0-9a-f]{8}$/
-
-/** The CLI prints the new agent's id after `backgrounded`; this is the line it prints it on. */
-export const CLAUDE_BACKGROUND_AGENT_DISPATCH_LINE_PATTERN = /^backgrounded\s*·\s*(\S+)/m
-
-/**
- * The id the CLI printed for the agent it started; without it there is no agent to name.
- *
- * The CLI colorizes its answer when the environment asks for color, so the id — and the words
- * around it — arrive wrapped in escape sequences. The id reader is what has to understand that
- * answer, so the answer is cleaned here rather than on every command's stdout.
- */
-export function readClaudeBackgroundAgentDispatchedId(stdout: string): string | null {
-  const candidate = CLAUDE_BACKGROUND_AGENT_DISPATCH_LINE_PATTERN.exec(
-    stripAnsiEscapeSequences(stdout)
-  )?.[1]
-  return candidate && CLAUDE_BACKGROUND_AGENT_ID_PATTERN.test(candidate) ? candidate : null
-}
 
 /** 'background' for a daemon-backed agent; 'interactive' for a foreground terminal session. */
 export type ClaudeBackgroundAgentKind = (typeof CLAUDE_BACKGROUND_AGENT_KINDS)[number]
@@ -64,78 +42,14 @@ export type ClaudeBackgroundAgent = {
   status?: ClaudeBackgroundAgentStatus
 }
 
-/** What the agent's own job state file says; the CLI's listing does not carry it. */
-export type ClaudeBackgroundAgentDetail = {
-  /** The gray line under the agent's name. */
-  detail: string | null
-  /** The agent's own question, when it waits for a decision. */
-  needs: string | null
-  /** Epoch ms of the last state change. */
-  updatedAt: number | null
-}
-
-/**
- * Which workspace is asking for the roster.
- *
- * Both fields may be absent: an older caller, or a panel with no workspace open, reads as this
- * machine. A `runtime:<environmentId>` host asks that machine's runtime instead.
- */
-export type ClaudeAgentsScope = {
-  worktreeId: string | null
-  executionHostId: string | null
-}
-
-/** The scope when the caller did not say: this machine, no workspace. */
-export function readClaudeAgentsScope(value: unknown): ClaudeAgentsScope {
-  if (!isRecord(value)) {
-    return { worktreeId: null, executionHostId: null }
-  }
-  return {
-    worktreeId: typeof value.worktreeId === 'string' ? value.worktreeId : null,
-    executionHostId: typeof value.executionHostId === 'string' ? value.executionHostId : null
-  }
-}
-
-/** What the panel gets over IPC. */
-export type ClaudeBackgroundAgentListResult = {
-  /** 'unsupported' means this machine has no Claude Code CLI to ask. */
-  status: 'ready' | 'unsupported' | 'error'
-  agents: ClaudeBackgroundAgent[]
-  /** The job state files, keyed by agent id. */
-  details: Record<string, ClaudeBackgroundAgentDetail>
-  /** Why the listing failed, when status is 'error'. */
-  message: string | null
-}
-
-/** What a dispatch, stop or remove reports back. */
-export type ClaudeBackgroundAgentCommandResult =
-  | { ok: true; id: string }
-  | { ok: false; message: string }
-
-/** What a dispatch asks the CLI for. */
-export type ClaudeBackgroundAgentDispatchArgs = {
-  prompt: string
-  cwd?: string | null
-  model?: string | null
-  permissionMode?: string | null
-}
-
-/** Which agent a command addresses; always the short id the CLI printed. */
-export type ClaudeBackgroundAgentIdArgs = {
-  id: string
-}
-
 /** How many bytes of `claude agents --json` output are read; the envelope is a small array. */
 export const CLAUDE_BACKGROUND_AGENTS_MAX_OUTPUT_BYTES = 256 * 1024
 
-/** The CLI's stderr can be a quarter of a megabyte; the panel only needs the reason. */
+/** The CLI's stderr can be a quarter of a megabyte; the caller only needs the reason. */
 const MAX_FAILURE_MESSAGE_LENGTH = 500
 
-/** What the command layer reports when the panel aborted the dispatch itself. */
-export const CLAUDE_BACKGROUND_AGENT_CANCELLED_MESSAGE = 'the dispatch was cancelled'
-
 /**
- * What the CLI said about its refusal, trimmed to what a panel can show.
+ * What the CLI said about its refusal, trimmed to what a caller can read.
  *
  * An empty stderr means the CLI said nothing at all, and each caller words that differently.
  */
@@ -154,7 +68,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-/** The word when the CLI used one the panel knows; undefined for anything else. */
+/** The word when the CLI used one it knows; undefined for anything else. */
 function readKnownWord<T extends string>(value: unknown, words: readonly T[]): T | undefined {
   if (typeof value !== 'string') {
     return undefined

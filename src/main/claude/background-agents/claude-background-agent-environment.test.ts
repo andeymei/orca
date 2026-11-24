@@ -21,7 +21,7 @@ describe('backgroundAgentCommandEnvironment', () => {
     expect(carried).toEqual([])
   })
 
-  it('carries no inherited job dir, because a panel agent is not a Claude background job', () => {
+  it('carries no inherited job dir, because an Orca-run command is not a Claude background job', () => {
     const stripped = backgroundAgentCommandEnvironment(environmentWithSessionStamps())
     expect(stripped.CLAUDE_JOB_DIR).toBeUndefined()
   })

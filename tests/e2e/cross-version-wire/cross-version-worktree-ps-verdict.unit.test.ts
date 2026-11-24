@@ -3,13 +3,13 @@ import {
   importReleaseCheckoutModule,
   importWorkingTreeModuleCopy,
   materializeReleaseCheckout
-} from './release-checkout'
+} from './release-checkouts/release-checkout'
 
 // Pin pre-mainAgent readers: old phones must read new rows by interrupted; new phones must keep that fallback for old hosts.
 const PRE_CHANGE_REF = 'v1.4.212'
 const SUITE_TIMEOUT_MS = 180_000
 // Both builds load a copy in the checkout cache, out of reach of `mobile/tsconfig.json`.
-const PHONE_ROW_READER = 'mobile/src/worktree/agent-row-display.ts'
+const PHONE_ROW_READER = 'mobile/src/worktree/agent-lineage/agent-row-display.ts'
 
 const WORKTREE_ID = 'repo::/worktree'
 const NOW = 1_000_000
@@ -100,7 +100,8 @@ function publishRows(host: HostRowModules): Record<string, AgentRow> {
       connectedPtyEvidence: {
         tabIds: new Set(SNAPSHOTS.map((row) => row.tabId)),
         paneKeys: new Set(),
-        ptyIdByTerminalHandle: new Map()
+        ptyIdByTerminalHandle: new Map(),
+        terminalHandleByPaneKey: new Map()
       }
     }),
     orchestrationByPaneKey: null,

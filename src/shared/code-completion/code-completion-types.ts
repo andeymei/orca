@@ -1,5 +1,5 @@
 import * as z from 'zod'
-import { salvagingArray } from '../zod-salvage'
+import { salvagingArray } from '../validation/zod-salvage'
 
 export const NES_MAX_EDITS = 5
 export const NES_MAX_EDITS_PER_FILE = 2

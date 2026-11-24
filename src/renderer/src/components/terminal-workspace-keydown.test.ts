@@ -2,14 +2,17 @@
 
 import '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import '../hooks/ipc-tab-switch'
-import '@/components/floating-terminal/floating-workspace-terminal-actions'
-import '@/components/floating-terminal/floating-workspace-tab-creation'
+import '@/lib/workspace/tabs/ipc-tab-switch'
+import '@/components/floating-terminal/workspace/floating-workspace-terminal-actions'
+import '@/components/floating-terminal/workspace/floating-workspace-tab-creation'
 import '@/lib/notifications/terminal-shortcut-capture-notification'
 import '@/lib/workspace/tabs/workspace-tab-commands'
-import type { Tab } from '../../../shared/tab-types'
+import type { Tab } from '../../../shared/workspace-layout/tab-groups/tab-types'
+import type { admitStructuredAgentSession } from '@/lib/agent-session/structured-agent-session-busy'
+import type { StructuredAgentSessionAdmission } from '@/components/native-chat/session/structured/read/structured-agent-session-read-owner-contract'
 import { useRunningTerminalCloseConfirmStore } from '@/store/slices/tabs/closing/running-terminal-close-confirm'
-import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/workspace/identity/floating-workspace-id'
+import { getDefaultSettings } from '../../../shared/orca-profiles/constants'
 import {
   ORCA_EDITOR_REQUEST_CMD_SAVE_EVENT,
   type EditorRequestCmdSaveDetail
@@ -17,14 +20,14 @@ import {
 import '@/store/testing/app-store-test-fixture'
 import '@/store/repos/repo.test-fixture'
 import '@/store/slices/worktrees/worktree.test-fixture'
-import './use-terminal-keyboard-shortcuts'
-import './tab-bar/agent-menu-shortcut-labels'
-import { handleTerminalWorkspaceKeyDown } from './terminal-workspace-keydown'
-import type { TerminalActivationController } from './use-terminal-activation-actions'
-import type * as AgentTabShortcuts from './terminal-agent-tab-shortcut'
+import '@/components/terminal/keyboard-shortcuts/use-terminal-keyboard-shortcuts'
+import '@/components/agent/launch-menu/agent-menu-shortcut-labels'
+import { handleTerminalWorkspaceKeyDown } from './terminal/keyboard-shortcuts/terminal-workspace-keydown'
+import type { TerminalActivationController } from './terminal/tab-lifecycle/use-terminal-activation-actions'
+import type * as AgentTabShortcuts from './terminal/keyboard-shortcuts/terminal-agent-tab-shortcut'
 
-import type { TerminalAgentTabShortcut } from './terminal-agent-tab-shortcut'
-import './use-terminal-bulk-close-actions'
+import type { TerminalAgentTabShortcut } from './terminal/keyboard-shortcuts/terminal-agent-tab-shortcut'
+import '@/components/terminal/tab-lifecycle/use-terminal-bulk-close-actions'
 import '../store/slices/editor/types/open-file.test-fixture'
 import '../store/slices/tabs/tab-group.test-fixture'
 
@@ -52,26 +55,38 @@ const mocks = vi.hoisted(() => ({
   launchAgentInNewTab: vi.fn()
 }))
 
-vi.mock('@/lib/agent-session/structured-agent-session-busy', async () => ({
-  admitStructuredAgentSession: (
-    await import('@/store/slices/agent-status/structured-session-admission.test-fixture')
-  ).admissionFromBusy(mocks.structuredSessionBusy)
+vi.mock('@/lib/agent-session/structured-agent-session-busy', () => ({
+  admitStructuredAgentSession: ((
+    _workspaceId: string,
+    _tab: Tab,
+    _intent: string,
+    effect: (busy: boolean, attempt: StructuredAgentSessionAdmission) => void | Promise<void>
+  ) => {
+    effect(mocks.structuredSessionBusy(), {
+      current: () => true,
+      busy: mocks.structuredSessionBusy,
+      signal: new AbortController().signal
+    })
+    return Promise.resolve()
+  }) satisfies typeof admitStructuredAgentSession
 }))
 
 vi.mock('../store/index', () => ({ useAppStore: { getState: () => mocks.state } }))
-vi.mock('../hooks/ipc-tab-switch', () => ({
+vi.mock('@/lib/workspace/tabs/ipc-tab-switch', () => ({
   handleSwitchRecentTab: vi.fn(),
   handleSwitchTab: vi.fn(),
   handleSwitchTabAcrossAllTypes: vi.fn(),
   handleSwitchTerminalTab: vi.fn()
 }))
-vi.mock('@/components/floating-terminal/floating-workspace-terminal-actions', () => ({
+vi.mock('@/components/floating-terminal/workspace/floating-workspace-terminal-actions', () => ({
   handleEmptyFloatingWorkspacePanelCloseShortcut: () => false,
   isEventTargetInsideFloatingWorkspacePanel: () => mocks.targetInsideFloatingPanel,
+  isFloatingWorkspaceKeyTarget: () => mocks.targetInsideFloatingPanel || mocks.floatingFocused,
   isFloatingWorkspacePanelFocused: () => mocks.floatingFocused,
+  switchFloatingWorkspaceRecentTab: vi.fn(() => false),
   switchFloatingWorkspaceTab: vi.fn()
 }))
-vi.mock('@/components/floating-terminal/floating-workspace-tab-creation', () => ({
+vi.mock('@/components/floating-terminal/workspace/floating-workspace-tab-creation', () => ({
   createFloatingWorkspaceBrowserTab: vi.fn(),
   createFloatingWorkspaceMarkdownTab: vi.fn(),
   createFloatingWorkspaceTerminalTab: vi.fn()
@@ -79,7 +94,7 @@ vi.mock('@/components/floating-terminal/floating-workspace-tab-creation', () => 
 vi.mock('@/lib/notifications/terminal-shortcut-capture-notification', () => ({
   showTerminalShortcutCaptureNotification: vi.fn()
 }))
-vi.mock('./terminal-agent-tab-shortcut', async (importOriginal) => {
+vi.mock('./terminal/keyboard-shortcuts/terminal-agent-tab-shortcut', async (importOriginal) => {
   const actual = await importOriginal<typeof AgentTabShortcuts>()
   mocks.actualResolveAgentShortcut.mockImplementation(actual.resolveTerminalAgentTabShortcut)
   return { ...actual, resolveTerminalAgentTabShortcut: mocks.resolveAgentShortcut }

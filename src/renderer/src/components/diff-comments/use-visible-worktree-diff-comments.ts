@@ -7,8 +7,8 @@ import {
   isMarkdownReviewNotesEnabled,
   withoutMarkdownReviewNotes
 } from '@/lib/editor/markdown/review-notes/markdown-review-notes-setting'
+import type { DiffComment } from '../../../../shared/file-review/diff-comment-types'
 import { withoutAiInstructionComments } from '@/lib/source-control/review/comments/diff-comment-compat'
-import type { DiffComment } from '../../../../shared/diff-comment-types'
 
 const NO_COMMENTS: DiffComment[] = []
 

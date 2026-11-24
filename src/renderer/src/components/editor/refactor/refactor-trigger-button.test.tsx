@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { FileContent } from '../editor-panel-content-types'
+import type { FileContent } from '../loading/editor-panel-content-types'
 import { RefactorTriggerButton, refactorSourceContent } from './refactor-trigger-button'
 import { endRefactorStart, isRefactorStarting } from './refactor-start-guard'
 

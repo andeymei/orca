@@ -12,7 +12,7 @@ describe('Qoder ACP launch spec', () => {
   it('launches the global build in ACP mode', () => {
     const spec = acpLaunchSpecFor('qoder')
     expect(spec?.command).toBe('qodercli')
-    expect(spec?.args({ fullAccess: false, pluginDir: null })).toEqual(['--acp'])
+    expect(spec?.args({ fullAccess: false, pluginDirs: [] })).toEqual(['--acp'])
     expect(spec?.dialect).toBe(GENERIC_ACP_DIALECT)
     // /compact takes focus areas after the command.
     expect(spec?.compaction).toBe(true)
@@ -22,7 +22,7 @@ describe('Qoder ACP launch spec', () => {
   it('launches the China build under its own command', () => {
     const spec = acpLaunchSpecFor('qoder-cn')
     expect(spec?.command).toBe('qoderclicn')
-    expect(spec?.args({ fullAccess: false, pluginDir: null })).toEqual(['--acp'])
+    expect(spec?.args({ fullAccess: false, pluginDirs: [] })).toEqual(['--acp'])
   })
 
   it('keeps the two builds on separate account homes', () => {

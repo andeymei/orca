@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { createOsFileDropSequence, useOsFileDropOwner } from '@/hooks/use-os-file-drop-owner'
+import {
+  createOsFileDropSequence,
+  useOsFileDropOwner
+} from '../../../lib/files/drop/use-os-file-drop-owner'
 import { getNativeFileDropRejectionMessage } from '@/lib/files/drop/native-file-drop-rejection-message'
 
 type TerminalComposerFileDropArgs = {

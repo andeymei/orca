@@ -247,7 +247,7 @@ it.skipIf(process.env.ORCA_REAL_QODER_CLI_TEST !== '1')(
       if (!(await isInstalled(spec, env))) {
         continue
       }
-      const args = spec.args({ fullAccess: false, pluginDir: null })
+      const args = spec.args({ fullAccess: false, pluginDirs: [] })
       const handshake = await completeAcpHandshake({
         program: spec.command,
         args,

@@ -8,8 +8,8 @@ vi.mock('@/i18n/i18n', () => ({
     fallback.replace(/{{(\w+)}}/g, (_match, name) => String(values?.[name] ?? ''))
 }))
 
-import { getEditorDisplayLabel } from '../editor-labels'
-import { getEditorFileTabModeIcon } from '../../tab-bar/editor-file-tab-mode-icon'
+import { getEditorDisplayLabel } from '../panel/header/editor-labels'
+import { getEditorFileTabModeIcon } from '../../tab-bar/editor-tabs/editor-file-tab-mode-icon'
 import { recentTabSwitcherIcon } from '../../tab-bar/recent-tab-switcher-icon'
 
 const reviewFile = makeOpenFile({

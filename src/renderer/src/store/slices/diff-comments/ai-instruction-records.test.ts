@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppState } from '../../types'
 import { createTestStore } from '../../testing/app-store-test-fixture'
 import { selectDiffCommentView, type DiffCommentOwner } from './diff-comment-owner'
-import type { Repo } from '../../../../../shared/repo-types'
+import type { Repo } from '../../../../../shared/repository/repo-types'
 import type { Worktree } from '../../../../../shared/worktree/types'
 
 const updateMeta = vi.fn()

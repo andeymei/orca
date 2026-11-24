@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { UiUpdate } from './client-ui-params'
+import { UiUpdate } from './client-ui/client-ui-params'
 
 describe('UiUpdate', () => {
   it('drops a right sidebar tab the app no longer knows and keeps the rest of the payload', () => {

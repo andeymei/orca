@@ -2,20 +2,18 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PNG } from 'pngjs'
-import type { Page } from '@stablyai/playwright-test'
-import { formatNativeChatFileReference } from '../../src/shared/agent-image-paste'
-import { test, expect } from './helpers/orca-app'
+import { expect, type Page } from '@stablyai/playwright-test'
+import { formatNativeChatFileReference } from '../../src/shared/native-chat/input/composer/agent-image-paste'
+import { test } from './desktop/electron-fixtures/orca-app'
 import {
   clearTerminalPtyWriteLog,
   installTerminalPtyWriteSpy,
   readTerminalPtyWriteEntries
 } from './helpers/terminal-pty-write-spy'
-import { ensureTerminalVisible, waitForSessionReady } from './helpers/store'
-import {
-  resolveActiveTabId,
-  waitForActivePanePtyId,
-  waitForActiveTerminalManager
-} from './helpers/terminal'
+import { ensureTerminalVisible, waitForSessionReady } from './desktop/renderer-probes/store'
+import { waitForActivePanePtyId } from './terminal/input/terminal'
+import { resolveActiveTabId } from './terminal/layout/terminal-pane-identity'
+import { waitForActiveTerminalManager } from './terminal/layout/terminal-pane-operations'
 
 test.describe.configure({ mode: 'serial' })
 

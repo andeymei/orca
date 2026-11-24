@@ -14,8 +14,9 @@ import { buildClaudeAttachStartup } from '../../../../../../shared/ai-vault/resu
 import { buildClaudeSessionStartupForUnknownHost } from '../../../../../../shared/ai-vault/resume/ai-vault-session-startup-for-lookup'
 import {
   assertAiVaultCopiedSessionLaunchAllowed,
-  buildAiVaultCopiedSessionStartupForWorktree,
-  buildAiVaultForkStartupForWorktree
+  buildAiVaultCliForkStartupForWorktree,
+  captureAiVaultCliForkOwner,
+  readAiVaultCliForkLaunchSettings
 } from '@/lib/agent-session/resume/history/ai-vault-session-fork-startup'
 import { launchAiVaultSessionAndReveal } from '@/lib/agent-session/resume/history/launch-ai-vault-session-and-reveal'
 import { useAppStore } from '@/store/index'
@@ -28,9 +29,9 @@ import {
 import { translate } from '@/i18n/i18n'
 import { describeAiVaultCliForkFailure } from './ai-vault-session-cli-fork'
 import { activateAiVaultStructuredSession } from '@/lib/agent-session/open/activate-ai-vault-structured-session'
-import { adoptsCliConversations } from '../../../../../../shared/structured-agent-cli-conversation-adoption'
+import { adoptsCliConversations } from '../../../../../../shared/agent-session/view/structured-agent-cli-conversation-adoption'
 
-import { createNonSecureContextUuid } from '../../../../../../shared/non-secure-context-uuid'
+import { createNonSecureContextUuid } from '../../../../../../shared/identifiers/non-secure-context-uuid'
 import { describeAiVaultResumeFailure } from '@/lib/agent-session/resume/history/ai-vault-resume-refusal'
 import { resumeAiVaultSessionInNewChat } from './ai-vault-session-resume-in-chat-launch'
 import { useAiVaultSessionContinuationActions } from './use-ai-vault-session-continuation-actions'
@@ -183,31 +184,23 @@ export function useAiVaultSessionLaunchActions({
   const handleResumeInNewCli = useCallback(
     (session: AiVaultSession, targetWorktreeId: string): void => {
       const prepareStartup = async (worktreeId: string): Promise<AiVaultResumeStartup> => {
-        assertAiVaultCopiedSessionLaunchAllowed({
-          state: useAppStore.getState(),
-          worktreeId,
-          session,
-          commandOverride: agentCmdOverrides?.[session.agent]
+        const owner = captureAiVaultCliForkOwner(session.executionHostId)
+        const state = useAppStore.getState()
+        assertAiVaultCopiedSessionLaunchAllowed({ state, worktreeId, session })
+        const settings = await readAiVaultCliForkLaunchSettings({
+          owner,
+          localSettings: state.settings
         })
         const prepared = await prepareAiVaultSessionForFork(session)
         const target = await dropDeletedRemoteResumeCwd(prepared.session)
-        // A copy the chat's host already made is the terminal's own conversation: a plain resume.
-        const startup = prepared.copied
-          ? buildAiVaultCopiedSessionStartupForWorktree(
-              {
-                state: useAppStore.getState(),
-                worktreeId,
-                session: target,
-                commandOverride: agentCmdOverrides?.[target.agent]
-              },
-              session.agent
-            )
-          : buildAiVaultForkStartupForWorktree({
-              state: useAppStore.getState(),
-              worktreeId,
-              session: target,
-              commandOverride: agentCmdOverrides?.[session.agent]
-            })
+        const startup = buildAiVaultCliForkStartupForWorktree({
+          state: useAppStore.getState(),
+          worktreeId,
+          session: target,
+          copied: prepared.copied,
+          owner,
+          settings
+        })
         if (!startup) {
           throw new Error(
             translate(
@@ -220,7 +213,7 @@ export function useAiVaultSessionLaunchActions({
       }
       launchInTerminal(session, targetWorktreeId, prepareStartup, describeAiVaultCliForkFailure)
     },
-    [agentCmdOverrides, launchInTerminal]
+    [launchInTerminal]
   )
 
   const handleResumeInNewChat = useCallback(

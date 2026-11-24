@@ -51,44 +51,48 @@ describe('code completion credential commands', () => {
     }
   })
 
-  it('reports no key when none is saved', () => {
-    expect(getCodeCompletionCredentialStatus()).toEqual({
+  it('reports no key when none is saved', async () => {
+    expect(await getCodeCompletionCredentialStatus()).toEqual({
       configured: false,
       protection: null,
       unreadable: undefined
     })
   })
 
-  it('reports the key as configured after a save', () => {
-    const status = saveCodeCompletionApiKeyCredential('secret-key')
+  it('reports the key as configured after a save', async () => {
+    const status = await saveCodeCompletionApiKeyCredential('secret-key')
 
     expect(storeMocks.saveCodeCompletionApiKey).toHaveBeenCalledWith('secret-key')
     expect(status).toEqual({ configured: true, protection: 'sealed', unreadable: undefined })
   })
 
-  it('rejects a key that is not a string', () => {
-    expect(() => saveCodeCompletionApiKeyCredential(42)).toThrow('must be a string')
+  it('rejects a key that is not a string', async () => {
+    await expect(saveCodeCompletionApiKeyCredential(42)).rejects.toThrow('must be a string')
     expect(storeMocks.saveCodeCompletionApiKey).not.toHaveBeenCalled()
   })
 
-  it('rejects a key with an interior newline', () => {
-    expect(() => saveCodeCompletionApiKeyCredential('abc\ndef')).toThrow('must be a single line')
-    expect(() => saveCodeCompletionApiKeyCredential('abc\rdef')).toThrow('must be a single line')
+  it('rejects a key with an interior newline', async () => {
+    await expect(saveCodeCompletionApiKeyCredential('abc\ndef')).rejects.toThrow(
+      'must be a single line'
+    )
+    await expect(saveCodeCompletionApiKeyCredential('abc\rdef')).rejects.toThrow(
+      'must be a single line'
+    )
     expect(storeMocks.saveCodeCompletionApiKey).not.toHaveBeenCalled()
   })
 
-  it('accepts a key pasted with a trailing newline', () => {
-    const status = saveCodeCompletionApiKeyCredential('secret-key\n')
+  it('accepts a key pasted with a trailing newline', async () => {
+    const status = await saveCodeCompletionApiKeyCredential('secret-key\n')
 
     expect(storeMocks.saveCodeCompletionApiKey).toHaveBeenCalledWith('secret-key')
     expect(status).toEqual({ configured: true, protection: 'sealed', unreadable: undefined })
   })
 
-  it('reports a saved key that this host cannot read', () => {
+  it('reports a saved key that this host cannot read', async () => {
     storeState.saved = true
     savedCredentialUnreadableMock.mockReturnValue('sealed-elsewhere')
 
-    expect(getCodeCompletionCredentialStatus()).toEqual({
+    expect(await getCodeCompletionCredentialStatus()).toEqual({
       configured: true,
       protection: null,
       unreadable: 'sealed-elsewhere'
@@ -99,10 +103,10 @@ describe('code completion credential commands', () => {
     })
   })
 
-  it('clears the key', () => {
-    saveCodeCompletionApiKeyCredential('secret-key')
+  it('clears the key', async () => {
+    await saveCodeCompletionApiKeyCredential('secret-key')
 
-    const status = clearCodeCompletionApiKeyCredential()
+    const status = await clearCodeCompletionApiKeyCredential()
 
     expect(storeMocks.clearCodeCompletionApiKey).toHaveBeenCalled()
     expect(status).toEqual({ configured: false, protection: null, unreadable: undefined })

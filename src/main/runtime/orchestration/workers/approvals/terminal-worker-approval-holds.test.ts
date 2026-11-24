@@ -75,6 +75,8 @@ function setup(options: { canAnswer?: boolean } = {}) {
   } = { lines: DIALOG, incarnation: 'run-1', record: null }
   const timers: { run: () => void; cancelled: boolean }[] = []
   const holds = new TerminalWorkerApprovalHolds({
+    getDb: () => db,
+    isWaitingForMail: () => false,
     notify: vi.fn(),
     resolveWorker: () => ({ db, handle: HANDLE, dispatch }),
     canAnswerPane: () => options.canAnswer ?? true,
@@ -163,7 +165,10 @@ function postToolUse(
 async function opened(ctx: ReturnType<typeof setup>, asked: ReturnType<typeof hook>) {
   ctx.holds.admit(asked.request)
   await ctx.tick()
-  return (await ctx.holds.takeOpenApproval(PANE, ctx.dispatch.id))!.approvalId
+  const approval = (await ctx.holds.takeOpenApproval(PANE, ctx.dispatch.id))!
+  // The escalation went out, so the prompt's close owes the coordinator one closing line.
+  ctx.holds.markReported(approval.approvalId)
+  return approval.approvalId
 }
 
 const answer = (
@@ -361,8 +366,8 @@ describe('terminal worker approval holds', () => {
     const ctx = setup()
     const asked = hook('tool-1')
     ctx.holds.admit(asked.request)
-    // The worker resumed while the escalation waited for the dialog, so no report was sent.
-    expect(await ctx.holds.takeOpenApproval(PANE, ctx.dispatch.id, () => false)).toBeNull()
+    // The escalation never went out, so the hold was never marked reported.
+    expect(await ctx.holds.takeOpenApproval(PANE, ctx.dispatch.id)).not.toBeNull()
     asked.end('hook-gone')
     await ctx.tick(40)
 

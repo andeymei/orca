@@ -5,7 +5,7 @@ import { createCompatibleRuntimeStatusResponseIfNeeded } from '../../../../runti
 import { clearRuntimeCompatibilityCache as clearRuntimeCompatibilityCacheForTests } from '../../../../runtime/rpc/compatibility/runtime-compatibility-cache'
 import { createTestStore, seedStore } from '../../../testing/app-store-test-fixture'
 import { createStoreCascadesMockApi } from '../../../testing/app-store-cascade-api.test-fixture'
-import { makeTab } from '../../../terminals/terminal-tab.test-fixture'
+import { makeTab } from '../../../terminals/testing/terminal-tab.test-fixture'
 import { makeWorktree } from '../worktree.test-fixture'
 
 vi.mock('sonner', () => ({

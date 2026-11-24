@@ -1,4 +1,5 @@
 import { stageNativeChatPendingImage } from '../drafts/native-chat-draft-attachment-staging'
+import { isWebClientLocation } from '@/app-shell/platform/web-client-location'
 import { translate } from '@/i18n/i18n'
 import { basename } from '@/lib/path'
 import { landWorkspaceAttachments } from '@/runtime/files/imports/workspace-attachment-landing'
@@ -107,6 +108,8 @@ export async function saveNativeChatClipboardImage(
     ) => void
     /** The image has somewhere to go, now that any server it goes to has said it takes one. */
     ready?: () => void
+    /** The paste event's picture; saved instead of re-reading the clipboard. */
+    eventImage?: Blob
   },
   landingTarget?: NativeChatAttachmentLandingTarget | null
 ): Promise<{ status: 'saved'; tempPath: string } | { status: 'empty' | 'failed' }> {
@@ -121,7 +124,11 @@ export async function saveNativeChatClipboardImage(
       return { status: 'failed' }
     }
     report.ready?.()
-    const tempPath = await window.api.ui.saveClipboardImageAsTempFile(target.args)
+    // Electron IPC cannot clone a Blob; desktop reads the native clipboard instead.
+    const eventImage = isWebClientLocation() ? report.eventImage : undefined
+    const tempPath = await window.api.ui.saveClipboardImageAsTempFile(
+      eventImage ? { ...target.args, eventImage } : target.args
+    )
     if (!tempPath) {
       return { status: 'empty' }
     }
@@ -152,6 +159,7 @@ export async function saveNativeChatPastedClipboardImage(
     canNotify: () => boolean
     setNotice: (notice: string, errorText?: string) => void
     ready?: () => void
+    eventImage?: Blob
   },
   landingTarget?: NativeChatAttachmentLandingTarget | null
 ): ReturnType<typeof saveNativeChatClipboardImage> {
@@ -159,6 +167,7 @@ export async function saveNativeChatPastedClipboardImage(
     owner,
     {
       ready: paste.ready,
+      eventImage: paste.eventImage,
       setNotice: (notice, cause, errorText) => {
         if ((cause === 'serverTooOld' && paste.besideText) || !paste.canNotify()) {
           return

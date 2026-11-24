@@ -27,7 +27,7 @@ import {
   cleanupValidationDaemons,
   closeValidationElectronApp
 } from './codex-validation-process-shutdown.mjs'
-import { electronIsolatedKeychainArgs } from '../../../../src/shared/electron-isolated-profile-switches.ts'
+import { electronIsolatedKeychainArgs } from '../../../../src/shared/app-lifecycle/launch/electron-isolated-profile-switches.ts'
 
 const RESTRICTED_ENV_KEYS = [
   'HOME',

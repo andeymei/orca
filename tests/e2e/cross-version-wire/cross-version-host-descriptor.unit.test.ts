@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
+import {
+  importReleaseCheckoutModule,
+  materializeReleaseCheckout
+} from './release-checkouts/release-checkout'
 
 // Pairing-offer readers must tolerate a new host descriptor and its absence on old hosts.
 const RELEASE_REF = 'v1.4.224'

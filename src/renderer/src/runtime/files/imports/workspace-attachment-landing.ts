@@ -5,8 +5,8 @@ import { runtimeTargetForOwnerEnvironment } from '@/runtime/rpc/targets/runtime-
 import {
   DROP_STAGING_GITIGNORE_CONTENT,
   DROP_STAGING_RELATIVE_DIR
-} from '../../../../../shared/drop-staging-ignore'
-import { isTerminalDropWindowsPathLike } from '../../../../../shared/image-path-paste'
+} from '../../../../../shared/file-import/drop-staging-ignore'
+import { isTerminalDropWindowsPathLike } from '../../../../../shared/terminal/input/image-path-paste'
 
 export type WorkspaceAttachmentLandingRequest = {
   /** Local absolute paths of the picked, pasted or dropped files. */

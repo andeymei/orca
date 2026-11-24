@@ -3,6 +3,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { OrchestrationWorkerApprovalEntry } from '../../../../../shared/orchestration/orchestration-crew'
+import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 
 const stream = vi.hoisted(() => ({ emit: (_frame: unknown): void => {} }))
 vi.mock('@/runtime/rpc/subscriptions/runtime-rpc-subscribe', () => ({
@@ -24,6 +25,7 @@ afterEach(() => {
 })
 
 const PARTY = 'orca_session_id:chat'
+const LOCAL: RuntimeClientTarget = { kind: 'local' }
 function approval(
   approvalId: string,
   state: 'open' | 'answered',
@@ -62,30 +64,30 @@ function send(...entries: OrchestrationWorkerApprovalEntry[]): void {
   })
 }
 
-it('keeps a prompt that closed while shown pinned as its receipt for a moment, then moves it to the transcript', async () => {
-  vi.useFakeTimers()
-  const pinned = renderHook(() => feed.useNativeChatPinnedWorkerApprovals(PARTY))
-  const receipts = renderHook(() => feed.useNativeChatWorkerApprovalReceipts(PARTY))
+it('moves an answered prompt into the transcript at once, not after a pause above the composer', async () => {
+  const pinned = renderHook(() => feed.useNativeChatPinnedWorkerApprovals(LOCAL, PARTY))
+  const receipts = renderHook(() => feed.useNativeChatWorkerApprovalReceipts(LOCAL, PARTY))
   await act(async () => {})
   send(approval('apr_old', 'answered', 'person'), approval('apr_1', 'open'))
   expect(pinned.result.current.map((e) => e.approval.approvalId)).toEqual(['apr_1'])
-  const history = receipts.result.current
+  expect(receipts.result.current.map((e) => e.approval.approvalId)).toEqual(['apr_old'])
 
-  // The host closes it: its receipt stays where the card was for a moment.
+  // The host closes it: it goes to its transcript place at once.
   send(approval('apr_old', 'answered', 'person'), approval('apr_1', 'answered', 'person'))
-  expect(pinned.result.current.map((e) => [e.approval.approvalId, e.approval.state])).toEqual([
-    ['apr_1', 'answered']
-  ])
-  // Only a pinned prompt changed: the transcript's receipts are the same array.
-  expect(receipts.result.current).toBe(history)
-  act(() => vi.advanceTimersByTime(4_000))
   expect(pinned.result.current).toEqual([])
   expect(receipts.result.current.map((e) => e.approval.approvalId)).toEqual(['apr_old', 'apr_1'])
+
+  // The same list again: the receipts keep their identity.
+  const settled = receipts.result.current
+  send(approval('apr_old', 'answered', 'person'), approval('apr_1', 'answered', 'person'))
+  expect(receipts.result.current).toBe(settled)
 })
 
 it('keeps a prompt only the worker terminal can answer pinned', async () => {
   vi.useFakeTimers()
-  const pinned = renderHook(() => feed.useNativeChatPinnedWorkerApprovals('orca_session_id:other'))
+  const pinned = renderHook(() =>
+    feed.useNativeChatPinnedWorkerApprovals(LOCAL, 'orca_session_id:other')
+  )
   await act(async () => {})
   send(approval('apr_t', 'answered', 'terminal-only'))
   act(() => vi.advanceTimersByTime(60_000))

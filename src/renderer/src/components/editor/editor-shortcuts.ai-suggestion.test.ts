@@ -4,7 +4,7 @@ import {
   installEditorAcceptAiSuggestionShortcut,
   installEditorAcceptNextAiSuggestionShortcut,
   installEditorAiSuggestionPreviewShortcut
-} from './editor-shortcuts'
+} from './commands/editor-shortcuts'
 import type { NesTabDecision } from './code-completion/nes-key-routing'
 
 vi.mock('@/store', () => ({ useAppStore: { getState: () => ({ keybindings: {} }) } }))

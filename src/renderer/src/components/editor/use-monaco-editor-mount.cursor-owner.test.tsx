@@ -9,9 +9,9 @@ import type { AppState } from '@/store/types'
 import { createEditorTabsStore } from '@/store/slices/editor/editor-slice-test-harness'
 import '@/lib/editor/file-operations/editor-file-operation-owner'
 import { captureEditorFileOperationProvenance } from '@/lib/editor/file-operations/editor-file-operation-provenance'
-import type { MonacoEditorMountParams } from './monaco-editor-mount-params'
-import { useMonacoEditorMount } from './use-monaco-editor-mount'
-import { MonacoGutterContextMenu } from './MonacoGutterContextMenu'
+import type { MonacoEditorMountParams } from './monaco/monaco-editor-mount-params'
+import { useMonacoEditorMount } from './monaco/use-monaco-editor-mount'
+import { MonacoGutterContextMenu } from './monaco/MonacoGutterContextMenu'
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 const menuActions = vi.hoisted(() => new Map<string, () => unknown>())
 vi.mock('@/components/ui/dropdown-menu', () => {
@@ -153,6 +153,8 @@ it('keeps cursor and gutter copy on the current file owner after migration', asy
       selection = { ...selection, startLineNumber: 15, endLineNumber: 15 }
     },
     getModel: () => null,
+    getContainerDomNode: () => document.createElement('div'),
+    addAction: () => ({ dispose: vi.fn() }),
     getPosition: () => ({ lineNumber: 1, column: 1 }),
     focus: vi.fn(),
     onDidChangeCursorPosition: (listener: NonNullable<typeof emitCursor>) => {

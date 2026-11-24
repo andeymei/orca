@@ -14,6 +14,7 @@ vi.mock('@xterm/xterm', () => ({
       this.element = container
     }
     dispose(): void {}
+    loadAddon(_addon: unknown): void {}
     onData(): { dispose: () => void } {
       return { dispose: () => {} }
     }
@@ -35,10 +36,10 @@ vi.mock('@xterm/xterm', () => ({
     scrollToBottom(): void {}
   }
 }))
-vi.mock('../dashboard-popout/preview-terminal-compatibility', () => ({
+vi.mock('./rendering/preview-terminal-compatibility', () => ({
   installPreviewTerminalCompatibility: () => vi.fn()
 }))
-vi.mock('../dashboard-popout/preview-terminal-ime-bridge', () => ({
+vi.mock('./input/preview-terminal-ime-bridge', () => ({
   installPreviewImeBridge: () => ({ claimKeyEvent: () => false, dispose: vi.fn() })
 }))
 

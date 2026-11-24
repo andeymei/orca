@@ -1,17 +1,17 @@
 import { useCallback } from 'react'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import { AGENT_TUI_CLEAR_INPUT_MAX } from '../../../../../shared/agent-launch/startup/agent-tui-input-clear'
-import { agentImagePasteWrites } from '../../../../../shared/agent-image-paste'
-import { agentImagePastePath } from '../../../../../shared/agent-image-paste-path'
+import { agentImagePasteWrites } from '../../../../../shared/native-chat/input/composer/agent-image-paste'
+import { agentImagePastePath } from '../../../../../shared/native-chat/input/composer/agent-image-paste-path'
 import {
   NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS,
   NATIVE_CHAT_SUBMIT_DELAY_MS
-} from '../../../../../shared/native-chat/input/native-chat-answer-stepping'
+} from '../../../../../shared/native-chat/input/questions/native-chat-answer-stepping'
 import {
   buildNativeChatImagePasteBytes,
   buildNativeChatPasteBytes,
   NATIVE_CHAT_SUBMIT
-} from '../../../../../shared/native-chat/input/native-chat-paste-bytes'
+} from '../../../../../shared/native-chat/input/composer/native-chat-paste-bytes'
 import {
   captureTerminalDropTarget,
   getCurrentTerminalDropTransport

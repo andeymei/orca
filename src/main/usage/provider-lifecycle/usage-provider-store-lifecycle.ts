@@ -1,11 +1,6 @@
 import { readFileSync, statSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import { AgentTokenUsageReporter } from '../reporting/token-usage/agent-token-usage-reporter'
 import { join, parse } from 'node:path'
-import {
-  AnalyticsSessionIdStore,
-  type AnalyticsSessionId
-} from '../reporting/token-usage/analytics-session-id-store'
 import type { UsageStoreHost } from '../usage-store-host'
 import { UsageCacheSnapshotWriter } from '../cache/usage-cache-snapshot-writer'
 import {
@@ -14,6 +9,7 @@ import {
 } from '../worktree-attribution/usage-worktree-refs'
 import { UsageInlineCachePreservation } from '../cache/usage-inline-cache-preservation'
 import { usageSourceCachePath } from '../cache/usage-source-cache-file'
+import { readUsageCacheJson } from '../cache/usage-cache-json'
 import type {
   UsageProviderStoreState,
   UsageProviderStoreLifecycleConfig,
@@ -36,7 +32,6 @@ export abstract class UsageProviderStoreLifecycle<
   private scanPromise: Promise<void> | null = null
   private stopping = false
   private tokenReporter: AgentTokenUsageReporter | null = null
-  private analyticsSessionIds: AnalyticsSessionIdStore | null = null
   private readonly writer: UsageCacheSnapshotWriter
   private readonly inlineCache = new UsageInlineCachePreservation()
 
@@ -65,17 +60,6 @@ export abstract class UsageProviderStoreLifecycle<
     } as PublicUsageProviderScanState<DataPresenceKey>
   }
 
-  /** Local identity only; callers must use the usage store on the execution host. */
-  getAnalyticsSessionIds(providerSessionIds: readonly string[]): Promise<AnalyticsSessionId[]> {
-    if (!this.analyticsSessionIds) {
-      const { dir, name } = parse(this.config.resolveCacheFile())
-      this.analyticsSessionIds = new AnalyticsSessionIdStore(
-        join(dir, `${name}-analytics-session-ids.json`)
-      )
-    }
-    return this.analyticsSessionIds.getOrCreate(providerSessionIds)
-  }
-
   /** Await queued cache writes so quit does not drop the final snapshot. */
   stopScanAdmission(): void {
     this.stopping = true
@@ -89,7 +73,7 @@ export abstract class UsageProviderStoreLifecycle<
     await this.loaded
     await this.inlineCache.settle()
     await this.tokenReporter?.flush()
-    await Promise.all([this.writer.flush(), this.analyticsSessionIds?.flush()])
+    await this.writer.flush()
   }
 
   async setEnabled(enabled: boolean): Promise<PublicUsageProviderScanState<DataPresenceKey>> {
@@ -180,6 +164,7 @@ export abstract class UsageProviderStoreLifecycle<
   private async loadOnWorker(cacheFile: string): Promise<void> {
     try {
       let fallback = false
+      let fallbackState: State | null = null
       const { reportText, migrated, reportIntegrityVerified } = await Promise.resolve()
         .then(() =>
           this.config.splitCacheFile({
@@ -192,22 +177,29 @@ export abstract class UsageProviderStoreLifecycle<
           // Preserve usage history when the worker cannot start.
           console.warn(`${this.config.logTag} Reading the usage cache on the main thread:`, error)
           fallback = true
+          const loaded = this.config.readFallbackCache
+            ? await this.config.readFallbackCache(cacheFile)
+            : { state: await readUsageCacheJson<State>(cacheFile), integrityVerified: false }
+          fallbackState = loaded.state
+          if (!fallbackState) {
+            throw new Error('Saved usage cache is invalid')
+          }
           return {
-            reportText: await readFile(cacheFile, 'utf-8'),
+            reportText: '',
             migrated: false,
-            reportIntegrityVerified: false
+            reportIntegrityVerified: loaded.integrityVerified
           }
         })
       if (reportText === null) {
         return
       }
-      const parsed: State = JSON.parse(reportText)
+      const parsed: State = fallbackState ?? JSON.parse(reportText)
       this.inlineCache.active =
         fallback &&
         !('usageIntegrity' in parsed) &&
         Array.isArray(parsed[this.config.sourceKey]) &&
         parsed[this.config.sourceKey].length > 0
-      await this.applyReport(reportText, parsed, !fallback && reportIntegrityVerified === true)
+      await this.applyReport(reportText, parsed, reportIntegrityVerified === true)
       if (migrated) {
         // Future launches can read the compact report synchronously.
         await this.writeToDisk().catch(() => {})
@@ -253,8 +245,7 @@ export abstract class UsageProviderStoreLifecycle<
           {
             path: usageSourceCachePath(this.config.resolveCacheFile()),
             schemaVersion: this.schemaVersion,
-            worktreeFingerprint,
-            reuse: this.state.worktreeFingerprint === worktreeFingerprint
+            worktreeFingerprint
           }
         )
         this.state.sessions = result.sessions
@@ -293,13 +284,13 @@ export abstract class UsageProviderStoreLifecycle<
       if (!this.tokenReporter) {
         const { dir, name } = parse(this.config.resolveCacheFile())
         this.tokenReporter = new AgentTokenUsageReporter(
+          join(dir, `${name}-token-usage-daily.json`),
           join(dir, `${name}-token-usage.json`),
           config.provider,
-          (ids) => this.getAnalyticsSessionIds(ids),
           this.host.telemetry
         )
       }
-      await this.tokenReporter.report(config.selectSessions(this.state))
+      await this.tokenReporter.report(config.selectDays(this.state))
     } catch {
       // Reporting failures must not invalidate a successful local usage scan.
       console.warn(

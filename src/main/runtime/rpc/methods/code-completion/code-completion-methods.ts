@@ -76,7 +76,7 @@ export const CODE_COMPLETION_METHODS = [
       // not broken. The credential status (Task 5) reports that state to the settings UI.
       let apiKey: string | null = null
       try {
-        apiKey = readCodeCompletionApiKey()
+        apiKey = await readCodeCompletionApiKey()
       } catch {
         span.setAttribute('outcome', 'no_key')
         span.end()

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { realpath, stat } from 'node:fs/promises'
-import { isPathAbsentError } from '../ipc/filesystem/access/filesystem-path-containment'
+import { isPathAbsentError } from '../filesystem/local-file-io/filesystem-path-containment'
 import { readWorkspaceFile } from './refactor-file-reads'
 
 /** The prefix that tells an inode key from a path key. */

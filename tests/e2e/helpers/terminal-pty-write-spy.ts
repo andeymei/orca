@@ -1,6 +1,6 @@
 import type { ElectronApplication } from '@stablyai/playwright-test'
 
-import { retryTransientMainEvaluate } from './electron-main-evaluate-retry'
+import { retryTransientMainEvaluate } from '../desktop/electron-fixtures/electron-main-evaluate-retry'
 
 export type PtyWriteLogEntry = { id: string; data: string }
 

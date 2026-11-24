@@ -7,7 +7,7 @@ import { connect } from 'node:net'
 import { join } from 'node:path'
 import { build, type Plugin } from 'esbuild'
 import { JSONC_PARSER_ESM_ALIAS } from '../../../config/build-plugins/jsonc-parser-esm'
-import type { ReleaseCheckout } from './release-checkout'
+import type { ReleaseCheckout } from './release-checkouts/release-checkout'
 
 export type ReleasedRelayInstall = {
   /** The version directory: `relay.js` plus the `.version` its handshake reads. */

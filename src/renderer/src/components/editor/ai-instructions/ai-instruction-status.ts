@@ -1,5 +1,5 @@
 import type { AiInstruction, AiInstructionStatus } from '../../../../../shared/ai-instruction-types'
-import type { DiffComment } from '../../../../../shared/diff-comment-types'
+import type { DiffComment } from '../../../../../shared/file-review/diff-comment-types'
 
 export type ResolvedAiInstruction = AiInstruction & {
   status: AiInstructionStatus

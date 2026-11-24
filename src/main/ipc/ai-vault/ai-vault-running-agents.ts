@@ -1,5 +1,8 @@
 import type { ClaudeBackgroundAgent } from '../../../shared/claude-background-agents'
-import { LOCAL_EXECUTION_HOST_ID, parseExecutionHostId } from '../../../shared/execution-host'
+import {
+  LOCAL_EXECUTION_HOST_ID,
+  parseExecutionHostId
+} from '../../../shared/execution-host/execution-host'
 
 /** Where the agents of a host come from. */
 export type RunningAgentSource = {

@@ -4,7 +4,8 @@ import { reportAgentWorkspaceActivation } from '@/lib/workspace/activation/workt
 import { resolveRepoWorktreeLaunchPlatform } from '@/runtime/hosts/platform/execution-host-facts'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store/index'
-import { createNonSecureContextUuid } from '../../../../../shared/non-secure-context-uuid'
+import { readRuntimeStatuses } from '@/store/slices/runtime-status/views/runtime-status-owner'
+import { createNonSecureContextUuid } from '../../../../../shared/identifiers/non-secure-context-uuid'
 import type { TuiAgent } from '../../../../../shared/agent-launch/catalog/tui-agent'
 import type { Worktree } from '../../../../../shared/worktree/types'
 
@@ -23,7 +24,9 @@ export function launchTaskInCurrentCheckout(task: CurrentCheckoutTaskLaunch): bo
   const { worktree, agent, prompt } = task
   const state = useAppStore.getState()
   const repo = state.repos.find((candidate) => candidate.id === worktree.repoId)
-  const launchPlatform = repo ? resolveRepoWorktreeLaunchPlatform(state, repo, worktree) : undefined
+  const launchPlatform = repo
+    ? resolveRepoWorktreeLaunchPlatform(state, readRuntimeStatuses(), repo, worktree)
+    : undefined
   if (!agent) {
     return 'opened' in activateAndRevealWorktreeWithOutcome(worktree.id)
   }

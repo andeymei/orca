@@ -12,7 +12,7 @@ import {
   type RefactorProposeResult,
   type RefactorStatusResult
 } from '../../../../../shared/rpc-contract/refactor-params'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../../shared/execution-host/execution-host'
 import { buildRefactorPrompt } from '../../../../../shared/refactor/refactor-prompt'
 import type { FileWriteDiskConflict } from '../../../../../shared/file-write/file-write-disk-precondition'
 import { resolveTuiAgentLaunchEnv } from '../../../../../shared/agent-launch/choices/tui-agent-launch-defaults'
@@ -53,7 +53,7 @@ import {
   methodsRefactorNotFoundMessage,
   methodsRemoteWorkspaceRefusedMessage
 } from '../../../../refactor/refactor-messages'
-import { resolveStructuredAgentCommand } from '../../../../native-chat/structured-agent-command-resolution'
+import { resolveStructuredAgentCommand } from '../../../../native-chat/agent-launch/structured-agent-command-resolution'
 
 /** Why the file is refused, in the words the user reads. */
 function diskConflictReason(conflict: FileWriteDiskConflict): string {

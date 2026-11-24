@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
-import { getDefaultPersistedState } from '../../../shared/constants'
+import { getDefaultPersistedState } from '../../../shared/orca-profiles/constants'
 import { updateSettings, type SettingsMutationOperations } from './settings-update'
 
 function makeOperations(): SettingsMutationOperations {
@@ -79,7 +79,7 @@ describe('updateSettings codeCompletion', () => {
         enabledExtensions: ['ts'],
         contextPrefixChars: 6000,
         contextSuffixChars: 2000,
-        displayDeadlineMs: 4000
+        displayDeadlineMs: 10_000
       }
     })
 
@@ -94,7 +94,7 @@ describe('updateSettings codeCompletion', () => {
       enabledExtensions: ['ts'],
       contextPrefixChars: 6000,
       contextSuffixChars: 2000,
-      displayDeadlineMs: 4000
+      displayDeadlineMs: 10_000
     })
   })
 })

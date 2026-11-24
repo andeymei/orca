@@ -1,8 +1,8 @@
 import { Suspense } from 'react'
 import { lazyWithRetry as lazy } from '@/app-shell/startup/lazy-with-retry'
-import { AgentHibernationGate } from '../components/AgentHibernationGate'
-import { AiVaultTabTitleSyncGate } from '../components/AiVaultTabTitleSyncGate'
-import RetainedAgentsSyncGate from '../components/dashboard/RetainedAgentsSyncGate'
+import { AgentHibernationGate } from '../lib/agent-session/hibernation/AgentHibernationGate'
+import { AiVaultTabTitleSyncGate } from '../lib/agent-session/history/title-sync/AiVaultTabTitleSyncGate'
+import { TerminalSessionNameSyncGate } from '../lib/agent-session/history/session-names/TerminalSessionNameSyncGate'
 import { WorkspacePortScanner } from '../components/ports/WorkspacePortScanner'
 import { SavedHostScopeWidenGate } from '../components/sidebar/worktree-list/listing/SavedHostScopeWidenGate'
 import { MacosTccPromptNoticeHost } from '../hooks/MacosTccPromptNoticeHost'
@@ -15,9 +15,11 @@ import { NativeChatVisualGuestThemePublisher } from '../components/native-chat/m
 import { usePairedMobileDevices } from '../components/mobile/paired-mobile-devices'
 import { useAiInstructionCompletion } from '../components/editor/ai-instructions/use-ai-instruction-completion'
 
-const DashboardPopoutBridge = lazy(() => import('../components/dashboard/DashboardPopoutBridge'))
+const DashboardPopoutBridge = lazy(
+  () => import('../components/dashboard/popout-bridge/DashboardPopoutBridge')
+)
 const AgentListVerdictPublisher = lazy(
-  () => import('../components/activity/agent-list-verdict-publisher')
+  () => import('../components/activity/paired-clients/agent-list-verdict-publisher')
 )
 
 /** The editor unmounts on an agent tab, so the AI instruction watcher lives here, not on it. */
@@ -45,8 +47,8 @@ export function AppBackgroundServices(): React.JSX.Element {
       <MacosTccPromptNoticeHost />
       <RemoteHostBrowserControlNoticeHost />
       {/* Keep agent-status retention subscriptions out of the App render tree. */}
-      <RetainedAgentsSyncGate />
       <AiVaultTabTitleSyncGate />
+      <TerminalSessionNameSyncGate />
       <SavedHostScopeWidenGate />
       {dashboardPopoutEnabled ? (
         <Suspense fallback={null}>

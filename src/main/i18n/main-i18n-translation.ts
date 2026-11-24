@@ -1,7 +1,7 @@
 import type { i18n as I18nInstance } from 'i18next'
 
-import { createOrcaI18n } from '../../shared/orca-i18n-instance'
-import type { SupportedUiLocale } from '../../shared/ui-locale'
+import { createOrcaI18n } from '../../shared/i18n/orca-i18n-instance'
+import type { SupportedUiLocale } from '../../shared/i18n/ui-locale'
 
 /**
  * The main process's translation surface, without the system-locale half.

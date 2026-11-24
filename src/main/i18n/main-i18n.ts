@@ -6,8 +6,8 @@ import {
   translateMain
 } from './main-i18n-translation'
 
-import { DEFAULT_UI_LOCALE, resolveUiLocale } from '../../shared/ui-locale'
-import { UI_LANGUAGE_SYSTEM, type UiLanguage } from '../../shared/ui-language'
+import { DEFAULT_UI_LOCALE, resolveUiLocale } from '../../shared/i18n/ui-locale'
+import { UI_LANGUAGE_SYSTEM, type UiLanguage } from '../../shared/i18n/ui-language'
 
 export { mainI18n, setMainPluginLanguagePacks, translateMain }
 

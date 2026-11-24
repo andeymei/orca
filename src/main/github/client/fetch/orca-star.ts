@@ -1,4 +1,5 @@
-import { ghExecFileAsync, acquire, release } from '../../gh-utils'
+import { ghExecFileAsync } from '../../../git/command-runner/hosted-cli/gh-exec-file'
+import { acquire, release } from '../../execution/github-operation-slots'
 import { runAsDefaultWslCliUserAct } from '../../../git/command-runner/hosted-cli/default-wsl-cli-fallback'
 export const ORCA_REPO = 'stablyai/orca'
 
@@ -14,11 +15,6 @@ export function checkOrcaStarred(): Promise<boolean | null> {
     inFlightStarCheck = null
   })
   return inFlightStarCheck
-}
-
-/** @internal Drop any coalesced check so suites cannot inherit one another's. */
-export function __resetOrcaStarCheckForTests(): void {
-  inFlightStarCheck = null
 }
 
 async function runOrcaStarredCheck(): Promise<boolean | null> {

@@ -1,7 +1,7 @@
 import { Node, ReactNodeViewRenderer, type JSONContent } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
-import { imageReferenceToken } from '../../../../shared/native-chat/native-chat-image-reference'
+import { formatNativeChatFileReference } from '../../../../shared/native-chat/input/composer/agent-image-paste'
+import { imageReferenceToken } from '../../../../shared/native-chat/attachments/native-chat-image-reference'
 import { PromptFileReferencePill } from './PromptFileReferencePill'
 import { PromptImageReferencePill } from './PromptImageReferencePill'
 

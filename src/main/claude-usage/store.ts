@@ -1,4 +1,4 @@
-import { claudeTokenSessions } from '../usage/reporting/token-usage/agent-token-usage'
+import { claudeTokenDays } from '../usage/reporting/token-usage/agent-token-usage'
 import { join } from 'node:path'
 import type {
   ClaudeUsageBreakdownKind,
@@ -9,7 +9,7 @@ import type {
   ClaudeUsageSessionRow,
   ClaudeUsageSnapshot,
   ClaudeUsageSummary
-} from '../../shared/claude-usage-types'
+} from '../../shared/agent-usage/analytics/claude-usage-types'
 import type { AutomationRunUsage } from '../../shared/automations/history/automation-run'
 import type { UsageStoreHost } from '../usage/usage-store-host'
 import type { ClaudeUsagePersistedState } from './types'
@@ -22,7 +22,11 @@ import { buildBreakdown, buildDaily, buildSummary } from './claude-usage-report-
 import { buildRecentSessions } from './claude-usage-session-rows'
 import type { AutomationUsageLookupInput } from './claude-usage-automation-attribution'
 import { resolveAutomationRunUsage } from './claude-usage-automation-attribution'
-import { parseClaudeUsageReport, serializeClaudeUsageReport } from './persisted-usage-report'
+import {
+  parseClaudeUsageReport,
+  readClaudeUsageReportFile,
+  serializeClaudeUsageReport
+} from './persisted-usage-report'
 
 // Pre-v6 totals lack stable fork ownership or the 1-hour cache-write split and must be rescanned.
 // v7 stores protected column checkpoints on the worker and a separately protected report.
@@ -68,13 +72,14 @@ export class ClaudeUsageStore extends UsageProviderStoreLifecycle<
     super(host, {
       tokenUsage: {
         provider: 'claude',
-        selectSessions: (state) => claudeTokenSessions(state.sessions)
+        selectDays: (state) => claudeTokenDays(state.dailyAggregates)
       },
       logTag: '[claude-usage]',
       resolveCacheFile: () => join(host.userDataPath, 'orca-claude-usage.json'),
       createDefaultState: getDefaultState,
       normalizeState: normalizePersistedState,
       parseReport: parseClaudeUsageReport,
+      readFallbackCache: readClaudeUsageReportFile,
       serializeReport: serializeClaudeUsageReport,
       providerId: 'claude',
       sourceKey: 'processedFiles',

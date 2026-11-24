@@ -33,7 +33,7 @@ import { createRequire } from 'node:module'
 import os from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import { writePersistedStateFixture } from './startup-bench-state-fixture.mjs'
-import { electronIsolatedKeychainArgs } from '../../../src/shared/electron-isolated-profile-switches.ts'
+import { electronIsolatedKeychainArgs } from '../../../src/shared/app-lifecycle/launch/electron-isolated-profile-switches.ts'
 
 const scriptDir = import.meta.dirname
 const repoRoot = resolve(scriptDir, '..', '..', '..')

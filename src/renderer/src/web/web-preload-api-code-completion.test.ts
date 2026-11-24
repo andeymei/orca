@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApi } from './web-preload-api-test-harness'
+import { installApi } from './testing/web-preload-api-test-harness'
 
 describe('web code completion credential API', () => {
   beforeEach(() => {

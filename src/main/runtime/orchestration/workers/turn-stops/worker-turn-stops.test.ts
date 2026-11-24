@@ -3,9 +3,9 @@ import type { AgentPaneChange } from '../../../../agent-hooks/observations/agent
 import type { AgentStatusIpcPayload } from '../../../../../shared/agent-status/contracts/agent-status-ipc-payload'
 import type { AgentSessionTurnCompletionEvent } from '../../../../../shared/agent-session/view/agent-session-turn-completion-wire'
 import { makePaneKey } from '../../../../../shared/workspace-layout/stable-pane-id'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../../../shared/execution-host'
-import { formatOrcaSessionAddress } from '../../../../../shared/orca-session-address'
-import { testOrcaSessionId } from '../../../../../shared/orca-session-address-test-fixture'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../../shared/execution-host/execution-host'
+import { formatOrcaSessionAddress } from '../../../../../shared/agent-session/identity/orca-session-address'
+import { testOrcaSessionId } from '../../../../../shared/agent-session/identity/orca-session-address-test-fixture'
 import { chatWorkerTurnStopReporter } from './chat-worker-turn-stops'
 import { OrchestrationDb } from '../../db/orchestration-db'
 import '../../db/contract-constants'
@@ -14,7 +14,7 @@ import '../../db/dispatch-row-writer'
 import '../../db/attempt-outcome-projection'
 import { createRootDispatch } from '../../db/root-dispatch-test-fixture'
 import { TerminalWorkerTurnStops } from './terminal-worker-turn-stops'
-import { reportWorkerTurnStop } from './worker-turn-stop-report'
+import { observeWorker } from './worker-presence-report'
 
 const PANE = makePaneKey('tab-worker', '11111111-1111-4111-8111-111111111111')
 const HANDLE = 'term_worker'
@@ -77,6 +77,7 @@ function terminal(ctx: ReturnType<typeof setup>, current: { row: AgentStatusIpcP
     getHandle: () => HANDLE,
     getProcessIncarnation: () => null,
     takeOpenApproval: async () => null,
+    markApprovalReported: () => {},
     readScreen: async () => ({
       handle: HANDLE,
       status: 'running',
@@ -114,15 +115,20 @@ describe('terminal worker turn stops', () => {
   it('never mails a capability or credential carried in why a worker went away', () => {
     const ctx = setup()
     const capability = 'dcap_0123456789abcdefghijKLMN'
-    reportWorkerTurnStop(
+    observeWorker(
       ctx.db,
       { kind: 'local', dispatch: ctx.dispatch },
       {
-        from: HANDLE,
-        reason: 'lost',
-        lastOutput: undefined,
-        cause: `it never started: refused ${capability} at https://user:hunter2@git.example.com/repo`,
-        leftover: `workspace ${capability}`
+        presence: 'gone',
+        fence: 'gone',
+        gone: {
+          from: HANDLE,
+          reason: 'lost',
+          lastOutput: undefined,
+          cause: `it never started: refused ${capability} at https://user:hunter2@git.example.com/repo`,
+          leftover: `workspace ${capability}`
+        },
+        legacyStopKey: 'gone'
       },
       ctx.deps
     )
@@ -141,7 +147,7 @@ describe('terminal worker turn stops', () => {
         subject: 'Start',
         runId: ctx.run.id
       })
-      ctx.db.markAsRead([mail.id])
+      ctx.db.markAsRead([mail.id], { kind: 'terminal', handle: HANDLE })
     }
     const report = (type: 'worker_done' | 'heartbeat') => {
       const sent = ctx.db.insertMessage({
@@ -154,11 +160,16 @@ describe('terminal worker turn stops', () => {
       })
       ctx.db.convertLifecycleMessageToRejection(sent.id, 'worker_identity_changed', 'not the owner')
     }
-    const stop = (stopKey: string, turnStartedAt: number) =>
-      reportWorkerTurnStop(
+    const stop = (fence: string, turnStartedAt: number) =>
+      observeWorker(
         ctx.db,
         { kind: 'local', dispatch: ctx.dispatch },
-        { from: HANDLE, stopKey, reason: 'finished', lastOutput: undefined, turnStartedAt },
+        {
+          presence: 'at-rest',
+          fence,
+          legacyStopKey: fence,
+          rest: { from: HANDLE, reason: 'finished', lastOutput: undefined, turnStartedAt }
+        },
         ctx.deps
       )
     // The rejection is stored on the real clock: after 1970, before 2100.
@@ -225,10 +236,15 @@ describe('chat worker turn stops', () => {
   function chatWithTimers(ctx: ReturnType<typeof setup>) {
     const timers: (() => void)[] = []
     const status = 'idle' as const
-    const report = chatWorkerTurnStopReporter(ctx.deps, (run) => timers.push(run))
+    const reporter = chatWorkerTurnStopReporter(ctx.deps, (run) => {
+      timers.push(run)
+    })
     return {
       finish: (turnId: string) =>
-        report(completion('success', turnId), () => ({ status, lastAssistantMessage: 'Done.' })),
+        reporter.onTurnAttention(completion('success', turnId), () => ({
+          status,
+          lastAssistantMessage: 'Done.'
+        })),
       runTimers: () => {
         for (const run of timers.splice(0)) {
           run()

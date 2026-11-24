@@ -9,7 +9,7 @@ import {
   parseClaudeBackgroundAgentsValue,
   type ClaudeBackgroundAgent
 } from '../../shared/claude-background-agents'
-import { callRuntimeEnvironment } from '../ipc/runtime-environments/runtime-environment-transport-routing'
+import { callRuntimeEnvironment } from '../ipc/runtime-environments/requests/runtime-environment-transport-routing'
 
 /** A wedged host must not hold the picker open. */
 export const RUNTIME_CLAUDE_BACKGROUND_AGENTS_TIMEOUT_MS = 10_000

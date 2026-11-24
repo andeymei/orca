@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { DiffComment } from '../../../../src/shared/diff-comment-types'
-import { mergeDiffCommentMutation } from '../../../../src/shared/diff-comment-mutation'
+import type { DiffComment } from '../../../../src/shared/file-review/diff-comment-types'
+import { mergeDiffCommentMutation } from '../../../../src/shared/file-review/diff-comment-mutation'
 import {
   normalizeMobileDiffComments,
   removeDeliveredMobileDiffComments
-} from './mobile-diff-comments'
+} from './review-notes/mobile-diff-comments'
 
 function comment(overrides: Partial<DiffComment> & Pick<DiffComment, 'id'>): DiffComment {
   const { id, ...rest } = overrides

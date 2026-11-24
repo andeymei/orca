@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DiffCommentSchema } from './diff-comment-schema'
+import { DiffCommentSchema } from './file-review/diff-comment-schema'
 
 describe('DiffCommentSchema', () => {
   it('keeps an AI instruction record with its dispatch state', () => {

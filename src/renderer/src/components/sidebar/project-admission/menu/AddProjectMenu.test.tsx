@@ -6,16 +6,17 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '@/store'
-import { getDefaultSettings } from '../../../../../../shared/constants'
+import { getDefaultSettings } from '../../../../../../shared/orca-profiles/constants'
 import type { PublicKnownRuntimeEnvironment } from '../../../../../../shared/remote-runtime/host-catalog/runtime-environments'
 import {
   getProjectHostSetupSelectionKey,
   type ProjectHostSetupOption
 } from '@/lib/workspace/creation/project-host-setup-options'
-import { NewWorkspaceComposerProjectSection } from '@/components/new-workspace/NewWorkspaceComposerProjectSection'
-import { SidebarHeaderActions } from '../../sidebar-header-actions'
+import { NewWorkspaceComposerProjectSection } from '../../../new-workspace/composer/NewWorkspaceComposerProjectSection'
+import { SidebarHeaderActions } from '../../chrome/sidebar-header-actions'
 import AddRepoDialog from '../dialog/AddRepoDialog'
 import type { AddRepoDialogEntryRequest } from '../dialog/add-repo-dialog-types'
+import { RuntimeRpcCallError } from '@/runtime/rpc/calls/runtime-rpc-result'
 
 const browseRuntimeServerDirectoryMock = vi.fn()
 const callRuntimeRpcMock = vi.fn()
@@ -297,7 +298,13 @@ describe('AddRepoDialog direct menu entry', () => {
       parentPath: '/home',
       entries: []
     })
-    callRuntimeRpcMock.mockResolvedValue({ available: true })
+    callRuntimeRpcMock.mockRejectedValue(
+      new RuntimeRpcCallError({
+        id: 'req-1',
+        ok: false,
+        error: { code: 'method_not_found', message: 'unknown method' }
+      })
+    )
 
     render(
       <TooltipProvider>

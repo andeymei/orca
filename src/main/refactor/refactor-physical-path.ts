@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { realpath } from 'node:fs/promises'
-import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
+import { isDefinitiveAbsence } from '../../shared/errors/definitive-filesystem-absence'
 
 /** Windows takes both separators; the other platforms take one. */
 const SEPARATOR_PATTERN = process.platform === 'win32' ? /[\\/]/ : /\//

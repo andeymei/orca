@@ -7,8 +7,8 @@ import { useAppStore } from '@/store'
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import { makeWorktree } from '@/store/slices/worktrees/worktree.test-fixture'
 
-import type { ExecutionHostId } from '../../../../shared/execution-host'
-import type { DiffComment } from '../../../../shared/diff-comment-types'
+import type { ExecutionHostId } from '../../../../shared/execution-host/execution-host'
+import type { DiffComment } from '../../../../shared/file-review/diff-comment-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 
 import {

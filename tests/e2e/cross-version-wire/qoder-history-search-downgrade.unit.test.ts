@@ -16,7 +16,10 @@ import {
 import { AI_VAULT_AGENTS } from '../../../src/shared/ai-vault/contracts/ai-vault-types'
 import { redactForTransport } from '../../../src/shared/ai-vault/search/ai-vault-search-transport'
 import { LEGACY_SEARCH_AGENTS } from '../../../src/shared/ai-vault/search/ai-vault-search-agent-compatibility'
-import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
+import {
+  importReleaseCheckoutModule,
+  materializeReleaseCheckout
+} from './release-checkouts/release-checkout'
 import { prepareReleaseFixtures } from './release-fixture-setup'
 
 const PRE_QODER_HOSTS = ['v1.4.211', 'b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c']

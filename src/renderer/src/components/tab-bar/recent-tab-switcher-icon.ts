@@ -8,7 +8,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 
-import type { RecentTabSwitcherItem } from './recent-tab-switching'
+import type { RecentTabSwitcherItem } from './recent-switcher/recent-tab-switching'
 
 /**
  * The icon a switcher row carries.

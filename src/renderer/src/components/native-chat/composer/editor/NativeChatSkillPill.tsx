@@ -1,6 +1,7 @@
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import { Package } from 'lucide-react'
-import { PromptPill } from '@/components/prompt-editor/PromptPill'
+import { useTranslate } from '@/i18n/use-translate'
+import { NativeChatPromptPill } from './NativeChatPromptPill'
 
 function titleWords(name: string): string {
   return name
@@ -21,12 +22,17 @@ export function skillLabel(token: string): string {
 }
 
 export function NativeChatSkillPill({ node, selected }: NodeViewProps): React.JSX.Element {
+  const t = useTranslate()
   const token = String(node.attrs.token)
+  const label = skillLabel(token)
   return (
     <NodeViewWrapper as="span" className="inline" contentEditable={false}>
-      <PromptPill
+      <NativeChatPromptPill
         icon={Package}
-        label={skillLabel(token)}
+        label={label}
+        spokenLabel={t('components.native-chat.composer.skillPillLabel', 'Skill: {{name}}', {
+          name: label
+        })}
         selected={selected}
         data-native-chat-skill={token}
       />

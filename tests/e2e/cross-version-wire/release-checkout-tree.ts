@@ -20,6 +20,10 @@ const OPTIONAL_ARCHIVE_PATHS = [
   'src/wsl-guest',
   // The phone row reader; the newest release moved it under row-presentation and cannot answer a phone read.
   'mobile/src/worktree/agent-row-display.ts',
+  // The cloud contracts a release's own source imports by relative path.
+  'cloud/packages/connector-contract',
+  'cloud/packages/push-contract',
+  'cloud/packages/relay-contract',
   // Released phone read operations and their runtime decoding dependencies.
   'mobile/src/agent-history/agent-history-reply-schema.ts',
   'mobile/src/agent-history/mobile-agent-history-operations.ts',

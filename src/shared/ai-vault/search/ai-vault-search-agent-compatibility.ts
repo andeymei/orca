@@ -2,7 +2,7 @@ import type { AiVaultAgent } from '../contracts/ai-vault-types'
 import type { AiVaultSearchStatus } from './ai-vault-search-types'
 
 // Frozen to the v1.4.211 parser; extending the current catalog must not widen old-host requests.
-const LEGACY_SEARCH_AGENTS: readonly AiVaultAgent[] = [
+export const LEGACY_SEARCH_AGENTS: readonly AiVaultAgent[] = [
   'claude',
   'codex',
   'hermes',

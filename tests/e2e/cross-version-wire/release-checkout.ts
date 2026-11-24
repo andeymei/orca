@@ -1,7 +1,11 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { selectLatestStableReleaseTag } from '../../../config/scripts/release/versioning/stable-release-tags.mjs'
+import {
+  compareReleaseTags,
+  selectLatestStableReleaseTag,
+  STABLE_DESKTOP_RELEASE_TAG
+} from '../../../config/scripts/release/versioning/stable-release-tags.mjs'
 import {
   populateReleaseCheckoutSource,
   resolveSharedReleaseCacheRoot
@@ -50,6 +54,23 @@ function git(args: string[]): string {
   }).trim()
 }
 
+/** Whether this checkout already carries the ref: a release the current tree is newer than. */
+function isAncestorOfCheckout(ref: string): boolean {
+  return (
+    spawnSync('git', ['merge-base', '--is-ancestor', `${ref}^{commit}`, 'HEAD'], {
+      cwd: REPO_ROOT,
+      stdio: 'ignore'
+    }).status === 0
+  )
+}
+
+/** The stable desktop releases, newest first. */
+function stableReleaseTagsNewestFirst(tags: string[]): string[] {
+  return tags
+    .filter((tag) => STABLE_DESKTOP_RELEASE_TAG.test(tag))
+    .sort((left, right) => compareReleaseTags(right, left))
+}
+
 // Prefer the explicit baseline override, then the newest stable desktop tag; missing baselines must fail rather than skip.
 export function resolveBaselineReleaseRef(): string {
   const override = process.env[BASELINE_REF_ENV]?.trim()
@@ -64,6 +85,12 @@ export function resolveBaselineReleaseRef(): string {
       `Cross-version harness could not list git tags in ${REPO_ROOT}: ${String(error)}. ` +
         `Run it inside a git checkout, or pin a ref with ${BASELINE_REF_ENV}.`
     )
+  }
+  // The baseline is a release this checkout is newer than. A release cut ahead of the tree
+  // would make the current client the older side and invert every expectation.
+  const baseline = stableReleaseTagsNewestFirst(tags).find((tag) => isAncestorOfCheckout(tag))
+  if (baseline) {
+    return baseline
   }
   const latest = selectLatestStableReleaseTag(tags)
   if (!latest) {

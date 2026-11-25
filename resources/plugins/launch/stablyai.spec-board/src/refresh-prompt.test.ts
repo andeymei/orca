@@ -57,6 +57,11 @@ test('names all six progress counts, and says they have to be written', () => {
   assert.match(prompt, /done \+ inProgress <= total/)
 })
 
+test('says what to do when the registry file is not there', () => {
+  assert.match(prompt, /注册表文件不存在/)
+  assert.match(prompt, /空数组/)
+})
+
 test('asks for the CLI answer of every project, local and remote', () => {
   assert.match(prompt, /openspec --version/)
   assert.match(prompt, /openspecCli/)

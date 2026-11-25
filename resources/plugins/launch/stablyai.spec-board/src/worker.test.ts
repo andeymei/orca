@@ -678,6 +678,37 @@ test('a refresh without a workspace is refused with invalid_params', async () =>
   await worker.deactivate()
 })
 
+test('a refresh that cannot write its prompt is refused with a message', async () => {
+  const root = await home()
+  // The store directory points inside a file, so neither it nor the prompt file can exist.
+  const blocker = join(root, 'blocker')
+  await writeFile(blocker, 'x', 'utf8')
+  process.env.SPEC_BOARD_HOME = join(blocker, 'store')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': {
+        workspaceId: 'w1',
+        branch: 'main',
+        displayName: 'demo',
+        terminals: []
+      },
+      'agent.launch': { terminalId: 't9' }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  // The panel is handed a code it knows and a message that names the reason, not a raw errno.
+  await assert.rejects(worker.request('board.refresh'), (error: unknown) => {
+    const failure = error as { code?: string; message?: string }
+    return (
+      failure.code === 'unavailable' &&
+      (failure.message ?? '').includes('last-refresh-prompt.md')
+    )
+  })
+  assert.deepEqual(host.callsOf('agent.launch'), [])
+  await worker.deactivate()
+})
+
 test('the worker starts even when the store directory cannot be created', async () => {
   const root = await home()
   // The store directory points inside a file, so it can never be a directory.

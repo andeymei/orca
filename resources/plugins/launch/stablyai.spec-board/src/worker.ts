@@ -146,14 +146,35 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string }> {
     throw requestError('invalid_params', '没有可用的 workspace 来刷新')
   }
   const prompt = buildRefreshPrompt({ registryPath: registryPath(), snapshotPath: snapshotPath() })
-  await mkdir(boardStoreDir(), { recursive: true })
-  await writeFile(refreshPromptPath(), prompt, 'utf8')
+  await writeRefreshPrompt(orca, prompt)
   const launched = await orca.host.call('agent.launch', {
     workspaceId,
     agent: settings.refreshAgent === '' ? 'claude' : settings.refreshAgent,
     prompt
   })
   return { terminalId: launched.terminalId }
+}
+
+/**
+ * Writes the prompt of this refresh, so a person can read what the agent was asked. A store
+ * directory that cannot be made is logged and the write is tried anyway; a write that fails is a
+ * refusal the panel can show, with the reason in it — a raw errno reaches the panel as a code it
+ * does not recognise, and the person sees nothing useful.
+ */
+async function writeRefreshPrompt(orca: OrcaWorkerApi, prompt: string): Promise<void> {
+  try {
+    await mkdir(boardStoreDir(), { recursive: true })
+  } catch (error) {
+    orca.log(`[spec-board] 无法创建 ${boardStoreDir()}：${messageOf(error)}`)
+  }
+  try {
+    await writeFile(refreshPromptPath(), prompt, 'utf8')
+  } catch (error) {
+    throw requestError(
+      'unavailable',
+      `无法写入 ${refreshPromptPath()}：${messageOf(error)}`
+    )
+  }
 }
 
 /** Watches the store directory, so a new snapshot reaches the open panels. */

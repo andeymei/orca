@@ -86,7 +86,7 @@ async function draftsFromScratchTree(
     }
     drafts.push({
       id: entry.id,
-      title: entry.id,
+      title: restoredTitle(entry),
       rationale: '',
       files: entry.files,
       restored: true,
@@ -94,6 +94,22 @@ async function draftsFromScratchTree(
     })
   }
   return drafts
+}
+
+/**
+ * The name of a proposal the agent never named.
+ *
+ * Why the file: a restored proposal has no title and no reason, and the id alone ("p1") says
+ * nothing about what the user is about to read.
+ */
+function restoredTitle(entry: { id: string; files: string[] }): string {
+  const first = entry.files[0]
+  if (first === undefined) {
+    return entry.id
+  }
+  // Why the split: the file may be named with the separator of the machine that wrote it.
+  const name = first.split(/[\\/]/).pop()
+  return name !== undefined && name.length > 0 ? name : entry.id
 }
 
 /**

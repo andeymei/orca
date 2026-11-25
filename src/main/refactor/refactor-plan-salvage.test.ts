@@ -25,6 +25,23 @@ describe('the plan of a turn that was cut off', () => {
     expect(result.plan.proposals[0].files[0].hunks).toHaveLength(1)
   })
 
+  it('names a proposal the agent never named after the file it changes', async () => {
+    const result = await salvageRefactorPlan({
+      plan: {
+        jobId: 'job-1',
+        sourcePath: 'src/foo.ts',
+        scratchRoot: '/repo/.orca/refactor/job-1',
+        workspaceRoot: '/repo',
+        readBaseline: async () => ORIGINAL,
+        readDiskContent: async () => ORIGINAL,
+        listScratchProposals: async () => [{ id: 'p1', files: ['src/foo.ts'] }],
+        scratchFiles: async () => MODIFIED
+      },
+      completedWriteKeys: new Set(['p1/src/foo.ts'])
+    })
+    expect(result.plan.proposals[0].title).toBe('foo.ts')
+  })
+
   it('leaves out a file the turn was interrupted in the middle of writing', async () => {
     // Why the other file: a write whose tool result never came back is half a file, and half a
     // file offered as a proposal would be applied as one.

@@ -109,6 +109,8 @@ function DialogDisclosure({
       )}
     />
   )
+  const triggerVariant =
+    status === 'warning' ? 'status-warning' : status === 'muted' ? 'status-muted' : 'disclosure'
   return (
     <Collapsible
       className="flex min-w-0 flex-col"
@@ -118,14 +120,7 @@ function DialogDisclosure({
         onOpenChange?.(next)
       }}
     >
-      <CollapsibleTrigger
-        aria-controls={contentId}
-        className={cn(
-          'flex w-fit items-center gap-1 rounded-sm text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50',
-          status && 'h-5 max-w-full min-w-0 gap-1.5 leading-5',
-          status === 'warning' && 'text-status-warning-text hover:text-status-warning-text'
-        )}
-      >
+      <CollapsibleTrigger aria-controls={contentId} variant={triggerVariant}>
         {status ? null : chevronIcon}
         {label}
         {status ? chevronIcon : null}

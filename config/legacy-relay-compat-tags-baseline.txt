@@ -24,3 +24,5 @@ src/renderer/src/store/terminals/retirement/legacy-relay-bridged-tab-close.ts
 src/shared/remote-runtime/relay/legacy-relay-bridge-contract.ts
 src/shared/remote-runtime/ssh/ssh-types.ts
 src/shared/telemetry/schemas/telemetry-ssh-host-server-event-schemas.ts
+tests/e2e/cross-version-wire/released-relay-daemon.ts
+tests/e2e/cross-version-wire/released-relay-transport.ts

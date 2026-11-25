@@ -9,3 +9,9 @@ export const DEFAULT_TASK_CHECKOUT_TARGET: TaskCheckoutTarget = 'current-checkou
 export function isTaskCheckoutTarget(value: unknown): value is TaskCheckoutTarget {
   return typeof value === 'string' && TASK_CHECKOUT_TARGETS.some((target) => target === value)
 }
+
+/** Settings group: where a new task's agent runs. */
+export type TaskCheckoutTargetSettings = {
+  /** Where a new task runs: a fresh worktree, or the repo's existing checkout on its current branch. */
+  taskCheckoutTarget: TaskCheckoutTarget
+}

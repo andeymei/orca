@@ -21886,9 +21886,7 @@
           "coordinatorDeniedHere": "Coordinator denied <tool>{{tool}}</tool>",
           "allowedUnnamed": "Allowed <tool>{{tool}}</tool>",
           "deniedUnnamed": "Denied <tool>{{tool}}</tool>"
-        },
-        "closedUnnamed": "Closed without a recorded answer",
-        "workerEnded": "No longer open · worker ended"
+        }
       },
       "launchPromptNotDelivered": "Not delivered — check the terminal",
       "subagents": {

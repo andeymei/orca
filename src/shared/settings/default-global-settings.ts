@@ -1,8 +1,8 @@
 import type { GlobalSettings } from './global-settings-types'
 import type { NotificationSettings } from '../notifications/notification-settings-types'
 import type { VoiceSettings } from '../speech/speech-types'
-import { DEFAULT_TERMINAL_FONT_WEIGHT_BOLD } from '../terminal/appearance/terminal-fonts'
 import { getDefaultTerminalQuickCommands } from '../terminal/quick-commands/terminal-quick-commands'
+import { defaultTerminalSettings } from './default-terminal-settings'
 import { TASK_PROVIDERS } from '../work-items/task-providers'
 import {
   getDefaultCommitMessageAiSettings,
@@ -84,44 +84,7 @@ export function buildDefaultSettings(args: {
     primarySelectionMiddleClickPasteDefaultedForLinux: args.primarySelectionDefaultedForLinux,
     primarySelectionMiddleClickPasteDefaultedForTerminalDefaults:
       args.primarySelectionMiddleClickPaste,
-    terminalFontSize: 14,
-    terminalFontFamily: args.terminalFontFamily,
-    terminalFontWeight: args.terminalFontWeight,
-    terminalFontWeightWindowsRegular: args.terminalFontWeightWindowsRegular,
-    terminalFontWeightBold: DEFAULT_TERMINAL_FONT_WEIGHT_BOLD,
-    terminalLineHeight: 1,
-    terminalScrollSensitivity: 1.15,
-    terminalFastScrollSensitivity: 5,
-    terminalTuiScrollSensitivity: 1,
-    terminalTuiScrollSensitivityDefaultedToOne: true,
-    // Why: "auto" uses WebGL when supported, falling back to DOM on renderer failure or software/unknown GPU.
-    terminalGpuAcceleration: 'auto',
-    // Why 'auto': enable ligatures only for known ligature fonts, never forced. Resolver in shared/terminal-ligatures.ts.
-    terminalLigatures: 'auto',
-    // Lazy image addon stays off the critical path and creates canvas layers only on first image; decoder setup still has overhead.
-    terminalInlineImages: true,
-    terminalDroppedImagesPreview: true,
-    terminalCursorStyle: 'block',
-    terminalCursorStyleDefaultedToBlock: true,
-    terminalCursorBlink: true,
-    terminalThemeDark: 'Ghostty Default Style Dark',
-    terminalDividerColorDark: '#3f3f46',
-    terminalUseSeparateLightTheme: true,
-    terminalColorOverridesSplit: true,
-    terminalThemeLight: 'Builtin Tango Light',
-    claudeCodeThemeSync: false,
-    terminalCustomThemes: [],
-    terminalDividerColorLight: '#d4d4d8',
-    terminalInactivePaneOpacity: args.terminalInactivePaneOpacity,
-    terminalActivePaneOpacity: 1,
-    terminalPaneOpacityTransitionMs: 140,
-    terminalDividerThicknessPx: 3,
-    // Why: Windows paste-on-right-click matches native convention; macOS/Linux keep right-click for the context menu.
-    terminalRightClickToPaste: args.terminalRightClickToPaste,
-    terminalRightClickToPasteDefaultedForPlatform: true,
-    terminalWindowsShell: 'powershell.exe',
-    terminalDefaultShell: '',
-    terminalWindowsWslDistro: null,
+    ...defaultTerminalSettings(args),
     localAccountRuntime: 'auto',
     localAccountRuntimeDefaultedToAutoForAllUsers: true,
     localAccountWslDistro: null,

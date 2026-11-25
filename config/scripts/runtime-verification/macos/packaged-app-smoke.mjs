@@ -31,7 +31,7 @@ const RUN_DIR = process.env.ORCA_SMOKE_RUN_DIR ?? join(tmpdir(), `orca-mac-smoke
 const SCREENSHOT_PATH = join(RUN_DIR, 'orca-packaged-smoke.png')
 const ONBOARDING_SOURCE = resolve(
   import.meta.dirname,
-  '../../../../src/shared/onboarding-defaults.ts'
+  '../../../../src/shared/onboarding/onboarding-defaults.ts'
 )
 
 const results = []

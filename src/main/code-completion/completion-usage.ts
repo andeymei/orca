@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { writeSecureFile } from '../../shared/secure-storage/secure-file'
+import { writeSecureFileAsync } from '../../shared/secure-storage/secure-file-async-write'
 import { salvagingRecord } from '../../shared/validation/zod-salvage'
 import { emptyCompletionUsage, type CompletionUsage } from './completion-backend'
 
@@ -89,7 +89,7 @@ async function writeUsageDays(entry: {
   }
   pruneDays(days, entry.at)
   try {
-    writeSecureFile(completionUsageFile(), JSON.stringify(days, null, 2))
+    await writeSecureFileAsync(completionUsageFile(), JSON.stringify(days, null, 2))
   } catch (error) {
     console.warn('[code-completion] Failed to record the completion usage.', error)
   }

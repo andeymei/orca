@@ -11,6 +11,13 @@ function Collapsible({
   return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />
 }
 
+// A dialog's disclosure label: muted at rest, brighter on hover.
+const disclosureTriggerClasses =
+  'flex w-fit items-center gap-1 rounded-sm text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50'
+
+// The same label as a one-line status row, with the chevron after it.
+const statusTriggerClasses = 'h-5 max-w-full min-w-0 gap-1.5 leading-5'
+
 const collapsibleTriggerVariants = cva('', {
   variants: {
     variant: {
@@ -19,7 +26,13 @@ const collapsibleTriggerVariants = cva('', {
       row: 'group flex w-full cursor-pointer items-center justify-between gap-4 rounded-md bg-transparent py-2 text-left text-sm font-medium outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:hover:bg-accent/50',
       // A one-line summary of settings inside a bordered box, opening to edit them.
       summary:
-        'group flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground outline-none hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50'
+        'group flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground outline-none hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50',
+      // A dialog's disclosure label, with the chevron before it.
+      disclosure: disclosureTriggerClasses,
+      // The same label as a one-line status row, with the chevron after it.
+      'status-muted': `${disclosureTriggerClasses} ${statusTriggerClasses}`,
+      // The same status row, in the warning colour.
+      'status-warning': `${disclosureTriggerClasses} ${statusTriggerClasses} text-status-warning-text hover:text-status-warning-text`
     }
   },
   defaultVariants: { variant: 'default' }

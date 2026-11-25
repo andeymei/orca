@@ -71,6 +71,8 @@ it('caps seeds by recent use, preserves imported copies, and scopes cleanup to i
   expect((await stat(oldFormat)).isDirectory()).toBe(true)
 })
 
+// Why 15s: the lease must outlive its 2.5s stale interval with real mtime refreshes, plus the
+// rival's 200 retries at 50ms, all on the real clock.
 it('keeps a copy lease alive beyond its stale interval and blocks competing cleanup', async () => {
   const root = await scratch()
   const options: CheckoutLockOptions = {
@@ -105,6 +107,8 @@ it('keeps a copy lease alive beyond its stale interval and blocks competing clea
     options
   )
   try {
+    // The lease's staleness is real elapsed time; its mtime refresh is driven by real timers and fs writes.
+    // ast-grep-ignore: test-no-wall-clock -- fake timers cannot advance the lock's real mtime refresh.
     const start = Date.now()
     const mtimes = new Set<number>()
     await vi.waitFor(
@@ -112,6 +116,7 @@ it('keeps a copy lease alive beyond its stale interval and blocks competing clea
         mtimes.add(
           (await stat(join(root, `format-${CHECKOUT_FORMAT}`, 'maintenance.lock'))).mtimeMs
         )
+        // ast-grep-ignore: test-no-wall-clock -- measured against the real lease intervals above.
         expect(Date.now() - start).toBeGreaterThan(options.stale + 250)
         expect(mtimes.size).toBeGreaterThanOrEqual(3)
       },

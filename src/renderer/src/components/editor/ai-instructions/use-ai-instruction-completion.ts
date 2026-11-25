@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useAppStore } from '@/store'
 import { useAiInstructionComments } from '../../diff-comments/use-diff-comment-owner'
 import { isAiInstructionCompletedByStatus } from './ai-instruction-status'
@@ -9,21 +9,36 @@ import { isAiInstructionCompletedByStatus } from './ai-instruction-status'
  */
 export function useAiInstructionCompletion(): void {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
-  const agentStatusByPaneKey = useAppStore((s) => s.agentStatusByPaneKey)
   const markAiInstructionsCompleted = useAppStore((s) => s.markAiInstructionsCompleted)
   const { owner, comments } = useAiInstructionComments(activeWorktreeId, 'selection')
+  // The projection, not the status map: this hook watches the panes that carry an instruction, and
+  // a fleet-wide map re-renders every reader on every status update anywhere in the fleet.
+  const projection = useAppStore((s) => s.agentStatusByPaneKey.projection)
+  const subscribeToStatusChanges = useCallback(
+    (listener: () => void) => projection.subscribeChanges(listener),
+    [projection]
+  )
+  const readStatusRevision = useCallback(() => projection.changeCursor(), [projection])
+  const statusRevision = useSyncExternalStore(
+    subscribeToStatusChanges,
+    readStatusRevision,
+    readStatusRevision
+  )
   // A failed write rolls the store back, which re-fires this effect with the same ids; only a real
   // status change may release them.
   const blockedIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     blockedIdsRef.current.clear()
-  }, [agentStatusByPaneKey])
+  }, [statusRevision])
 
   useEffect(() => {
     if (!owner || !comments) {
       return
     }
+    // The live map, read at the moment of the scan: the projection says which panes changed, the
+    // map says what they say now.
+    const statuses = useAppStore.getState().agentStatusByPaneKey
     const ids: string[] = []
     for (const record of comments) {
       if (record.sentAt === undefined || record.completedAt !== undefined) {
@@ -38,7 +53,7 @@ export function useAiInstructionCompletion(): void {
       const completed = isAiInstructionCompletedByStatus({
         sentAt: record.sentAt,
         completedAt: record.completedAt,
-        status: agentStatusByPaneKey[record.dispatchedPaneKey]
+        status: statuses.get(record.dispatchedPaneKey)
       })
       if (completed) {
         ids.push(record.id)
@@ -62,5 +77,5 @@ export function useAiInstructionCompletion(): void {
       .catch((err) => {
         console.error('Failed to complete AI instruction records:', err)
       })
-  }, [agentStatusByPaneKey, comments, markAiInstructionsCompleted, owner])
+  }, [statusRevision, comments, markAiInstructionsCompleted, owner])
 }

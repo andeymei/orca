@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as NodePath from 'node:path'
 import { _resetSecretStoreForTests, setSecretStore } from '../../shared/secure-storage/secret-store'
 import type * as CodeCompletionApiKeyStore from './code-completion-api-key-store'
 
@@ -29,7 +30,7 @@ vi.mock('node:os', () => ({
 }))
 
 vi.mock('node:path', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:path')>()
+  const actual = await importOriginal<typeof NodePath>()
   return { ...actual, join: (...parts: string[]) => parts.join('/') }
 })
 

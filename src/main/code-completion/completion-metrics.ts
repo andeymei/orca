@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { writeSecureFile } from '../../shared/secure-storage/secure-file'
+import { writeSecureFileAsync } from '../../shared/secure-storage/secure-file-async-write'
 import {
   CODE_COMPLETION_LATENCY_SAMPLE_LIMIT,
   emptyCodeCompletionMetricCounts,
@@ -74,7 +74,7 @@ async function writeMetrics(report: {
   }
   file.models[report.model] = model
   try {
-    writeSecureFile(path, JSON.stringify(file, null, 2))
+    await writeSecureFileAsync(path, JSON.stringify(file, null, 2))
   } catch (error) {
     // Why: the counters are a measurement, and a measurement that cannot be written must not
     // disturb the editor.

@@ -240,9 +240,8 @@ export function ShortcutRecorderButton({
             <ShortcutKeyCombo
               keys={keys}
               doubleTap={isDoubleTapBinding(binding)}
-              className="gap-0 whitespace-nowrap"
-              keyCapClassName="min-w-0 border-0 bg-transparent p-0 text-2xs font-medium text-current shadow-none"
-              separatorClassName="text-2xs"
+              size="inline"
+              className="whitespace-nowrap"
             />
           ) : (
             <span className="flex flex-wrap items-center justify-end gap-1.5 overflow-hidden">

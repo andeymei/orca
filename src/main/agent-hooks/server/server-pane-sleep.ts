@@ -41,6 +41,7 @@ export abstract class AgentHookServerPaneSleep extends AgentHookServerAuthorityF
     resumed?: Pick<LaunchResumeIdentityEvent, 'agentType' | 'providerSession'>
   ): void {
     const resolved = this.resolvePaneKeyAlias(paneKey)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the map stores enriched payloads; the cast names the enriched row this read needs.
     const row = this.state.lastStatusByPaneKey.get(resolved) as
       | EnrichedAgentHookEventPayload
       | undefined

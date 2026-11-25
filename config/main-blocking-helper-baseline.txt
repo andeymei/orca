@@ -247,6 +247,8 @@
 1 src/main/cli/wsl/wsl-cli-registration-reconciliation.ts
 6 src/main/cli/wsl/wsl-cli-registration-registry.ts
 1 src/main/cli/wsl/wsl-managed-cli.ts
+2 src/main/code-completion/completion-metrics.ts # per suggestion: writeSecureFileAsync keeps only its fenced renameSync synchronous, so the read, stage and fsync stay off the main thread
+2 src/main/code-completion/completion-usage.ts # per completion: writeSecureFileAsync keeps only its fenced renameSync synchronous, so the read, stage and fsync stay off the main thread
 2 src/main/codex-accounts/account-management/codex-account-registration.ts
 1 src/main/codex-accounts/credentials/codex-credential-absence-grace.ts
 5 src/main/codex-accounts/credentials/managed-codex-auth-readiness.ts
@@ -585,6 +587,7 @@
 5 src/main/ipc/browser/browser-session-profile-ipc.ts
 1 src/main/ipc/browser/browser.ts
 7 src/main/ipc/cli.ts
+1 src/main/ipc/code-completion-suggestion.ts # writes one metric per suggestion through the async secure writer; only its fenced renameSync is synchronous
 1 src/main/ipc/command-path/command-path-directory-worker-client.ts
 2 src/main/ipc/computer-use-permissions.ts
 2 src/main/ipc/custom-app-icon.ts
@@ -1226,6 +1229,7 @@
 11 src/main/runtime/rpc/methods/bots-tools.ts
 1 src/main/runtime/rpc/methods/bots.ts
 1 src/main/runtime/rpc/methods/browser/browser-identity-rpc.ts
+1 src/main/runtime/rpc/methods/code-completion/code-completion-methods.ts # writes one usage total per completion through the async secure writer; only its fenced renameSync is synchronous
 15 src/main/runtime/rpc/methods/computer/computer.ts
 1 src/main/runtime/rpc/methods/google-files.ts
 1 src/main/runtime/rpc/methods/host-management/environment-doctor.ts
@@ -1240,6 +1244,7 @@
 1 src/main/runtime/rpc/methods/orchestration/messaging/peer-mail-reply.ts # one savepoint around orchestration DB writes that were already synchronous, so an answer or notice and its mail commit together
 1 src/main/runtime/rpc/methods/orchestration/messaging/reply-method.ts # one savepoint around orchestration DB writes that were already synchronous, so an answer or notice and its mail commit together
 1 src/main/runtime/rpc/methods/orchestration/runs/runs.ts
+1 src/main/runtime/rpc/methods/refactor/refactor-methods.ts # one command resolution per background refactor job: the same cliMissing detection every other launch path charges, and the method itself is already async
 1 src/main/runtime/rpc/methods/terminal/session-terminal-scrollback.ts
 1 src/main/runtime/rpc/methods/workspaces/worktree.ts
 5 src/main/runtime/rpc/server/network-source-policy-store.ts

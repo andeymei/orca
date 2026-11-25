@@ -27,8 +27,11 @@ type ShortcutKeyComboProps = {
   separatorClassName?: string
   // Override cap colors when chips sit on a non-default surface (e.g. a filled primary card).
   keyCapClassName?: string
-  /** `compact`: a small flat cap that sits inside a line of text or a button label. */
-  size?: 'default' | 'compact'
+  /**
+   * `compact`: a small flat cap that sits inside a line of text or a button label.
+   * `inline`: the keys read as plain glyphs in a menu row instead of key caps.
+   */
+  size?: 'default' | 'compact' | 'inline'
   renderKey?: (key: string) => React.ReactNode
   // Double taps use repeated labels/glyphs with a space instead of +.
   doubleTap?: boolean
@@ -45,10 +48,12 @@ export function ShortcutKeyCombo({
 }: ShortcutKeyComboProps): React.JSX.Element {
   const t = useTranslate()
   const isMac = navigator.userAgent.includes('Mac')
+  const separatorClasses =
+    separatorClassName ?? (size === 'inline' ? 'text-2xs' : 'mx-0.5 text-xs text-muted-foreground')
 
   return (
     <span
-      className={cn('inline-flex items-center gap-1', className)}
+      className={cn('inline-flex items-center gap-1', size === 'inline' && 'gap-0', className)}
       title={
         doubleTap && keys.length > 0
           ? t('auto.components.ShortcutKeyCombo.07eb4985a1', 'Double-tap {{value0}}', {
@@ -63,12 +68,14 @@ export function ShortcutKeyCombo({
             label={renderKey ? renderKey(key) : key}
             className={cn(
               size === 'compact' && 'min-w-0 px-1 py-0 text-2xs shadow-none',
+              size === 'inline' &&
+                'min-w-0 border-0 bg-transparent p-0 text-2xs font-medium text-current shadow-none',
               keyCapClassName
             )}
           />
           {/* Mac uses adjacent glyphs; Windows/Linux use +. Double taps use a space. */}
           {!isMac && !doubleTap && index < keys.length - 1 ? (
-            <span className={separatorClassName ?? 'mx-0.5 text-xs text-muted-foreground'}>+</span>
+            <span className={separatorClasses}>+</span>
           ) : null}
         </React.Fragment>
       ))}

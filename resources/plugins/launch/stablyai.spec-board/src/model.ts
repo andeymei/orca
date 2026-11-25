@@ -71,12 +71,20 @@ export type SnapshotItem = {
 /** A terminal command or an agent prompt — what a button on the board runs. */
 export type ActionRun = { kind: 'terminal'; command: string } | { kind: 'agent'; prompt: string }
 
+/**
+ * What an action acts on: one change of the project, or the project itself. It is the catalog's
+ * own scope, carried on the action so that nothing has to read it back out of the run's text.
+ */
+export type ActionScope = 'change' | 'project'
+
 export type Action = {
   id: string
   label: string
   framework: 'openspec' | 'superpowers'
   run: ActionRun
   mutates: boolean
+  /** Whether the action acts on one change, or on the project as a whole. */
+  scope: ActionScope
 }
 
 /** A snapshot item plus the worker's own derivations. */

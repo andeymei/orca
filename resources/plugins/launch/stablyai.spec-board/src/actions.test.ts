@@ -1,7 +1,14 @@
 import { assert, test } from 'orca/testing'
 import { OPENSPEC_COMMANDS } from './action-catalog'
 import type { Action } from './model'
-import { actionsForItem, findAction, frameworkActions, resolvePaletteAction } from './actions'
+import {
+  CHANGE_ID_PLACEHOLDER,
+  actionsForItem,
+  findAction,
+  frameworkActions,
+  needsChangeId,
+  resolvePaletteAction
+} from './actions'
 
 const item = {
   topic: 'add-x',
@@ -537,14 +544,75 @@ test("the palette's agent form resolves the change id too", () => {
   assert.equal(prompt.includes('<change-id>'), false)
 })
 
-test('a palette action without a placeholder resolves to itself', () => {
+test('a project-scoped palette action resolves to itself', () => {
   const palette = frameworkActions(true)
   const list = palette.openspec.find((action) => action.id === 'openspec.list')!
   assert.deepEqual(resolvePaletteAction(list, undefined), { ok: true, action: list })
 })
 
-test('a palette action without a placeholder ignores the change id', () => {
+test('a project-scoped palette action ignores the change id', () => {
   const palette = frameworkActions(true)
   const list = palette.openspec.find((action) => action.id === 'openspec.list')!
   assert.deepEqual(resolvePaletteAction(list, 'x; rm -rf /'), { ok: true, action: list })
+})
+
+test('the scope of an action is the scope of the command it came from', () => {
+  const palette = frameworkActions(true)
+  assert.deepEqual(
+    palette.openspec.map((action) => [action.id, action.scope]),
+    [
+      ['openspec.list', 'project'],
+      ['openspec.validate', 'change'],
+      ['openspec.show', 'change'],
+      ['openspec.archive', 'change'],
+      ['openspec.propose', 'project']
+    ]
+  )
+  // Superpowers has no command that acts on one change: a skill acts on the project.
+  assert.deepEqual(
+    palette.superpowers.map((action) => action.scope),
+    ['project', 'project', 'project', 'project', 'project']
+  )
+  // The item's own actions carry it too.
+  assert.deepEqual(
+    actionsForItem(item, true).map((action) => action.scope),
+    ['change', 'change', 'change', 'project', 'project', 'project', 'project', 'project']
+  )
+})
+
+test('every change-scoped command names the change it acts on', () => {
+  // The scope says the command acts on a change, so both of its forms must name it: the
+  // command line and the task an agent is asked to do.
+  for (const command of OPENSPEC_COMMANDS.filter((entry) => entry.scope === 'change')) {
+    assert.ok(command.command?.includes(CHANGE_ID_PLACEHOLDER), command.id)
+    assert.ok(command.task.includes(CHANGE_ID_PLACEHOLDER), command.id)
+  }
+})
+
+test('the scope decides, not the text of the run', () => {
+  // A project-scoped action whose text mentions the change needs no change id.
+  const project: Action = {
+    id: 'openspec.list',
+    label: '列出变更',
+    framework: 'openspec',
+    run: { kind: 'terminal', command: 'openspec list <change-id>' },
+    mutates: false,
+    scope: 'project'
+  }
+  assert.equal(needsChangeId(project), false)
+  assert.deepEqual(resolvePaletteAction(project, undefined), { ok: true, action: project })
+  // A change-scoped action needs one even when its text does not name it.
+  const change: Action = {
+    id: 'openspec.validate',
+    label: '校验',
+    framework: 'openspec',
+    run: { kind: 'terminal', command: 'openspec validate --strict' },
+    mutates: false,
+    scope: 'change'
+  }
+  assert.equal(needsChangeId(change), true)
+  assert.deepEqual(resolvePaletteAction(change, undefined), {
+    ok: false,
+    reason: 'needs-change-id'
+  })
 })

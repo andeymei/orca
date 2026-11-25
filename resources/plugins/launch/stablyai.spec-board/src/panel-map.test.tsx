@@ -93,6 +93,24 @@ test('the change picker offers the changes of the chosen project', async () => {
   await view.unmount()
 })
 
+test('an archived change is not offered', async () => {
+  const board: BoardPayload = {
+    ...fixturePayload,
+    items: fixturePayload.items.map((item) =>
+      item.openspec?.changeId === 'add-w'
+        ? { ...item, openspec: { ...item.openspec, stage: 'archived' } }
+        : item
+    )
+  }
+  const view = await mapTab(mockHost({ requests: { 'board.get': () => board } }))
+  // An archived change is not under openspec/changes/ any more, so every command that names
+  // it would fail — the rule the card path applies to 归档 as well.
+  assert.deepEqual(view.find({ label: '变更' })?.props.options, [
+    { value: 'add-x', label: 'add-x' }
+  ])
+  await view.unmount()
+})
+
 test('a command that acts on a change waits for one', async () => {
   const calls: unknown[] = []
   const view = await mapTab(hostRecording(calls))
@@ -140,6 +158,24 @@ test('a mutating command of the palette waits for the second press', async () =>
   await view.press({ type: 'Button', text: '确认执行？' })
   assert.deepEqual(calls, [
     { projectId: 'local|/repo', actionId: 'openspec.archive', changeId: 'add-x' }
+  ])
+  await view.unmount()
+})
+
+test('a change picked after the confirmation was armed is not confirmed', async () => {
+  const calls: unknown[] = []
+  const view = await mapTab(hostRecording(calls))
+  await view.select({ label: '变更' }, 'add-x')
+  await view.press({ type: 'Button', text: '归档' })
+  assert.deepEqual(calls, [])
+  // The change is not the one the confirmation was armed for, so the button asks again.
+  await view.select({ label: '变更' }, 'add-w')
+  assert.equal(view.find({ type: 'Button', text: '确认执行？' }), null)
+  await view.press({ type: 'Button', text: '归档' })
+  assert.deepEqual(calls, [])
+  await view.press({ type: 'Button', text: '确认执行？' })
+  assert.deepEqual(calls, [
+    { projectId: 'local|/repo', actionId: 'openspec.archive', changeId: 'add-w' }
   ])
   await view.unmount()
 })

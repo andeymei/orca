@@ -2,13 +2,15 @@
 // The commands are the ones the CLI has, and the tasks are what an agent is asked to do when
 // the CLI is not installed. The derivation of the actions themselves lives in `actions.ts`.
 
+import type { ActionScope } from './model'
+
 /** One OpenSpec command: what it runs, and what an agent is asked to do instead. */
 export type OpenspecCommand = {
   id: string
   label: string
   mutates: boolean
   /** 'change' for the commands that act on one change, 'project' for the rest. */
-  scope: 'change' | 'project'
+  scope: ActionScope
   /** The CLI command; null where the CLI has no form of this action. */
   command: string | null
   /** What the agent does; `<change-id>` marks the change it acts on. */

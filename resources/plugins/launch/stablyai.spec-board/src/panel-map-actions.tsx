@@ -28,6 +28,16 @@ function channelOf(action: Action): string {
 }
 
 /**
+ * Where the press is filed: what the action will act on, and which button it was. A change
+ * picked after the confirmation was armed is a different action, so it has a different scope —
+ * and the confirmation cannot carry over to a target it was not armed for.
+ */
+function scopeOf(projectId: string, change: string | null, row: string, action: Action): string {
+  const target = needsChangeId(action) ? (change ?? '') : ''
+  return `map:${projectId}:${target}:${row}:${action.id}`
+}
+
+/**
  * One command of the palette. The button names the action and the change; the worker resolves
  * them into a command. A mutating action waits for its second press, the same way a card's does.
  */
@@ -49,7 +59,7 @@ export function PaletteButton({
   // The same signal the worker reads: an action that names a change cannot run without one.
   const namesChange = needsChangeId(action)
   const ready = !namesChange || palette.change !== null
-  const scope = `map:${project.id}:${row}:${action.id}`
+  const scope = scopeOf(project.id, palette.change, row, action)
   const asked = waiting !== null && waiting.scope === scope && waiting.actionId === action.id
   const done = read(feedback)[scope]
   return (

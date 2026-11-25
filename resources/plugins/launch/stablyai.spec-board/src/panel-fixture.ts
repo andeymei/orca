@@ -43,14 +43,16 @@ export const fixturePayload: BoardPayload = {
           label: '校验',
           framework: 'openspec',
           run: { kind: 'terminal', command: 'openspec validate add-x --strict' },
-          mutates: false
+          mutates: false,
+          scope: 'change'
         },
         {
           id: 'openspec.archive',
           label: '归档',
           framework: 'openspec',
           run: { kind: 'terminal', command: 'openspec archive add-x --yes' },
-          mutates: true
+          mutates: true,
+          scope: 'change'
         }
       ]
     },
@@ -88,7 +90,8 @@ export const fixturePayload: BoardPayload = {
             kind: 'agent',
             prompt: '按 openspec/AGENTS.md 查看变更 add-y 的增量 spec'
           },
-          mutates: false
+          mutates: false,
+          scope: 'change'
         }
       ]
     },
@@ -120,14 +123,16 @@ export const fixturePayload: BoardPayload = {
           label: '代码评审',
           framework: 'superpowers',
           run: { kind: 'agent', prompt: '用 superpowers:requesting-code-review 审本次改动' },
-          mutates: false
+          mutates: false,
+          scope: 'project'
         },
         {
           id: 'superpowers.execute',
           label: '执行计划',
           framework: 'superpowers',
           run: { kind: 'agent', prompt: '用 superpowers:executing-plans 执行这个计划' },
-          mutates: true
+          mutates: true,
+          scope: 'project'
         }
       ]
     },

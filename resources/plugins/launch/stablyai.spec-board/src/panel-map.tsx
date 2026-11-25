@@ -33,9 +33,14 @@ function selectedProject(projects: readonly SnapshotProject[]): SnapshotProject 
 function changeIdsOf(project: SnapshotProject, items: readonly WorkItem[]): string[] {
   const ids: string[] = []
   for (const item of items) {
-    const changeId = item.openspec?.changeId
-    if (item.projectId === project.id && changeId !== undefined && !ids.includes(changeId)) {
-      ids.push(changeId)
+    const facts = item.openspec
+    // An archived change is not under `openspec/changes/` any more, so every command that
+    // names it would fail — the same rule the card path applies to 归档.
+    if (facts === null || facts.stage === 'archived' || item.projectId !== project.id) {
+      continue
+    }
+    if (!ids.includes(facts.changeId)) {
+      ids.push(facts.changeId)
     }
   }
   return ids

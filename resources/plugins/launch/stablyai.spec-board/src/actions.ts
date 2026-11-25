@@ -88,7 +88,8 @@ function openspecAction(
     label: command.label,
     framework: 'openspec',
     run,
-    mutates: command.mutates
+    mutates: command.mutates,
+    scope: command.scope
   }
 }
 
@@ -108,7 +109,9 @@ function superpowersAction(skill: SuperpowersSkill, subject: Subject): Action {
     label: skill.label,
     framework: 'superpowers',
     run: { kind: 'agent', prompt: superpowersPrompt(skill, subject) },
-    mutates: skill.mutates
+    mutates: skill.mutates,
+    // Superpowers has no command that acts on one change: a skill acts on the project.
+    scope: 'project'
   }
 }
 
@@ -202,14 +205,13 @@ export function frameworkActions(cliAvailable: boolean): {
 }
 
 /**
- * Whether the action names a change. The panel asks this before it offers the action, and the
- * worker asks it before it runs it: one signal, so "pick a change first" and "needs-change-id"
- * cannot disagree.
+ * Whether the action needs a change id. The scope is the catalog's own, carried on the action:
+ * the decision is structural, not a guess read out of the run's text. The panel asks this before
+ * it offers the action and the worker asks it before it runs it — one signal, so "pick a change
+ * first" and "needs-change-id" cannot disagree.
  */
 export function needsChangeId(action: Action): boolean {
-  return action.run.kind === 'terminal'
-    ? action.run.command.includes(CHANGE_ID_PLACEHOLDER)
-    : action.run.prompt.includes(CHANGE_ID_PLACEHOLDER)
+  return action.scope === 'change'
 }
 
 /**

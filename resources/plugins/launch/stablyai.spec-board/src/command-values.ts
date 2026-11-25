@@ -16,8 +16,9 @@ export function isSafeCommandValue(value: string): boolean {
  * Whether a path may be put in front of a command or into an agent prompt. The path is split
  * on `/`, empty segments are skipped so an absolute path is fine, and every other segment has
  * to be a safe value on its own — which rejects `..` along with everything carrying a shell
- * character.
+ * character. A path with nothing in it names no artifact, so it is absent rather than safe.
  */
 export function isSafeCommandPath(path: string): boolean {
-  return path.split('/').every((segment) => segment === '' || isSafeCommandValue(segment))
+  const segments = path.split('/').filter((segment) => segment !== '')
+  return segments.length > 0 && segments.every((segment) => isSafeCommandValue(segment))
 }

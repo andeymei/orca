@@ -119,7 +119,7 @@ function safeValue(value: string, fallback: string): string {
 
 /** The artifact path a prompt may name, or the generic label when the path may not be trusted. */
 function safePath(path: string | null, fallback: string): string {
-  if (path === null || path === '') {
+  if (path === null) {
     return fallback
   }
   return isSafeCommandPath(path) ? path : fallback

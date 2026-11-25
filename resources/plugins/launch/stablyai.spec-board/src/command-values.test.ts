@@ -33,6 +33,15 @@ test('a path is safe when every segment of it is', () => {
   assert.equal(isSafeCommandPath('docs//specs/x.md'), true)
 })
 
+test('an empty path is absent, not safe', () => {
+  assert.equal(isSafeCommandPath(''), false)
+  assert.equal(isSafeCommandValue(''), false)
+})
+
+test('a path with nothing in it names no artifact', () => {
+  assert.equal(isSafeCommandPath('/'), false)
+})
+
 test('a path with one unsafe segment is not safe', () => {
   assert.equal(isSafeCommandPath('docs/; rm -rf /'), false)
   assert.equal(isSafeCommandPath('../etc/passwd'), false)

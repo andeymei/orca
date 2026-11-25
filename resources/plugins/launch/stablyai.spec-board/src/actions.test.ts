@@ -390,6 +390,18 @@ test('a path segment that walks up the tree is refused', () => {
   assert.equal(execute.includes('passwd'), false)
 })
 
+test('an empty artifact path falls back to the generic label', () => {
+  const actions = actionsForItem(
+    { ...item, superpowers: { ...item.superpowers, designSpec: '', plan: '' } },
+    true
+  )
+  assert.match(
+    promptOf(findAction(actions, 'superpowers.plan')!),
+    /基于 设计 spec 写实施计划/
+  )
+  assert.match(promptOf(findAction(actions, 'superpowers.execute')!), /执行 实施计划/)
+})
+
 test('an absolute artifact path is allowed', () => {
   const actions = actionsForItem(
     {

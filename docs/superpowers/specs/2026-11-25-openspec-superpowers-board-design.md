@@ -360,10 +360,17 @@ export type WorkItem = SnapshotItem & {
 | `progress-drift`              | `tasksDone/tasksTotal` 与 `planDone/planTotal` 差 > 0.30 且两边进度都 > 0 | warning |
 | `no-design`                   | 有 `tasks.md` 但缺 `design.md`（OpenSpec 自身要求）                       | info    |
 | `tasks-complete-not-archived` | tasks 全勾但仍在 `changes/<id>/`                                          | info    |
-| `archived-spec-stale`         | 已归档但 `openspec/specs/` 中无对应能力目录                               | info    |
+| `archived-spec-stale`         | 已归档但 `openspec/specs/` 中无对应能力目录（能力清单未知时不报）         | info    |
 
 规则只在 worker 里跑，输入是已校验的快照 + 本地扫描结果，输出附加到 `WorkItem.gaps`。
 agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并集，按 `code` 去重。
+
+**已完成的工作项只报 `archived-spec-stale`**：OpenSpec 变更已归档、或 Superpowers 计划已完成时，
+其余缺口描述的是"进行中的工作"。对已经发布的东西报警只是噪音，会稀释真正要看的信号。
+
+判定"能力清单未知"用的是 `existingSpecCapabilities` 是否提供——它就是这个项目
+`openspec/specs/` 下的能力目录列表。没提供就不报 `archived-spec-stale`，而不是默认每个已归档
+变更都"规格未同步"。
 
 ### 4.9 框架全貌（静态内容）
 

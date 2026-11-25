@@ -1569,7 +1569,7 @@ Board tab:
 
 - A `Row` of six stage `Button`s with counts; the selected one uses `variant="solid"`, the rest `variant="ghost"`.
 - A `Stack` of `Card`s for the selected stage. The item title is rendered as a `<Text>` **child** of the card (not only as the `Card` `title` prop) and the project line as a `<Text>` child too — the test kit's query matcher compares against an element's rendered `text`, so a value that lives only in a prop is not findable.
-- Inside each card: a `Row` with two `Progress` — `value` the percentage, omitted when the side is null — each preceded by a `<Text>` caption reading `OpenSpec 2/5` and `Superpowers 1/8`. The captions are `<Text>` elements for the same reason the title is.
+- Inside each card: a `Row` with two `Progress` — each preceded by a `<Text>` caption reading `OpenSpec 2/5` and `Superpowers 1/8`. The captions are `<Text>` elements for the same reason the title is. `Progress.value` is a **percentage from 0 to 100** (Orca's Progress wraps Radix's, whose indicator translates `100 - value` percent — not a 0-to-1 fraction), and the `Progress` is omitted when that side is null.
 - A `Row` of `Badge`s, one per gap, `tone` from severity (`info` → neutral, `warning` → warning, `error` → danger`). The badge text is the gap's `message`.
 - A `Row` of action `Button`s. A `mutates` action needs two presses within 3 s: the first sets `pendingAction`, the second calls `action.run`. The label changes to `确认执行？` while pending.
 - When the selected stage is empty, an `EmptyState`.

@@ -448,7 +448,7 @@ test('rejects progress where done exceeds total', () => {
   }
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /tasksDone/)
+  assert.match((result as { error: string }).error, /\.tasksDone:/)
 })
 
 test('rejects a project without a path', () => {
@@ -566,6 +566,7 @@ test('returns zeros for a file with no boxes', () => {
 
 ```ts
 import { assert, test } from 'orca/testing'
+import type { OpenspecFacts, SuperpowersFacts } from './model'
 import { deriveStage } from './stage'
 
 const openspec = (over: Partial<OpenspecFacts> = {}) => ({
@@ -648,7 +649,7 @@ Expected: FAIL — modules not found.
 
 `countCheckboxes` skips lines inside ``` fences, matches `^\s*[-*]\s+\[([ xX~-])\]`, and counts `x`/`X` as done and `~`/`-` as in-progress.
 
-`deriveStage` applies the spec's §4.6 table in order: archived → validate → implement → plan → design → proposal. "Everything ticked" means every present progress pair has `total > 0` and `done === total` — an in-progress box is not a finished one — and at least one pair exists. "Started" means `done + inProgress > 0` on some side: OpenSpec treats `- [-]` and `- [~]` as in progress, so work that is underway must read as `implement`, not `plan`.
+`deriveStage` applies the spec's §4.6 table in order: archived → validate → implement → plan → design → proposal. "Everything ticked" means: among the progress pairs that carry information (those with `total > 0`), every one is fully ticked (`done === total` — an in-progress box is not a finished one), and at least one such pair exists. A pair with `total === 0` is an empty checklist: it carries no progress information, so it does not veto the stage. "Started" means `done + inProgress > 0` on some side: OpenSpec treats `- [-]` and `- [~]` as in progress, so work that is underway must read as `implement`, not `plan`.
 
 - [ ] **Step 4: Run them to verify they pass**
 
@@ -763,6 +764,7 @@ test('leaves everything unmatched when nothing overlaps', () => {
 
 ```ts
 import { assert, test } from 'orca/testing'
+import type { OpenspecFacts, SuperpowersFacts } from './model'
 import { detectGaps } from './gaps'
 
 const openspec = (over: Partial<OpenspecFacts> = {}) => ({

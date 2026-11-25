@@ -531,7 +531,8 @@ shell 元字符。规则同时适用于 change id、工作项的 topic 和 Super
    `last-refresh-prompt.md`，然后 `agent.launch({ workspaceId, agent, prompt })`。
 4. agent 扫描 → 写 `board.json`（先写 `.tmp` 再 rename）→ 结束。
 5. worker `fs.watch` 目录，检测到 `board.json` 变化后重新校验并
-   `panels.post('board.changed', { generatedAt })`。
+   `panels.post('board.changed', { agentAt })`。`agentAt` 是这份快照的 mtime，
+   面板拿它显示"上次有效时间"。
 6. 面板重新 `board.get` 并重绘。
 
 刷新是**手动**的，不自动轮询（agent 有成本）。

@@ -67,9 +67,11 @@ Inputs and conditions the spec implies but no happy-path test covers. Each is pi
     gate: string | null
   }
   export type Correspondence = { openspec: string; superpowers: string; note: string }
+  export type DecisionRule = { situation: string; action: string }
   export const OPENSPEC_STAGES: readonly FrameworkStage[]
   export const SUPERPOWERS_FLOW: readonly SuperpowersStep[]
   export const CORRESPONDENCE: readonly Correspondence[]
+  export const OPENSPEC_DECISION_TREE: readonly DecisionRule[]
   ```
 
 - [ ] **Step 1: Scaffold the plugin**
@@ -135,7 +137,12 @@ Expected: exit 0. If it rejects `publisher: "stablyai"` for a folder plugin, **s
 
 ```ts
 import { assert, test } from 'orca/testing'
-import { CORRESPONDENCE, OPENSPEC_STAGES, SUPERPOWERS_FLOW } from './framework-map'
+import {
+  CORRESPONDENCE,
+  OPENSPEC_DECISION_TREE,
+  OPENSPEC_STAGES,
+  SUPERPOWERS_FLOW
+} from './framework-map'
 
 test('every OpenSpec stage names artifacts and commands', () => {
   assert.equal(OPENSPEC_STAGES.length, 3)
@@ -159,6 +166,15 @@ test('every correspondence row names both frameworks', () => {
     assert.ok(row.note.length > 0)
   }
 })
+
+test('the decision tree says when to write a proposal and when to just fix', () => {
+  assert.equal(OPENSPEC_DECISION_TREE.length, 6)
+  for (const rule of OPENSPEC_DECISION_TREE) {
+    assert.ok(rule.situation.length > 0)
+    assert.ok(rule.action.length > 0)
+  }
+  assert.ok(OPENSPEC_DECISION_TREE.some((rule) => rule.situation.includes('拿不准')))
+})
 ```
 
 - [ ] **Step 5: Run it to verify it fails**
@@ -169,6 +185,8 @@ Expected: FAIL — `Cannot find module './framework-map'`.
 - [ ] **Step 6: Implement `framework-map.ts`**
 
 Three OpenSpec stages (`create` / `implement` / `archive`), each with the artifact paths and the CLI commands from the spec. Fifteen Superpowers steps in flow order, each naming its artifact (`docs/superpowers/specs/…`, `docs/superpowers/plans/…`) or `null`, and its gate (`"设计未批准不得写代码"`, `"spec 批准后才允许写实施计划"`) or `null`. Four correspondence rows: `proposal.md ↔ design spec 的 Context/Goals`、`design.md ↔ Decisions/Risks`、`tasks.md ↔ plan`、`增量 spec ↔ 验收标准`.
+
+The sixth export, `OPENSPEC_DECISION_TREE`, holds the six rules from `openspec/AGENTS.md`'s decision tree — when to write a proposal and when to just fix the code: 修 bug（行为本就符合 spec）、改错别字/格式/注释 → 直接改；新增功能或能力、破坏性变更（API/schema）、架构或模式变更 → 写 proposal；拿不准 → 写 proposal（更安全）。It is a separate export, not a field on `FrameworkStage`: the stages describe how a change flows, the tree describes whether to start one.
 
 - [ ] **Step 7: Run it to verify it passes**
 
@@ -185,7 +203,13 @@ npx tsc -p .
 
 Expected: exit 0.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 9: Replace the scaffold's `README.md`**
+
+The generated README describes the Counter demo. Rewrite it for this plugin: what the board
+shows, the three tabs, and that the plugin only launches the two frameworks' own commands and
+never writes to a project. It is a few lines, not a manual.
+
+- [ ] **Step 10: Commit**
 
 ```bash
 git add resources/plugins/launch/stablyai.spec-board
@@ -1641,7 +1665,13 @@ Expected: FAIL — there is no `map` tab.
 
 A project `Select` at the top (options from `payload.projects`). Below it, two `Card`s — OpenSpec and Superpowers — each a vertical list of stages/steps with `Badge`s for artifacts and a `Button` per command. Command buttons call the same `action.run` path as the board, with the selected project.
 
-The correspondence rows render as a `KeyValue` under the two cards.
+The correspondence rows render as a `KeyValue` under the two cards. Below them, the
+`OPENSPEC_DECISION_TREE` renders as a list of `Card`s, one per rule, with the situation as the
+title and the action as the description — it answers "do I need a proposal for this at all?".
+
+The command buttons substitute a concrete change id into the map's `<change-id>` placeholder
+before running; a command whose id is still a placeholder is disabled with the label
+`先选一个变更`.
 
 When nothing is loaded yet the tab still renders the static map — it must never depend on a scan.
 

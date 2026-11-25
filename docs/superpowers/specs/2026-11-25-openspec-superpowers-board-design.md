@@ -342,6 +342,18 @@ agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并�
   `design.md ↔ design spec 的 Decisions/Risks`、`tasks.md ↔ plan`、
   增量 spec ↔ 验收标准。这一栏是"接轨"的参考答案。
 
+判定树是**第四个导出**，不塞进 `FrameworkStage`：阶段是"变更怎么流转"，判定树是"要不要开变更"，
+两件事分开存才不会互相挤。
+
+```ts
+export type DecisionRule = { situation: string; action: string }
+export const OPENSPEC_DECISION_TREE: readonly DecisionRule[]
+```
+
+六条规则来自 `openspec/AGENTS.md` 的判定树：修 bug（行为本就符合 spec）、改错别字/格式/注释
+→ 直接改；新增功能或能力、破坏性变更（API/schema）、架构或模式变更 → 写 proposal；拿不准
+→ 写 proposal（更安全）。
+
 全貌不依赖任何扫描，**没有快照时也能看**。
 
 ### 4.10 面板结构

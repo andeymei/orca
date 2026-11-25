@@ -1,7 +1,7 @@
 import { assert, test } from 'orca/testing'
 import {
   OPENSPEC_COMMANDS,
-  assertCatalogNamesNoChange,
+  buildOpenspecCommands,
   type OpenspecCommand
 } from './action-catalog'
 import type { Action } from './model'
@@ -723,10 +723,11 @@ test('no project-scoped command of the catalog names a change', () => {
 })
 
 test('the catalog refuses a project-scoped command that names a change', () => {
-  // The guard the catalog builds itself: a violation throws there, so it never reaches a terminal.
+  // The rule runs where the catalog is built: a command it refuses never becomes a row, so it
+  // never reaches a terminal.
   assert.throws(
     () =>
-      assertCatalogNamesNoChange([
+      buildOpenspecCommands([
         {
           id: 'openspec.example',
           label: '示例',
@@ -740,7 +741,7 @@ test('the catalog refuses a project-scoped command that names a change', () => {
   )
   assert.throws(
     () =>
-      assertCatalogNamesNoChange([
+      buildOpenspecCommands([
         {
           id: 'openspec.example',
           label: '示例',
@@ -752,4 +753,13 @@ test('the catalog refuses a project-scoped command that names a change', () => {
       ]),
     /项目级命令不能带变更占位符/
   )
+})
+
+test('the catalog is made of the commands the rule accepted', () => {
+  // The wiring: the catalog is built through the rule, so every row of it is a row the rule
+  // accepted — and froze, so nothing can put a change into a project-scoped command afterwards.
+  assert.equal(Object.isFrozen(OPENSPEC_COMMANDS), true)
+  for (const command of OPENSPEC_COMMANDS) {
+    assert.equal(Object.isFrozen(command), true, command.id)
+  }
 })

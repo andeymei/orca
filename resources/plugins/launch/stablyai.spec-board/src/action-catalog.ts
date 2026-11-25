@@ -20,8 +20,39 @@ export type OpenspecCommand = {
   task: string
 }
 
+/**
+ * The catalog's own invariant: a command that acts on the whole project names no change, so it
+ * never carries the placeholder — the palette resolves the change when the person presses, and a
+ * project-scoped action has no change to resolve. A command that broke this would type the
+ * literal `<change-id>` into a terminal.
+ */
+function assertProjectCommandNamesNoChange(command: OpenspecCommand): void {
+  if (command.scope !== 'project') {
+    return
+  }
+  const names = command.task.includes(CHANGE_ID_PLACEHOLDER)
+  const runs = command.command !== null && command.command.includes(CHANGE_ID_PLACEHOLDER)
+  if (names || runs) {
+    throw new Error(`项目级命令不能带变更占位符：${command.id}`)
+  }
+}
+
+/**
+ * OpenSpec's command set, built through the rule: a command the rule refuses never becomes a
+ * row, and a row it accepted is frozen, so the catalog cannot hold a command the rule never saw
+ * — nor one that was edited into a change behind the rule's back.
+ */
+export function buildOpenspecCommands(
+  commands: readonly OpenspecCommand[]
+): readonly OpenspecCommand[] {
+  for (const command of commands) {
+    assertProjectCommandNamesNoChange(command)
+  }
+  return Object.freeze(commands.map((command) => Object.freeze(command)))
+}
+
 /** OpenSpec's own command set, in the order the design's table lists it. */
-export const OPENSPEC_COMMANDS: readonly OpenspecCommand[] = [
+export const OPENSPEC_COMMANDS: readonly OpenspecCommand[] = buildOpenspecCommands([
   {
     id: 'openspec.list',
     label: '列出变更',
@@ -62,28 +93,7 @@ export const OPENSPEC_COMMANDS: readonly OpenspecCommand[] = [
     command: null,
     task: 'Stage 1 生成 proposal、tasks 和增量 spec'
   }
-]
-
-/**
- * The catalog's own invariant: a command that acts on the whole project names no change, so it
- * never carries the placeholder — the palette resolves the change when the person presses, and a
- * project-scoped action has no change to resolve. A command that broke this would type the
- * literal `<change-id>` into a terminal.
- */
-export function assertCatalogNamesNoChange(commands: readonly OpenspecCommand[]): void {
-  for (const command of commands) {
-    if (command.scope !== 'project') {
-      continue
-    }
-    const names = command.task.includes(CHANGE_ID_PLACEHOLDER)
-    const runs = command.command !== null && command.command.includes(CHANGE_ID_PLACEHOLDER)
-    if (names || runs) {
-      throw new Error(`项目级命令不能带变更占位符：${command.id}`)
-    }
-  }
-}
-
-assertCatalogNamesNoChange(OPENSPEC_COMMANDS)
+])
 
 /** One Superpowers skill: the agent it dispatches and what that agent is asked to do. */
 export type SuperpowersSkill = {

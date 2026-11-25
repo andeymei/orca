@@ -162,12 +162,12 @@ const relayExtraResource = {
 // Bootstrap verifies/publishes immutable plugin bytes from ordinary directories.
 // Why the filter: `.orca` holds a plugin author's generated typings, never part of the plugin's
 // committed bytes; shipping it would make the packaged tree differ from the release index hash.
-// A plugin's own tests are the author's, not the user's: they run from the checkout, and the
-// hash skips them too, so the two trees describe the same bytes.
+// The plugin's own tests ship too: the tree the runtime hashes and the tree the release index
+// describes must be the same bytes, in the checkout and in the package.
 const bundledPluginResources = {
   from: 'resources/plugins/launch',
   to: 'plugins/launch',
-  filter: ['**/*', '!**/.orca{,/**/*}', '!**/*.test.{ts,tsx}']
+  filter: ['**/*', '!**/.orca{,/**/*}']
 }
 // electron-builder always drops `*.d.ts` from app files, so `orca plugin types` reads these copies.
 const pluginAuthorTypingsResources = {

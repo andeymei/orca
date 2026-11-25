@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import { defineMethod } from '../../core'
 import {
@@ -14,26 +13,13 @@ import {
   type RefactorStatusResult
 } from '../../../../../shared/rpc-contract/refactor-params'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../../shared/execution-host/execution-host'
-import { buildRefactorPrompt } from '../../../../../shared/refactor/refactor-prompt'
 import type { FileWriteDiskConflict } from '../../../../../shared/file-write/file-write-disk-precondition'
-import { resolveTuiAgentLaunchEnv } from '../../../../../shared/agent-launch/choices/tui-agent-launch-defaults'
 import { applyRefactorSelection } from '../../../../refactor/refactor-apply'
-import {
-  listScratchProposals,
-  readScratchFile,
-  readWorkspaceFile
-} from '../../../../refactor/refactor-file-reads'
+import { readWorkspaceFile } from '../../../../refactor/refactor-file-reads'
 import { excludeRefactorScratchFromGit } from '../../../../refactor/refactor-git-exclude'
 import { refactorJobRegistry } from '../../../../refactor/refactor-job-registry'
-import {
-  refactorBaselineMap,
-  refactorBaselineReader
-} from '../../../../refactor/refactor-baselines'
+import { refactorBaselineMap } from '../../../../refactor/refactor-baselines'
 import { assertSafeRefactorTargetPath } from '../../../../refactor/refactor-path-rules'
-import { buildRefactorPlan } from '../../../../refactor/refactor-plan-builder'
-import { resolveRefactorAgentLaunch } from '../../../../refactor/refactor-agent-launch'
-import { readRefactorProviderEnv } from '../../../../refactor/refactor-provider-env'
-import { runRefactorTurn } from '../../../../refactor/refactor-runner'
 import {
   REFACTOR_SOURCE_DIRECTORY_NAME,
   refactorScratchParentRoot,
@@ -44,18 +30,18 @@ import {
   removeDiscardedRefactorScratch,
   removeExpiredRefactorJobs
 } from '../../../../refactor/refactor-scratch-cleanup'
-import { claudeStructuredAuthPolicyForSettings } from '../../../../claude-accounts/runtime-auth/claude-structured-auth-policy'
 import {
   applyFileChangedMessage,
   applyFileMissingMessage,
   applyNotUtf8Message,
   applyWriteFailedWithReasonMessage,
+  methodsJobAlreadyRunningMessage,
   methodsJobNotFoundMessage,
   methodsNoPlanMessage,
   methodsRefactorNotFoundMessage,
   methodsRemoteWorkspaceRefusedMessage
 } from '../../../../refactor/refactor-messages'
-import { resolveStructuredAgentCommand } from '../../../../native-chat/agent-launch/structured-agent-command-resolution'
+import { runRefactorProposalTurn } from './refactor-proposal-turn'
 
 /** Why the file is refused, in the words the user reads. */
 function diskConflictReason(conflict: FileWriteDiskConflict): string {
@@ -85,6 +71,12 @@ export const REFACTOR_METHODS = [
       const workspaceRoot = target.worktree.path
       await assertSafeRefactorTargetPath(workspaceRoot, params.relativePath)
 
+      // Why it refuses: two turns on one file compete for the same agent and the same budget, and
+      // the user pays for two reviews of one change.
+      if (refactorJobRegistry.findRunning(params.worktree, params.relativePath) !== null) {
+        throw new Error(methodsJobAlreadyRunningMessage())
+      }
+
       const jobId = randomUUID()
       const scratchRoot = refactorScratchRoot(workspaceRoot, jobId)
       const scratchRelativeRoot = refactorScratchRelativeRoot(jobId)
@@ -100,6 +92,7 @@ export const REFACTOR_METHODS = [
         jobId,
         scratchRoot,
         worktree: params.worktree,
+        relativePath: params.relativePath,
         // The baseline of the target file is known now: it is the buffer the user is looking at.
         // It is keyed by the file it names, so the manifest can spell the path differently.
         baselines: await refactorBaselineMap({
@@ -112,97 +105,16 @@ export const REFACTOR_METHODS = [
       await excludeRefactorScratchFromGit(workspaceRoot)
       await removeExpiredRefactorJobs(refactorScratchParentRoot(workspaceRoot), jobId)
 
-      const runInBackground = async (): Promise<void> => {
-        const signal = job.controller.signal
-        const settings = runtime.requireStore().getSettings()
-        // The account is pushed and Claude refreshed before the agent starts, so the launch
-        // uses the account the user picked instead of a stale one.
-        await runtime.prepareHostAgentLaunch('claude')
-        const hostEnv = runtime.getHostAgentLaunchEnv('claude')
-        const launch = await resolveRefactorAgentLaunch({
-          cwd: workspaceRoot,
-          deps: {
-            // The same resolution path as the native chat: a configured Command wins, and the
-            // agent name is resolved otherwise.
-            resolveCommand: (options) => resolveStructuredAgentCommand('claude', settings, options),
-            // Only labels the sign-in failure; it does not pick the executable.
-            resolveAuthPolicy: () => claudeStructuredAuthPolicyForSettings(settings),
-            // The user's own per-agent environment, the environment of the current account, and
-            // the provider connection the host's Claude settings carry.
-            resolveEnv: async () => ({
-              ...(await readRefactorProviderEnv(
-                hostEnv.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude')
-              )),
-              ...resolveTuiAgentLaunchEnv('claude', settings),
-              ...hostEnv
-            })
-          },
-          signal
-        })
-        const turn = await runRefactorTurn({
-          launch,
-          scratchRoot,
-          workspaceRoot,
-          prompt: buildRefactorPrompt({
-            relativePath: params.relativePath,
-            sourceRelativePath: path.join(
-              scratchRelativeRoot,
-              REFACTOR_SOURCE_DIRECTORY_NAME,
-              params.relativePath
-            ),
-            scratchRelativeRoot,
-            instruction: params.instruction
-          }),
-          onProgress: (text) => {
-            refactorJobRegistry.update(jobId, { progress: text })
-          },
-          signal
-        })
-        if (signal.aborted) {
-          return
-        }
-        if (turn.state !== 'done') {
-          // Without a trustworthy output there is no plan to review.
-          refactorJobRegistry.update(jobId, {
-            state: turn.state,
-            progress: turn.progress,
-            warnings: turn.warnings
-          })
-          return
-        }
-        const built = await buildRefactorPlan({
-          jobId,
-          sourcePath: params.relativePath,
-          manifest: turn.manifest,
-          scratchRoot,
-          workspaceRoot,
-          // The target file's baseline is the buffer the user saw; every other file's baseline
-          // is the disk content of the moment.
-          readBaseline: refactorBaselineReader({
-            baselines: job.baselines,
-            workspaceRoot
-          }),
-          readDiskContent: async (relativePath) => {
-            const read = await readWorkspaceFile(workspaceRoot, relativePath)
-            return read.status === 'read' ? read.content : null
-          },
-          scratchFiles: (proposalId, relativePath) =>
-            readScratchFile(scratchRoot, proposalId, relativePath),
-          listScratchProposals: () => listScratchProposals(scratchRoot),
-          signal
-        })
-        refactorJobRegistry.update(jobId, {
-          state: 'done',
-          progress: turn.progress,
-          warnings: [...turn.warnings, ...built.warnings],
-          plan: built.plan,
-          diskContents: built.diskContents
-        })
-      }
-
       // A rejected promise nobody holds terminates the main process, so the background run
       // carries its own failure into the job's warnings.
-      void runInBackground()
+      void runRefactorProposalTurn({
+        runtime,
+        job,
+        scratchRelativeRoot,
+        workspaceRoot,
+        relativePath: params.relativePath,
+        instruction: params.instruction
+      })
         .catch((error: unknown) => {
           refactorJobRegistry.update(jobId, {
             state: 'failed',

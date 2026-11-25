@@ -230,6 +230,14 @@ export function methodsJobNotFoundMessage(): string {
   return translateMain('refactor.methods.jobNotFound', 'The task does not exist')
 }
 
+/** A refactoring of this file is already running. */
+export function methodsJobAlreadyRunningMessage(): string {
+  return translateMain(
+    'refactor.methods.jobAlreadyRunning',
+    'A refactoring of this file is already running. Wait for it to finish before starting another one.'
+  )
+}
+
 /** The job the caller named is not one this runtime knows. */
 export function methodsRefactorNotFoundMessage(): string {
   return translateMain('refactor.methods.refactorNotFound', 'The refactoring task does not exist')

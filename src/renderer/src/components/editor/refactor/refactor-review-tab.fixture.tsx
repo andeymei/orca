@@ -126,3 +126,47 @@ export const withProposals = defineFixture({
     </div>
   )
 })
+
+export const running = defineFixture({
+  width: 1280,
+  setup: () => {
+    // Why the old timestamp: the tab says how long the job has been quiet, and a fixture that
+    // starts at zero would never show that part of the header.
+    refactorReviewStore.noteJobStep('job-1', 'Reading src/foo.ts', Date.now() - 95_000)
+    window.api.runtime.call = async (request) => ({
+      id: 'fixture-rpc',
+      ok: true,
+      result:
+        request.method === 'refactor.status'
+          ? { state: 'running', progress: 'Reading src/foo.ts', warnings: [] }
+          : { plan: null },
+      _meta: { runtimeId: 'fixture-runtime' }
+    })
+  },
+  render: () => (
+    <div className="flex h-[600px] flex-col">
+      <RefactorReviewTab jobId="job-1" worktreeId="wt-1" relativePath="src/foo.ts" />
+    </div>
+  )
+})
+
+export const salvaged = defineFixture({
+  width: 1280,
+  setup: () => {
+    refactorReviewStore.setPlan('job-1', PLAN)
+    window.api.runtime.call = async (request) => ({
+      id: 'fixture-rpc',
+      ok: true,
+      result:
+        request.method === 'refactor.status'
+          ? { state: 'timed_out', progress: 'Writing p1/src/foo.ts', warnings: [] }
+          : { plan: PLAN },
+      _meta: { runtimeId: 'fixture-runtime' }
+    })
+  },
+  render: () => (
+    <div className="flex h-[600px] flex-col">
+      <RefactorReviewTab jobId="job-1" worktreeId="wt-1" relativePath="src/foo.ts" />
+    </div>
+  )
+})

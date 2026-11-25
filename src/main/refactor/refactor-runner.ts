@@ -24,6 +24,8 @@ import {
 import type { RefactorAgentLaunch } from './refactor-agent-launch'
 import { createRefactorToolHook, refactorToolDenyMessage } from './refactor-tool-hook'
 import { parseRefactorToolProgress } from './refactor-tool-progress'
+import { refactorAgentWrites } from './refactor-agent-writes'
+import { refactorTurnDeadline } from './refactor-turn-deadline'
 import { resolvePhysicalPath } from './refactor-physical-path'
 import {
   closeRefactorTurnConnection,
@@ -46,8 +48,14 @@ export {
   refactorTurnCancelledFirst
 } from './refactor-turn-verdict'
 
-/** A turn that runs longer than this is killed: the agent gets no second chance at the same file. */
-export const REFACTOR_TURN_TIMEOUT_MS = 300_000
+/**
+ * A turn that says nothing for this long is killed: the agent gets no second chance at the same
+ * file.
+ *
+ * Why it is a silence and not a length: a turn that keeps working is worth waiting for, and the
+ * agent's own messages are the proof that it is alive.
+ */
+export { REFACTOR_TURN_IDLE_TIMEOUT_MS, REFACTOR_TURN_MAX_MS } from './refactor-turn-deadline'
 
 /** The manifest is agent-authored input, so it is read under a cap. */
 const REFACTOR_MANIFEST_MAX_BYTES = 1024 * 1024
@@ -57,6 +65,8 @@ export type RefactorTurnResult = {
   manifest: RefactorManifest | null
   progress: string
   warnings: string[]
+  /** The keys of the files the agent wrote in full; empty when it wrote none. */
+  completedWriteKeys: ReadonlySet<string>
 }
 
 /**
@@ -273,7 +283,21 @@ export async function runRefactorTurn(input: {
     }
   }
 
+  const writes = refactorAgentWrites(roots)
+  const deadline = refactorTurnDeadline({
+    onTimeout: () => {
+      timedOut = true
+      settle()
+    }
+  })
+  deadline.start()
+
   const onMessage = (message: Record<string, unknown>): void => {
+    // Why every message counts: a frame is the proof that the agent is alive, and a partial one
+    // arrives while the model is still writing.
+    deadline.alive()
+
+    writes.note(message)
     const text = parseRefactorToolProgress(message, roots)
     if (text !== null) {
       progress = text
@@ -307,11 +331,6 @@ export async function runRefactorTurn(input: {
     settle()
   }
 
-  const timer = setTimeout(() => {
-    timedOut = true
-    settle()
-  }, REFACTOR_TURN_TIMEOUT_MS)
-
   const closeWarnings: string[] = []
   const openConnection: RefactorTurnConnectionFactory =
     input.openConnection ?? openClaudeStreamJsonConnection
@@ -338,7 +357,7 @@ export async function runRefactorTurn(input: {
   } catch (error) {
     faultMessage = error instanceof Error ? refactorFaultDetail(error) : String(error)
   } finally {
-    clearTimeout(timer)
+    deadline.stop()
     signal.removeEventListener('abort', onAbort)
     // Closing drains the reader, so a result frame the exit raced with still reaches onMessage.
     closeWarnings.push(...(await closeRefactorTurnConnection(connection)))
@@ -362,6 +381,7 @@ export async function runRefactorTurn(input: {
     state: outcome.state,
     manifest: manifest.manifest,
     progress,
-    warnings: [...outcome.warnings, ...closeWarnings, ...manifest.warnings]
+    warnings: [...outcome.warnings, ...closeWarnings, ...manifest.warnings],
+    completedWriteKeys: writes.completedKeys()
   }
 }

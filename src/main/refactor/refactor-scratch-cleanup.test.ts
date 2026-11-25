@@ -87,7 +87,8 @@ describe('removeDiscardedRefactorScratch', () => {
     refactorJobRegistry.create({
       jobId: 'job-discarded',
       scratchRoot: jobRoot,
-      worktree: 'wt-1'
+      worktree: 'wt-1',
+      relativePath: 'src/foo.ts'
     })
     refactorJobRegistry.remove('job-discarded')
 
@@ -103,7 +104,8 @@ describe('removeDiscardedRefactorScratch', () => {
     refactorJobRegistry.create({
       jobId: 'job-discarded',
       scratchRoot: jobRoot,
-      worktree: 'wt-1'
+      worktree: 'wt-1',
+      relativePath: 'src/foo.ts'
     })
 
     await removeDiscardedRefactorScratch('job-discarded', jobRoot)

@@ -12,9 +12,15 @@ vi.mock('@/i18n/i18n', () => ({
 
 afterEach(cleanup)
 
-function renderNotices(job: ReviewJobState | null): HTMLElement {
+function renderNotices(job: ReviewJobState | null, hasPlan = false): HTMLElement {
   const { container } = render(
-    <RefactorReviewNotices job={job} planUnavailable={false} failure={null} refusals={[]} />
+    <RefactorReviewNotices
+      job={job}
+      hasPlan={hasPlan}
+      planUnavailable={false}
+      failure={null}
+      refusals={[]}
+    />
   )
   return container
 }
@@ -59,8 +65,13 @@ describe('the notices of the review tab', () => {
 
   it('shows the label of a job that failed even when it carries no warning', () => {
     renderNotices({ state: 'timed_out', progress: '', warnings: [] })
-    expect(
-      screen.getByText('The refactoring timed out; starting it again is usually faster')
-    ).toBeTruthy()
+    expect(screen.getByText('The refactoring timed out')).toBeTruthy()
+    expect(screen.getByText('Starting it again is usually faster.')).toBeTruthy()
+  })
+
+  it('says what a stopped job left behind instead of advising another run', () => {
+    renderNotices({ state: 'timed_out', progress: '', warnings: [] }, true)
+    expect(screen.getByText('These are the changes it wrote before it stopped.')).toBeTruthy()
+    expect(screen.queryByText('Starting it again is usually faster.')).toBeNull()
   })
 })

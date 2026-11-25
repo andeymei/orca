@@ -53,13 +53,31 @@ export function failureLabel(job: UnfinishedJobState, t: Translate): string {
     case 'failed':
       return t('auto.components.editor.RefactorReviewTab.failed', 'Refactoring failed')
     case 'timed_out':
-      return t(
-        'auto.components.editor.RefactorReviewTab.timedOut',
-        'The refactoring timed out; starting it again is usually faster'
-      )
+      return t('auto.components.editor.RefactorReviewTab.timedOut', 'The refactoring timed out')
     case 'cancelled':
       return t('auto.components.editor.RefactorReviewTab.cancelled', 'Refactoring cancelled')
   }
+}
+
+/**
+ * What the notice says about the changes a job that stopped still wrote.
+ *
+ * Why it is its own line: the turn that was cut off had already put its proposals on disk, and
+ * the user has to know that what they are looking at is the work of a turn that never finished.
+ */
+export function salvageLabel(t: Translate): string {
+  return t(
+    'auto.components.editor.RefactorReviewTab.salvaged',
+    'These are the changes it wrote before it stopped.'
+  )
+}
+
+/** What the notice says about a job that stopped with nothing to show. */
+export function retryAdviceLabel(t: Translate): string {
+  return t(
+    'auto.components.editor.RefactorReviewTab.retryAdvice',
+    'Starting it again is usually faster.'
+  )
 }
 
 /** The job, when it ended without proposals. */

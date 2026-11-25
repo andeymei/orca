@@ -18,6 +18,8 @@ export type RefactorJob = {
   baselines: Map<string, RefactorBaseline>
   /** The original worktree selector, replayed when the accepted changes are written back. */
   worktree: string
+  /** The file the job runs on, so a second job on the same file can be refused. */
+  relativePath: string
   controller: AbortController
   scratchRoot: string
 }
@@ -26,6 +28,7 @@ export type RefactorJobCreateInput = {
   jobId: string
   scratchRoot: string
   worktree: string
+  relativePath: string
   /** Known when the job starts, so it arrives with the job rather than being patched in later. */
   baselines?: Map<string, RefactorBaseline>
 }
@@ -37,6 +40,8 @@ export type RefactorJobUpdate = Partial<
 export type RefactorJobRegistry = {
   create(input: RefactorJobCreateInput): RefactorJob
   get(jobId: string): RefactorJob | null
+  /** The running job of a file, when one is running. */
+  findRunning(worktree: string, relativePath: string): RefactorJob | null
   update(jobId: string, patch: RefactorJobUpdate): void
   remove(jobId: string): void
 }
@@ -55,6 +60,7 @@ export function createRefactorJobRegistry(): RefactorJobRegistry {
         diskContents: new Map(),
         baselines: input.baselines ?? new Map(),
         worktree: input.worktree,
+        relativePath: input.relativePath,
         controller: new AbortController(),
         scratchRoot: input.scratchRoot
       }
@@ -64,6 +70,18 @@ export function createRefactorJobRegistry(): RefactorJobRegistry {
 
     get(jobId: string): RefactorJob | null {
       return jobs.get(jobId) ?? null
+    },
+
+    findRunning(worktree: string, relativePath: string): RefactorJob | null {
+      for (const job of jobs.values()) {
+        if (job.state !== 'running') {
+          continue
+        }
+        if (job.worktree === worktree && job.relativePath === relativePath) {
+          return job
+        }
+      }
+      return null
     },
 
     update(jobId: string, patch: RefactorJobUpdate): void {

@@ -31,6 +31,17 @@ export type RefactorReviewStore = {
   toggleHunk(jobId: string, hunkId: string): void
   /** Accepts or gives back a set of hunks at once, which is what a file or proposal node does. */
   setHunkSelection(jobId: string, hunkIds: readonly string[], accepted: boolean): void
+  /**
+   * Notes what the job last said, and when it said it.
+   *
+   * Why the store keeps it: the review tab unmounts when the user looks at another tab, and a
+   * clock that restarts on every visit reads as a job that never gets anywhere.
+   */
+  noteJobStep(jobId: string, step: string, at: number): void
+  /** When the job was first seen running. */
+  getJobStartedAt(jobId: string): number | null
+  /** When the job last named a step. */
+  getJobLastStepAt(jobId: string): number | null
   /** Drops the plan and the selection of the job. */
   remove(jobId: string): void
   /** Tells the tab that shows the job that its plan or selection changed. */
@@ -68,6 +79,7 @@ export function createRefactorReviewStore(): RefactorReviewStore {
   const selections = new Map<string, RefactorReviewSelection>()
   const revisions = new Map<string, number>()
   const listeners = new Map<string, Set<() => void>>()
+  const jobSteps = new Map<string, { step: string; startedAt: number; lastStepAt: number }>()
 
   const notify = (jobId: string): void => {
     revisions.set(jobId, (revisions.get(jobId) ?? 0) + 1)
@@ -156,9 +168,32 @@ export function createRefactorReviewStore(): RefactorReviewStore {
       }
       storeSelection(jobId, withAcceptedHunkIds(current, acceptedHunkIds))
     },
+    noteJobStep(jobId: string, step: string, at: number): void {
+      const existing = jobSteps.get(jobId)
+      if (!existing) {
+        jobSteps.set(jobId, { step, startedAt: at, lastStepAt: at })
+        notify(jobId)
+        return
+      }
+      // Why the same step is not news: the job repeats the same line while it works, and a clock
+      // that restarted on every repeat would never show the job going quiet.
+      if (existing.step === step) {
+        return
+      }
+      existing.step = step
+      existing.lastStepAt = at
+      notify(jobId)
+    },
+    getJobStartedAt(jobId: string): number | null {
+      return jobSteps.get(jobId)?.startedAt ?? null
+    },
+    getJobLastStepAt(jobId: string): number | null {
+      return jobSteps.get(jobId)?.lastStepAt ?? null
+    },
     remove(jobId: string): void {
       plans.delete(jobId)
       selections.delete(jobId)
+      jobSteps.delete(jobId)
       notify(jobId)
       // Why after the notice: a removed job is never read again, and the map would otherwise
       // hold one dead entry per job of the session.

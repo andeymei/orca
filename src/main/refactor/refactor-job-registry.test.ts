@@ -7,7 +7,8 @@ describe('the refactor job registry', () => {
     const job = registry.create({
       jobId: 'job-1',
       scratchRoot: '/repo/.orca/refactor/job-1',
-      worktree: 'wt-1'
+      worktree: 'wt-1',
+      relativePath: 'src/foo.ts'
     })
     expect(job.state).toBe('running')
     expect(registry.get('job-1')).toBe(job)
@@ -15,7 +16,12 @@ describe('the refactor job registry', () => {
 
   it('updates the progress and the warnings', () => {
     const registry = createRefactorJobRegistry()
-    registry.create({ jobId: 'job-1', scratchRoot: '/repo/.orca/refactor/job-1', worktree: 'wt-1' })
+    registry.create({
+      jobId: 'job-1',
+      scratchRoot: '/repo/.orca/refactor/job-1',
+      worktree: 'wt-1',
+      relativePath: 'src/foo.ts'
+    })
     registry.update('job-1', { progress: '正在读取 src/foo.ts', warnings: ['w'] })
     expect(registry.get('job-1')?.progress).toBe('正在读取 src/foo.ts')
     expect(registry.get('job-1')?.warnings).toEqual(['w'])
@@ -23,7 +29,12 @@ describe('the refactor job registry', () => {
 
   it('replaces the warnings instead of appending to them', () => {
     const registry = createRefactorJobRegistry()
-    registry.create({ jobId: 'job-1', scratchRoot: '/repo/.orca/refactor/job-1', worktree: 'wt-1' })
+    registry.create({
+      jobId: 'job-1',
+      scratchRoot: '/repo/.orca/refactor/job-1',
+      worktree: 'wt-1',
+      relativePath: 'src/foo.ts'
+    })
     registry.update('job-1', { warnings: ['w1'] })
     registry.update('job-1', { warnings: ['w2'] })
     expect(registry.get('job-1')?.warnings).toEqual(['w2'])
@@ -34,12 +45,14 @@ describe('the refactor job registry', () => {
     const first = registry.create({
       jobId: 'job-1',
       scratchRoot: '/repo/.orca/refactor/job-1',
-      worktree: 'wt-1'
+      worktree: 'wt-1',
+      relativePath: 'src/foo.ts'
     })
     const second = registry.create({
       jobId: 'job-2',
       scratchRoot: '/repo/.orca/refactor/job-2',
-      worktree: 'wt-2'
+      worktree: 'wt-2',
+      relativePath: 'src/foo.ts'
     })
     expect(first.controller).not.toBe(second.controller)
     first.controller.abort()
@@ -53,6 +66,7 @@ describe('the refactor job registry', () => {
       jobId: 'job-1',
       scratchRoot: '/repo/.orca/refactor/job-1',
       worktree: 'wt-1',
+      relativePath: 'src/foo.ts',
       // The keys are the file's identity on disk: the path it was named by, the path the
       // filesystem calls it, and its inode.
       baselines: new Map([
@@ -70,14 +84,24 @@ describe('the refactor job registry', () => {
 
   it('removes a job', () => {
     const registry = createRefactorJobRegistry()
-    registry.create({ jobId: 'job-1', scratchRoot: '/x', worktree: 'wt-1' })
+    registry.create({
+      jobId: 'job-1',
+      scratchRoot: '/x',
+      worktree: 'wt-1',
+      relativePath: 'src/foo.ts'
+    })
     registry.remove('job-1')
     expect(registry.get('job-1')).toBeNull()
   })
 
   it('ignores an update for a job that is already gone', () => {
     const registry = createRefactorJobRegistry()
-    registry.create({ jobId: 'job-1', scratchRoot: '/x', worktree: 'wt-1' })
+    registry.create({
+      jobId: 'job-1',
+      scratchRoot: '/x',
+      worktree: 'wt-1',
+      relativePath: 'src/foo.ts'
+    })
     registry.remove('job-1')
     expect(() => registry.update('job-1', { progress: 'late' })).not.toThrow()
     expect(registry.get('job-1')).toBeNull()

@@ -18664,17 +18664,23 @@
           "showFile": "Show the whole file",
           "showHunk": "Show the code block",
           "starting": "Starting",
-          "timedOut": "The refactoring timed out; starting it again is usually faster",
+          "timedOut": "The refactoring timed out",
           "wholeFile": "Whole file",
           "writeFailed": "The changes could not be written. Try again.",
           "written_one": "Wrote {{count}} file",
-          "written_other": "Wrote {{count}} files"
+          "written_other": "Wrote {{count}} files",
+          "retryAdvice": "Starting it again is usually faster.",
+          "salvaged": "These are the changes it wrote before it stopped."
         },
         "RefactorTriggerButton": {
           "refactor": "Refactor"
         },
         "RefactorRuntimeClient": {
           "remoteRuntimeTooOld": "The server that owns this workspace does not support refactoring yet. Update Orca on that server and try again."
+        },
+        "RefactorJobActivity": {
+          "elapsed": "{{time}} elapsed",
+          "idle": "· no new step for {{time}}"
         }
       },
       "diff": {
@@ -31127,7 +31133,8 @@
       "jobNotFound": "The task does not exist",
       "noPlan": "The refactoring task has no proposals to review yet",
       "refactorNotFound": "The refactoring task does not exist",
-      "remoteWorkspaceRefused": "Refactoring on a remote host is not supported: start it in a workspace on this machine."
+      "remoteWorkspaceRefused": "Refactoring on a remote host is not supported: start it in a workspace on this machine.",
+      "jobAlreadyRunning": "A refactoring of this file is already running. Wait for it to finish before starting another one."
     },
     "pathRules": {
       "notRelative": "The refactoring target must be a relative path inside the workspace",

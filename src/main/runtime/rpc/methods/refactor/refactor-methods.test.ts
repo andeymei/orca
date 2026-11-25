@@ -43,7 +43,8 @@ function createJob(root: string, jobId: string, paths: string[] = ['src/foo.ts']
   refactorJobRegistry.create({
     jobId,
     scratchRoot: path.join(root, '.orca', 'refactor', jobId),
-    worktree: 'id:wt-1'
+    worktree: 'id:wt-1',
+    relativePath: 'src/foo.ts'
   })
   refactorJobRegistry.update(jobId, {
     state: 'done',
@@ -455,7 +456,8 @@ describe('the refactoring RPC methods', () => {
     refactorJobRegistry.create({
       jobId: 'job-no-plan',
       scratchRoot: path.join(root, '.orca', 'refactor', 'job-no-plan'),
-      worktree: 'id:wt-1'
+      worktree: 'id:wt-1',
+      relativePath: 'src/foo.ts'
     })
     refactorJobRegistry.update('job-no-plan', { state: 'timed_out' })
     const runtime = createRuntime({ executionHostId: 'local', workspacePath: root })

@@ -2,12 +2,20 @@ import { Button } from '@/components/ui/button'
 import { useTranslate } from '@/i18n/use-translate'
 
 import type { RefactorProposal } from '../../../../../shared/refactor/refactor-types'
-import { failureLabel, unfinishedJob, type ReviewJobState } from './refactor-review-job-status'
+import {
+  failureLabel,
+  retryAdviceLabel,
+  salvageLabel,
+  unfinishedJob,
+  type ReviewJobState
+} from './refactor-review-job-status'
 import { refactorHunksOfProposal } from './refactor-review-store'
 
 export type RefactorReviewNoticesProps = {
   /** The job, when it ended. A job that succeeded carries its warnings too. */
   job: ReviewJobState | null
+  /** Whether the job left proposals behind that the tab can show. */
+  hasPlan: boolean
   planUnavailable: boolean
   /** The failure of the last write attempt, if it failed. */
   failure: string | null
@@ -18,6 +26,7 @@ export type RefactorReviewNoticesProps = {
 /** What the tab says about a job or a write that did not go through. */
 export function RefactorReviewNotices({
   job,
+  hasPlan,
   planUnavailable,
   failure,
   refusals
@@ -26,7 +35,12 @@ export function RefactorReviewNotices({
   const failed = unfinishedJob(job)
   // Why a running job is left out: its warnings are still being written, and the header already
   // says the job is running.
-  const warnings = job && job.state !== 'running' ? job.warnings : []
+  // Why a timed-out job's own warning is left out: the label below already says the turn ran
+  // out of time, and the warning says it a second time.
+  const warnings =
+    job && job.state !== 'running' && (failed === null || failed.state === 'failed')
+      ? job.warnings
+      : []
   if (!failed && warnings.length === 0 && !planUnavailable && !failure && refusals.length === 0) {
     return null
   }
@@ -44,6 +58,12 @@ export function RefactorReviewNotices({
             >
               {failureLabel(failed, t)}
             </p>
+          ) : null}
+          {failed && hasPlan ? (
+            <p className="text-xs text-muted-foreground">{salvageLabel(t)}</p>
+          ) : null}
+          {failed && !hasPlan && failed.state === 'timed_out' ? (
+            <p className="text-xs text-muted-foreground">{retryAdviceLabel(t)}</p>
           ) : null}
           {warnings.map((warning, index) => (
             <p key={`${index}-${warning}`} className="text-xs text-muted-foreground">

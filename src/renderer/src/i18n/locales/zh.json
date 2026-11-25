@@ -17648,13 +17648,19 @@
           "showFile": "查看完整文件",
           "showHunk": "查看代码块",
           "starting": "正在准备",
-          "timedOut": "重构超时了，重新发起会更快",
+          "timedOut": "重构超时了",
           "wholeFile": "整个文件",
           "writeFailed": "写入失败，请重试。",
-          "written_other": "已写入 {{count}} 个文件"
+          "written_other": "已写入 {{count}} 个文件",
+          "retryAdvice": "重新发起一次通常更快。",
+          "salvaged": "下面是它在停止前已经写出的改动。"
         },
         "RefactorTriggerButton": {
           "refactor": "智能重构"
+        },
+        "RefactorJobActivity": {
+          "elapsed": "已运行 {{time}}",
+          "idle": "· {{time}} 没有新进展"
         }
       },
       "diff": {
@@ -30251,7 +30257,8 @@
       "jobNotFound": "任务不存在",
       "noPlan": "重构任务还没有可评审的方案",
       "refactorNotFound": "重构任务不存在",
-      "remoteWorkspaceRefused": "远程主机上的重构暂不支持：请在本机的工作区发起重构。"
+      "remoteWorkspaceRefused": "远程主机上的重构暂不支持：请在本机的工作区发起重构。",
+      "jobAlreadyRunning": "这个文件的重构已经在进行中了：请等它结束后再发起一次。"
     },
     "pathRules": {
       "notRelative": "重构目标必须是工作区内的相对路径",

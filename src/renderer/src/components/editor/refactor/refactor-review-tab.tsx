@@ -12,6 +12,7 @@ import { useAppStore } from '@/store/index'
 import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 import type { RefactorProposal } from '../../../../../shared/refactor/refactor-types'
 import { RefactorHunkView } from './refactor-hunk-view'
+import { RefactorJobActivity } from './refactor-job-activity'
 import { pollRefactorJob } from './refactor-job-poller'
 import { statusLabel, writtenLabel, type ReviewJobState } from './refactor-review-job-status'
 import { RefactorPartialAcceptanceNotices, RefactorReviewNotices } from './refactor-review-notices'
@@ -55,6 +56,8 @@ export function RefactorReviewTab({
   const [writing, setWriting] = useState(false)
   const [discarding, setDiscarding] = useState(false)
   const [wholeFile, setWholeFile] = useState(false)
+  // Why the clock: the tab says how long the job has run, and the poll is what moves it.
+  const [now, setNow] = useState(() => Date.now())
   // Why the owner: the job lives in the runtime that holds the workspace's files, so every
   // request about it has to go there and not to this app's runtime.
   const target = useFileOwnerRuntimeTarget(worktreeId, runtimeEnvironmentId)
@@ -70,6 +73,12 @@ export function RefactorReviewTab({
   const plan = useSyncExternalStore(subscribe, () => refactorReviewStore.getPlan(jobId))
   const revision = useSyncExternalStore(subscribe, () => refactorReviewStore.getRevision(jobId))
   const selection = recomputeOn([revision], () => refactorReviewStore.getSelection(jobId))
+  const startedAt = useSyncExternalStore(subscribe, () =>
+    refactorReviewStore.getJobStartedAt(jobId)
+  )
+  const lastStepAt = useSyncExternalStore(subscribe, () =>
+    refactorReviewStore.getJobLastStepAt(jobId)
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -81,15 +90,22 @@ export function RefactorReviewTab({
           return
         }
         setJob(status)
-        if (status.state !== 'done' || refactorReviewStore.getPlan(jobId)) {
+        const at = Date.now()
+        setNow(at)
+        refactorReviewStore.noteJobStep(jobId, status.progress, at)
+        if (status.state === 'running' || refactorReviewStore.getPlan(jobId)) {
           return
         }
+        // Why every ended state asks for the plan: a turn that was cut off still wrote its
+        // proposals, and the runtime keeps them for a job that did not finish.
         void fetchRefactorPlan(requireJobRuntime(target), jobId).then((fetched) => {
           if (cancelled) {
             return
           }
           if (!fetched) {
-            setPlanUnavailable(true)
+            // Why only for a finished job: a job that ended badly had nothing to offer, and
+            // saying the proposals could not be read would blame the wrong thing.
+            setPlanUnavailable(status.state === 'done')
             return
           }
           refactorReviewStore.setPlan(jobId, fetched)
@@ -137,6 +153,9 @@ export function RefactorReviewTab({
   const partiallyAccepted = plan ? partiallyAcceptedProposals(plan, selection.acceptedHunkIds) : []
   const acceptedHunkIds = [...selection.acceptedHunkIds]
   const headerStatus = statusLabel(job, plan, t)
+  const running = job?.state === 'running'
+  const elapsedMs = startedAt === null ? 0 : Math.max(0, now - startedAt)
+  const idleMs = lastStepAt === null ? 0 : Math.max(0, now - lastStepAt)
 
   const closeTab = useCallback((): void => {
     useAppStore.getState().closeFile(ownerKey)
@@ -227,6 +246,7 @@ export function RefactorReviewTab({
         {headerStatus ? (
           <span className="text-xs text-muted-foreground">{headerStatus}</span>
         ) : null}
+        <RefactorJobActivity running={running} elapsedMs={elapsedMs} idleMs={idleMs} />
         {job?.progress ? (
           <span className="truncate text-xs text-muted-foreground">{job.progress}</span>
         ) : null}
@@ -274,6 +294,7 @@ export function RefactorReviewTab({
       </div>
       <RefactorReviewNotices
         job={job}
+        hasPlan={plan !== null}
         planUnavailable={planUnavailable}
         failure={failure}
         refusals={refusals}

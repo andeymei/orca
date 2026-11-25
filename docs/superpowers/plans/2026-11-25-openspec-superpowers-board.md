@@ -21,7 +21,7 @@
 - The plugin never writes to a project's files. It only launches `openspec` or an agent.
 - No network calls. No third-party imports: only `orca`, `orca/*` and relative files.
 - UI copy is Chinese; identifiers, file names and commit subjects are English.
-- `resources/` is outside the repo's tsconfig projects and oxlint configs. Type-check inside the plugin with `npx tsc -p .` after `orca plugin types`.
+- The plugin lives under `resources/`, which is **outside the repo's tsconfig projects** — so `pnpm tc` does not type-check it — but **inside the root oxlint config's scope** (`resources/` is not in `ignorePatterns`). Type-check inside the plugin with `npx tsc -p .` after `orca plugin types`, and lint with `pnpm exec oxlint resources/plugins/launch/stablyai.spec-board/src`.
 - Check commands, run from the repo root:
   - `orca plugin test resources/plugins/launch/stablyai.spec-board --json`
   - `orca plugin check resources/plugins/launch/stablyai.spec-board --json`

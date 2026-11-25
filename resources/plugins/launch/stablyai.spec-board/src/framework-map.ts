@@ -42,6 +42,8 @@ export const OPENSPEC_STAGES: readonly FrameworkStage[] = [
     id: 'implement',
     title: '实现变更',
     artifacts: [
+      'openspec/changes/<change-id>/proposal.md',
+      'openspec/changes/<change-id>/design.md',
       'openspec/changes/<change-id>/tasks.md',
       'openspec/changes/<change-id>/specs/<capability>/spec.md'
     ],

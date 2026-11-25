@@ -18,9 +18,24 @@
         "entry": "src/panel.tsx",
         "ui": "components"
       }
+    ],
+    "settings": [
+      { "key": "refreshAgent", "title": "刷新用的 agent", "type": "string", "default": "claude" },
+      { "key": "refreshWorkspace", "title": "刷新在哪个 workspace 运行", "type": "string", "default": "" },
+      {
+        "key": "scanRoots",
+        "title": "额外扫描的本地根目录（每行一个绝对路径）",
+        "type": "string",
+        "multiline": true,
+        "default": ""
+      }
     ]
   },
   "capabilities": [
-    { "kind": "storage:own" }
+    { "kind": "workspace:read" },
+    { "kind": "agent:launch" },
+    { "kind": "terminal:send" },
+    { "kind": "workspace:write" },
+    { "kind": "settings:own" }
   ]
 }

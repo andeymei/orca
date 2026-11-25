@@ -1,0 +1,96 @@
+// Matches a project to the workspace that holds it. The path in the registry is written by
+// hand, so it may carry Windows separators, a trailing slash or a different case; the row Orca
+// reports is the truth, and the match has to find it.
+//
+// The match never falls back to another workspace. A command run in the wrong directory is worse
+// than no command at all, so a path that does not match exactly — after normalization — matches
+// nothing, and the worker says so.
+
+import type { ProjectRef } from './model'
+
+/** One workspace as Orca reports it. */
+export type WorkspaceRow = { id: string; path: string; hostId: string | null }
+
+/** One workspace with the fields the registry needs. */
+export type WorkspaceListRow = WorkspaceRow & {
+  projectId?: string | null
+  project?: string | null
+}
+
+/**
+ * One path as one string: forward slashes, no repeated or trailing slash, lower case. The case
+ * is folded because a registry path is typed by hand and a case-sensitive filesystem is not the
+ * only one — the host decides, and the host is the same machine that wrote the registry.
+ */
+export function normalizePath(path: string): string {
+  return path
+    .replace(/\\/g, '/')
+    .replace(/\/{2,}/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase()
+}
+
+/**
+ * Whether a row belongs to the host a project lives on. A row without a host is one on this
+ * machine — a project-group folder Orca cannot tie to a host — so it belongs to a local project.
+ */
+function sameHost(rowHostId: string | null, projectHost: string): boolean {
+  if (rowHostId === null) {
+    return projectHost === 'local'
+  }
+  return rowHostId === projectHost
+}
+
+/**
+ * The workspace that holds the project, or null when none does. The host has to match too: the
+ * same path on two hosts is two different directories.
+ */
+export function findWorkspaceId(
+  rows: readonly WorkspaceRow[],
+  project: { path: string; host: string }
+): string | null {
+  const wanted = normalizePath(project.path)
+  for (const row of rows) {
+    if (!sameHost(row.hostId, project.host)) {
+      continue
+    }
+    if (normalizePath(row.path) === wanted) {
+      return row.id
+    }
+  }
+  return null
+}
+
+/**
+ * The name a path carries: its last segment. Both separators count, because a path may be a
+ * Windows one even when it is read on another machine.
+ */
+export function baseName(path: string): string {
+  const parts = path.split(/[\\/]/).filter((part) => part !== '')
+  return parts.at(-1) ?? path
+}
+
+/**
+ * The projects the local workspaces stand for. Only the rows on this machine are kept — the
+ * remote ones come from the registry — and the worktrees of one project are collapsed into the
+ * shortest path of that project, which is the main checkout: otherwise every agent worktree of a
+ * repository would be a project of its own on the board.
+ */
+export function projectRefsFromWorkspaces(rows: readonly WorkspaceListRow[]): ProjectRef[] {
+  const byProject = new Map<string, { path: string; name: string }>()
+  for (const row of rows) {
+    if (row.hostId !== null && row.hostId !== 'local') {
+      continue
+    }
+    const key = row.projectId ?? row.path
+    const existing = byProject.get(key)
+    if (existing === undefined || row.path.length < existing.path.length) {
+      byProject.set(key, { path: row.path, name: row.project ?? baseName(row.path) })
+    }
+  }
+  return [...byProject.values()].map((entry) => ({
+    name: entry.name,
+    host: 'local',
+    path: entry.path
+  }))
+}

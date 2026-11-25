@@ -4,5 +4,5 @@ import { defineCheck } from 'orca/testing'
 
 export default defineCheck({
   fresh: {},
-  counted: { storage: { total: 41 } }
+  agent: { settings: { refreshAgent: 'claude', refreshWorkspace: 'w1' } }
 })

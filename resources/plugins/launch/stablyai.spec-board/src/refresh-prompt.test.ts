@@ -1,0 +1,64 @@
+// The prompt the refresh hands the agent. It has to state the task and the schema exactly as the
+// validator enforces it: a mismatch shows the user a broken-snapshot card instead of a board.
+import { assert, test } from 'orca/testing'
+import { buildRefreshPrompt } from './refresh-prompt'
+
+const prompt = buildRefreshPrompt({
+  registryPath: '/home/me/.orca/spec-board/projects.json',
+  snapshotPath: '/home/me/.orca/spec-board/board.json'
+})
+
+test('names the registry and the snapshot file', () => {
+  assert.ok(prompt.includes('/home/me/.orca/spec-board/projects.json'))
+  assert.ok(prompt.includes('/home/me/.orca/spec-board/board.json'))
+})
+
+test('states the task: read the registry, scan the projects, write the snapshot', () => {
+  assert.match(prompt, /注册表/)
+  assert.match(prompt, /扫描/)
+  assert.match(prompt, /openspec\/changes\//)
+  assert.match(prompt, /openspec\/specs\//)
+  assert.match(prompt, /docs\/superpowers\/specs\//)
+  assert.match(prompt, /docs\/superpowers\/plans\//)
+  assert.match(prompt, /ssh/)
+})
+
+test('asks for the snapshot to be written in two steps, so no reader sees half a file', () => {
+  assert.match(prompt, /\.tmp/)
+  assert.match(prompt, /rename/)
+})
+
+test('states the schema the validator enforces', () => {
+  assert.match(prompt, /"schemaVersion": 1/)
+  assert.match(prompt, /"generatedAt"/)
+  assert.match(prompt, /"generatedBy"/)
+  assert.match(prompt, /"scannedAt"/)
+  // The stage enums, spelled as the validator spells them.
+  assert.match(prompt, /proposed.*implementing.*validated.*archived/s)
+  assert.match(prompt, /designed.*planned.*executing.*done/s)
+  // The optional fields are omitted, never written as null.
+  for (const field of ['error', 'summary', 'nextAction', 'notes']) {
+    assert.ok(prompt.includes(field), field)
+  }
+  assert.match(prompt, /省略/)
+})
+
+test('names all six progress counts, and says they have to be written', () => {
+  for (const count of [
+    'tasksDone',
+    'tasksInProgress',
+    'tasksTotal',
+    'planDone',
+    'planInProgress',
+    'planTotal'
+  ]) {
+    assert.ok(prompt.includes(count), count)
+  }
+  assert.match(prompt, /done \+ inProgress <= total/)
+})
+
+test('asks for plain slugs', () => {
+  assert.ok(prompt.includes('/^[A-Za-z0-9][A-Za-z0-9._-]*$/'))
+  assert.match(prompt, /changeId/)
+  assert.match(prompt, /topic/)
+})

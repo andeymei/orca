@@ -1,17 +1,30 @@
 // The panel <-> worker contract, declared once: src/panel.tsx and src/worker.ts both read it.
-export {}
+import type { BoardPayload } from './model'
 
 declare module 'orca' {
   // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging needs an interface
   interface PluginRequests {
-    /** The total the worker keeps in storage. */
-    'counter.get': { output: { total: number } }
-    /** Adds `by` to the stored total and answers the new total. */
-    'counter.add': { input: { by: number }; output: { total: number } }
+    /** The board: the items, the projects, and what the worker could not read. */
+    'board.get': { output: BoardPayload }
+    /** Starts the agent that writes a new snapshot; answers with its terminal. */
+    'board.refresh': { output: { terminalId: string } }
+    /**
+     * Runs one action. The panel names the action and, for a change-scoped command, the change
+     * it picked — never a command line: the worker resolves that itself.
+     */
+    'action.run': {
+      input: {
+        projectId: string
+        actionId: string
+        itemId?: string
+        changeId?: string
+      }
+      output: { kind: 'terminal' | 'agent'; terminalId: string }
+    }
   }
   // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging needs an interface
   interface PluginPanelEvents {
-    /** Posted to every open panel after the total changes. */
-    'counter.changed': { total: number }
+    /** Posted to every open panel when the snapshot on disk changed. */
+    'board.changed': { agentAt: number | null }
   }
 }

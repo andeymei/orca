@@ -256,6 +256,20 @@ test('lists the capabilities the project already has specs for', async () => {
   assert.deepEqual(result.project.openspec?.capabilities, ['x', 'y'])
 })
 
+test('a change named in Chinese gets a topic and a card of its own', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'spec-board-cjk-'))
+  roots.push(root)
+  await mkdir(join(root, 'openspec/changes/添加-x'), { recursive: true })
+  await writeFile(join(root, 'openspec/changes/添加-x/proposal.md'), '# 变更\n')
+  const result = await scanProject({ name: 'demo', host: 'local', path: root })
+  // The name is not ASCII, and it still names work: no card, no skipped-content warning.
+  assert.equal(result.items.length, 1)
+  const item = result.items[0]!
+  assert.equal(item.topic, '添加-x')
+  assert.equal(item.openspec?.changeId, '添加-x')
+  assert.deepEqual(result.warnings, [])
+})
+
 test('a file whose name carries no topic is skipped, and the warning names it', async () => {
   const root = await fixture()
   await writeFile(join(root, 'docs/superpowers/plans/.md'), '- [x] a\n')

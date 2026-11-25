@@ -26,6 +26,10 @@ type Pairing = { changeId: string; confidence: number }
 /**
  * The topic a file name carries: no date prefix, no `-design` suffix, no extension, lower case
  * kebab. `2026-11-17-next-edit-suggestion-design.md` and `next-edit-suggestion` name one work.
+ *
+ * The letters of every script are kept: a change named in Chinese names work just as well, and a
+ * topic that is empty names nothing at all. The topic never reaches a command ungated — the gate
+ * in `command-values.ts` judges it before it does.
  */
 export function normalizeTopic(fileName: string): string {
   const lowered = fileName.toLowerCase()
@@ -34,7 +38,7 @@ export function normalizeTopic(fileName: string): string {
   const withoutDesign = withoutDate.endsWith(DESIGN_SUFFIX)
     ? withoutDate.slice(0, -DESIGN_SUFFIX.length)
     : withoutDate
-  return withoutDesign.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return withoutDesign.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '')
 }
 
 /** The words a topic is made of. */

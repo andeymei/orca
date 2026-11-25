@@ -6,6 +6,13 @@ test('normalizes a dated design-spec file name to its topic', () => {
   assert.equal(normalizeTopic('next-edit-suggestion'), 'next-edit-suggestion')
 })
 
+test('keeps the letters of a name that is not ASCII', () => {
+  assert.equal(normalizeTopic('添加-x'), '添加-x')
+  assert.equal(normalizeTopic('2026-11-25-添加-x-design.md'), '添加-x')
+  // A name that carries no letter and no digit still carries no topic.
+  assert.equal(normalizeTopic('---'), '')
+})
+
 test('scores partial overlap below an exact match', () => {
   assert.equal(topicSimilarity('add-two-factor-auth', 'add-two-factor-auth'), 1)
   assert.ok(topicSimilarity('add-two-factor-auth', 'add-two-factor-auth-ui') < 1)

@@ -17,6 +17,7 @@ export const fixturePayload: BoardPayload = {
       title: 'Add X',
       topic: 'add-x',
       stage: 'implement',
+      nextAction: { label: '写下设计', detail: '先写设计 spec，再改代码' },
       openspec: {
         changeId: 'add-x',
         stage: 'implementing',
@@ -71,7 +72,13 @@ export const fixturePayload: BoardPayload = {
         capabilities: []
       },
       superpowers: null,
-      gaps: [],
+      gaps: [
+        {
+          code: 'no-design',
+          severity: 'info',
+          message: '有 tasks.md，但缺少 design.md'
+        }
+      ],
       actions: [
         {
           id: 'openspec.show',

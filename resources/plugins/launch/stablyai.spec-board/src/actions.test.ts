@@ -1,4 +1,5 @@
 import { assert, test } from 'orca/testing'
+import { OPENSPEC_COMMANDS } from './action-catalog'
 import type { Action } from './model'
 import { actionsForItem, findAction, frameworkActions, resolvePaletteAction } from './actions'
 
@@ -134,6 +135,15 @@ test('every action carries the label, the framework and the mutates flag of its 
       ['superpowers.verify', '验证完成', 'superpowers', false]
     ]
   )
+})
+
+test('every change-scoped OpenSpec command has a command of its own', () => {
+  // Why: the panel marks a card `无 CLI` when one of its OpenSpec actions runs no command. A
+  // change-scoped command that only ever had an agent form would put that badge on cards of
+  // projects that do have the CLI, and nothing else would notice.
+  for (const command of OPENSPEC_COMMANDS.filter((entry) => entry.scope === 'change')) {
+    assert.notEqual(command.command, null, `${command.id} has no command of its own`)
+  }
 })
 
 test('the OpenSpec commands are the ones the CLI actually has', () => {

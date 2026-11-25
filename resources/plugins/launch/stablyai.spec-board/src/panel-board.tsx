@@ -3,9 +3,10 @@
 // The card is where the two frameworks' disagreement shows: two progress lanes, the gaps between
 // them, and the buttons that run either framework's own commands.
 
-import { Badge, Button, Card, EmptyState, Progress, Row, Stack, Text, read, set } from 'orca'
-import type { Action, SnapshotProject, UnifiedStage, WorkItem } from './model'
-import { busy, payload, pendingAction, pressAction, stage } from './panel-state'
+import { Button, EmptyState, Row, Stack, Text, read, set } from 'orca'
+import type { SnapshotProject, UnifiedStage, WorkItem } from './model'
+import { WorkCard } from './panel-card'
+import { busy, payload, stage } from './panel-state'
 
 /** The six stages the rail shows, in the order the work flows. */
 const STAGES: readonly { id: UnifiedStage; label: string }[] = [
@@ -25,37 +26,6 @@ function selectedStage(items: readonly WorkItem[]): UnifiedStage {
   }
   const first = STAGES.find((entry) => items.some((item) => item.stage === entry.id))
   return first?.id ?? 'proposal'
-}
-
-/** How far a checklist is, in the percent a Progress bar takes. */
-function percent(done: number, total: number): number {
-  if (total <= 0) {
-    return 0
-  }
-  return Math.min(100, Math.max(0, Math.round((done / total) * 100)))
-}
-
-/** The tone a gap wears: how far apart the two frameworks are, in colour. */
-function gapTone(severity: 'info' | 'warning' | 'error'): 'neutral' | 'warning' | 'danger' {
-  if (severity === 'error') {
-    return 'danger'
-  }
-  return severity === 'warning' ? 'warning' : 'neutral'
-}
-
-/** The line that says which project the work belongs to. */
-function projectLine(project: SnapshotProject | null, item: WorkItem): string {
-  return project === null ? item.projectId : `${project.name} · ${project.host}`
-}
-
-/** The label on an action's button: the action's own, or the question it asks first. */
-function actionLabel(
-  item: WorkItem,
-  action: Action,
-  waiting: { itemId: string; actionId: string } | null
-): string {
-  const asked = waiting !== null && waiting.itemId === item.id && waiting.actionId === action.id
-  return asked ? '确认执行？' : action.label
 }
 
 /** A key that keeps one card's path from looking like a child of another's. */
@@ -80,99 +50,6 @@ function StageRail({ items, current }: { items: readonly WorkItem[]; current: Un
         </Button>
       ))}
     </Row>
-  )
-}
-
-/** The OpenSpec lane: the tasks the change's own checklist holds. */
-function OpenspecLane({ item }: { item: WorkItem }) {
-  const facts = item.openspec
-  if (facts === null) {
-    return null
-  }
-  return (
-    <Row gap="xs" align="center">
-      <Text size="xs">{`OpenSpec ${facts.tasksDone}/${facts.tasksTotal}`}</Text>
-      <Progress
-        label="OpenSpec 任务进度"
-        labelHidden
-        value={percent(facts.tasksDone, facts.tasksTotal)}
-      />
-    </Row>
-  )
-}
-
-/** The Superpowers lane: the boxes the plan holds. */
-function SuperpowersLane({ item }: { item: WorkItem }) {
-  const facts = item.superpowers
-  if (facts === null) {
-    return null
-  }
-  return (
-    <Row gap="xs" align="center">
-      <Text size="xs">{`Superpowers ${facts.planDone}/${facts.planTotal}`}</Text>
-      <Progress
-        label="Superpowers 计划进度"
-        labelHidden
-        value={percent(facts.planDone, facts.planTotal)}
-      />
-    </Row>
-  )
-}
-
-/** One piece of work: what it is, how far the two frameworks have come, and what can be done. */
-function WorkCard({
-  item,
-  projects
-}: {
-  item: WorkItem
-  projects: readonly SnapshotProject[]
-}) {
-  const waiting = read(pendingAction)
-  const project = projects.find((entry) => entry.id === item.projectId) ?? null
-  // The badge says what the button does, not what the project owns: an OpenSpec action that runs
-  // no command goes to an agent instead, and the person must see that before pressing it.
-  const withoutCli = item.actions.some(
-    (action) => action.framework === 'openspec' && action.run.kind === 'agent'
-  )
-  return (
-    <Card>
-      <Stack gap="sm">
-        <Text weight="semibold">{item.title}</Text>
-        <Row gap="xs" align="center" wrap>
-          <Text muted size="xs">{projectLine(project, item)}</Text>
-          {withoutCli ? <Badge tone="warning">无 CLI</Badge> : null}
-        </Row>
-        <Row gap="md" align="center" wrap>
-          {item.openspec === null ? null : <OpenspecLane item={item} />}
-          {item.superpowers === null ? null : <SuperpowersLane item={item} />}
-        </Row>
-        {item.gaps.length === 0 ? null : (
-          <Row gap="xs" wrap>
-            {item.gaps.map((gap) => (
-              <Badge key={gap.code} tone={gapTone(gap.severity)}>
-                {gap.message}
-              </Badge>
-            ))}
-          </Row>
-        )}
-        {item.actions.length === 0 ? null : (
-          <Row gap="xs" wrap>
-            {item.actions.map((action) => (
-              <Button
-                key={action.id}
-                size="sm"
-                variant="outline"
-                onPress={() => {
-                  pressAction(item, action)
-                }}
-              >
-                {actionLabel(item, action, waiting)}
-              </Button>
-            ))}
-          </Row>
-        )}
-      </Stack>
-    </Card>
   )
 }
 

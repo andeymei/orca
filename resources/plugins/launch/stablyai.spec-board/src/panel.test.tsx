@@ -1,38 +1,19 @@
 // `orca plugin test .` runs this in Node with the same runtime and checks Orca uses.
+// The shell and the board tab: the stage rail, the reads, and the three tabs.
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
 import { fixturePayload } from './panel-fixture'
+import type { BoardPayload } from './model'
 
-test('draws the change, both progress lanes and its gaps', async () => {
-  const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
-  const view = await mount(panel, { host })
-  assert.ok(view.find({ text: 'Add X' }))
-  assert.ok(view.find({ text: 'repo · local' }))
-  assert.ok(view.find({ text: 'OpenSpec 2/5' }))
-  assert.ok(view.find({ text: 'Superpowers 1/8' }))
-  assert.ok(view.find({ text: '有 OpenSpec 变更，没有对应的 Superpowers 设计' }))
-  // The bar takes a percentage, not a fraction: two of five tasks is forty.
-  assert.equal(view.find({ type: 'Progress', label: 'OpenSpec 任务进度' })?.props.value, 40)
-  assert.equal(view.find({ type: 'Progress', label: 'Superpowers 计划进度' })?.props.value, 13)
-  assert.equal(
-    view.find({ text: '有 OpenSpec 变更，没有对应的 Superpowers 设计' })?.props.tone,
-    'warning'
-  )
-  assert.deepEqual(view.errors, [])
-  assert.deepEqual(view.warnings, [])
-  assert.deepEqual(view.refusals, [])
-  await view.unmount()
-})
-
-test('names the project the work belongs to', async () => {
-  const host = mockHost({
-    requests: { 'board.get': () => ({ ...fixturePayload, projects: [] }) }
-  })
-  const view = await mount(panel, { host })
-  // The board does not know the project: the card still says which project it is.
-  assert.ok(view.find({ text: 'local|/repo' }))
-  await view.unmount()
-})
+/** The board as it looked a moment ago: the first card has another name. */
+function boardTitled(title: string): BoardPayload {
+  return {
+    ...fixturePayload,
+    items: fixturePayload.items.map((item, index) =>
+      index === 0 ? { ...item, title } : item
+    )
+  }
+}
 
 test('counts the work in every stage and marks the stage the rail is on', async () => {
   const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
@@ -43,102 +24,6 @@ test('counts the work in every stage and marks the stage the rail is on', async 
   const other = view.find({ type: 'Button', text: '提案 0' })
   assert.ok(other)
   assert.equal(other?.props.variant, 'ghost')
-  await view.unmount()
-})
-
-test('marks only the card whose OpenSpec action runs no command', async () => {
-  const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
-  const view = await mount(panel, { host })
-  // Three cards are on the rail's stage; only the one in the project without the CLI wears it.
-  assert.equal(view.findAll({ type: 'Card' }).length, 3)
-  assert.equal(view.findAll({ text: '无 CLI' }).length, 1)
-  await view.unmount()
-})
-
-test('runs a non-mutating action on the first press', async () => {
-  const calls: unknown[] = []
-  const host = mockHost({
-    requests: {
-      'board.get': () => fixturePayload,
-      'action.run': (input) => {
-        calls.push(input)
-        return { kind: 'terminal', terminalId: 't1' }
-      }
-    }
-  })
-  const view = await mount(panel, { host })
-  await view.press({ text: '校验' })
-  assert.deepEqual(calls, [
-    { projectId: 'local|/repo', actionId: 'openspec.validate', itemId: 'local|/repo#add-x' }
-  ])
-  await view.unmount()
-})
-
-test('holds a mutating action until a second press', async () => {
-  const calls: unknown[] = []
-  const host = mockHost({
-    requests: {
-      'board.get': () => fixturePayload,
-      'action.run': (input) => {
-        calls.push(input)
-        return { kind: 'terminal', terminalId: 't2' }
-      }
-    }
-  })
-  const view = await mount(panel, { host })
-  await view.press({ text: '归档' })
-  assert.deepEqual(calls, [])
-  await view.press({ text: '确认执行？' })
-  assert.deepEqual(calls, [
-    { projectId: 'local|/repo', actionId: 'openspec.archive', itemId: 'local|/repo#add-x' }
-  ])
-  await view.unmount()
-})
-
-test('holds a second mutating action until its own second press', async () => {
-  const calls: unknown[] = []
-  const host = mockHost({
-    requests: {
-      'board.get': () => fixturePayload,
-      'action.run': (input) => {
-        calls.push(input)
-        return { kind: 'agent', terminalId: 't3' }
-      }
-    }
-  })
-  const view = await mount(panel, { host })
-  await view.press({ text: '归档' })
-  await view.press({ text: '执行计划' })
-  // A mutating action never runs on the first press, not even while another one is waiting.
-  assert.deepEqual(calls, [])
-  assert.ok(view.find({ text: '确认执行？' }))
-  assert.ok(view.find({ text: '归档' }))
-  await view.unmount()
-})
-
-test('the confirmation expires', async () => {
-  const calls: unknown[] = []
-  const host = mockHost({
-    requests: {
-      'board.get': () => fixturePayload,
-      'action.run': (input) => {
-        calls.push(input)
-        return { kind: 'terminal', terminalId: 't4' }
-      }
-    }
-  })
-  const view = await mount(panel, { host })
-  await view.press({ text: '归档' })
-  assert.ok(view.find({ text: '确认执行？' }))
-  // The window is three seconds; after it the button asks again.
-  const deadline = Date.now() + 5000
-  while (view.find({ text: '归档' }) === null && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    await view.settled()
-  }
-  assert.ok(view.find({ text: '归档' }))
-  await view.press({ text: '归档' })
-  assert.deepEqual(calls, [])
   await view.unmount()
 })
 
@@ -195,6 +80,32 @@ test('reads the board again when the worker says it changed', async () => {
   await view.post('board.changed', { agentAt: 1 })
   assert.equal(reads, 2)
   assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('an older read does not overwrite a newer board', async () => {
+  const titles = ['First board', 'Stale board', 'Fresh board']
+  let call = 0
+  const host = mockHost({
+    requests: {
+      'board.get': () => {
+        call += 1
+        const title = titles[call - 1]
+        // The second read answers last, and its answer is the older one.
+        const delay = call === 2 ? 40 : 0
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(boardTitled(title)), delay)
+        })
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  const first = view.post('board.changed', { agentAt: 1 })
+  const second = view.post('board.changed', { agentAt: 2 })
+  await Promise.all([first, second])
+  await view.settled()
+  assert.ok(view.find({ text: 'Fresh board' }))
+  assert.equal(view.find({ text: 'Stale board' }), null)
   await view.unmount()
 })
 

@@ -58,9 +58,43 @@ export function probeOpenspecCli(
   })
 }
 
+/** How long the probe's answer stays true. */
+const PROBE_TTL_MS = 60_000
+
+/** The probe's last answer and when it was given. */
+let cached: { value: CliProbe | null; at: number } | null = null
+
+/** The clock the cache reads. A test moves it, so the answer can be made to expire on purpose. */
+export const cliClock: { now: () => number } = { now: () => Date.now() }
+
+/** Forgets the probe's answer, so the next read asks the machine again. */
+export function resetCliProbeCache(): void {
+  cached = null
+}
+
+/** The probe's answer, kept for a minute. */
+export async function readCliProbe(
+  probe: () => Promise<CliProbe | null> = probeOpenspecCli
+): Promise<CliProbe | null> {
+  const at = cliClock.now()
+  if (cached !== null && at - cached.at < PROBE_TTL_MS) {
+    return cached.value
+  }
+  const value = await probe()
+  cached = { value, at: cliClock.now() }
+  return value
+}
+
 /**
  * How the worker asks about the CLI. The probe runs the real binary, so the answer is a fact
  * about this machine; a test replaces `read` to answer for a machine it cannot change, which
  * keeps the tests from depending on whether the machine running them has the CLI installed.
+ *
+ * The answer is kept for a minute: every read of the board asks, and every press of a button
+ * asks again, and each ask starts a process — while the answer of a machine does not change in
+ * the second between two of them.
  */
-export const cliProbe: { read: () => Promise<CliProbe | null> } = { read: probeOpenspecCli }
+export const cliProbe: { read: () => Promise<CliProbe | null>; reset: () => void } = {
+  read: () => readCliProbe(),
+  reset: resetCliProbeCache
+}

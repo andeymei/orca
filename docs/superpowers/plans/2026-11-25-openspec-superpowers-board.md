@@ -21,6 +21,10 @@
 - The plugin never writes to a project's files. It only launches `openspec` or an agent.
 - No network calls. No third-party imports: only `orca`, `orca/*` and relative files.
 - UI copy is Chinese; identifiers, file names and commit subjects are English.
+- **Commit with `git commit -- <paths>`, never a bare `git commit`.** Another session works in this
+  same checkout and may have files staged in the index; a bare `git commit` takes the whole index,
+  not just what `git add` names. This happened once in Task 2 and had to be undone with
+  `git reset --soft HEAD~1` followed by a path-limited commit.
 - The plugin lives under `resources/`, which is **outside the repo's tsconfig projects** — so `pnpm tc` does not type-check it — but **inside the root oxlint config's scope** (`resources/` is not in `ignorePatterns`). Type-check inside the plugin with `npx tsc -p .` after `orca plugin types`, and lint with `pnpm exec oxlint resources/plugins/launch/stablyai.spec-board/src`.
 - Check commands, run from the repo root:
   - `orca plugin test resources/plugins/launch/stablyai.spec-board --json`

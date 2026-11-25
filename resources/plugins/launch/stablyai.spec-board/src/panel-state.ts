@@ -14,8 +14,19 @@ export type PanelTab = 'board' | 'map' | 'projects'
 /** The board the worker last answered with; null until the first read lands. */
 export const payload = atom<BoardPayload | null>(null)
 
-/** The tab that is open. */
-export const tab = atom<PanelTab>('board')
+/**
+ * The tab that is open.
+ *
+ * It is kept per plugin, so the panel reopens on the tab the person left it on — and so the
+ * plugin's own check can open a tab other than the first one.
+ */
+export const tab = atom<PanelTab>('spec-board.tab', 'board', { persist: 'plugin' })
+
+/** The tab that is open. A stored value that names no tab falls back to the board. */
+export function currentTab(): PanelTab {
+  const value = read(tab)
+  return value === 'map' || value === 'projects' ? value : 'board'
+}
 
 /** The project the map's commands run in; null means "the first project the board knows". */
 export const mapProject = atom<string | null>(null)
@@ -37,6 +48,14 @@ export const refreshing = atom<boolean>(false)
 
 /** What the last refresh did: the agent the worker launched to write a new snapshot. */
 export const refreshFeedback = atom<string | null>(null)
+
+/**
+ * Why the last refresh could not be started.
+ *
+ * It is its own failure, not the board's: a board that could not be read stays unread, and a
+ * refresh does not read the board.
+ */
+export const refreshError = atom<{ code: string; message: string } | null>(null)
 
 /** The action that waits for its second press. */
 export const pendingAction = atom<{ scope: string; actionId: string } | null>(null)
@@ -192,15 +211,16 @@ async function run(press: ActionPress): Promise<void> {
  * `board.json`, and the worker's watcher posts `board.changed`, which reads the board again.
  */
 export async function refreshBoard(): Promise<void> {
-  // The callout describes the latest attempt: a new refresh clears the failure of the last one.
-  set(error, null)
+  // The refresh's own failure is its own: a board that could not be read stays unread, because a
+  // refresh does not read the board.
+  set(refreshError, null)
   set(refreshFeedback, null)
   set(refreshing, true)
   try {
     const answer = await plugin.request('board.refresh')
     set(refreshFeedback, `已派发 ${answer.agent ?? 'agent'} 刷新`)
   } catch (thrown) {
-    set(error, { code: codeOf(thrown), message: messageOf(thrown) })
+    set(refreshError, { code: codeOf(thrown), message: messageOf(thrown) })
   } finally {
     set(refreshing, false)
   }

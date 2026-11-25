@@ -15,15 +15,20 @@ const NEVER_SCANNED = '尚未扫描'
 /** What the card says about a project whose scan time cannot be read. */
 const UNKNOWN_TIME = '未知时间'
 
-/** The shape a snapshot writes its scan time in. */
-const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+/** The shape a snapshot writes its scan time in: a date, a time, and an optional zone. */
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/
+
+/** Whether a time names its own zone. */
+const HAS_ZONE = /(?:Z|[+-]\d{2}:\d{2})$/
 
 /** The milliseconds a snapshot's scan time names, or null when it names none that can be read. */
 function scanTimeOf(scannedAt: string): number | null {
   if (!ISO_TIME.test(scannedAt)) {
     return null
   }
-  const at = Date.parse(scannedAt)
+  // A time without a zone is read as UTC: the snapshot is written by an agent, on a machine
+  // whose zone is not the reader's.
+  const at = Date.parse(HAS_ZONE.test(scannedAt) ? scannedAt : `${scannedAt}Z`)
   return Number.isNaN(at) ? null : at
 }
 
@@ -39,9 +44,33 @@ function ScannedAt({ scannedAt }: { scannedAt: string }) {
   return <RelativeTime at={at} muted />
 }
 
-/** The badge that says whether the project carries a framework. */
-function frameworkBadge(label: string, present: boolean): string {
-  return present ? label : `无 ${label}`
+/** The failure a project carries, or null: an empty string is no failure at all. */
+function failureOf(project: SnapshotProject): string | null {
+  const error = project.error
+  return error === undefined || error === '' ? null : error
+}
+
+/**
+ * Whether anybody checked this project.
+ *
+ * The local scan reads a local project — unless the scan failed, which the error badge says. A
+ * project on another host was read by the agent alone, and a field it left empty is an absence
+ * nobody checked.
+ */
+function scannedOf(project: SnapshotProject): boolean {
+  return project.host === 'local' && failureOf(project) === null
+}
+
+/** The badge that says what a project has of a framework: it has it, it has not, or nobody knows. */
+function frameworkBadge(
+  label: string,
+  facts: { present: boolean } | null,
+  scanned: boolean
+): string {
+  if (facts === null) {
+    return scanned ? `无 ${label}` : `未知 ${label}`
+  }
+  return facts.present ? label : `无 ${label}`
 }
 
 /** The badge that says whether the OpenSpec CLI is on that host. */
@@ -61,21 +90,24 @@ function projectKey(id: string): string {
 /** One project: where it is, what it carries, and what went wrong with it. */
 function ProjectCard({ project }: { project: SnapshotProject }) {
   const cli = cliBadge(project.openspecCli)
+  const failure = failureOf(project)
+  const scanned = scannedOf(project)
   return (
     <Card>
       <Stack gap="sm">
         <Row gap="xs" align="center" wrap>
           <Badge tone="neutral">{`${project.name} · ${project.host}`}</Badge>
-          {project.error === undefined ? null : (
-            <Badge tone="danger">{project.error}</Badge>
-          )}
+          {failure === null ? null : <Badge tone="danger">{failure}</Badge>}
+          {project.host.startsWith('runtime:') ? (
+            <Badge tone="warning">需 agent 采集</Badge>
+          ) : null}
         </Row>
         <Row gap="xs" wrap>
           <Badge tone="neutral">
-            {frameworkBadge('OpenSpec', project.openspec?.present === true)}
+            {frameworkBadge('OpenSpec', project.openspec, scanned)}
           </Badge>
           <Badge tone="neutral">
-            {frameworkBadge('Superpowers', project.superpowers?.present === true)}
+            {frameworkBadge('Superpowers', project.superpowers, scanned)}
           </Badge>
           <Badge tone={cli.tone}>{cli.text}</Badge>
         </Row>
@@ -115,6 +147,11 @@ export function ProjectsTab() {
           </Text>
         )}
       </Row>
+      {board !== null && board.sources.agentAt === null ? (
+        <Text size="xs" muted>
+          尚无 agent 快照（项目清单来自本地扫描）
+        </Text>
+      ) : null}
       {board === null ? (
         <Text muted>{read(busy) ? '读取中…' : '还没有读到看板。'}</Text>
       ) : projects.length === 0 ? (

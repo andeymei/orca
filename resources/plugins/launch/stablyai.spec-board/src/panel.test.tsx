@@ -53,7 +53,87 @@ test('the warnings are above the tabs, so every tab shows them', async () => {
   await view.select({ label: '看板视图' }, 'map')
   assert.ok(view.find({ type: 'Callout' }))
   assert.equal(view.findAll({ text: 'board.json: schemaVersion: 期望 1' }).length, 1)
+  // And the 项目 tab, which is the tab the requirement is most about.
+  await view.select({ label: '看板视图' }, 'projects')
+  assert.ok(view.find({ type: 'Callout' }))
+  assert.equal(view.findAll({ text: 'board.json: schemaVersion: 期望 1' }).length, 1)
   assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('the error card names the last snapshot that parsed', async () => {
+  const at = Date.parse('2026-11-25T09:00:00.000Z')
+  const host = mockHost({
+    requests: {
+      'board.get': () => ({
+        ...fixturePayload,
+        sources: { localAt: 1, agentAt: at },
+        warnings: ['快照不是合法的 JSON：/home/x/.orca/spec-board/board.json（Unexpected token）']
+      })
+    }
+  })
+  const view = await mount(panel, { host })
+  // The card names the file and the parse error; it also says how old the good data is.
+  assert.ok(view.find({ text: '快照不是合法的 JSON：/home/x/.orca/spec-board/board.json（Unexpected token）' }))
+  assert.ok(view.find({ text: '上次有效时间' }))
+  assert.equal(view.find({ type: 'RelativeTime' })?.props.at, at)
+  await view.unmount()
+})
+
+test('the error card says nothing about a last time when there is none', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => ({
+        ...fixturePayload,
+        sources: { localAt: 1, agentAt: null },
+        warnings: ['快照不是合法的 JSON：/home/x/.orca/spec-board/board.json（Unexpected token）']
+      })
+    }
+  })
+  const view = await mount(panel, { host })
+  assert.equal(view.find({ text: '上次有效时间' }), null)
+  assert.equal(view.find({ type: 'RelativeTime' }), null)
+  await view.unmount()
+})
+
+test('a refresh does not wipe the failure of a board read', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => {
+        throw hostError('timeout', '读取超时')
+      },
+      'board.refresh': () => ({ terminalId: 't1', agent: 'claude' })
+    }
+  })
+  const view = await mount(panel, { host })
+  assert.ok(view.find({ label: 'timeout' }))
+  await view.select({ label: '看板视图' }, 'projects')
+  await view.press({ text: '刷新' })
+  // The board is still unread: the refresh launches an agent, it does not read the board.
+  assert.ok(view.find({ label: 'timeout' }))
+  assert.ok(view.find({ text: '读取超时' }))
+  await view.unmount()
+})
+
+test('a refused refresh does not hide the failure of a board read', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => {
+        throw hostError('timeout', '读取超时')
+      },
+      'board.refresh': () => {
+        throw hostError('not_permitted', '能力未批准')
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.select({ label: '看板视图' }, 'projects')
+  await view.press({ text: '刷新' })
+  // Two failures, two cards: the read that failed and the refresh that failed.
+  assert.ok(view.find({ label: 'timeout' }))
+  assert.ok(view.find({ text: '读取超时' }))
+  assert.ok(view.find({ label: 'not_permitted' }))
+  assert.ok(view.find({ text: '能力未批准' }))
   await view.unmount()
 })
 

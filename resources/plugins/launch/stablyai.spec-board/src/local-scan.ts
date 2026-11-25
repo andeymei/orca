@@ -157,13 +157,16 @@ export function projectIdFor(host: string, path: string): string {
  * The failure is the project's, and only the project's: the board's own warnings are about the
  * board, and a fact in two places reads as two facts. The warnings the scan collected on the way
  * stay — they are about the project's contents, not about its failure.
+ *
+ * The scan time goes too: the scan did not happen, so the project has no scan time. The time of
+ * the attempt is not the time of a scan.
  */
 function failed(
   project: SnapshotProject,
   error: string,
   warnings: string[]
 ): ScanProjectResult {
-  return { project: { ...project, error }, items: [], warnings }
+  return { project: { ...project, scannedAt: '', error }, items: [], warnings }
 }
 
 /**

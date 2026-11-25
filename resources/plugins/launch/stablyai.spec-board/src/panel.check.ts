@@ -3,6 +3,9 @@
 import { defineCheck } from 'orca/testing'
 import { fixturePayload } from './panel-fixture'
 
+/** The tab the check opens on; the panel keeps the tab it was left on. */
+const PROJECTS_TAB = { plugin: { 'spec-board.tab': 'projects' } }
+
 export default defineCheck({
   empty: {
     requests: {
@@ -24,5 +27,14 @@ export default defineCheck({
         warnings: ['board.json: schemaVersion: 期望 1']
       })
     }
+  },
+  projects: {
+    persisted: PROJECTS_TAB,
+    requests: { 'board.get': () => fixturePayload }
+  },
+  projectsLight: {
+    persisted: PROJECTS_TAB,
+    theme: 'light',
+    requests: { 'board.get': () => fixturePayload }
   }
 })

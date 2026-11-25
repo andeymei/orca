@@ -2,6 +2,7 @@
 // The 项目 tab: the project cards, the refresh button, and what a project says when it failed.
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
+import { fixturePayload } from './panel-fixture'
 import type { BoardPayload, SnapshotProject } from './model'
 
 /** A project with both frameworks and the OpenSpec CLI. */
@@ -25,6 +26,18 @@ const legacy: SnapshotProject = {
   openspec: { present: true, capabilities: [], activeChanges: 1, archived: 0 },
   superpowers: null,
   openspecCli: { available: false },
+  scannedAt: '2026-11-25T10:00:00.000Z'
+}
+
+/** A project on another host that the agent did not cover: nobody checked it. */
+const remote: SnapshotProject = {
+  id: 'ssh:yolo|C:/work/app',
+  name: 'app',
+  host: 'ssh:yolo',
+  path: 'C:/work/app',
+  openspec: null,
+  superpowers: null,
+  openspecCli: null,
   scannedAt: '2026-11-25T10:00:00.000Z'
 }
 
@@ -131,6 +144,127 @@ test('the tab says so when the board knows no project', async () => {
   assert.ok(view.find({ type: 'EmptyState' }))
   assert.equal(view.find({ type: 'Card' }), null)
   assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('the tab says the list is local while the agent has collected nothing', async () => {
+  const view = await projectsTab({
+    ...boardWith([repo]),
+    sources: { localAt: 1, agentAt: null }
+  })
+  // The list is the local scan's, and the remote projects are not in it.
+  assert.ok(view.find({ text: '尚无 agent 快照（项目清单来自本地扫描）' }))
+  await view.unmount()
+})
+
+test('the tab says nothing of the sort once the agent has collected', async () => {
+  const view = await projectsTab({
+    ...boardWith([repo]),
+    sources: { localAt: 1, agentAt: 1 }
+  })
+  assert.equal(view.find({ text: '尚无 agent 快照（项目清单来自本地扫描）' }), null)
+  await view.unmount()
+})
+
+test('a project on another host says nobody checked it', async () => {
+  const view = await projectsTab(boardWith([remote]))
+  // The worker cannot read a remote project, so an empty field is an absence nobody looked for.
+  assert.ok(view.find({ type: 'Badge', text: '未知 OpenSpec' }))
+  assert.ok(view.find({ type: 'Badge', text: '未知 Superpowers' }))
+  assert.ok(view.find({ type: 'Badge', text: 'CLI 未知' }))
+  await view.unmount()
+})
+
+test('a remote project the agent covered says what it has', async () => {
+  const view = await projectsTab(
+    boardWith([
+      {
+        ...remote,
+        openspec: { present: false, capabilities: [], activeChanges: 0, archived: 0 },
+        superpowers: { present: true, specs: 2, plans: 1 },
+        openspecCli: { available: true }
+      }
+    ])
+  )
+  assert.ok(view.find({ type: 'Badge', text: '无 OpenSpec' }))
+  assert.ok(view.find({ type: 'Badge', text: 'Superpowers' }))
+  assert.ok(view.find({ type: 'Badge', text: 'CLI 可用' }))
+  assert.equal(view.find({ type: 'Badge', text: '未知 OpenSpec' }), null)
+  await view.unmount()
+})
+
+test('a project whose scan failed says nobody checked it', async () => {
+  const view = await projectsTab(
+    boardWith([
+      {
+        ...repo,
+        openspec: null,
+        superpowers: null,
+        scannedAt: '',
+        error: '路径不可读：/repo（ENOENT）'
+      }
+    ])
+  )
+  // The scan did not happen, so the project has no scan time and no framework facts.
+  assert.ok(view.find({ text: '尚未扫描' }))
+  assert.ok(view.find({ type: 'Badge', text: '未知 OpenSpec' }))
+  assert.ok(view.find({ type: 'Badge', text: '未知 Superpowers' }))
+  await view.unmount()
+})
+
+test('a project with an empty error wears no badge', async () => {
+  const view = await projectsTab(boardWith([{ ...repo, error: '' }]))
+  // An empty error is no error at all: the project was read.
+  assert.equal(
+    view.findAll({ type: 'Badge' }).filter((badge) => badge.props.tone === 'danger').length,
+    0
+  )
+  assert.ok(view.find({ type: 'Badge', text: 'OpenSpec' }))
+  await view.unmount()
+})
+
+test('a project on a runtime host says it needs the agent', async () => {
+  const view = await projectsTab(
+    boardWith([{ ...remote, id: 'runtime:env-1|/x', host: 'runtime:env-1' }])
+  )
+  // v1 does not support runtime hosts: the card says so instead of failing quietly.
+  assert.ok(view.find({ type: 'Badge', text: '需 agent 采集' }))
+  await view.unmount()
+})
+
+test('a scan time without a zone is read as UTC', async () => {
+  const view = await projectsTab(boardWith([{ ...repo, scannedAt: '2026-11-25T10:00:00' }]))
+  // The snapshot is written by an agent, on a machine whose zone is not the reader's.
+  assert.equal(
+    view.find({ type: 'RelativeTime' })?.props.at,
+    Date.parse('2026-11-25T10:00:00Z')
+  )
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('the panel reopens on the tab it was left on', async () => {
+  const host = mockHost({ requests: { 'board.get': () => boardWith([repo]) } })
+  const view = await mount(panel, {
+    host,
+    persisted: { plugin: { 'spec-board.tab': 'projects' } }
+  })
+  // This is how the plugin's own check opens the 项目 tab.
+  assert.ok(view.find({ type: 'Button', text: '刷新' }))
+  assert.equal(view.find({ text: 'Add X' }), null)
+  await view.unmount()
+})
+
+test('a stored tab that names no tab falls back to the board', async () => {
+  const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
+  const view = await mount(panel, {
+    host,
+    persisted: { plugin: { 'spec-board.tab': 'nowhere' } }
+  })
+  // The tab bar is told a tab it knows: a stored value that names no tab would show nothing.
+  assert.equal(view.find({ type: 'Tabs' })?.props.value, 'board')
+  assert.ok(view.find({ text: 'Add X' }))
+  assert.equal(view.find({ type: 'Button', text: '刷新' }), null)
   await view.unmount()
 })
 

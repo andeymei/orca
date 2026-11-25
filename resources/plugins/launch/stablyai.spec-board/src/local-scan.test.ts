@@ -95,6 +95,9 @@ test('an unreadable path is an error on the project, not a thrown scan', async (
   // The failure is the project's alone: the board's warnings are about the board, and a fact in
   // two places reads as two facts.
   assert.deepEqual(result.warnings, [])
+  // The scan did not happen, so the project has no scan time: the time of the attempt is not
+  // the time of a scan.
+  assert.equal(result.project.scannedAt, '')
 })
 
 test('a path that is a file is an error on the project, not a thrown scan', async () => {

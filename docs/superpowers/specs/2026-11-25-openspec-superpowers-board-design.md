@@ -347,9 +347,17 @@ export type WorkItem = SnapshotItem & {
 
 `topic` 归一化：去掉 `YYYY-MM-DD-` 前缀、`-design` 后缀，转小写 kebab。
 
-1. `topic` 完全相等 → 配对，置信度 1.0。
-2. 否则按 kebab token 计算 Jaccard 相似度，`≥ 0.6` → 配对，置信度 = 相似度。
-3. 其余 → 进入 `unmatched`。
+1. `topic` 完全相等且非空 → 候选边，权重 1.0。
+2. 否则按 kebab token 计算 Jaccard 相似度，`≥ 0.6` → 候选边，权重 = 相似度。
+3. 其余 → 不构成候选边。
+
+在候选边上求**最大匹配**（Kuhn 增广路算法），访问顺序按权重从高到低，因此同样大小的匹配里
+置信度高的优先。**一边只能被用一次**：一个 Superpowers 产物不能同时满足两个变更。
+
+贪心不行：OpenSpec 主题 `add-x` / `add-x-ui` 对 Superpowers 主题 `add-x` / `add-x-v2`，贪心
+先取精确匹配，另外两个候选都被搁下——只配上一对，而最大匹配能配上两对。**被搁下的产物会被
+报成 `superpowers-only`，被搁下的变更会被报成 `openspec-only`**，也就是对着用户明明做过的工作
+发出假的缺口告警。
 
 ### 4.8 缺口规则（纯函数，可单测）
 

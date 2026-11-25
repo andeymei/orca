@@ -754,6 +754,29 @@ test('pairs one-to-one when two changes share a topic', () => {
   assert.deepEqual(result.unmatchedSuperpowers, [])
 })
 
+test('finds a second match that a greedy walk would strand', () => {
+  const result = correlate(
+    [
+      { id: 'o1', topic: 'add-x' },
+      { id: 'o2', topic: 'add-x-ui' }
+    ],
+    [
+      { id: 's1', topic: 'add-x' },
+      { id: 's2', topic: 'add-x-v2' }
+    ]
+  )
+  assert.equal(result.matches.length, 2)
+  assert.deepEqual(result.unmatchedOpenspec, [])
+  assert.deepEqual(result.unmatchedSuperpowers, [])
+})
+
+test('never pairs two topics that are both empty', () => {
+  const result = correlate([{ id: 'o1', topic: '---' }], [{ id: 's1', topic: '.md' }])
+  assert.deepEqual(result.matches, [])
+  assert.deepEqual(result.unmatchedOpenspec, ['o1'])
+  assert.deepEqual(result.unmatchedSuperpowers, ['s1'])
+})
+
 test('leaves everything unmatched when nothing overlaps', () => {
   const result = correlate([{ id: 'o1', topic: 'alpha' }], [{ id: 's1', topic: 'beta' }])
   assert.deepEqual(result.matches, [])
@@ -860,7 +883,20 @@ Expected: FAIL — modules not found.
 
 `topicSimilarity` is the Jaccard index over kebab tokens; two empty token sets score 0.
 
-`correlate` sorts candidate pairs by (exact match first, then similarity), keeps the best above a 0.6 floor, and marks both sides used — that is what makes a shared topic pair one-to-one instead of one plan satisfying two changes.
+`correlate` builds the candidate edges — an exact topic match (both topics non-empty) or a
+similarity of at least 0.6 — and then finds a **maximum-cardinality matching** over them with
+Kuhn's augmenting-path algorithm, visiting candidate edges in descending weight so that
+higher-confidence pairs win when several matchings of the same size exist. Both sides are marked
+used, so one plan can never satisfy two changes.
+
+A greedy walk is not good enough here. With OpenSpec topics `add-x` and `add-x-ui` and Superpowers
+topics `add-x` and `add-x-v2`, greedy takes the exact pair first and strands both remaining
+candidates — one match where a maximum-cardinality matching finds two. A stranded artifact is
+reported as `superpowers-only` and a stranded change as `openspec-only`, so a greedy pairing
+**raises false gap warnings about work the user actually did**. The weight is not provably maximal
+among maximum-cardinality matchings; cardinality is what matters here.
+
+Tie-breaks are by id, so the result does not depend on iteration order or locale.
 
 `detectGaps` implements the spec's §4.8 table, including the `> 0.30` drift threshold and the rule that drift is only reported when both sides have started.
 
@@ -1511,6 +1547,10 @@ finding, not a harmless extra.
 - [ ] **Step 4: Implement `store-paths.ts`, `refresh-prompt.ts`, `protocol.ts`, `worker.ts`**
 
 `boardStoreDir()` returns `process.env.SPEC_BOARD_HOME ?? join(homedir(), '.orca', 'spec-board')`.
+
+The worker's `board.get` handler calls `detectGaps` with `existingSpecCapabilities` set to the
+capability directory names under the project's `openspec/specs/`. Without that list the
+`archived-spec-stale` gap can never be reported, so it must be read from disk, per project.
 
 The worker's `board.get` handler:
 

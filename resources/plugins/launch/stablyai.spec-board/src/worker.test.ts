@@ -473,6 +473,20 @@ test('a project on the board with no workspace is refused', async () => {
   await worker.deactivate()
 })
 
+test('the board says which of its projects a workspace holds', async () => {
+  const root = await home()
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/elsewhere', 'add-x'), 'utf8')
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  // The panel draws the consequence: the actions of a project no workspace holds are off.
+  const held = payload.projects.find((p) => p.id === 'local|/repo/demo')!
+  assert.equal(held.hasWorkspace, true)
+  const elsewhere = payload.projects.find((p) => p.id === 'local|/elsewhere')!
+  assert.equal(elsewhere.hasWorkspace, false)
+  await worker.deactivate()
+})
+
 test('the palette needs a change id', async () => {
   await home()
   const host = mockHost({ results: { 'workspace.list': workspaces } })

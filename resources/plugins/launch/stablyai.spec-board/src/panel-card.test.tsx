@@ -3,6 +3,7 @@
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
 import { fixturePayload } from './panel-fixture'
+import type { BoardPayload } from './model'
 
 test('draws the change, both progress lanes and its gaps', async () => {
   const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
@@ -243,5 +244,34 @@ test('the next action is a hint, not a button', async () => {
   assert.ok(view.find({ text: '写下设计' }))
   assert.ok(view.find({ text: '先写设计 spec，再改代码' }))
   assert.equal(view.find({ type: 'Button', text: '写下设计' }), null)
+  await view.unmount()
+})
+
+test('the actions of a project without a workspace are off, and they say why', async () => {
+  const calls: unknown[] = []
+  const board: BoardPayload = {
+    ...fixturePayload,
+    projects: fixturePayload.projects.map((project) =>
+      project.id === 'local|/repo' ? { ...project, hasWorkspace: false } : project
+    )
+  }
+  const host = mockHost({
+    requests: {
+      'board.get': () => board,
+      'action.run': (input) => {
+        calls.push(input)
+        return { kind: 'terminal', terminalId: 't8' }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  const button = view.find({ type: 'Button', text: '校验' })
+  assert.equal(button?.disabled, true)
+  assert.equal(button?.props.tooltip, '该项目不在 Orca workspace 里')
+  // The button is the notice: nothing runs.
+  await assert.rejects(() => view.press({ type: 'Button', text: '校验' }))
+  assert.deepEqual(calls, [])
+  // The other project still has a workspace, so its card still works.
+  assert.equal(view.find({ type: 'Button', text: '看增量' })?.disabled, false)
   await view.unmount()
 })

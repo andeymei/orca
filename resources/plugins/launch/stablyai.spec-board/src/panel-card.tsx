@@ -8,6 +8,7 @@ import { Badge, Button, Card, Collapsible, Progress, Row, Stack, Text, read } fr
 import type { Action, SnapshotProject, WorkItem } from './model'
 import { otherActions, primaryAction } from './panel-primary-action'
 import { feedback, pendingAction, pressAction } from './panel-state'
+import { canRunActions, NO_WORKSPACE } from './panel-workspace'
 
 /** How far a checklist is, in the percent a Progress bar takes. */
 function percent(done: number, total: number): number {
@@ -95,6 +96,9 @@ export function WorkCard({
   const primary = primaryAction(item)
   const others = otherActions(item)
   const done = results[item.id]
+  // A project no workspace holds has nowhere to run: the button is off, and it says so.
+  const runnable = canRunActions(project)
+  const hint = runnable ? undefined : NO_WORKSPACE
   return (
     <Card>
       <Stack gap="sm">
@@ -132,6 +136,8 @@ export function WorkCard({
               key={primary.id}
               size="sm"
               variant="solid"
+              disabled={!runnable}
+              tooltip={hint}
               onPress={() => {
                 pressAction({
                   scope: item.id,
@@ -152,6 +158,8 @@ export function WorkCard({
                     key={action.id}
                     size="sm"
                     variant="outline"
+                    disabled={!runnable}
+                    tooltip={hint}
                     onPress={() => {
                       pressAction({
                         scope: item.id,

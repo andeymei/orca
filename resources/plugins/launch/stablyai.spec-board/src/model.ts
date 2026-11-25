@@ -54,6 +54,12 @@ export type SnapshotProject = {
   openspecCli: { available: boolean; version?: string; path?: string } | null
   scannedAt: string
   error?: string
+  /**
+   * Whether an Orca workspace holds this project. The worker decides it — the board's workspaces
+   * are the authority on where a project lives — and the panel draws the consequence: the
+   * actions of a project no workspace holds are off.
+   */
+  hasWorkspace?: boolean
 }
 
 /** One piece of work as the agent found it: facts only, no judgment. */

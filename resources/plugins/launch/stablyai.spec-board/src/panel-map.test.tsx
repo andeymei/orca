@@ -387,3 +387,22 @@ test('the same command in two stages is two buttons', async () => {
   assert.equal(view.findAll({ text: '已在终端打开' }).length, 1)
   await view.unmount()
 })
+
+test('the palette of a project without a workspace is off, and it says why', async () => {
+  const board: BoardPayload = {
+    ...fixturePayload,
+    projects: fixturePayload.projects.map((project) =>
+      project.id === 'local|/repo' ? { ...project, hasWorkspace: false } : project
+    )
+  }
+  const view = await mapTab(mockHost({ requests: { 'board.get': () => board } }))
+  const button = view.find({ type: 'Button', text: '列出变更' })
+  assert.equal(button?.disabled, true)
+  assert.equal(button?.props.tooltip, '该项目不在 Orca workspace 里')
+  // The command that acts on a change is off as well: it runs in the same project.
+  await view.select({ label: '变更' }, 'add-x')
+  const validate = view.find({ type: 'Button', text: '校验' })
+  assert.equal(validate?.disabled, true)
+  assert.equal(validate?.props.tooltip, '该项目不在 Orca workspace 里')
+  await view.unmount()
+})

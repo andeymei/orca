@@ -8,6 +8,7 @@ import { Button, Stack, Text, read } from 'orca'
 import { needsChangeId } from './actions'
 import type { Action, SnapshotProject } from './model'
 import { feedback, pendingAction, pressAction } from './panel-state'
+import { canRunActions, NO_WORKSPACE } from './panel-workspace'
 
 /** What a command of the palette needs to run: the project, the change, and the actions. */
 export type Palette = {
@@ -59,6 +60,8 @@ export function PaletteButton({
   // The same signal the worker reads: an action that names a change cannot run without one.
   const namesChange = needsChangeId(action)
   const ready = !namesChange || palette.change !== null
+  // A project no workspace holds has nowhere to run: the button is off, and it says so.
+  const runnable = canRunActions(project)
   const scope = scopeOf(project.id, palette.change, row, action)
   const asked = waiting !== null && waiting.scope === scope && waiting.actionId === action.id
   const done = read(feedback)[scope]
@@ -68,8 +71,8 @@ export function PaletteButton({
         size="sm"
         variant="outline"
         icon="play"
-        disabled={!ready}
-        tooltip={channelOf(action)}
+        disabled={!ready || !runnable}
+        tooltip={runnable ? channelOf(action) : NO_WORKSPACE}
         onPress={() => {
           pressAction({
             scope,

@@ -22,6 +22,7 @@ import {
 } from './store-paths'
 import {
   baseName,
+  findWorkspaceId,
   projectRefsFromWorkspaces,
   type WorkspaceRow
 } from './workspace-match'
@@ -266,6 +267,13 @@ export async function buildBoard(
   const specCapabilities = await specCapabilitiesOf(localScans, snapshot.value)
   await applyCliProbe(localScans, snapshot.value)
   const merged = mergeBoard({ snapshot: snapshot.value, localScans, specCapabilities })
+  // The workspaces are the authority on where a project lives: a project no workspace holds has
+  // no command to run, and the panel has to say so before the person presses anything.
+  const projects = merged.projects.map((project) => ({
+    ...project,
+    hasWorkspace:
+      findWorkspaceId(workspaces, { path: project.path, host: project.host }) !== null
+  }))
   for (const item of merged.items) {
     const changeId = item.openspec?.changeId
     if (changeId !== undefined && !isSafeCommandValue(changeId)) {
@@ -276,7 +284,7 @@ export async function buildBoard(
   }
   const payload: BoardPayload = {
     items: merged.items,
-    projects: merged.projects,
+    projects,
     sources: { localAt: localScans.length > 0 ? Date.now() : null, agentAt: snapshot.at },
     warnings
   }

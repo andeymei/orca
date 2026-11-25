@@ -1,0 +1,105 @@
+import { assert, test } from 'orca/testing'
+import { correlate, normalizeTopic, topicSimilarity } from './correlation'
+
+test('normalizes a dated design-spec file name to its topic', () => {
+  assert.equal(normalizeTopic('2026-11-17-next-edit-suggestion-design.md'), 'next-edit-suggestion')
+  assert.equal(normalizeTopic('next-edit-suggestion'), 'next-edit-suggestion')
+})
+
+test('scores partial overlap below an exact match', () => {
+  assert.equal(topicSimilarity('add-two-factor-auth', 'add-two-factor-auth'), 1)
+  assert.ok(topicSimilarity('add-two-factor-auth', 'add-two-factor-auth-ui') < 1)
+  assert.equal(topicSimilarity('abc-def', 'xyz'), 0)
+})
+
+test('scores two empty topics as no overlap', () => {
+  assert.equal(topicSimilarity('', ''), 0)
+})
+
+test('pairs exact topics first, then the best remaining overlap', () => {
+  const result = correlate(
+    [
+      { id: 'o1', topic: 'next-edit-suggestion' },
+      { id: 'o2', topic: 'intelligent-refactor' }
+    ],
+    [
+      { id: 's1', topic: 'intelligent-refactor' },
+      { id: 's2', topic: 'next-edit-suggestion-design' }
+    ]
+  )
+  assert.deepEqual(
+    result.matches.map((m) => [m.openspecId, m.superpowersId]),
+    [
+      ['o2', 's1'],
+      ['o1', 's2']
+    ]
+  )
+  assert.deepEqual(result.unmatchedOpenspec, [])
+  assert.deepEqual(result.unmatchedSuperpowers, [])
+})
+
+test('pairs one-to-one when two changes share a topic', () => {
+  const result = correlate(
+    [
+      { id: 'o1', topic: 'add-x' },
+      { id: 'o2', topic: 'update-x' }
+    ],
+    [{ id: 's1', topic: 'x' }]
+  )
+  const used = new Set(result.matches.map((m) => m.superpowersId))
+  assert.equal(result.matches.length, used.size)
+  assert.equal(result.unmatchedSuperpowers.length + result.matches.length, 1)
+})
+
+test('leaves everything unmatched when nothing overlaps', () => {
+  const result = correlate([{ id: 'o1', topic: 'alpha' }], [{ id: 's1', topic: 'beta' }])
+  assert.deepEqual(result.matches, [])
+  assert.deepEqual(result.unmatchedOpenspec, ['o1'])
+  assert.deepEqual(result.unmatchedSuperpowers, ['s1'])
+})
+
+test('never lets one Superpowers artifact satisfy two changes', () => {
+  const result = correlate(
+    [
+      { id: 'o1', topic: 'add-x-auth' },
+      { id: 'o2', topic: 'update-x-auth' }
+    ],
+    [{ id: 's1', topic: 'x-auth' }]
+  )
+  assert.equal(result.matches.length, 1)
+  assert.deepEqual(result.unmatchedOpenspec, ['o2'])
+  assert.deepEqual(result.unmatchedSuperpowers, [])
+})
+
+test('never lets one change claim two Superpowers artifacts', () => {
+  const result = correlate(
+    [{ id: 'o1', topic: 'x-auth' }],
+    [
+      { id: 's1', topic: 'add-x-auth' },
+      { id: 's2', topic: 'update-x-auth' }
+    ]
+  )
+  assert.equal(result.matches.length, 1)
+  assert.deepEqual(result.unmatchedOpenspec, [])
+  assert.deepEqual(result.unmatchedSuperpowers, ['s2'])
+})
+
+test('reports how sure the pairing is', () => {
+  const exact = correlate([{ id: 'o1', topic: 'add-x' }], [{ id: 's1', topic: 'add-x' }])
+  assert.equal(exact.matches[0]?.confidence, 1)
+  const partial = correlate(
+    [{ id: 'o1', topic: 'add-two-factor-auth' }],
+    [{ id: 's1', topic: 'add-two-factor-auth-ui' }]
+  )
+  assert.equal(partial.matches[0]?.confidence, 0.8)
+})
+
+test('refuses to pair topics that share too little', () => {
+  const result = correlate(
+    [{ id: 'o1', topic: 'add-two-factor-auth' }],
+    [{ id: 's1', topic: 'two-factor' }]
+  )
+  assert.deepEqual(result.matches, [])
+  assert.deepEqual(result.unmatchedOpenspec, ['o1'])
+  assert.deepEqual(result.unmatchedSuperpowers, ['s1'])
+})

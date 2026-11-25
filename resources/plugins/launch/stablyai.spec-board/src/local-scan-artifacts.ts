@@ -33,6 +33,8 @@ export type ChangeOnDisk = {
   path: string
   topic: string
   changeId: string
+  /** Whether the change sits in `changes/archive/` — it is done, not in flight. */
+  archived: boolean
   hasProposal: boolean
   hasDesign: boolean
   hasTasks: boolean
@@ -144,10 +146,11 @@ export async function countBoxes(
 /** One OpenSpec change: the three files it owns, and the capabilities it changes. */
 async function readChange(
   root: string,
+  relative: string,
   changeId: string,
+  archived: boolean,
   warnings: string[]
 ): Promise<ChangeOnDisk> {
-  const relative = `${OPENSPEC_DIR}/${CHANGES_DIR}/${changeId}`
   // The task list is named once, and both the existence check and the count read that name: two
   // derivations of one file could drift, and then the board would say a change has tasks while
   // counting none.
@@ -162,6 +165,7 @@ async function readChange(
     path: relative,
     topic: normalizeTopic(changeId),
     changeId,
+    archived,
     hasProposal,
     hasDesign,
     hasTasks,
@@ -170,7 +174,7 @@ async function readChange(
   }
 }
 
-/** The OpenSpec side of a project: the changes in flight and the capabilities that exist. */
+/** The OpenSpec side of a project: the changes in flight, the archived ones, and the capabilities. */
 export async function scanOpenspec(
   root: string,
   warnings: string[]
@@ -183,9 +187,17 @@ export async function scanOpenspec(
     changesDir === null
       ? []
       : namesOf(changesDir, isDirectory).filter((name) => name !== ARCHIVE_DIR)
+  const archivedIds = archive === null ? [] : namesOf(archive, isDirectory)
   const found: ChangeOnDisk[] = []
   for (const changeId of changeIds) {
-    found.push(await readChange(root, changeId, warnings))
+    found.push(await readChange(root, `${changes}/${changeId}`, changeId, false, warnings))
+  }
+  // An archived change is a change: it left `changes/` for `changes/archive/`, and the board
+  // still shows it — in the archive stage, and with the gap that says its spec never arrived.
+  for (const changeId of archivedIds) {
+    found.push(
+      await readChange(root, `${changes}/${ARCHIVE_DIR}/${changeId}`, changeId, true, warnings)
+    )
   }
   const present = changesDir !== null || specsDir !== null
   return {
@@ -193,8 +205,8 @@ export async function scanOpenspec(
       ? {
           present: true,
           capabilities: specsDir === null ? [] : namesOf(specsDir, isDirectory),
-          activeChanges: found.length,
-          archived: archive === null ? 0 : namesOf(archive, isDirectory).length
+          activeChanges: found.filter((change) => !change.archived).length,
+          archived: archivedIds.length
         }
       : null,
     changes: found

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { detectGaps } from './gaps'
 import { projectIdFor, scanProject } from './local-scan'
+import { deriveStage } from './stage'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -80,7 +81,34 @@ test('counts archived changes separately and does not list them as active', asyn
   const result = await scanProject({ name: 'demo', host: 'local', path: root })
   assert.equal(result.project.openspec?.archived, 1)
   assert.equal(result.project.openspec?.activeChanges, 1)
-  assert.equal(result.items.filter((item) => item.openspec !== null).length, 1)
+  // The archived change is on the board as well: it is work that was done.
+  assert.equal(result.items.filter((item) => item.openspec !== null).length, 2)
+})
+
+test('an archived change is an item of its own, in the archive stage', async () => {
+  const root = await fixture()
+  await mkdir(join(root, 'openspec/changes/archive/2026-11-01-old/specs/y'), { recursive: true })
+  await writeFile(join(root, 'openspec/changes/archive/2026-11-01-old/tasks.md'), '- [x] one\n')
+  await writeFile(
+    join(root, 'openspec/changes/archive/2026-11-01-old/specs/y/spec.md'),
+    '## ADDED Requirements\n'
+  )
+  const result = await scanProject({ name: 'demo', host: 'local', path: root })
+  const archived = result.items.find((item) => item.openspec?.changeId === '2026-11-01-old')
+  assert.ok(archived, 'the archived change is on the board')
+  assert.equal(archived.openspec?.stage, 'archived')
+  // The unified stage is what the rail counts, so the change sits in the 归档 bucket.
+  assert.equal(deriveStage(archived), 'archive')
+  // Its capability never reached the specs, and that is worth saying.
+  const gaps = detectGaps({
+    openspec: archived.openspec,
+    superpowers: archived.superpowers,
+    existingSpecCapabilities: result.project.openspec?.capabilities ?? []
+  })
+  assert.ok(
+    gaps.some((gap) => gap.code === 'archived-spec-stale'),
+    gaps.map((gap) => gap.code).join(' | ')
+  )
 })
 
 test('builds a stable project id from host and path', () => {

@@ -40,7 +40,9 @@ function openspecFacts(change: ChangeOnDisk): OpenspecFacts {
   const { done, inProgress, total } = change.tasks
   const started = done + inProgress
   let stage: OpenspecFacts['stage'] = 'proposed'
-  if (change.hasTasks && total > 0 && done === total) {
+  if (change.archived) {
+    stage = 'archived'
+  } else if (change.hasTasks && total > 0 && done === total) {
     stage = 'validated'
   } else if (change.hasTasks && started > 0) {
     stage = 'implementing'

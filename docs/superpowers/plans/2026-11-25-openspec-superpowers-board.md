@@ -35,7 +35,11 @@
 
 Inputs and conditions the spec implies but no happy-path test covers. Each is pinned by a test in the task named.
 
-1. A checkbox inside a fenced code block or an indented sub-list must not count toward progress — a `tasks.md` full of examples would otherwise report false progress. (Task 3)
+1. A checkbox inside a fenced code block must not count toward progress — a `tasks.md` full of
+   examples would otherwise report false progress. (Task 3) An **indented** checkbox does count:
+   OpenSpec's own task pattern is `/^(\s*)-\s+\[([x\s-~])\]\s+(.+)$/gm`, whose `(\s*)` prefix
+   admits indentation, and the extension renders "each task and subtask" with a hierarchy. Only
+   the fence rule is about not counting examples.
 2. A snapshot whose `generatedAt` is missing or not ISO must render as "未知时间" rather than throw and blank the panel. (Task 2, Task 10)
 3. A registry path written with Windows separators or different case must still match the `workspace.list` row, and must report "找不到 workspace" when nothing matches — never silently run a command in the wrong directory. (Task 7)
 4. Two OpenSpec changes sharing a topic (`add-x` and `update-x`) must pair one-to-one with Superpowers artifacts; one plan must never satisfy both. (Task 4)
@@ -310,6 +314,7 @@ git commit -m "feat(spec-board): scaffold the plugin and its framework map"
     hasDesign: boolean
     hasTasks: boolean
     tasksDone: number
+    tasksInProgress: number
     tasksTotal: number
     capabilities: string[]
   }
@@ -318,6 +323,7 @@ git commit -m "feat(spec-board): scaffold the plugin and its framework map"
     plan: string | null
     stage: 'designed' | 'planned' | 'executing' | 'done'
     planDone: number
+    planInProgress: number
     planTotal: number
   }
   export type SnapshotProject = {
@@ -467,7 +473,8 @@ Expected: FAIL — `Cannot find module './board-schema'`.
 
 - [ ] **Step 3: Implement `model.ts` and `board-schema.ts`**
 
-`parseBoardSnapshot` is a hand-written validator: no dependencies are allowed. It checks the top-level shape, `schemaVersion === 1`, that `projects` and `items` are arrays, that every project has non-empty `id`/`name`/`host`/`path`, that every item has `id`/`projectId`/`title`/`topic`, and that both progress pairs satisfy `done <= total`. Unknown keys are dropped. A missing `generatedAt` becomes `''`.
+`parseBoardSnapshot` is a hand-written validator: no dependencies are allowed. It checks the top-level shape, `schemaVersion === 1`, that `projects` and `items` are arrays, that every project has non-empty `id`/`name`/`host`/`path`, that every item has `id`/`projectId`/`title`/`topic`, that both progress triples satisfy
+`done + inProgress <= total`, and that `inProgress` is a non-negative integer. Unknown keys are dropped. A missing `generatedAt` becomes `''`.
 
 Each rejection returns `{ ok: false, error: '<field>: <what is wrong>' }` so the panel can name the field.
 
@@ -560,7 +567,7 @@ test('returns zeros for a file with no boxes', () => {
 import { assert, test } from 'orca/testing'
 import { deriveStage } from './stage'
 
-const openspec = (over: Partial<import('./model').OpenspecFacts> = {}) => ({
+const openspec = (over: Partial<OpenspecFacts> = {}) => ({
   changeId: 'add-x',
   stage: 'proposed' as const,
   hasProposal: true,
@@ -571,7 +578,7 @@ const openspec = (over: Partial<import('./model').OpenspecFacts> = {}) => ({
   capabilities: [],
   ...over
 })
-const superpowers = (over: Partial<import('./model').SuperpowersFacts> = {}) => ({
+const superpowers = (over: Partial<SuperpowersFacts> = {}) => ({
   designSpec: null,
   plan: null,
   stage: 'designed' as const,
@@ -638,7 +645,7 @@ Expected: FAIL — modules not found.
 
 `countCheckboxes` skips lines inside ``` fences, matches `^\s*[-*]\s+\[([ xX~-])\]`, and counts `x`/`X` as done and `~`/`-` as in-progress.
 
-`deriveStage` applies the spec's §4.6 table in order: archived → validate → implement → plan → design → proposal. "Everything ticked" means every present progress pair has `total > 0` and `done === total`, and at least one pair exists.
+`deriveStage` applies the spec's §4.6 table in order: archived → validate → implement → plan → design → proposal. "Everything ticked" means every present progress pair has `total > 0` and `done === total` — an in-progress box is not a finished one — and at least one pair exists. "Started" means `done + inProgress > 0` on some side: OpenSpec treats `- [-]` and `- [~]` as in progress, so work that is underway must read as `implement`, not `plan`.
 
 - [ ] **Step 4: Run them to verify they pass**
 
@@ -755,7 +762,7 @@ test('leaves everything unmatched when nothing overlaps', () => {
 import { assert, test } from 'orca/testing'
 import { detectGaps } from './gaps'
 
-const openspec = (over: Partial<import('./model').OpenspecFacts> = {}) => ({
+const openspec = (over: Partial<OpenspecFacts> = {}) => ({
   changeId: 'add-x',
   stage: 'implementing' as const,
   hasProposal: true,
@@ -766,7 +773,7 @@ const openspec = (over: Partial<import('./model').OpenspecFacts> = {}) => ({
   capabilities: [],
   ...over
 })
-const superpowers = (over: Partial<import('./model').SuperpowersFacts> = {}) => ({
+const superpowers = (over: Partial<SuperpowersFacts> = {}) => ({
   designSpec: 'spec.md',
   plan: 'plan.md',
   stage: 'executing' as const,
@@ -977,7 +984,10 @@ Expected: FAIL — module not found.
 
 Read with `node:fs/promises`. `openspec` is present when `openspec/changes` or `openspec/specs` exists. Active changes are directories under `openspec/changes/` other than `archive`; archived ones are directories under `openspec/changes/archive/`. Capabilities are directory names under `openspec/specs/`. Superpowers artifacts are `.md` files under `docs/superpowers/specs/` and `docs/superpowers/plans/`, matched by topic.
 
-Every artifact becomes one item, keyed by `projectIdFor(host, path) + '#' + topic`, with `openspec`/`superpowers` filled from whichever side exists. A change and its plan therefore land on one item. Unmatched Superpowers artifacts become items with `openspec: null`.
+Every artifact becomes one item, keyed by `projectIdFor(host, path) + '#' + topic`, with
+`openspec`/`superpowers` filled from whichever side exists. The progress triples come straight
+from `countCheckboxes`: `tasksDone` / `tasksInProgress` / `tasksTotal` for the OpenSpec side and
+`planDone` / `planInProgress` / `planTotal` for the Superpowers side. A change and its plan therefore land on one item. Unmatched Superpowers artifacts become items with `openspec: null`.
 
 An unreadable path returns a project with `error` set and no items — it must never throw, because one bad registry entry must not blank the whole board.
 
@@ -1494,7 +1504,8 @@ The worker also watches the store directory with `node:fs` `watch` and posts `bo
 The prompt must state the snapshot schema **exactly as the validator enforces it**, because a
 mismatch shows the user a broken-snapshot card instead of a board: the `stage` enum spellings, that
 `id`/`name`/`host`/`path`/`title`/`topic` are non-empty strings, that counts are non-negative
-integers, and that optional fields (`error`, `summary`, `nextAction`, `openspecCli.version`,
+integers, that `done + inProgress <= total` on both sides, and that optional fields
+(`error`, `summary`, `nextAction`, `openspecCli.version`,
 `openspecCli.path`, `generatedBy.workspace`, `generatedBy.host`, `notes`) are **omitted** rather
 than written as `null`. The validator reads `null` as absent either way; omitting is what the prompt
 should ask for.

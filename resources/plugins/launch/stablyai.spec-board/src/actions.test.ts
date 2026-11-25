@@ -429,6 +429,53 @@ test("the palette's agent prompt still carries the placeholder", () => {
   assert.match(promptOf(validate), /<change-id>/)
 })
 
+test('a change id that is the placeholder itself gets no OpenSpec action', () => {
+  // A throw here would fail the test: one bad directory must not blank the whole board.
+  const actions = actionsForItem(
+    {
+      topic: 'add-x',
+      openspec: { ...item.openspec, changeId: '<change-id>' },
+      superpowers: item.superpowers
+    },
+    true
+  )
+  assert.deepEqual(
+    actions.filter((action) => action.framework === 'openspec').map((action) => action.id),
+    []
+  )
+  assert.ok(actions.some((action) => action.framework === 'superpowers'))
+})
+
+test('a change id that is the placeholder itself gets no OpenSpec action in the agent form', () => {
+  const actions = actionsForItem(
+    {
+      topic: 'add-x',
+      openspec: { ...item.openspec, changeId: '<change-id>' },
+      superpowers: item.superpowers
+    },
+    false
+  )
+  assert.deepEqual(
+    actions.filter((action) => action.framework === 'openspec').map((action) => action.id),
+    []
+  )
+})
+
+test("the palette's placeholder is exempt by provenance, not by content", () => {
+  const palette = frameworkActions(true)
+  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
+  assert.deepEqual(validate.run, {
+    kind: 'terminal',
+    command: 'openspec validate <change-id> --strict'
+  })
+  const resolved = resolvePaletteAction(validate, 'add-x')
+  assert.equal(resolved.ok, true)
+  assert.deepEqual(resolved.ok && resolved.action.run, {
+    kind: 'terminal',
+    command: 'openspec validate add-x --strict'
+  })
+})
+
 test('a palette command with no change id needs one', () => {
   const palette = frameworkActions(true)
   const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!

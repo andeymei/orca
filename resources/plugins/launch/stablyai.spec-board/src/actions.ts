@@ -6,7 +6,9 @@
 //
 // Every project-derived value — a change id, a topic, an artifact path — clears the gate in
 // `command-values.ts` before it can reach a command line or a prompt: they are read out of a
-// repository the user may have cloned, so a directory name can carry a shell command.
+// repository the user may have cloned, so a directory name can carry a shell command. The
+// palette's `<change-id>` is exempt by provenance, not by content: it is this module's own
+// sentinel, and it never stands in for a value that came out of a repository.
 
 import type { Action, ActionRun, OpenspecFacts, SuperpowersFacts } from './model'
 import {
@@ -39,11 +41,22 @@ function withChangeId(text: string, changeId: string): string {
 }
 
 /**
- * Whether a value may be put in front of a command: the module's own placeholder, which the
- * palette uses until a change is picked, or a value that cleared the gate.
+ * Where the change in a command comes from. A change id read out of the repository is judged by
+ * its content; the palette's placeholder is this module's own sentinel and carries no value at
+ * all, so no repository value can be handed the placeholder's trust. The trust lives here, at
+ * the call site, and not in the content of the value.
  */
-function mayReachCommand(value: string): boolean {
-  return value === CHANGE_ID_PLACEHOLDER || isSafeCommandValue(value)
+type ChangeRef = { kind: 'repository'; changeId: string } | { kind: 'placeholder' }
+
+/**
+ * The change a command names, or null when the value may not be put in front of one: the
+ * terminal needs the id and a prompt carrying it would be no better.
+ */
+function changeText(change: ChangeRef): string | null {
+  if (change.kind === 'placeholder') {
+    return CHANGE_ID_PLACEHOLDER
+  }
+  return isSafeCommandValue(change.changeId) ? change.changeId : null
 }
 
 /** The prompt the agent gets where the CLI is missing: the guide, and the task. */
@@ -53,15 +66,17 @@ function openspecPrompt(command: OpenspecCommand, changeId: string): string {
 
 /**
  * One OpenSpec action, in the channel the host can actually run it — or null when the change
- * id may not be put in front of a command. The terminal needs the id and a prompt carrying it
- * would be no better, so an id that fails the gate leaves the item with no OpenSpec action.
+ * id may not be put in front of a command. An id that fails the gate leaves the item with no
+ * OpenSpec action; the palette's placeholder is trusted by construction, because it is the
+ * module's own sentinel and never a value read out of a repository.
  */
 function openspecAction(
   command: OpenspecCommand,
-  changeId: string,
+  change: ChangeRef,
   cliAvailable: boolean
 ): Action | null {
-  if (!mayReachCommand(changeId)) {
+  const changeId = changeText(change)
+  if (changeId === null) {
     return null
   }
   const run: ActionRun =
@@ -135,7 +150,11 @@ export function actionsForItem(
       if (command.id === 'openspec.archive' && item.openspec.stage === 'archived') {
         continue
       }
-      const action = openspecAction(command, item.openspec.changeId, cliAvailable)
+      const action = openspecAction(
+        command,
+        { kind: 'repository', changeId: item.openspec.changeId },
+        cliAvailable
+      )
       if (action) {
         actions.push(action)
       }
@@ -166,7 +185,7 @@ export function frameworkActions(cliAvailable: boolean): {
 } {
   const openspec: Action[] = []
   for (const command of OPENSPEC_COMMANDS) {
-    const action = openspecAction(command, CHANGE_ID_PLACEHOLDER, cliAvailable)
+    const action = openspecAction(command, { kind: 'placeholder' }, cliAvailable)
     if (action) {
       openspec.push(action)
     }

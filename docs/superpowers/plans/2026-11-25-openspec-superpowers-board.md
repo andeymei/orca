@@ -1234,7 +1234,47 @@ test('reports a broken snapshot without losing the local scan', async () => {
 })
 
 test('runs a terminal action on the workspace that owns the project', async () => {
-  await home()
+  const root = await home()
+  // The local scan finds nothing on a fake path, so the item under test comes from the snapshot.
+  await writeFile(
+    join(root, 'board.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: '2026-11-25T10:00:00.000Z',
+      generatedBy: { agent: 'claude' },
+      projects: [
+        {
+          id: 'local|/repo/demo',
+          name: 'demo',
+          host: 'local',
+          path: '/repo/demo',
+          openspec: { present: true, capabilities: [], activeChanges: 1, archived: 0 },
+          superpowers: null,
+          openspecCli: { available: true },
+          scannedAt: '2026-11-25T10:00:00.000Z'
+        }
+      ],
+      items: [
+        {
+          id: 'local|/repo/demo#add-x',
+          projectId: 'local|/repo/demo',
+          title: 'Add X',
+          topic: 'add-x',
+          openspec: {
+            changeId: 'add-x',
+            stage: 'implementing',
+            hasProposal: true,
+            hasDesign: true,
+            hasTasks: true,
+            tasksDone: 1,
+            tasksTotal: 4,
+            capabilities: []
+          },
+          superpowers: null
+        }
+      ]
+    })
+  )
   const host = mockHost({
     results: {
       'workspace.list': workspaces,
@@ -1483,9 +1523,9 @@ The `Tabs` control takes the required `label` prop, set to `看板视图` — te
 Board tab:
 
 - A `Row` of six stage `Button`s with counts; the selected one uses `variant="solid"`, the rest `variant="ghost"`.
-- A `Stack` of `Card`s for the selected stage. `title` is the item title; `description` is `项目名 · host`.
-- Inside each card: a `Row` with two `Progress` — `label` `OpenSpec ${done}/${total}` and `Superpowers ${done}/${total}`, `value` the percentage, omitted when the side is null.
-- A `Row` of `Badge`s, one per gap, `tone` from severity (`info` → neutral, `warning` → warning, `error` → danger).
+- A `Stack` of `Card`s for the selected stage. The item title is rendered as a `<Text>` **child** of the card (not only as the `Card` `title` prop) and the project line as a `<Text>` child too — the test kit's query matcher compares against an element's rendered `text`, so a value that lives only in a prop is not findable.
+- Inside each card: a `Row` with two `Progress` — `value` the percentage, omitted when the side is null — each preceded by a `<Text>` caption reading `OpenSpec 2/5` and `Superpowers 1/8`. The captions are `<Text>` elements for the same reason the title is.
+- A `Row` of `Badge`s, one per gap, `tone` from severity (`info` → neutral, `warning` → warning, `error` → danger`). The badge text is the gap's `message`.
 - A `Row` of action `Button`s. A `mutates` action needs two presses within 3 s: the first sets `pendingAction`, the second calls `action.run`. The label changes to `确认执行？` while pending.
 - When the selected stage is empty, an `EmptyState`.
 
@@ -1712,8 +1752,13 @@ Append the entry to `resources/plugins/launch/bundled-plugins.json`, keeping `ve
 
 - [ ] **Step 3: Verify packaging accepts it**
 
-Run: `node config/scripts/desktop-distribution/runtime-verification/verify-packaged-plugin-resources.cjs .` (or the path the packaging step passes it).
-Expected: `OK — verified 3 bundled plugin(s)`.
+Run:
+
+```bash
+node -e "const {verifyPackagedPluginResources}=require('./config/scripts/desktop-distribution/runtime-verification/verify-packaged-plugin-resources.cjs'); verifyPackagedPluginResources('resources')"
+```
+
+Expected: `OK — verified 3 bundled plugin(s)`. The script has no CLI of its own — it is a module the electron-builder config calls — so drive it from `node -e` rather than trying to run the file directly.
 
 - [ ] **Step 4: Commit**
 
@@ -1761,3 +1806,4 @@ git -c http.version=HTTP/1.1 push origin main
 - **Spec coverage:** §4.1–4.4 → Tasks 1, 2, 7; §4.5–4.8 → Tasks 2, 3, 4; §4.9 → Task 1; §4.10 → Tasks 8, 9, 10; §4.11 → Tasks 6, 7, 9; §5 → Task 7; §6 → Tasks 2, 7, 10; §8 → every task's tests plus Task 12; §4.1 bundling → Task 11.
 - **Two files beyond the spec's §4.1 tree:** `workspace-match.ts` (path normalization, worktree collapsing and workspace lookup — split out so Review Focus 3 is unit-testable instead of buried in the worker) and `panel.fixture.ts` (the test and `panel.check.ts` share one payload). Both were added back to the spec's tree.
 - **Deliberate omission:** no unit test for the `fs.watch` wiring; it is covered by Task 12's acceptance point 3 instead, because a watch test in Node would only prove Node's watcher works.
+- **Pre-flight fixes applied to this plan before Task 1** (both found by reading the test kit's matcher and the worker test's own data flow): the board card's title and progress captions are rendered as `<Text>` children so they are findable by text, and Task 7's terminal-action test seeds `board.json` because the local scan cannot find anything on a fake path.

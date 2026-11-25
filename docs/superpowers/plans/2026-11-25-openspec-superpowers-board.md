@@ -1690,6 +1690,17 @@ offers no commands.
 
 `board.refresh` resolves the workspace from the `refreshWorkspace` setting, else `workspace.readContext`, writes the prompt to `last-refresh-prompt.md`, then calls `agent.launch`.
 
+**The prompt states the task, not just the schema.** An agent handed a schema and two file paths
+does not know it is being asked to scan a registry and write a snapshot. The prompt says, in
+order: read the registry at the given path; it lists the projects to scan, one entry per project
+as `{ name, host, path }`, where `host` is `local` or `ssh:<target>`; scan each project for the
+OpenSpec artifacts (`openspec/changes/`, `openspec/specs/`) and the Superpowers artifacts
+(`docs/superpowers/specs/`, `docs/superpowers/plans/`), reading a remote project over ssh to its
+target; write the snapshot to the given path, writing `.tmp` first and renaming it into place so
+a reader never sees a half-written file; and report what it found in the schema below. The
+registry is where the **remote** projects come from — the local scan only covers this machine, so
+a project the agent does not scan is a project the board never shows.
+
 The prompt must state the snapshot schema **exactly as the validator enforces it**, because a
 mismatch shows the user a broken-snapshot card instead of a board: the `stage` enum spellings, that
 `id`/`name`/`host`/`path`/`title`/`topic` are non-empty strings, that counts are non-negative

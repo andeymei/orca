@@ -105,17 +105,21 @@ test('a path that is a file is an error on the project, not a thrown scan', asyn
 })
 
 test('a directory that cannot be listed still counts as present', async () => {
-  if (process.platform === 'win32') {
-    return
-  }
   const root = await mkdtemp(join(tmpdir(), 'spec-board-locked-'))
   roots.push(root)
   const specs = join(root, 'openspec/specs')
-  await mkdir(specs, { recursive: true })
+  await mkdir(join(specs, 'y'), { recursive: true })
   await chmod(specs, 0o000)
   try {
-    // A root user reads every directory, so there is nothing left to prove.
+    // Windows has no chmod, and a superuser reads every directory, so the unreadable case cannot
+    // be produced there — the unreadable assertions below were not exercised on such a machine.
+    // The readable case is asserted either way: the directory is there, so the project has
+    // OpenSpec and the entries inside it are read.
     if ((await readdir(specs).catch(() => null)) !== null) {
+      const readable = await scanProject({ name: 'locked', host: 'local', path: root })
+      assert.equal(readable.project.openspec?.present, true)
+      assert.deepEqual(readable.project.openspec?.capabilities, ['y'])
+      assert.deepEqual(readable.warnings, [])
       return
     }
     const result = await scanProject({ name: 'locked', host: 'local', path: root })

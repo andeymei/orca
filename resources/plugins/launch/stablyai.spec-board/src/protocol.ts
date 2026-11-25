@@ -6,8 +6,12 @@ declare module 'orca' {
   interface PluginRequests {
     /** The board: the items, the projects, and what the worker could not read. */
     'board.get': { output: BoardPayload }
-    /** Starts the agent that writes a new snapshot; answers with its terminal. */
-    'board.refresh': { output: { terminalId: string } }
+    /**
+     * Starts the agent that writes a new snapshot; answers with its terminal and the agent it
+     * launched. The worker is the source of that agent: the setting can change between the
+     * panel's read and the launch, so only the worker knows what ran.
+     */
+    'board.refresh': { output: { terminalId: string; agent?: string } }
     /**
      * Runs one action. The panel names the action and, for a change-scoped command, the change
      * it picked — never a command line: the worker resolves that itself.

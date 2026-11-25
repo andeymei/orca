@@ -137,7 +137,7 @@ async function runAction(
 }
 
 /** Starts the agent that writes the snapshot. */
-async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string }> {
+async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent: string }> {
   const settings = await readSettings(orca)
   let workspaceId = settings.refreshWorkspace
   if (workspaceId === '') {
@@ -149,12 +149,15 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string }> {
   }
   const prompt = buildRefreshPrompt({ registryPath: registryPath(), snapshotPath: snapshotPath() })
   await writeRefreshPrompt(orca, prompt)
+  const agent = settings.refreshAgent === '' ? 'claude' : settings.refreshAgent
   const launched = await orca.host.call('agent.launch', {
     workspaceId,
-    agent: settings.refreshAgent === '' ? 'claude' : settings.refreshAgent,
+    agent,
     prompt
   })
-  return { terminalId: launched.terminalId }
+  // The panel says who took the refresh; only the worker knows which agent it launched, and the
+  // setting can change between the panel's read and this launch.
+  return { terminalId: launched.terminalId, agent }
 }
 
 /**

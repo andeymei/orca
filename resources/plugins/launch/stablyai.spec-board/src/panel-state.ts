@@ -32,6 +32,12 @@ export const error = atom<{ code: string; message: string } | null>(null)
 /** Whether a read of the board is in flight. */
 export const busy = atom<boolean>(false)
 
+/** Whether a refresh is in flight. */
+export const refreshing = atom<boolean>(false)
+
+/** What the last refresh did: the agent the worker launched to write a new snapshot. */
+export const refreshFeedback = atom<string | null>(null)
+
 /** The action that waits for its second press. */
 export const pendingAction = atom<{ scope: string; actionId: string } | null>(null)
 
@@ -174,6 +180,29 @@ async function run(press: ActionPress): Promise<void> {
     set(feedback, { ...read(feedback), [press.scope]: feedbackOf(answer) })
   } catch (thrown) {
     set(error, { code: codeOf(thrown), message: messageOf(thrown) })
+  }
+}
+
+/**
+ * Asks the worker to launch the agent that writes a new snapshot.
+ *
+ * The panel does not scan anything itself and does not read the setting: the worker is the source
+ * of the agent it launched, because the setting can change between the panel's read and the
+ * launch. The board does not change when the request resolves — the agent scans, writes
+ * `board.json`, and the worker's watcher posts `board.changed`, which reads the board again.
+ */
+export async function refreshBoard(): Promise<void> {
+  // The callout describes the latest attempt: a new refresh clears the failure of the last one.
+  set(error, null)
+  set(refreshFeedback, null)
+  set(refreshing, true)
+  try {
+    const answer = await plugin.request('board.refresh')
+    set(refreshFeedback, `已派发 ${answer.agent ?? 'agent'} 刷新`)
+  } catch (thrown) {
+    set(error, { code: codeOf(thrown), message: messageOf(thrown) })
+  } finally {
+    set(refreshing, false)
   }
 }
 

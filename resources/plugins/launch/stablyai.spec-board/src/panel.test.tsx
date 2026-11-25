@@ -36,15 +36,61 @@ test('says when the stage has no work', async () => {
   await view.unmount()
 })
 
-test('shows the warnings the worker recorded', async () => {
+test('the warnings are above the tabs, so every tab shows them', async () => {
   const host = mockHost({
     requests: {
       'board.get': () => ({ ...fixturePayload, warnings: ['board.json: schemaVersion: 期望 1'] })
     }
   })
   const view = await mount(panel, { host })
-  assert.ok(view.find({ text: 'board.json: schemaVersion: 期望 1' }))
+  const callout = view.find({ type: 'Callout' })
+  assert.ok(callout)
+  assert.equal(callout?.props.tone, 'warning')
+  // The warning is said once: the shell carries it, the tabs do not repeat it.
+  assert.equal(view.findAll({ text: 'board.json: schemaVersion: 期望 1' }).length, 1)
+  // The map is open now, and the warning is still there: a broken snapshot is not a problem of
+  // one tab.
+  await view.select({ label: '看板视图' }, 'map')
+  assert.ok(view.find({ type: 'Callout' }))
+  assert.equal(view.findAll({ text: 'board.json: schemaVersion: 期望 1' }).length, 1)
   assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a board with nothing of its own shows the warnings as a danger, not a note', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => ({
+        items: [],
+        projects: [],
+        sources: { localAt: null, agentAt: null },
+        warnings: ['board.json: schemaVersion: 期望 1']
+      })
+    }
+  })
+  const view = await mount(panel, { host })
+  // Without a local scan the board has nothing to show, so the warnings are the reason it is
+  // empty rather than a note about it.
+  assert.equal(view.find({ type: 'Callout' })?.props.tone, 'danger')
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a refused action and the board warnings are two different callouts', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => ({ ...fixturePayload, warnings: ['board.json: schemaVersion: 期望 1'] }),
+      'action.run': () => {
+        throw hostError('not_permitted', '能力未批准')
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ text: '校验' })
+  // One card is about the refused request, the other about the data.
+  assert.equal(view.findAll({ type: 'Callout' }).length, 2)
+  assert.ok(view.find({ label: 'not_permitted' }))
+  assert.ok(view.find({ text: '能力未批准' }))
   await view.unmount()
 })
 

@@ -277,14 +277,16 @@ test('says what the host refused when a command of the palette fails', async () 
   await view.unmount()
 })
 
-test('the map does not draw the warnings the board tab draws', async () => {
+test('the map shows the warnings the shell carries', async () => {
   const host = mockHost({
     requests: {
       'board.get': () => ({ ...fixturePayload, warnings: ['board.json: schemaVersion: 期望 1'] })
     }
   })
   const view = await mapTab(host)
-  assert.equal(view.find({ text: 'board.json: schemaVersion: 期望 1' }), null)
+  // A broken snapshot is not a problem of one tab: the warning sits above the tabs, so the map
+  // shows it too.
+  assert.ok(view.find({ text: 'board.json: schemaVersion: 期望 1' }))
   await view.unmount()
 })
 

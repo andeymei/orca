@@ -5,13 +5,45 @@ import { Callout, Heading, Stack, Tab, Tabs, Text, plugin, read, set } from 'orc
 import type { PanelContext } from 'orca'
 import { BoardTab } from './panel-board'
 import { MapTab } from './panel-map'
-import { error, newBoardReads, stopWaiting, tab } from './panel-state'
+import { ProjectsTab } from './panel-projects'
+import { error, newBoardReads, payload, stopWaiting, tab } from './panel-state'
 
 /** The tab a press on the tab bar asks for. */
 function changeTab(value: string): void {
   if (value === 'board' || value === 'map' || value === 'projects') {
     set(tab, value)
   }
+}
+
+/**
+ * What the worker could not read.
+ *
+ * A broken snapshot is not a problem of one tab, so the warning sits above the tabs: it is there
+ * whichever tab is open. A board with no local scan of its own has nothing to show, so the same
+ * warnings are the reason the board is empty rather than a note about it.
+ */
+function BoardWarnings() {
+  const board = read(payload)
+  const warnings = board?.warnings ?? []
+  if (warnings.length === 0) {
+    return null
+  }
+  const blind = board?.sources.localAt === null
+  return (
+    <Callout
+      tone={blind ? 'danger' : 'warning'}
+      icon="warning"
+      title={blind ? '看板没有可用的数据' : '看板有警告'}
+    >
+      <Stack gap="none">
+        {warnings.map((warning, index) => (
+          <Text key={index} size="xs">
+            {warning}
+          </Text>
+        ))}
+      </Stack>
+    </Callout>
+  )
 }
 
 export function setup(ctx: PanelContext): () => void {
@@ -42,6 +74,7 @@ export default function Panel() {
           <Text>{failure.message}</Text>
         </Callout>
       )}
+      <BoardWarnings />
       <Tabs label="看板视图" value={current} onChange={changeTab}>
         <Tab value="board" label="看板">
           <BoardTab />
@@ -50,7 +83,7 @@ export default function Panel() {
           <MapTab />
         </Tab>
         <Tab value="projects" label="项目">
-          <Text muted>这个标签页由后面的任务完成</Text>
+          <ProjectsTab />
         </Tab>
       </Tabs>
     </Stack>

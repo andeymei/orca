@@ -1,0 +1,135 @@
+// The 项目 tab: what Orca knows about the projects, and the button that makes the board see
+// anything at all.
+//
+// The button does not scan anything itself: it asks the worker to launch the agent that writes
+// the snapshot. The board does not change when that agent finishes — the worker's watcher posts
+// `board.changed`, and the panel reads the board again.
+
+import { Badge, Button, Card, EmptyState, RelativeTime, Row, Stack, Text, read } from 'orca'
+import type { SnapshotProject } from './model'
+import { busy, payload, refreshBoard, refreshFeedback, refreshing } from './panel-state'
+
+/** What the card says about a project nobody scanned yet. */
+const NEVER_SCANNED = '尚未扫描'
+
+/** What the card says about a project whose scan time cannot be read. */
+const UNKNOWN_TIME = '未知时间'
+
+/** The shape a snapshot writes its scan time in. */
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+
+/** The milliseconds a snapshot's scan time names, or null when it names none that can be read. */
+function scanTimeOf(scannedAt: string): number | null {
+  if (!ISO_TIME.test(scannedAt)) {
+    return null
+  }
+  const at = Date.parse(scannedAt)
+  return Number.isNaN(at) ? null : at
+}
+
+/** The scan time on the card: how long ago, or the words for a time that is not there. */
+function ScannedAt({ scannedAt }: { scannedAt: string }) {
+  if (scannedAt === '') {
+    return <Text size="xs" muted>{NEVER_SCANNED}</Text>
+  }
+  const at = scanTimeOf(scannedAt)
+  if (at === null) {
+    return <Text size="xs" muted>{UNKNOWN_TIME}</Text>
+  }
+  return <RelativeTime at={at} muted />
+}
+
+/** The badge that says whether the project carries a framework. */
+function frameworkBadge(label: string, present: boolean): string {
+  return present ? label : `无 ${label}`
+}
+
+/** The badge that says whether the OpenSpec CLI is on that host. */
+function cliBadge(cli: SnapshotProject['openspecCli']): { text: string; tone: 'neutral' | 'warning' } {
+  if (cli === null) {
+    // The worker cannot probe another host: it does not know, and it does not say it is missing.
+    return { text: 'CLI 未知', tone: 'neutral' }
+  }
+  return cli.available ? { text: 'CLI 可用', tone: 'neutral' } : { text: '无 CLI', tone: 'warning' }
+}
+
+/** A key that keeps one project's path from looking like a child of another's. */
+function projectKey(id: string): string {
+  return id.replaceAll('/', ':')
+}
+
+/** One project: where it is, what it carries, and what went wrong with it. */
+function ProjectCard({ project }: { project: SnapshotProject }) {
+  const cli = cliBadge(project.openspecCli)
+  return (
+    <Card>
+      <Stack gap="sm">
+        <Row gap="xs" align="center" wrap>
+          <Badge tone="neutral">{`${project.name} · ${project.host}`}</Badge>
+          {project.error === undefined ? null : (
+            <Badge tone="danger">{project.error}</Badge>
+          )}
+        </Row>
+        <Row gap="xs" wrap>
+          <Badge tone="neutral">
+            {frameworkBadge('OpenSpec', project.openspec?.present === true)}
+          </Badge>
+          <Badge tone="neutral">
+            {frameworkBadge('Superpowers', project.superpowers?.present === true)}
+          </Badge>
+          <Badge tone={cli.tone}>{cli.text}</Badge>
+        </Row>
+        <Row gap="xs" align="center">
+          <Text size="xs" muted>
+            扫描时间
+          </Text>
+          <ScannedAt scannedAt={project.scannedAt} />
+        </Row>
+      </Stack>
+    </Card>
+  )
+}
+
+/** The 项目 tab: the refresh button, and a card for every project the board knows. */
+export function ProjectsTab() {
+  const board = read(payload)
+  const projects = board?.projects ?? []
+  const isRefreshing = read(refreshing)
+  const said = read(refreshFeedback)
+  return (
+    <Stack gap="md">
+      <Row gap="sm" align="center" wrap>
+        <Button
+          size="sm"
+          icon="refresh"
+          disabled={isRefreshing}
+          onPress={() => {
+            void refreshBoard()
+          }}
+        >
+          {isRefreshing ? '刷新中…' : '刷新'}
+        </Button>
+        {said === null ? null : (
+          <Text size="xs" tone="success">
+            {said}
+          </Text>
+        )}
+      </Row>
+      {board === null ? (
+        <Text muted>{read(busy) ? '读取中…' : '还没有读到看板。'}</Text>
+      ) : projects.length === 0 ? (
+        <EmptyState
+          title="还没有项目"
+          description="点刷新让 agent 采集工作区。"
+          icon="folder"
+        />
+      ) : (
+        <Stack gap="sm">
+          {projects.map((project) => (
+            <ProjectCard key={projectKey(project.id)} project={project} />
+          ))}
+        </Stack>
+      )}
+    </Stack>
+  )
+}

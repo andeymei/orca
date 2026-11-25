@@ -92,6 +92,9 @@ test('an unreadable path is an error on the project, not a thrown scan', async (
   const result = await scanProject({ name: 'gone', host: 'local', path: join(root, 'not-there') })
   assert.equal(typeof result.project.error, 'string')
   assert.deepEqual(result.items, [])
+  // The failure is the project's alone: the board's warnings are about the board, and a fact in
+  // two places reads as two facts.
+  assert.deepEqual(result.warnings, [])
 })
 
 test('a path that is a file is an error on the project, not a thrown scan', async () => {

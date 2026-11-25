@@ -152,6 +152,21 @@ export function projectIdFor(host: string, path: string): string {
 }
 
 /**
+ * A project that could not be scanned.
+ *
+ * The failure is the project's, and only the project's: the board's own warnings are about the
+ * board, and a fact in two places reads as two facts. The warnings the scan collected on the way
+ * stay — they are about the project's contents, not about its failure.
+ */
+function failed(
+  project: SnapshotProject,
+  error: string,
+  warnings: string[]
+): ScanProjectResult {
+  return { project: { ...project, error }, items: [], warnings }
+}
+
+/**
  * Scans one project. A path that cannot be read comes back as a project with `error` set and no
  * items: the scan never throws, because one bad registry entry must not blank the whole board.
  */
@@ -174,7 +189,7 @@ export async function scanProject(input: {
   }
   const problem = await rootProblem(input.path)
   if (problem !== null) {
-    return { project: { ...project, error: problem }, items: [], warnings: [problem] }
+    return failed(project, problem, warnings)
   }
   try {
     const openspec = await scanOpenspec(input.path, warnings)
@@ -186,7 +201,6 @@ export async function scanProject(input: {
   } catch (error) {
     // Every read is guarded in the artifacts module, so this is the backstop: a project that
     // cannot be scanned is one card with an error, not a board that fails to render.
-    const message = `扫描失败：${input.path}（${messageOf(error)}）`
-    return { project: { ...project, error: message }, items: [], warnings: [...warnings, message] }
+    return failed(project, `扫描失败：${input.path}（${messageOf(error)}）`, warnings)
   }
 }

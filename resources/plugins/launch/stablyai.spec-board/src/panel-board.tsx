@@ -87,11 +87,6 @@ export function BoardTab() {
   const shown = items.filter((item) => item.stage === current)
   return (
     <Stack gap="md">
-      {board?.warnings.map((warning, index) => (
-        <Text key={index} tone="warning" size="xs">
-          {warning}
-        </Text>
-      ))}
       <StageRail items={items} current={current} />
       {board === null ? (
         <Text muted>{read(busy) ? '读取中…' : '还没有读到看板。'}</Text>

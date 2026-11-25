@@ -109,6 +109,73 @@ test('an older read does not overwrite a newer board', async () => {
   await view.unmount()
 })
 
+test('a hung read does not leave the next panel busy', async () => {
+  let calls = 0
+  const first = await mount(panel, {
+    host: mockHost({
+      requests: {
+        'board.get': () => {
+          calls += 1
+          if (calls === 1) {
+            return fixturePayload
+          }
+          // This read never comes back.
+          return new Promise<BoardPayload>(() => {})
+        }
+      }
+    })
+  })
+  void first.post('board.changed', { agentAt: 1 }).catch(() => undefined)
+  await first.unmount()
+
+  const second = await mount(panel, {
+    host: mockHost({
+      requests: {
+        'board.get': () => {
+          throw hostError('timeout', '读取超时')
+        }
+      }
+    })
+  })
+  // The hung read of the panel that closed does not leave this one loading.
+  assert.ok(second.find({ text: '还没有读到看板。' }))
+  assert.equal(second.find({ text: '读取中…' }), null)
+  await second.unmount()
+})
+
+test('a read that lands after its panel closed does not write to the board', async () => {
+  const late: { answer?: (value: BoardPayload) => void } = {}
+  let calls = 0
+  const first = await mount(panel, {
+    host: mockHost({
+      requests: {
+        'board.get': () => {
+          calls += 1
+          if (calls === 1) {
+            return fixturePayload
+          }
+          return new Promise<BoardPayload>((resolve) => {
+            late.answer = resolve
+          })
+        }
+      }
+    })
+  })
+  void first.post('board.changed', { agentAt: 1 }).catch(() => undefined)
+  await first.unmount()
+
+  const second = await mount(panel, {
+    host: mockHost({ requests: { 'board.get': () => fixturePayload } })
+  })
+  assert.ok(second.find({ text: 'Add X' }))
+  // The read of the panel that closed lands now; it has nothing to say to this board.
+  late.answer?.(boardTitled('Stale board'))
+  await second.settled()
+  assert.equal(second.find({ text: 'Stale board' }), null)
+  assert.ok(second.find({ text: 'Add X' }))
+  await second.unmount()
+})
+
 test('the other two tabs are there', async () => {
   const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
   const view = await mount(panel, { host })

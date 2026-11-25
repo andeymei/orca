@@ -37,14 +37,17 @@ const CONFIRM_WINDOW_MS = 3000
 /** The timer that takes the confirmation back, so the button asks again. */
 let confirmTimer: ReturnType<typeof setTimeout> | null = null
 
-/** How many reads are in flight; the panel is busy while any of them is. */
-let readsInFlight = 0
-
-/** The number of the last read that was asked for. */
-let lastRead = 0
-
-/** The number of the read whose answer is on screen. */
-let appliedRead = 0
+/** What one panel run knows about the reads it asked for. */
+type BoardReads = {
+  /** How many are in flight; the panel is busy while any of them is. */
+  inFlight: number
+  /** The number of the last read that was asked for. */
+  last: number
+  /** The number of the read whose answer is on screen. */
+  applied: number
+  /** Set when the panel closes: a read that lands afterwards has nothing to say. */
+  closed: boolean
+}
 
 /** The code the host refused with; a host that refused without one still gets a name. */
 function codeOf(thrown: unknown): string {
@@ -66,28 +69,44 @@ function messageOf(thrown: unknown): string {
  * Reads the board again. Every read carries a number: an answer older than the one already on
  * screen is dropped, so two reads in flight cannot land out of order and overwrite each other.
  */
-export async function load(): Promise<void> {
-  const number = ++lastRead
-  readsInFlight += 1
+async function loadBoard(reads: BoardReads): Promise<void> {
+  const number = ++reads.last
+  reads.inFlight += 1
   set(busy, true)
   try {
     const answer = await plugin.request('board.get')
-    if (number < appliedRead) {
+    if (reads.closed || number < reads.applied) {
       return
     }
-    appliedRead = number
+    reads.applied = number
     set(payload, answer)
     set(error, null)
   } catch (thrown) {
-    if (number < appliedRead) {
+    if (reads.closed || number < reads.applied) {
       return
     }
-    appliedRead = number
+    reads.applied = number
     set(error, { code: codeOf(thrown), message: messageOf(thrown) })
   } finally {
-    readsInFlight -= 1
-    if (readsInFlight === 0) {
+    reads.inFlight -= 1
+    if (reads.inFlight === 0 && !reads.closed) {
       set(busy, false)
+    }
+  }
+}
+
+/**
+ * The reads of one panel run: how to ask for the board, and how to close them.
+ *
+ * The bookkeeping belongs to the run that asked for it. A read that hung while its panel closed
+ * must not leave the next panel busy forever — and must not write to it either.
+ */
+export function newBoardReads(): { load: () => Promise<void>; close: () => void } {
+  const reads: BoardReads = { inFlight: 0, last: 0, applied: 0, closed: false }
+  return {
+    load: () => loadBoard(reads),
+    close: () => {
+      reads.closed = true
     }
   }
 }

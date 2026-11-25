@@ -4,7 +4,7 @@
 import { Callout, Heading, Stack, Tab, Tabs, Text, plugin, read, set } from 'orca'
 import type { PanelContext } from 'orca'
 import { BoardTab } from './panel-board'
-import { error, load, stopWaiting, tab } from './panel-state'
+import { error, newBoardReads, stopWaiting, tab } from './panel-state'
 
 /** The tab a press on the tab bar asks for. */
 function changeTab(value: string): void {
@@ -14,14 +14,18 @@ function changeTab(value: string): void {
 }
 
 export function setup(ctx: PanelContext): () => void {
+  // The reads of this panel run: they start here, so a read that hung while an earlier panel was
+  // open cannot leave this one busy forever.
+  const board = newBoardReads()
   // The agent wrote a new snapshot: the board is read again.
   ctx.subscriptions.push(
     plugin.on('board.changed', () => {
-      void load()
+      void board.load()
     })
   )
-  void load()
+  void board.load()
   return () => {
+    board.close()
     stopWaiting()
   }
 }

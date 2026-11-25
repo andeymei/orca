@@ -1,0 +1,101 @@
+// The shapes the board is built from. The snapshot on disk carries facts only; every judgment
+// (the unified stage, the gaps, the actions) is the worker's own derivation from those facts.
+
+/** Where a piece of work sits in the process both frameworks describe. */
+export type UnifiedStage = 'proposal' | 'design' | 'plan' | 'implement' | 'validate' | 'archive'
+
+/** A way the two frameworks' view of the same work disagree. */
+export type GapCode =
+  | 'openspec-only'
+  | 'superpowers-only'
+  | 'progress-drift'
+  | 'no-design'
+  | 'tasks-complete-not-archived'
+  | 'archived-spec-stale'
+
+export type Gap = { code: GapCode; severity: 'info' | 'warning' | 'error'; message: string }
+
+/** What OpenSpec's own files say about one change. */
+export type OpenspecFacts = {
+  changeId: string
+  stage: 'proposed' | 'implementing' | 'validated' | 'archived'
+  hasProposal: boolean
+  hasDesign: boolean
+  hasTasks: boolean
+  tasksDone: number
+  tasksTotal: number
+  capabilities: string[]
+}
+
+/** What Superpowers' own files say about one piece of work. */
+export type SuperpowersFacts = {
+  designSpec: string | null
+  plan: string | null
+  stage: 'designed' | 'planned' | 'executing' | 'done'
+  planDone: number
+  planTotal: number
+}
+
+/** One scanned project — the place a board item belongs to. */
+export type SnapshotProject = {
+  id: string
+  name: string
+  host: string
+  path: string
+  openspec: {
+    present: boolean
+    capabilities: string[]
+    activeChanges: number
+    archived: number
+  } | null
+  superpowers: { present: boolean; specs: number; plans: number } | null
+  openspecCli: { available: boolean; version?: string; path?: string } | null
+  scannedAt: string
+  error?: string
+}
+
+/** One piece of work as the agent found it: facts only, no judgment. */
+export type SnapshotItem = {
+  id: string
+  projectId: string
+  title: string
+  topic: string
+  openspec: OpenspecFacts | null
+  superpowers: SuperpowersFacts | null
+  summary?: string
+  nextAction?: { label: string; detail: string }
+}
+
+/** A terminal command or an agent prompt — what a button on the board runs. */
+export type ActionRun = { kind: 'terminal'; command: string } | { kind: 'agent'; prompt: string }
+
+export type Action = {
+  id: string
+  label: string
+  framework: 'openspec' | 'superpowers'
+  run: ActionRun
+  mutates: boolean
+}
+
+/** A snapshot item plus the worker's own derivations. */
+export type WorkItem = SnapshotItem & { stage: UnifiedStage; gaps: Gap[]; actions: Action[] }
+
+/** The file the agent writes. */
+export type BoardSnapshot = {
+  schemaVersion: 1
+  generatedAt: string
+  generatedBy: { agent: string; workspace?: string; host?: string }
+  projects: SnapshotProject[]
+  items: SnapshotItem[]
+  notes?: string[]
+}
+
+/** What the worker hands the panel. */
+export type BoardPayload = {
+  items: WorkItem[]
+  projects: SnapshotProject[]
+  sources: { localAt: number | null; agentAt: number | null }
+  warnings: string[]
+}
+
+export type ProjectRef = { name: string; host: string; path: string }

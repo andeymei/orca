@@ -61,7 +61,12 @@ const isMarkdown = (entry: Dirent): boolean =>
  * but cannot be read. The board states facts, and a directory that exists exists even when its
  * contents are out of reach: reporting "there is no OpenSpec here" would be the wrong fact.
  */
-async function readDirectory(dir: string, warnings: string[]): Promise<Dirent[] | null> {
+async function readDirectory(
+  root: string,
+  relative: string,
+  warnings: string[]
+): Promise<Dirent[] | null> {
+  const dir = join(root, relative)
   try {
     return await readdir(dir, { withFileTypes: true })
   } catch (error) {
@@ -77,7 +82,8 @@ async function readDirectory(dir: string, warnings: string[]): Promise<Dirent[] 
  * Whether a file is there. `stat` answers that without loading the file: a proposal can be huge,
  * and the board only asks whether it exists.
  */
-async function fileExists(file: string, warnings: string[]): Promise<boolean> {
+async function fileExists(root: string, relative: string, warnings: string[]): Promise<boolean> {
+  const file = join(root, relative)
   try {
     await stat(file)
     return true
@@ -90,7 +96,12 @@ async function fileExists(file: string, warnings: string[]): Promise<boolean> {
 }
 
 /** Reads a file's text; null when it is not there, and a warning when it cannot be read. */
-async function readFileText(file: string, warnings: string[]): Promise<string | null> {
+async function readFileText(
+  root: string,
+  relative: string,
+  warnings: string[]
+): Promise<string | null> {
+  const file = join(root, relative)
   try {
     return await readFile(file, 'utf8')
   } catch (error) {
@@ -125,7 +136,7 @@ export async function countBoxes(
   relative: string,
   warnings: string[]
 ): Promise<CheckboxCount> {
-  const text = await readFileText(join(root, relative), warnings)
+  const text = await readFileText(root, relative, warnings)
   return text === null ? NO_CHECKBOXES : countCheckboxes(text)
 }
 
@@ -136,14 +147,16 @@ async function readChange(
   warnings: string[]
 ): Promise<ChangeOnDisk> {
   const relative = `${OPENSPEC_DIR}/${CHANGES_DIR}/${changeId}`
-  const changeDir = join(root, OPENSPEC_DIR, CHANGES_DIR, changeId)
-  const tasksFile = join(changeDir, TASKS_FILE)
+  // The task list is named once, and both the existence check and the count read that name: two
+  // derivations of one file could drift, and then the board would say a change has tasks while
+  // counting none.
+  const tasks = `${relative}/${TASKS_FILE}`
   const [hasProposal, hasDesign, hasTasks] = await Promise.all([
-    fileExists(join(changeDir, PROPOSAL_FILE), warnings),
-    fileExists(join(changeDir, DESIGN_FILE), warnings),
-    fileExists(tasksFile, warnings)
+    fileExists(root, `${relative}/${PROPOSAL_FILE}`, warnings),
+    fileExists(root, `${relative}/${DESIGN_FILE}`, warnings),
+    fileExists(root, tasks, warnings)
   ])
-  const delta = await readDirectory(join(changeDir, SPECS_DIR), warnings)
+  const delta = await readDirectory(root, `${relative}/${SPECS_DIR}`, warnings)
   return {
     path: relative,
     topic: normalizeTopic(changeId),
@@ -151,7 +164,7 @@ async function readChange(
     hasProposal,
     hasDesign,
     hasTasks,
-    tasks: hasTasks ? await countBoxes(root, `${relative}/${TASKS_FILE}`, warnings) : NO_CHECKBOXES,
+    tasks: hasTasks ? await countBoxes(root, tasks, warnings) : NO_CHECKBOXES,
     capabilities: delta === null ? [] : namesOf(delta, isDirectory)
   }
 }
@@ -161,11 +174,10 @@ export async function scanOpenspec(
   root: string,
   warnings: string[]
 ): Promise<{ facts: SnapshotProject['openspec']; changes: ChangeOnDisk[] }> {
-  const changesRoot = join(root, OPENSPEC_DIR, CHANGES_DIR)
-  const specsRoot = join(root, OPENSPEC_DIR, SPECS_DIR)
-  const changesDir = await readDirectory(changesRoot, warnings)
-  const specsDir = await readDirectory(specsRoot, warnings)
-  const archive = await readDirectory(join(changesRoot, ARCHIVE_DIR), warnings)
+  const changes = `${OPENSPEC_DIR}/${CHANGES_DIR}`
+  const changesDir = await readDirectory(root, changes, warnings)
+  const specsDir = await readDirectory(root, `${OPENSPEC_DIR}/${SPECS_DIR}`, warnings)
+  const archive = await readDirectory(root, `${changes}/${ARCHIVE_DIR}`, warnings)
   const changeIds =
     changesDir === null
       ? []
@@ -200,7 +212,7 @@ export async function scanSuperpowers(
   const found: Record<'spec' | 'plan', ArtifactOnDisk[]> = { spec: [], plan: [] }
   let present = false
   for (const dir of SUPERPOWERS_DIRS) {
-    const entries = await readDirectory(join(root, dir.path), warnings)
+    const entries = await readDirectory(root, dir.path, warnings)
     if (entries === null) {
       continue
     }

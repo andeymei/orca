@@ -1061,12 +1061,18 @@ An unreadable path returns a project with `error` set and no items — it must n
 
 **Two modules, not one.** `local-scan.ts` holds the orchestration — `scanProject`, `projectIdFor`,
 the item assembly — and `local-scan-artifacts.ts` holds the filesystem reading: the OpenSpec
-reader, the Superpowers reader, and the directory helpers they share. The root oxlint config caps a
+reader, the Superpowers reader, and the directory helpers they share. The seam is uniform: **every
+path is composed inside `local-scan-artifacts.ts`**, so the orchestration module never joins a root
+to a relative path itself. The root oxlint config caps a
 file at 300 lines and the single-file version sat right at that edge, so the seam keeps both files
 comfortably under it and gives the reading rules one place to live.
 
 A warning that drops something must name what it dropped: the empty-topic warning carries the
 offending file path, not just "a file whose name cannot be normalized".
+
+**Every branch of a derived field is pinned.** A field with an assertion on some of its values but
+not others still leaves a silent mutant: `SuperpowersFacts.stage` has four values, and all four
+must be asserted — a plan file with no checkboxes is what produces `'planned'`.
 
 **A test that cannot run must still assert something.** The unreadable-directory case cannot be
 produced portably — `chmod 000` does nothing for a superuser and behaves differently on Windows —

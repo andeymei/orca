@@ -8,7 +8,8 @@ import { normalizeSearchResult } from './search-match-count'
 import { escapeRegex } from '../text/regex-escaping'
 import type { SearchFileResult, SearchOptions, SearchResult } from './code-search-types'
 import { pushSearchMatch } from './text-search-match-accumulator'
-import { splitSearchGlobPatterns, toGitGlobPathspecs } from './text-search-glob-patterns'
+import { compareSearchFileRank } from './search-file-classification'
+import { splitSearchGlobPatterns } from './text-search-glob-patterns'
 import {
   joinSearchRoot,
   normalizeRelativePath,
@@ -17,15 +18,28 @@ import {
 } from './text-search-paths'
 import { ripgrepMatchRanges } from '../ripgrep/ripgrep-match-offsets'
 import { decodeRipgrepLine } from '../ripgrep/ripgrep-line-decoding'
+import { buildGitGrepArgs } from './text-search-git-grep-args'
+
+export { buildGitGrepArgs }
 
 export type SearchAccumulator = {
   fileMap: Map<string, SearchFileResult>
   totalMatches: number
   truncated: boolean
+  /** Matches accepted from generated files; they draw on a separate budget so they cannot crowd out authored hits. */
+  generatedMatches: number
+  /** Memoizes generated-file classification per file so a dense match set runs the path regex once, not per match. */
+  generatedFiles: Map<string, boolean>
 }
 
 export function createAccumulator(): SearchAccumulator {
-  return { fileMap: new Map(), totalMatches: 0, truncated: false }
+  return {
+    fileMap: new Map(),
+    totalMatches: 0,
+    truncated: false,
+    generatedMatches: 0,
+    generatedFiles: new Map()
+  }
 }
 
 export const DEFAULT_SEARCH_MAX_RESULTS = 2000
@@ -141,61 +155,6 @@ export function ingestRgJsonLine(
     }
   }
   return 'continue'
-}
-
-export function buildGitGrepArgs(query: string, opts: SearchOptionsLike): string[] {
-  // Disable submodule recursion to avoid its conflict with --untracked; NUL delimiters disambiguate colons in filenames.
-  const gitArgs: string[] = [
-    '-c',
-    'submodule.recurse=false',
-    '-c',
-    'grep.column=false',
-    'grep',
-    '-n',
-    '-I',
-    '--null',
-    '--no-color',
-    '--untracked',
-    '--no-recurse-submodules'
-  ]
-  if (!opts.caseSensitive) {
-    gitArgs.push('-i')
-  }
-  if (opts.wholeWord) {
-    gitArgs.push('-w')
-  }
-  if (!opts.useRegex) {
-    gitArgs.push('--fixed-strings')
-  } else {
-    gitArgs.push('--extended-regexp')
-  }
-
-  gitArgs.push('-e', query, '--')
-
-  let hasPathspecs = false
-  let hasIncludePathspecs = false
-  if (opts.includePattern) {
-    for (const pat of splitSearchGlobPatterns(opts.includePattern, 'git')) {
-      const pathspecs = toGitGlobPathspecs(pat)
-      gitArgs.push(...pathspecs)
-      hasPathspecs ||= pathspecs.length > 0
-      hasIncludePathspecs ||= pathspecs.length > 0
-    }
-  }
-  if (opts.excludePattern) {
-    for (const pat of splitSearchGlobPatterns(opts.excludePattern, 'git')) {
-      const pathspecs = toGitGlobPathspecs(pat, true)
-      gitArgs.push(...pathspecs)
-      hasPathspecs ||= pathspecs.length > 0
-    }
-  }
-  // Why: git grep needs a pathspec to search the working tree; '.' means everything under cwd.
-  if (opts.includePattern && !hasIncludePathspecs) {
-    gitArgs.push(':(top,literal).git')
-  } else if (!hasPathspecs) {
-    gitArgs.push('.')
-  }
-  return gitArgs
 }
 
 /** Locate all columns in git-grep’s line-level hits; incompatible ERE queries return null for whole-line highlighting. */
@@ -324,7 +283,10 @@ export function ingestGitGrepLine(
 
 export function finalize(acc: SearchAccumulator): SearchResult {
   return normalizeSearchResult({
-    files: Array.from(acc.fileMap.values()),
+    // rg emits files in traversal order, so build output can precede the source a user searched for.
+    files: Array.from(acc.fileMap.values()).sort((left, right) =>
+      compareSearchFileRank(left.relativePath, right.relativePath)
+    ),
     totalMatches: acc.totalMatches,
     truncated: acc.truncated
   })

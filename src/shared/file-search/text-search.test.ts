@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildSubmatchRegex,
   createAccumulator,
+  finalize,
   ingestGitGrepLine,
   ingestRgJsonLine
 } from './text-search'
@@ -147,5 +148,46 @@ describe('ingestGitGrepLine', () => {
         lineContent: 'git reported this line'
       }
     ])
+  })
+})
+
+describe('search result ranking', () => {
+  const makeMatch = (path: string, line: number, text: string) =>
+    JSON.stringify({
+      type: 'match',
+      data: {
+        path: { text: path },
+        line_number: line,
+        lines: { text: `${text}\n` },
+        submatches: [{ start: 0, end: 4 }]
+      }
+    })
+
+  it('lists authored files before build output', () => {
+    const acc = createAccumulator()
+    ingestRgJsonLine(makeMatch('build/generated/job.pb.js', 1, 'JB_QTL_9116_DH'), '/root', acc, 100)
+    ingestRgJsonLine(makeMatch('src/core/job.js', 1, 'JB_QTL_9116_DH'), '/root', acc, 100)
+    ingestRgJsonLine(makeMatch('dist/app.min.js', 1, 'JB_QTL_9116_DH'), '/root', acc, 100)
+    ingestRgJsonLine(makeMatch('src/ui/panel.tsx', 1, 'JB_QTL_9116_DH'), '/root', acc, 100)
+
+    const files = finalize(acc).files.map((file) => file.relativePath)
+    expect(files).toEqual([
+      'src/core/job.js',
+      'src/ui/panel.tsx',
+      'build/generated/job.pb.js',
+      'dist/app.min.js'
+    ])
+  })
+
+  it('keeps authored matches when build output floods the result budget', () => {
+    const acc = createAccumulator()
+    // Build output arrives first and outnumbers the authored file many times over.
+    for (let index = 0; index < 40; index++) {
+      ingestRgJsonLine(makeMatch(`build/gen/f${index}.js`, 1, 'JB_QTL_9116_DH'), '/root', acc, 100)
+    }
+    ingestRgJsonLine(makeMatch('src/core/job.js', 1, 'JB_QTL_9116_DH'), '/root', acc, 100)
+
+    const result = finalize(acc)
+    expect(result.files.map((file) => file.relativePath)).toContain('src/core/job.js')
   })
 })

@@ -4,46 +4,31 @@ import {
 } from './quick-open-separator-match'
 import { isClipboardTextByteLengthOverLimit } from '../clipboard/clipboard-text'
 import { compareFileNames } from '../file-listing/file-name-sort'
+import { searchFileRank } from '../file-search/search-file-classification'
 import {
-  asciiIdentifierBoundaries,
-  unicodeIdentifierBoundaries
-} from './quick-open-identifier-boundaries'
+  composeQuickOpenText,
+  getIdentifierBoundaries,
+  getPreparedQuickOpenFiles,
+  prepareQuickOpenFile,
+  prepareQuickOpenFiles,
+  type QuickOpenIndexedFile
+} from './quick-open-file-index'
+
+export {
+  composeQuickOpenText,
+  getPreparedQuickOpenFiles,
+  prepareQuickOpenFiles,
+  type QuickOpenIndexedFile
+}
 
 export const QUICK_OPEN_RESULT_LIMIT = 50
 export const QUICK_OPEN_QUERY_MAX_BYTES = 2 * 1024
 export const QUICK_OPEN_REMOTE_QUERY_MAX_CODE_UNITS = 256
 export const QUICK_OPEN_SEARCH_VERSION = 3
 
-export type QuickOpenIndexedFile = {
-  path: string
-  lowerPath: string
-  lowerFilename: string
-  inputIndex: number
-}
-
 export type QuickOpenSearchResult = {
   path: string
   score: number
-}
-
-export function prepareQuickOpenFiles(files: readonly string[]): QuickOpenIndexedFile[] {
-  return files.map((path, inputIndex) => prepareQuickOpenFile(path, inputIndex))
-}
-
-const identifierBoundaries = new WeakMap<QuickOpenIndexedFile, ReadonlySet<number>>()
-
-const preparedQuickOpenFiles = new WeakMap<readonly string[], QuickOpenIndexedFile[]>()
-
-export function getPreparedQuickOpenFiles(
-  files: readonly string[]
-): readonly QuickOpenIndexedFile[] {
-  const cached = preparedQuickOpenFiles.get(files)
-  if (cached) {
-    return cached
-  }
-  const prepared = prepareQuickOpenFiles(files)
-  preparedQuickOpenFiles.set(files, prepared)
-  return prepared
 }
 
 export function isQuickOpenQueryTooLarge(
@@ -142,14 +127,6 @@ export class QuickOpenPathRanker {
 
 type QuickOpenQueryTerm = { text: string; withoutSeparators: string | undefined }
 
-const NON_ASCII = /[\u0080-\u{10ffff}]/u
-
-// Why: macOS often stores names decomposed (NFD) while keyboards type composed (NFC); recompose after
-// lowercasing too, since case mapping can leave a sequence decomposed (J\u030c → j\u030c, not ǰ).
-export function composeQuickOpenText(text: string): string {
-  return NON_ASCII.test(text) ? text.normalize('NFC') : text
-}
-
 function normalizeQuickOpenQuery(query: string): readonly QuickOpenQueryTerm[] {
   const lowerQuery = composeQuickOpenText(query.trim().replace(/\\/g, '/').toLowerCase())
   const terms = [...new Set(lowerQuery.split(/\s+/))].filter(Boolean).sort()
@@ -179,7 +156,7 @@ function scoreQuickOpenTerms(
           : matchQuickOpenSeparatorAlternatives(
               term,
               file.lowerPath,
-              identifierBoundaries.get(file)
+              getIdentifierBoundaries(file)
             ))
       termScore = fallback === null ? null : fallback + 10
     }
@@ -189,33 +166,6 @@ function scoreQuickOpenTerms(
     score += termScore
   }
   return score
-}
-
-function prepareQuickOpenFile(path: string, inputIndex: number): QuickOpenIndexedFile {
-  // Listings run this per path on every open; ASCII paths (nearly all) skip Unicode work.
-  const ascii = !NON_ASCII.test(path)
-  const slashed = path.includes('\\') ? path.replace(/\\/g, '/') : path
-  const searchPath = ascii ? slashed : composeQuickOpenText(slashed)
-  const lowerPath = ascii
-    ? searchPath.toLowerCase()
-    : composeQuickOpenText(searchPath.toLowerCase())
-  // A folder ends in `/`; its name is the segment before it.
-  const nameEnd = lowerPath.endsWith('/') ? lowerPath.length - 1 : lowerPath.length
-  const file = {
-    path,
-    lowerPath,
-    lowerFilename: lowerPath.slice(lowerPath.lastIndexOf('/', nameEnd - 1) + 1, nameEnd),
-    inputIndex
-  }
-  if (/[A-Z]/.test(searchPath)) {
-    const boundaries = ascii
-      ? asciiIdentifierBoundaries(searchPath)
-      : unicodeIdentifierBoundaries(searchPath)
-    if (boundaries) {
-      identifierBoundaries.set(file, boundaries)
-    }
-  }
-  return file
 }
 
 function fuzzyMatchIndexedFile(
@@ -240,7 +190,7 @@ function fuzzyMatchIndexedFile(
           ti = alternate
         }
       }
-      if (lastMatchIdx >= 0 && ti !== next && identifierBoundaries.get(file)?.has(next)) {
+      if (lastMatchIdx >= 0 && ti !== next && getIdentifierBoundaries(file)?.has(next)) {
         score += 2
         qi++
         continue
@@ -335,6 +285,15 @@ function finalizeResults(results: QuickOpenRankedResult[]): QuickOpenSearchResul
     .map(({ path, score }): QuickOpenSearchResult => ({ path, score }))
 }
 
+/**
+ * Rank authored files ahead of build output before comparing match quality: a build artifact must not
+ * outrank the source file it was generated from just because its name matches the query more closely.
+ */
 function compareRankedResult(a: QuickOpenRankedResult, b: QuickOpenRankedResult): number {
-  return a.score - b.score || compareFileNames(a.path, b.path) || a.inputIndex - b.inputIndex
+  return (
+    searchFileRank(a.path) - searchFileRank(b.path) ||
+    a.score - b.score ||
+    compareFileNames(a.path, b.path) ||
+    a.inputIndex - b.inputIndex
+  )
 }

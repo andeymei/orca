@@ -1,5 +1,6 @@
 import type { SearchFileResult, SearchMatch } from './code-search-types'
 import type { SearchAccumulator } from './text-search'
+import { isGeneratedSearchPath } from './search-file-classification'
 import { sliceAtCodeUnitLimit } from '../text/surrogate-safe-text-slice'
 import { ownRetainedString } from '../text/own-retained-string'
 
@@ -58,6 +59,17 @@ function clampLineContext(
   }
 }
 
+/**
+ * Build output can outnumber authored matches many times over, so a shared budget lets generated files
+ * exhaust every result slot before the source a user searched for is reached. Generated matches get their
+ * own capped budget so authored files always keep room in the result set.
+ */
+const GENERATED_MATCH_BUDGET_RATIO = 0.25
+
+export function generatedMatchBudget(maxResults: number): number {
+  return Math.max(1, Math.floor(maxResults * GENERATED_MATCH_BUDGET_RATIO))
+}
+
 export function pushSearchMatch(args: {
   fileResult: SearchFileResult
   accumulator: SearchAccumulator
@@ -67,6 +79,11 @@ export function pushSearchMatch(args: {
   lineNumber: number
   maxResults: number
 }): 'continue' | 'stop' {
+  const generated = isGeneratedSearchFile(args.accumulator, args.fileResult)
+  if (generated && args.accumulator.generatedMatches >= generatedMatchBudget(args.maxResults)) {
+    // Keep scanning: an authored match later in the stream still deserves a slot.
+    return 'continue'
+  }
   const clamped = clampLineContext(args.lineContent, args.matchStart, args.matchLength)
   const match: SearchMatch = {
     line: args.lineNumber,
@@ -83,9 +100,26 @@ export function pushSearchMatch(args: {
   args.fileResult.matches.push(match)
   args.fileResult.matchCount = (args.fileResult.matchCount ?? 0) + 1
   args.accumulator.totalMatches++
+  if (generated) {
+    args.accumulator.generatedMatches++
+  }
   if (args.accumulator.totalMatches >= args.maxResults) {
     args.accumulator.truncated = true
     return 'stop'
   }
   return 'continue'
+}
+
+/** Classify once per file; a dense match set would otherwise re-run the path regex for every match. */
+function isGeneratedSearchFile(
+  accumulator: SearchAccumulator,
+  fileResult: SearchFileResult
+): boolean {
+  const cached = accumulator.generatedFiles.get(fileResult.filePath)
+  if (cached !== undefined) {
+    return cached
+  }
+  const generated = isGeneratedSearchPath(fileResult.relativePath)
+  accumulator.generatedFiles.set(fileResult.filePath, generated)
+  return generated
 }

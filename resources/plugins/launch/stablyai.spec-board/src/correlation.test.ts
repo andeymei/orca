@@ -41,14 +41,16 @@ test('pairs exact topics first, then the best remaining overlap', () => {
 test('pairs one-to-one when two changes share a topic', () => {
   const result = correlate(
     [
-      { id: 'o1', topic: 'add-x' },
-      { id: 'o2', topic: 'update-x' }
+      { id: 'o1', topic: 'add-x-auth' },
+      { id: 'o2', topic: 'update-x-auth' }
     ],
-    [{ id: 's1', topic: 'x' }]
+    [{ id: 's1', topic: 'x-auth' }]
   )
-  const used = new Set(result.matches.map((m) => m.superpowersId))
-  assert.equal(result.matches.length, used.size)
-  assert.equal(result.unmatchedSuperpowers.length + result.matches.length, 1)
+  // Exactly one of the two changes gets the single plan, and the other is reported unmatched.
+  assert.equal(result.matches.length, 1)
+  assert.equal(result.matches[0]!.superpowersId, 's1')
+  assert.equal(result.unmatchedOpenspec.length, 1)
+  assert.deepEqual(result.unmatchedSuperpowers, [])
 })
 
 test('leaves everything unmatched when nothing overlaps', () => {
@@ -101,5 +103,17 @@ test('refuses to pair topics that share too little', () => {
   )
   assert.deepEqual(result.matches, [])
   assert.deepEqual(result.unmatchedOpenspec, ['o1'])
+  assert.deepEqual(result.unmatchedSuperpowers, ['s1'])
+})
+
+test('pairs an exact topic before the same words in another order', () => {
+  const result = correlate(
+    [{ id: 'o1', topic: 'add-x' }],
+    [
+      { id: 's1', topic: 'x-add' },
+      { id: 's2', topic: 'add-x' }
+    ]
+  )
+  assert.equal(result.matches[0]?.superpowersId, 's2')
   assert.deepEqual(result.unmatchedSuperpowers, ['s1'])
 })

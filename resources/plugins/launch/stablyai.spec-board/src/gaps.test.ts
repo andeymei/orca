@@ -1,5 +1,5 @@
 import { assert, test } from 'orca/testing'
-import type { OpenspecFacts, SuperpowersFacts } from './model'
+import type { GapCode, OpenspecFacts, SuperpowersFacts } from './model'
 import { detectGaps } from './gaps'
 
 const openspec = (over: Partial<OpenspecFacts> = {}) => ({
@@ -85,7 +85,7 @@ test('reports an archived change whose capability never reached specs', () => {
     codes({
       openspec: openspec({ stage: 'archived', capabilities: ['x'] }),
       superpowers: null,
-      archivedCapabilities: []
+      existingSpecCapabilities: []
     }).includes('archived-spec-stale')
   )
 })
@@ -123,14 +123,33 @@ test('does not call an empty checklist drift', () => {
   )
 })
 
-test('grades the two one-sided gaps as warnings and the rest as info', () => {
-  const found = detectGaps({
-    openspec: openspec({ hasDesign: false, tasksDone: 4 }),
-    superpowers: null
-  })
-  assert.equal(found.find((gap) => gap.code === 'openspec-only')?.severity, 'warning')
-  assert.equal(found.find((gap) => gap.code === 'no-design')?.severity, 'info')
-  assert.equal(found.find((gap) => gap.code === 'tasks-complete-not-archived')?.severity, 'info')
+test('grades every gap with the severity the spec gives it', () => {
+  const severityOf = (item: Parameters<typeof detectGaps>[0], code: GapCode) =>
+    detectGaps(item).find((gap) => gap.code === code)?.severity
+  const change = openspec({ hasDesign: false, tasksDone: 4, tasksInProgress: 0, tasksTotal: 4 })
+  const oneSided = { openspec: change, superpowers: null }
+  assert.equal(severityOf(oneSided, 'openspec-only'), 'warning')
+  assert.equal(severityOf({ openspec: null, superpowers: superpowers() }, 'superpowers-only'), 'warning')
+  assert.equal(
+    severityOf(
+      { openspec: change, superpowers: superpowers({ planDone: 1, planInProgress: 0, planTotal: 4 }) },
+      'progress-drift'
+    ),
+    'warning'
+  )
+  assert.equal(severityOf(oneSided, 'no-design'), 'info')
+  assert.equal(severityOf(oneSided, 'tasks-complete-not-archived'), 'info')
+  assert.equal(
+    severityOf(
+      {
+        openspec: openspec({ stage: 'archived', capabilities: ['x'] }),
+        superpowers: null,
+        existingSpecCapabilities: []
+      },
+      'archived-spec-stale'
+    ),
+    'info'
+  )
 })
 
 test('reports an archived capability that reached the specs as no gap', () => {
@@ -138,7 +157,49 @@ test('reports an archived capability that reached the specs as no gap', () => {
     !codes({
       openspec: openspec({ stage: 'archived', capabilities: ['x'] }),
       superpowers: null,
-      archivedCapabilities: ['x']
+      existingSpecCapabilities: ['x']
     }).includes('archived-spec-stale')
+  )
+})
+
+test('reports only the stale spec for a finished change', () => {
+  assert.deepEqual(
+    codes({
+      openspec: openspec({ stage: 'archived', capabilities: ['x'] }),
+      superpowers: null,
+      existingSpecCapabilities: []
+    }),
+    ['archived-spec-stale']
+  )
+})
+
+test('reports no gap for a finished change whose capability reached the specs', () => {
+  assert.deepEqual(
+    codes({
+      openspec: openspec({ stage: 'archived', capabilities: ['x'] }),
+      superpowers: null,
+      existingSpecCapabilities: ['x']
+    }),
+    []
+  )
+})
+
+test('reports no in-flight gap for work whose plan is done', () => {
+  assert.deepEqual(
+    codes({
+      openspec: openspec({ hasDesign: false, tasksDone: 4, tasksInProgress: 0, tasksTotal: 4 }),
+      superpowers: superpowers({ stage: 'done' })
+    }),
+    []
+  )
+})
+
+test('says nothing about an archived capability it cannot check', () => {
+  assert.deepEqual(
+    codes({
+      openspec: openspec({ stage: 'archived', capabilities: ['x'] }),
+      superpowers: null
+    }),
+    []
   )
 })

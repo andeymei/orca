@@ -20,86 +20,92 @@ function started(checklist: Checklist): boolean {
 }
 
 /**
- * The gaps of one board item. `archivedCapabilities` are the capability directories the project's
- * `openspec/specs/` holds; without them the archived check cannot be made, so it is not made.
+ * The gaps of one board item. `existingSpecCapabilities` are the capability directories the
+ * project's `openspec/specs/` holds; without them the archived check cannot be made, so it is
+ * not made.
  */
 export function detectGaps(item: {
   openspec: OpenspecFacts | null
   superpowers: SuperpowersFacts | null
-  archivedCapabilities?: readonly string[]
+  existingSpecCapabilities?: readonly string[]
 }): Gap[] {
   const { openspec, superpowers } = item
-  const archivedCapabilities = item.archivedCapabilities
+  const existingSpecCapabilities = item.existingSpecCapabilities
   const gaps: Gap[] = []
 
-  if (openspec && !superpowers) {
-    gaps.push({
-      code: 'openspec-only',
-      severity: 'warning',
-      message: '有 OpenSpec 变更，没有对应的 Superpowers 设计'
-    })
-  }
-  if (superpowers && !openspec) {
-    gaps.push({
-      code: 'superpowers-only',
-      severity: 'warning',
-      message: '有 Superpowers 设计或计划，没有对应的 OpenSpec 变更'
-    })
-  }
+  // Work that has shipped is not work in flight: the five in-flight gaps would only be noise
+  // there. What is still worth saying about it is a capability that never reached the specs.
+  const finished = openspec?.stage === 'archived' || superpowers?.stage === 'done'
 
-  if (openspec && superpowers) {
-    const tasks: Checklist = {
-      done: openspec.tasksDone,
-      inProgress: openspec.tasksInProgress,
-      total: openspec.tasksTotal
+  if (!finished) {
+    if (openspec && !superpowers) {
+      gaps.push({
+        code: 'openspec-only',
+        severity: 'warning',
+        message: '有 OpenSpec 变更，没有对应的 Superpowers 设计'
+      })
     }
-    const plan: Checklist = {
-      done: superpowers.planDone,
-      inProgress: superpowers.planInProgress,
-      total: superpowers.planTotal
+    if (superpowers && !openspec) {
+      gaps.push({
+        code: 'superpowers-only',
+        severity: 'warning',
+        message: '有 Superpowers 设计或计划，没有对应的 OpenSpec 变更'
+      })
     }
-    const taskCompletion = completion(tasks)
-    const planCompletion = completion(plan)
+
+    if (openspec && superpowers) {
+      const tasks: Checklist = {
+        done: openspec.tasksDone,
+        inProgress: openspec.tasksInProgress,
+        total: openspec.tasksTotal
+      }
+      const plan: Checklist = {
+        done: superpowers.planDone,
+        inProgress: superpowers.planInProgress,
+        total: superpowers.planTotal
+      }
+      const taskCompletion = completion(tasks)
+      const planCompletion = completion(plan)
+      if (
+        taskCompletion !== null &&
+        planCompletion !== null &&
+        started(tasks) &&
+        started(plan) &&
+        Math.abs(taskCompletion - planCompletion) > DRIFT_THRESHOLD
+      ) {
+        gaps.push({
+          code: 'progress-drift',
+          severity: 'warning',
+          message: `进度已经漂移：OpenSpec 任务 ${tasks.done}/${tasks.total}，Superpowers 计划 ${plan.done}/${plan.total}`
+        })
+      }
+    }
+
+    if (openspec?.hasTasks && !openspec.hasDesign) {
+      gaps.push({
+        code: 'no-design',
+        severity: 'info',
+        message: '有 tasks.md，但缺少 design.md'
+      })
+    }
+
     if (
-      taskCompletion !== null &&
-      planCompletion !== null &&
-      started(tasks) &&
-      started(plan) &&
-      Math.abs(taskCompletion - planCompletion) > DRIFT_THRESHOLD
+      openspec &&
+      openspec.hasTasks &&
+      openspec.tasksTotal > 0 &&
+      openspec.tasksDone === openspec.tasksTotal
     ) {
       gaps.push({
-        code: 'progress-drift',
-        severity: 'warning',
-        message: `进度已经漂移：OpenSpec 任务 ${tasks.done}/${tasks.total}，Superpowers 计划 ${plan.done}/${plan.total}`
+        code: 'tasks-complete-not-archived',
+        severity: 'info',
+        message: 'tasks.md 全部勾完，但变更还在 changes/ 里没有归档'
       })
     }
   }
 
-  if (openspec?.hasTasks && !openspec.hasDesign) {
-    gaps.push({
-      code: 'no-design',
-      severity: 'info',
-      message: '有 tasks.md，但缺少 design.md'
-    })
-  }
-
-  if (
-    openspec &&
-    openspec.stage !== 'archived' &&
-    openspec.hasTasks &&
-    openspec.tasksTotal > 0 &&
-    openspec.tasksDone === openspec.tasksTotal
-  ) {
-    gaps.push({
-      code: 'tasks-complete-not-archived',
-      severity: 'info',
-      message: 'tasks.md 全部勾完，但变更还在 changes/ 里没有归档'
-    })
-  }
-
-  if (openspec?.stage === 'archived' && archivedCapabilities) {
+  if (openspec?.stage === 'archived' && existingSpecCapabilities) {
     const missing = openspec.capabilities.filter(
-      (capability) => !archivedCapabilities.includes(capability)
+      (capability) => !existingSpecCapabilities.includes(capability)
     )
     if (missing.length > 0) {
       gaps.push({

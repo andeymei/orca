@@ -1068,6 +1068,12 @@ comfortably under it and gives the reading rules one place to live.
 A warning that drops something must name what it dropped: the empty-topic warning carries the
 offending file path, not just "a file whose name cannot be normalized".
 
+**A test that cannot run must still assert something.** The unreadable-directory case cannot be
+produced portably — `chmod 000` does nothing for a superuser and behaves differently on Windows —
+so that test skips the unreadable-specific assertion where the environment cannot create the
+condition. It must still assert the readable case in the skip path, so it is never a test that
+asserts nothing.
+
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `orca plugin test resources/plugins/launch/stablyai.spec-board --json`

@@ -52,19 +52,24 @@ export async function readRefactorProviderEnv(configDir: string): Promise<Record
   } catch {
     return {}
   }
-  if (typeof parsed !== 'object' || parsed === null) {
+  if (!isRecord(parsed)) {
     return {}
   }
-  const env = (parsed as { env?: unknown }).env
-  if (typeof env !== 'object' || env === null) {
+  const env = parsed.env
+  if (!isRecord(env)) {
     return {}
   }
   const provider: Record<string, string> = {}
   for (const key of PROVIDER_ENV_KEYS) {
-    const value = (env as Record<string, unknown>)[key]
+    const value = env[key]
     if (typeof value === 'string' && value.trim().length > 0) {
       provider[key] = value
     }
   }
   return provider
+}
+
+/** A JSON object; the settings file's own shape is not this code's to know. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }

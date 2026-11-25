@@ -1305,7 +1305,7 @@ git commit -m "feat(spec-board): derive executable actions for both frameworks"
 
 **Interfaces:**
 
-- Consumes: `parseBoardSnapshot` (Task 2), `deriveStage` (Task 3), `correlate`/`detectGaps` (Task 4), `scanProject`/`projectIdFor` (Task 5), `actionsForItem`/`findAction` (Task 6).
+- Consumes: `parseBoardSnapshot` (Task 2), `deriveStage` (Task 3), `correlate`/`detectGaps` (Task 4), `scanProject`/`projectIdFor` (Task 5), `actionsForItem`/`findAction`/`resolvePaletteAction` (Task 6).
 - Produces:
   ```ts
   // store-paths.ts
@@ -1701,6 +1701,11 @@ that optional fields
 `openspecCli.path`, `generatedBy.workspace`, `generatedBy.host`, `notes`) are **omitted** rather
 than written as `null`. The validator reads `null` as absent either way; omitting is what the prompt
 should ask for.
+
+The prompt must also ask for **plain slugs**: every `changeId` and every `topic` it writes has to
+match `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, because those values end up in a terminal command and in
+an agent prompt. A change id that fails the rule is one the board cannot offer commands for, so
+asking the agent for a slug is cheaper than discarding its work afterwards.
 
 - [ ] **Step 5: Run it to verify it passes**
 

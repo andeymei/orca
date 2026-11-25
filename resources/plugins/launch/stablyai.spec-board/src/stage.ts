@@ -38,10 +38,13 @@ export function deriveStage(facts: StageFacts): UnifiedStage {
   }
 
   const pairs = progressPairs(facts)
-  if (pairs.length > 0 && pairs.every((pair) => pair.total > 0 && pair.done === pair.total)) {
+  // A checklist with no boxes at all carries no progress information: it neither advances the
+  // stage nor holds it back from 'validate'.
+  const informative = pairs.filter((pair) => pair.total > 0)
+  if (informative.length > 0 && informative.every((pair) => pair.done === pair.total)) {
     return 'validate'
   }
-  if (pairs.some((pair) => pair.done + pair.inProgress > 0)) {
+  if (informative.some((pair) => pair.done + pair.inProgress > 0)) {
     return 'implement'
   }
   if (pairs.length > 0 && pairs.every((pair) => pair.done === 0 && pair.inProgress === 0)) {

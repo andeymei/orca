@@ -72,7 +72,7 @@ test('rejects progress where done exceeds total', () => {
   }
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /tasksDone/)
+  assert.match((result as { error: string }).error, /\.tasksDone:/)
 })
 
 test('rejects progress where done plus in-progress exceeds total', () => {
@@ -82,7 +82,7 @@ test('rejects progress where done plus in-progress exceeds total', () => {
   }
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /tasksInProgress/)
+  assert.match((result as { error: string }).error, /\.tasksInProgress:/)
 })
 
 test('rejects a plan whose in-progress boxes exceed its total', () => {
@@ -99,7 +99,7 @@ test('rejects a plan whose in-progress boxes exceed its total', () => {
   }
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /planInProgress/)
+  assert.match((result as { error: string }).error, /\.planInProgress:/)
 })
 
 test('accepts progress where done plus in-progress fills the total', () => {

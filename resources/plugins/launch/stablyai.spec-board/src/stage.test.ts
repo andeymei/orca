@@ -99,3 +99,30 @@ test('an in-progress box means the work has started, but it is not finished', ()
     'implement'
   )
 })
+
+test('an empty checklist does not veto a fully ticked plan', () => {
+  assert.equal(
+    deriveStage({
+      openspec: openspec({ hasTasks: true, tasksDone: 0, tasksTotal: 0 }),
+      superpowers: superpowers({ plan: 'p.md', planDone: 5, planTotal: 5 })
+    }),
+    'validate'
+  )
+})
+
+test('empty checklists on both sides are the plan stage, not validate', () => {
+  assert.equal(
+    deriveStage({
+      openspec: openspec({ hasTasks: true, tasksDone: 0, tasksTotal: 0 }),
+      superpowers: superpowers({ plan: 'p.md', planDone: 0, planTotal: 0 })
+    }),
+    'plan'
+  )
+  assert.equal(
+    deriveStage({
+      openspec: openspec({ hasTasks: true, tasksDone: 0, tasksTotal: 0 }),
+      superpowers: null
+    }),
+    'plan'
+  )
+})

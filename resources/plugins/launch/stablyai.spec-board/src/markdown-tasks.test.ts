@@ -26,3 +26,27 @@ test('skips a tilde-fenced block too', () => {
   const md = ['- [x] real', '~~~md', '- [ ] example', '~~~', '- [ ] also real'].join('\n')
   assert.deepEqual(countCheckboxes(md), { done: 1, total: 2, inProgress: 0 })
 })
+
+test('a fence that is never closed swallows the rest of the file', () => {
+  const md = ['- [x] real', '```md', '- [ ] swallowed', '- [x] swallowed'].join('\n')
+  assert.deepEqual(countCheckboxes(md), { done: 1, total: 1, inProgress: 0 })
+})
+
+test('a shorter fence inside a longer one does not close it', () => {
+  const md = [
+    '- [x] real',
+    '````md',
+    '```js',
+    '- [ ] swallowed',
+    '```',
+    '- [x] swallowed',
+    '````',
+    '- [ ] also real'
+  ].join('\n')
+  assert.deepEqual(countCheckboxes(md), { done: 1, total: 2, inProgress: 0 })
+})
+
+test('a closing fence with an info string does not close the fence', () => {
+  const md = ['- [x] real', '```md', '```js', '- [x] swallowed', '```', '- [ ] also real'].join('\n')
+  assert.deepEqual(countCheckboxes(md), { done: 1, total: 2, inProgress: 0 })
+})

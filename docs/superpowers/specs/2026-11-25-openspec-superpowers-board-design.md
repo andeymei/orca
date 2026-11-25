@@ -217,6 +217,18 @@ resources/plugins/launch/stablyai.spec-board/
 }
 ```
 
+```ts
+export type ProjectRef = { name: string; host: string; path: string }
+export type Registry = { schemaVersion: 1; projects: ProjectRef[] }
+export type ParseResult = { ok: true; value: BoardSnapshot } | { ok: false; error: string }
+export type BoardPayload = {
+  items: WorkItem[]
+  projects: SnapshotProject[]
+  sources: { localAt: number | null; agentAt: number | null }
+  warnings: string[]
+}
+```
+
 注册表**不存在时的回退**：worker 调 `workspace.list`，取 `hostId` 为 `local` 或 `null`
 的条目。同一个 `projectId` 下的多个 worktree 必须**折叠成一条**（保留最短路径，即主
 检出目录）；否则每个 agent worktree 都会变成看板上一个独立项目。首次扫描成功时，
@@ -233,12 +245,12 @@ type BoardSnapshot = {
   schemaVersion: 1
   generatedAt: string
   generatedBy: { agent: string; workspace?: string; host?: string }
-  projects: ProjectRecord[]
+  projects: SnapshotProject[]
   items: SnapshotItem[]
   notes?: string[]
 }
 
-type ProjectRecord = {
+type SnapshotProject = {
   id: string // "<host>|<path>"
   name: string
   host: string // "local" | "ssh:<name>" | "runtime:<id>"
@@ -257,37 +269,61 @@ type ProjectRecord = {
 
 type UnifiedStage = 'proposal' | 'design' | 'plan' | 'implement' | 'validate' | 'archive'
 
+export type OpenspecFacts = {
+  changeId: string
+  stage: 'proposed' | 'implementing' | 'validated' | 'archived'
+  hasProposal: boolean
+  hasDesign: boolean
+  hasTasks: boolean
+  tasksDone: number
+  tasksTotal: number
+  capabilities: string[]
+}
+
+export type SuperpowersFacts = {
+  designSpec: string | null
+  plan: string | null
+  stage: 'designed' | 'planned' | 'executing' | 'done'
+  planDone: number
+  planTotal: number
+}
+
 /** 落盘的快照里只有事实，没有判定：agent 写错判定的风险由此消除。 */
 type SnapshotItem = {
   id: string // "<projectId>#<topic>"
   projectId: string
   title: string
   topic: string // 归一化主题键，用于配对
-  openspec: {
-    changeId: string
-    stage: 'proposed' | 'implementing' | 'validated' | 'archived'
-    hasProposal: boolean
-    hasDesign: boolean
-    hasTasks: boolean
-    tasksDone: number
-    tasksTotal: number
-    capabilities: string[]
-  } | null
-  superpowers: {
-    designSpec: string | null
-    plan: string | null
-    stage: 'designed' | 'planned' | 'executing' | 'done'
-    planDone: number
-    planTotal: number
-  } | null
+  openspec: OpenspecFacts | null
+  superpowers: SuperpowersFacts | null
   summary?: string
   nextAction?: { label: string; detail: string }
 }
 
+export type GapCode =
+  | 'openspec-only'
+  | 'superpowers-only'
+  | 'progress-drift'
+  | 'no-design'
+  | 'tasks-complete-not-archived'
+  | 'archived-spec-stale'
+
+export type Gap = { code: GapCode; severity: 'info' | 'warning' | 'error'; message: string }
+
+export type ActionRun = { kind: 'terminal'; command: string } | { kind: 'agent'; prompt: string }
+
+export type Action = {
+  id: string
+  label: string
+  framework: 'openspec' | 'superpowers'
+  run: ActionRun
+  mutates: boolean
+}
+
 /** worker 返回给面板的形态：事实 + 它自己算出来的判定与动作。 */
-type WorkItem = SnapshotItem & {
+export type WorkItem = SnapshotItem & {
   stage: UnifiedStage
-  gaps: { code: GapCode; severity: 'info' | 'warning' | 'error'; message: string }[]
+  gaps: Gap[]
   actions: Action[]
 }
 ```

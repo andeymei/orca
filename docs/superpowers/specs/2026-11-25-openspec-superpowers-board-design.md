@@ -24,13 +24,16 @@
 2. 看到**每个工作项在两条线上的位置**，以及两者之间的**缺口**（谁掉队了）。
 3. 覆盖本地与远程项目。
 4. 简单、明确、易操作：一个侧边栏面板，一个刷新按钮，不需要配置文件也能用。
+5. **能直接从看板执行两个框架的命令**：OpenSpec 的 `validate` / `archive` 等，
+   Superpowers 的 brainstorming / writing-plans / executing-plans 等。
 
 ### 非目标
 
-- **不写回**任何状态。不修改 `tasks.md`、不出队勾选框、不执行 `openspec archive`。
-  所有改动仍由 agent 按各框架自己的规则做。
+- **插件自己不改任何文件**。它不写 `tasks.md`、不改勾选框、不替 `openspec archive`
+  挪目录。它只**发起**动作：OpenSpec 走它自己的 CLI，Superpowers 走技能调用，
+  由这些工具按各自的规则改状态。
 - 不做横向多列拖拽看板（侧边栏宽度不够，见 §7）。
-- 不替代 `openspec` CLI 或 Superpowers 的技能；只做可视化与缺口提示。
+- 不替代 `openspec` CLI 或 Superpowers 的技能；看板是入口，不是实现。
 - 不在 v1 支持 `runtime:<environmentId>` 类型的远程主机（见 §9）。
 
 ## 3. 已核实的技术事实
@@ -51,6 +54,24 @@
 | 远程主机 `yolocalc`、`192.168.50.151` 是 Windows / PowerShell 环境（`head`、`find` 不可用）。                                       | 实测                                                                                                            |
 | 两台远程主机上都存在 `codder13.openspec` VS Code 扩展与项目级 `openspec/` 目录。                                                    | 实测                                                                                                            |
 
+### 3.1 两个框架的"命令"是什么（实测）
+
+| 主机                  | `openspec` CLI                                                 | Node / npx      |
+| --------------------- | -------------------------------------------------------------- | --------------- |
+| 远程 `yolocalc`       | 可用：`@fission-ai/openspec` 1.8.0（PATH 上有 `openspec.ps1`） | 可用            |
+| 远程 `192.168.50.151` | 可用：同一路径的 `openspec.ps1`                                | 可用            |
+| 本地 macOS            | **不可用**                                                     | 可用（Node 24） |
+
+两个结论：
+
+1. **OpenSpec 有真正的 shell 命令**：`list`、`show`、`validate --strict`、`archive`。
+   有 CLI 的主机可以直接在终端里跑；本地缺 CLI，只能在 agent 里按 `openspec/AGENTS.md`
+   手工执行，或先 `npm i -g @fission-ai/openspec`。
+2. **Superpowers 没有 shell 命令**：它的"命令"就是技能调用
+   （`brainstorming` / `writing-plans` / `executing-plans` …），只能由 agent 执行。
+
+所以动作执行必须分成两条通道，见 §4.11。
+
 ## 4. 架构
 
 ### 4.1 交付形态
@@ -68,6 +89,7 @@ resources/plugins/launch/stablyai.spec-board/
 │   ├── board-schema.ts      快照校验 + 阶段推导 + 缺口判定（纯函数）
 │   ├── local-scan.ts        本地确定性扫描（纯 Node，无依赖）
 │   ├── correlation.ts       OpenSpec 变更 ↔ Superpowers 产物的配对（纯函数）
+│   ├── actions.ts           动作推导：项目 + 工作项 → 可执行动作（纯函数）
 │   └── refresh-prompt.ts    交给 agent 的采集指令
 └── README.md
 ```
@@ -101,6 +123,8 @@ resources/plugins/launch/stablyai.spec-board/
   "capabilities": [
     { "kind": "workspace:read" },
     { "kind": "agent:launch" },
+    { "kind": "terminal:send" },
+    { "kind": "workspace:write" },
     { "kind": "settings:own" }
   ],
   "contributes": {
@@ -216,6 +240,7 @@ type ProjectRecord = {
     archived: number
   } | null
   superpowers: { present: boolean; specs: number; plans: number } | null
+  openspecCli: { available: boolean; version?: string; path?: string } | null
   scannedAt: string
   error?: string
 }
@@ -307,13 +332,75 @@ agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并�
 
 侧边栏窄，所以是"阶段导轨 + 卡片流"，不是横向六列。
 
-| Tab      | 内容                                                                                                                                                                                                                   |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **看板** | 顶部 `Tabs`/`Row` 阶段导轨：`提案 → 设计 → 计划 → 实现 → 校验 → 归档`，每项带计数；下方当前阶段的卡片流。卡片含：标题、项目/主机 `Badge`、两条 `Progress`（OpenSpec / Superpowers）、缺口 `Badge`、`nextAction` 文案。 |
-| **全貌** | 左右两栏 `Grid`：OpenSpec 与 Superpowers 各自的阶段与产物；下方对应关系。用 `Markdown`/`Card`/`Badge` 渲染。                                                                                                           |
-| **项目** | 注册表清单，每行：名称、`hostId`、openspec/superpowers 是否存在、扫描时间（`RelativeTime`）、错误标记。「刷新」按钮。                                                                                                  |
+| Tab      | 内容                                                                                                                                                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **看板** | 顶部 `Tabs`/`Row` 阶段导轨：`提案 → 设计 → 计划 → 实现 → 校验 → 归档`，每项带计数；下方当前阶段的卡片流。卡片含：标题、项目/主机 `Badge`、两条 `Progress`（OpenSpec / Superpowers）、缺口 `Badge`、`nextAction` 主按钮 + 「更多」折叠里的其余动作。 |
+| **全貌** | 左右两栏 `Grid`：OpenSpec 与 Superpowers 各自的阶段与产物；下方对应关系。每个阶段下列出该框架的可执行命令（▶ 按钮），顶部一个项目 `Select`。用 `Markdown`/`Card`/`Badge` 渲染。                                                                     |
+| **项目** | 注册表清单，每行：名称、`hostId`、openspec/superpowers 是否存在、`openspec` CLI 是否可用、扫描时间（`RelativeTime`）、错误标记。「刷新」按钮。                                                                                                      |
 
 空状态：`EmptyState` + 一句"点刷新让 agent 采集"。
+
+### 4.11 动作执行（命令入口）
+
+**动作模型**（`src/actions.ts`，纯函数推导，不落盘）：
+
+```ts
+type Action = {
+  id: string
+  label: string
+  framework: 'openspec' | 'superpowers'
+  run:
+    | { kind: 'terminal'; command: string } // 需要该主机有 openspec CLI
+    | { kind: 'agent'; prompt: string } // 技能调用 / 无 CLI 时的降级
+  mutates: boolean
+}
+```
+
+**两条通道**
+
+| 通道     | 何时用                                      | 主机调用                                                                       | 能力                                |
+| -------- | ------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------- |
+| terminal | OpenSpec CLI 动作，且目标项目所在主机有 CLI | `terminal.create({ workspaceId, command })` → `terminal.focus({ terminalId })` | `terminal:send` + `workspace:write` |
+| agent    | Superpowers 技能；OpenSpec 动作但主机无 CLI | `agent.launch({ workspaceId, agent, prompt })`                                 | `agent:launch`                      |
+
+`terminal.create` 在后台打开终端，所以必须跟一次 `terminal.focus`，否则用户看不到命令和输出。
+
+**OpenSpec 动作集**
+
+| 动作     | 执行                                                                     | 改状态 |
+| -------- | ------------------------------------------------------------------------ | ------ |
+| 列出变更 | `openspec list`                                                          | 否     |
+| 校验     | `openspec validate <id> --strict`                                        | 否     |
+| 看增量   | `openspec show <id> --json --deltas-only`                                | 否     |
+| 归档     | `openspec archive <id> --yes`                                            | **是** |
+| 新建提案 | agent：按 `openspec/AGENTS.md` Stage 1 生成 proposal + tasks + 增量 spec | **是** |
+
+**Superpowers 动作集**（全部走 agent，因为它没有 shell 命令）
+
+| 动作       | prompt 要点                                               |
+| ---------- | --------------------------------------------------------- |
+| 设计       | 用 `superpowers:brainstorming` 为 `<topic>` 产出设计 spec |
+| 写实施计划 | 用 `superpowers:writing-plans` 基于 `<spec>` 写计划       |
+| 执行计划   | 用 `superpowers:executing-plans` 执行 `<plan>`            |
+| 代码评审   | 用 `superpowers:requesting-code-review` 审本次改动        |
+| 验证完成   | 用 `superpowers:verification-before-completion` 验证      |
+
+**降级规则**：`project.openspecCli.available === false` 时，OpenSpec 动作的 `run` 从
+`terminal` 换成 `agent`，prompt 改成"按 `openspec/AGENTS.md` 执行 <动作>"，卡片上标
+`无 CLI` badge。
+
+**执行位置**：动作必须落在**拥有该项目的 workspace** 上。worker 用 `workspace.list`
+按 `path` 匹配 `project.path` 得到 `workspaceId`；匹配不到则禁用动作并提示
+"该项目不在 Orca workspace 里"，不猜。
+
+**确认**：`mutates: true` 的动作要二次确认——按钮第一次按下变成"确认执行？"，
+3 秒内再按才真的执行；`mutates: false` 一键执行。
+
+**结果反馈**：terminal 通道执行后卡片显示"已在终端打开"；agent 通道显示"已派发给
+&lt;agent&gt;"。插件不申请 `terminal:read`，结果以终端/agent 自身为准。
+
+**全貌 Tab 兼作命令面板**：每个阶段下列出该框架的命令，带 ▶ 按钮；顶部一个项目
+`Select` 决定在哪个项目/主机上执行。
 
 ## 5. 刷新流程
 
@@ -340,6 +427,10 @@ agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并�
 | `agent.launch` 被拒（能力未批准 / 未登录） | 错误卡显示 host API 的 `code` 原文，不做二次包装                                       |
 | 某个远程项目扫描失败                       | 该项目 `error` 字段有值，卡片上显示 error badge，其他项目照常渲染                      |
 | 扫描目录过大                               | 跳过 `node_modules` / `.git` / `dist` / `out` / `.cross-version-checkouts`，最大深度 4 |
+| 动作的目标项目找不到对应 workspace         | 动作按钮禁用，提示"该项目不在 Orca workspace 里"，不猜一个 workspace 执行              |
+| `terminal.create` 失败（主机断开）         | 错误卡显示 host API 的 `code`，不自动重试                                              |
+| agent 未配置 / 未登录                      | 错误卡显示 `code`，提示去 Settings 检查 agent 账号                                     |
+| 本地没有 `openspec` CLI                    | 自动降级成 agent 动作，卡片上标 `无 CLI`                                               |
 
 ## 7. 为什么不做横向六列看板
 
@@ -357,6 +448,8 @@ agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并�
 - `detectGaps`：每种缺口规则的触发与不触发。
 - `correlation`：完全匹配、Jaccard 命中、不匹配三种路径。
 - `parseTasksMarkdown`：`- [ ]` / `- [x]` / `- [-]` / 嵌套 / 空文件的计数。
+- `actions`：CLI 可用 / 不可用两条分支下 OpenSpec 动作的 `run` 类型；`mutates`
+  标记；Superpowers 动作一律是 `agent`。
 
 只保留"回退改动就会失败"的测试；不为 CRUD 式样板写测试。
 
@@ -373,7 +466,10 @@ agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并�
 3. 点「刷新」：agent 启动、写出 `board.json`、面板自动更新，远程主机
    `yolocalc` 的项目出现在项目 Tab。
 4. 人为写坏 `board.json`：面板出现错误卡，全貌 Tab 仍可用。
-5. `pnpm check:changed` 通过；打包校验
+5. 在远程项目 `yolocalc` 的卡片上点「校验」：该主机的终端被打开并输出
+   `openspec validate` 的结果。
+6. 点 Superpowers 的「写实施计划」：agent 在对应 workspace 启动并收到预置 prompt。
+7. `pnpm check:changed` 通过；打包校验
    `verify-packaged-plugin-resources` 通过（contentHash 正确）。
 
 ## 9. 风险与权衡
@@ -387,10 +483,12 @@ agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并�
 | `stablyai` publisher 是 fork 本地决定 | 仅影响本 fork 的构建；不向上游提交。`publisher` 在 manifest 里是"已废弃但打包校验仍读"的字段，实现时先用 `orca plugin validate` 确认两种身份都成立：打包后 `stablyai.spec-board`，本地开发 `local.spec-board` |
 | agent 刷新有成本与延迟                | 手动触发；本地快路径保证日常使用时零成本                                                                                                                                                                      |
 | `runtime:<environmentId>` 主机不支持  | v1 明确不支持，项目 Tab 标注"需 agent 采集"，不静默失败                                                                                                                                                       |
+| 误触变更类命令（archive / 新建提案）  | 二次确认（两段式按钮，3 秒过期）；只有 `mutates` 动作用                                                                                                                                                       |
+| 本地没有 `openspec` CLI               | 自动降级为 agent 动作并在卡片上标明；不假装命令能跑                                                                                                                                                           |
 
 ## 10. 后续（不在本次范围）
 
-- 只读的"下一步"按钮，直接跳到工作项所在的 workspace（`workspace.open`）。
+- 跳到工作项所在 workspace（`workspace.open`）。
 - 宽看板 HTML 视图。
-- 归档提醒：`tasks-complete-not-archived` 变成可操作的建议命令（仍由用户/agent 执行）。
+- 命令执行历史与结果回显（需要 `terminal:read`）。
 - 支持 `runtime:<environmentId>` 主机。

@@ -155,12 +155,29 @@ function readOpenspecFacts(value: unknown, field: string): OpenspecFacts {
   const hasDesign = readBoolean(source['hasDesign'], `${field}.hasDesign`)
   const hasTasks = readBoolean(source['hasTasks'], `${field}.hasTasks`)
   const tasksDone = readCount(source['tasksDone'], `${field}.tasksDone`)
+  const tasksInProgress = readCount(source['tasksInProgress'], `${field}.tasksInProgress`)
   const tasksTotal = readCount(source['tasksTotal'], `${field}.tasksTotal`)
   if (tasksDone > tasksTotal) {
     fail(`${field}.tasksDone`, `期望不大于 tasksTotal（当前 ${tasksTotal}）`)
   }
+  if (tasksDone + tasksInProgress > tasksTotal) {
+    fail(
+      `${field}.tasksInProgress`,
+      `期望 tasksDone + tasksInProgress 不大于 tasksTotal（当前 ${tasksDone} + ${tasksInProgress} > ${tasksTotal}）`
+    )
+  }
   const capabilities = readStringArray(source['capabilities'], `${field}.capabilities`)
-  return { changeId, stage, hasProposal, hasDesign, hasTasks, tasksDone, tasksTotal, capabilities }
+  return {
+    changeId,
+    stage,
+    hasProposal,
+    hasDesign,
+    hasTasks,
+    tasksDone,
+    tasksInProgress,
+    tasksTotal,
+    capabilities
+  }
 }
 
 function readSuperpowersFacts(value: unknown, field: string): SuperpowersFacts {
@@ -169,11 +186,18 @@ function readSuperpowersFacts(value: unknown, field: string): SuperpowersFacts {
   const plan = readNullableString(source['plan'], `${field}.plan`)
   const stage = readEnum(source['stage'], SUPERPOWERS_STAGE_VALUES, `${field}.stage`)
   const planDone = readCount(source['planDone'], `${field}.planDone`)
+  const planInProgress = readCount(source['planInProgress'], `${field}.planInProgress`)
   const planTotal = readCount(source['planTotal'], `${field}.planTotal`)
   if (planDone > planTotal) {
     fail(`${field}.planDone`, `期望不大于 planTotal（当前 ${planTotal}）`)
   }
-  return { designSpec, plan, stage, planDone, planTotal }
+  if (planDone + planInProgress > planTotal) {
+    fail(
+      `${field}.planInProgress`,
+      `期望 planDone + planInProgress 不大于 planTotal（当前 ${planDone} + ${planInProgress} > ${planTotal}）`
+    )
+  }
+  return { designSpec, plan, stage, planDone, planInProgress, planTotal }
 }
 
 function readNextAction(value: unknown, field: string): { label: string; detail: string } {

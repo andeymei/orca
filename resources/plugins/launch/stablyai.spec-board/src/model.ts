@@ -23,6 +23,7 @@ export type OpenspecFacts = {
   hasDesign: boolean
   hasTasks: boolean
   tasksDone: number
+  tasksInProgress: number
   tasksTotal: number
   capabilities: string[]
 }
@@ -33,6 +34,7 @@ export type SuperpowersFacts = {
   plan: string | null
   stage: 'designed' | 'planned' | 'executing' | 'done'
   planDone: number
+  planInProgress: number
   planTotal: number
 }
 

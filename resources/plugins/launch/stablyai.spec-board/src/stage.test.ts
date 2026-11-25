@@ -9,6 +9,7 @@ const openspec = (over: Partial<OpenspecFacts> = {}) => ({
   hasDesign: false,
   hasTasks: false,
   tasksDone: 0,
+  tasksInProgress: 0,
   tasksTotal: 0,
   capabilities: [],
   ...over
@@ -18,6 +19,7 @@ const superpowers = (over: Partial<SuperpowersFacts> = {}) => ({
   plan: null,
   stage: 'designed' as const,
   planDone: 0,
+  planInProgress: 0,
   planTotal: 0,
   ...over
 })
@@ -78,5 +80,22 @@ test('Superpowers work with no change still gets a stage', () => {
   assert.equal(
     deriveStage({ openspec: null, superpowers: superpowers({ plan: 'p.md', planTotal: 3 }) }),
     'plan'
+  )
+})
+
+test('an in-progress box means the work has started, but it is not finished', () => {
+  assert.equal(
+    deriveStage({
+      openspec: null,
+      superpowers: superpowers({ plan: 'p.md', planDone: 0, planInProgress: 2, planTotal: 5 })
+    }),
+    'implement'
+  )
+  assert.equal(
+    deriveStage({
+      openspec: openspec({ hasTasks: true, tasksDone: 4, tasksInProgress: 1, tasksTotal: 5 }),
+      superpowers: null
+    }),
+    'implement'
   )
 })

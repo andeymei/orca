@@ -10,16 +10,24 @@ type StageFacts = {
 }
 
 /** A checklist the work item actually has, and how far along it is. */
-type Progress = { done: number; total: number }
+type Progress = { done: number; inProgress: number; total: number }
 
 /** The checklists that exist: a `tasks.md` on one side, a plan file on the other. */
 function progressPairs(facts: StageFacts): Progress[] {
   const pairs: Progress[] = []
   if (facts.openspec?.hasTasks) {
-    pairs.push({ done: facts.openspec.tasksDone, total: facts.openspec.tasksTotal })
+    pairs.push({
+      done: facts.openspec.tasksDone,
+      inProgress: facts.openspec.tasksInProgress,
+      total: facts.openspec.tasksTotal
+    })
   }
   if (facts.superpowers?.plan) {
-    pairs.push({ done: facts.superpowers.planDone, total: facts.superpowers.planTotal })
+    pairs.push({
+      done: facts.superpowers.planDone,
+      inProgress: facts.superpowers.planInProgress,
+      total: facts.superpowers.planTotal
+    })
   }
   return pairs
 }
@@ -33,10 +41,10 @@ export function deriveStage(facts: StageFacts): UnifiedStage {
   if (pairs.length > 0 && pairs.every((pair) => pair.total > 0 && pair.done === pair.total)) {
     return 'validate'
   }
-  if (pairs.some((pair) => pair.done > 0)) {
+  if (pairs.some((pair) => pair.done + pair.inProgress > 0)) {
     return 'implement'
   }
-  if (pairs.length > 0 && pairs.every((pair) => pair.done === 0)) {
+  if (pairs.length > 0 && pairs.every((pair) => pair.done === 0 && pair.inProgress === 0)) {
     return 'plan'
   }
 

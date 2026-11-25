@@ -31,6 +31,7 @@ const valid = {
         hasDesign: false,
         hasTasks: true,
         tasksDone: 2,
+        tasksInProgress: 0,
         tasksTotal: 5,
         capabilities: ['x']
       },
@@ -72,6 +73,42 @@ test('rejects progress where done exceeds total', () => {
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
   assert.match((result as { error: string }).error, /tasksDone/)
+})
+
+test('rejects progress where done plus in-progress exceeds total', () => {
+  const item = {
+    ...valid.items[0],
+    openspec: { ...valid.items[0]!.openspec, tasksDone: 2, tasksInProgress: 4, tasksTotal: 5 }
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, false)
+  assert.match((result as { error: string }).error, /tasksInProgress/)
+})
+
+test('rejects a plan whose in-progress boxes exceed its total', () => {
+  const item = {
+    ...valid.items[0],
+    superpowers: {
+      designSpec: null,
+      plan: 'docs/superpowers/plans/2026-11-25-add-x.md',
+      stage: 'executing',
+      planDone: 1,
+      planInProgress: 3,
+      planTotal: 3
+    }
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, false)
+  assert.match((result as { error: string }).error, /planInProgress/)
+})
+
+test('accepts progress where done plus in-progress fills the total', () => {
+  const item = {
+    ...valid.items[0],
+    openspec: { ...valid.items[0]!.openspec, tasksDone: 2, tasksInProgress: 3, tasksTotal: 5 }
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, true)
 })
 
 test('rejects a project without a path', () => {

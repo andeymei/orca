@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as main from './worker'
 import { cliProbe } from './openspec-cli'
+import { errorCode, isRecord } from './unknown-values'
 
 const roots: string[] = []
 const realProbe = cliProbe.read
@@ -29,6 +30,14 @@ async function home(): Promise<string> {
   roots.push(root)
   process.env.SPEC_BOARD_HOME = root
   return root
+}
+
+/** One string field of a host call's params, as the test reads it. */
+function callString(params: unknown, field: string): string {
+  assert.ok(isRecord(params))
+  const value = params[field]
+  assert.ok(typeof value === 'string')
+  return value
 }
 
 const workspaces = {
@@ -255,12 +264,9 @@ test('runs a terminal action on the workspace that owns the project', async () =
     itemId: 'local|/repo/demo#add-x'
   })
   assert.deepEqual(result, { kind: 'terminal', terminalId: 't1' })
-  const created = host.callsOf('terminal.create')[0] as {
-    workspaceId: string
-    command: string
-  }
-  assert.equal(created.workspaceId, 'w1')
-  assert.equal(created.command, 'openspec validate add-x --strict')
+  const created = host.callsOf('terminal.create')[0]
+  assert.equal(callString(created, 'workspaceId'), 'w1')
+  assert.equal(callString(created, 'command'), 'openspec validate add-x --strict')
   // The terminal is focused, so the command and its output are visible.
   assert.deepEqual(host.callsOf('terminal.focus'), [{ terminalId: 't1' }])
   await worker.deactivate()
@@ -482,8 +488,8 @@ test("the item's own action wins over a change id", async () => {
     itemId: 'local|/repo/demo#add-x',
     changeId: 'other-change'
   })
-  const created = host.callsOf('terminal.create')[0] as { command: string }
-  assert.equal(created.command, 'openspec validate add-x --strict')
+  const created = host.callsOf('terminal.create')[0]
+  assert.equal(callString(created, 'command'), 'openspec validate add-x --strict')
   await worker.deactivate()
 })
 
@@ -616,9 +622,9 @@ test('an action on a remote project runs in that project workspace', async () =>
     itemId: 'ssh:yolo|C:/work/remote#add-y'
   })
   assert.deepEqual(result, { kind: 'terminal', terminalId: 't2' })
-  const created = host.callsOf('terminal.create')[0] as { workspaceId: string; command: string }
-  assert.equal(created.workspaceId, 'w2')
-  assert.equal(created.command, 'openspec validate add-y --strict')
+  const created = host.callsOf('terminal.create')[0]
+  assert.equal(callString(created, 'workspaceId'), 'w2')
+  assert.equal(callString(created, 'command'), 'openspec validate add-y --strict')
   await worker.deactivate()
 })
 
@@ -654,16 +660,12 @@ test('refresh writes the prompt it will send and launches the agent', async () =
   })
   const worker = await mountWorker(main, { host })
   await worker.request('board.refresh')
-  const launched = host.callsOf('agent.launch')[0] as {
-    workspaceId: string
-    agent: string
-    prompt: string
-  }
-  assert.equal(launched.workspaceId, 'w1')
-  assert.equal(launched.agent, 'claude')
-  assert.ok(launched.prompt.includes(join(root, 'board.json')))
+  const launched = host.callsOf('agent.launch')[0]
+  assert.equal(callString(launched, 'workspaceId'), 'w1')
+  assert.equal(callString(launched, 'agent'), 'claude')
+  assert.ok(callString(launched, 'prompt').includes(join(root, 'board.json')))
   const written = await readFile(join(root, 'last-refresh-prompt.md'), 'utf8')
-  assert.equal(written, launched.prompt)
+  assert.equal(written, callString(launched, 'prompt'))
   await worker.deactivate()
 })
 
@@ -684,8 +686,8 @@ test('refresh runs in the workspace the setting names', async () => {
   })
   const worker = await mountWorker(main, { host })
   await worker.request('board.refresh')
-  const launched = host.callsOf('agent.launch')[0] as { workspaceId: string }
-  assert.equal(launched.workspaceId, 'w2')
+  const launched = host.callsOf('agent.launch')[0]
+  assert.equal(callString(launched, 'workspaceId'), 'w2')
   assert.deepEqual(host.callsOf('workspace.readContext'), [])
   await worker.deactivate()
 })
@@ -697,7 +699,7 @@ test('a refresh without a workspace is refused with invalid_params', async () =>
   })
   const worker = await mountWorker(main, { host })
   await assert.rejects(worker.request('board.refresh'), (error: unknown) => {
-    return (error as { code?: string }).code === 'invalid_params'
+    return errorCode(error) === 'invalid_params'
   })
   await worker.deactivate()
 })
@@ -723,10 +725,10 @@ test('a refresh that cannot write its prompt is refused with a message', async (
   const worker = await mountWorker(main, { host })
   // The panel is handed a code it knows and a message that names the reason, not a raw errno.
   await assert.rejects(worker.request('board.refresh'), (error: unknown) => {
-    const failure = error as { code?: string; message?: string }
     return (
-      failure.code === 'unavailable' &&
-      (failure.message ?? '').includes('last-refresh-prompt.md')
+      errorCode(error) === 'unavailable' &&
+      error instanceof Error &&
+      error.message.includes('last-refresh-prompt.md')
     )
   })
   assert.deepEqual(host.callsOf('agent.launch'), [])
@@ -763,9 +765,11 @@ test('a new snapshot reaches the open panels', async () => {
   const mtime = (await stat(file)).mtimeMs
   const posts = worker.posts.filter((post) => post.event === 'board.changed')
   assert.ok(
-    posts.some(
-      (post) => (post.payload as { agentAt: number | null }).agentAt === mtime
-    )
+    posts.some((post) => {
+      const payload = post.payload
+      assert.ok(isRecord(payload))
+      return payload['agentAt'] === mtime
+    })
   )
   await worker.deactivate()
 })

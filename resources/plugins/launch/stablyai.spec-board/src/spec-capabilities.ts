@@ -7,6 +7,7 @@
 
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { errorCode } from './unknown-values'
 
 const OPENSPEC_SPECS = join('openspec', 'specs')
 
@@ -23,7 +24,7 @@ export async function readSpecCapabilities(root: string): Promise<string[] | und
       .map((entry) => entry.name)
       .sort()
   } catch (error) {
-    const code = (error as { code?: unknown } | null)?.code
+    const code = errorCode(error)
     if (code === 'ENOENT' || code === 'ENOTDIR') {
       return []
     }

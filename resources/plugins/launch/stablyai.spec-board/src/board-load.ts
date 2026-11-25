@@ -13,6 +13,7 @@ import { scanProject } from './local-scan'
 import type { BoardPayload, BoardSnapshot, ProjectRef, SnapshotProject } from './model'
 import { cliProbe } from './openspec-cli'
 import { readSpecCapabilities } from './spec-capabilities'
+import { errorCode } from './unknown-values'
 import {
   readRegistry,
   snapshotPath,
@@ -52,7 +53,7 @@ export function displayText(value: string): string {
 
 /** Whether an error means "the file is not there". */
 function isAbsent(error: unknown): boolean {
-  const code = (error as { code?: unknown } | null)?.code
+  const code = errorCode(error)
   return code === 'ENOENT' || code === 'ENOTDIR'
 }
 

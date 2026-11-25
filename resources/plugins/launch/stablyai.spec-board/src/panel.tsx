@@ -24,6 +24,19 @@ function changeTab(value: string): void {
 }
 
 /**
+ * The warnings with a key each: the message is the warning's identity, and a repeat of the same
+ * message is numbered so two identical warnings still have two keys.
+ */
+function keyedWarnings(warnings: readonly string[]): { key: string; text: string }[] {
+  const seen = new Map<string, number>()
+  return warnings.map((text) => {
+    const count = (seen.get(text) ?? 0) + 1
+    seen.set(text, count)
+    return { key: count === 1 ? text : `${text}#${count}`, text }
+  })
+}
+
+/**
  * What the worker could not read.
  *
  * A broken snapshot is not a problem of one tab, so the warning sits above the tabs: it is there
@@ -47,9 +60,9 @@ function BoardWarnings() {
       title={blind ? '看板没有可用的数据' : '看板有警告'}
     >
       <Stack gap="none">
-        {board.warnings.map((warning, index) => (
-          <Text key={index} size="xs">
-            {warning}
+        {keyedWarnings(board.warnings).map((warning) => (
+          <Text key={warning.key} size="xs">
+            {warning.text}
           </Text>
         ))}
         {lastGood === null ? null : (

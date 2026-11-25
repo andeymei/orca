@@ -9,6 +9,7 @@ import type {
   SnapshotProject,
   SuperpowersFacts
 } from './model'
+import { isRecord } from './unknown-values'
 
 export type ParseResult = { ok: true; value: BoardSnapshot } | { ok: false; error: string }
 
@@ -43,10 +44,10 @@ const SUPERPOWERS_STAGE_VALUES: readonly SuperpowersFacts['stage'][] = [
 ]
 
 function readObject(value: unknown, field: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isRecord(value)) {
     fail(field, '期望对象')
   }
-  return value as Record<string, unknown>
+  return value
 }
 
 function readArray(value: unknown, field: string): unknown[] {
@@ -113,10 +114,15 @@ function readOptionalStringArray(value: unknown, field: string): string[] | unde
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[], field: string): T {
-  if (typeof value !== 'string' || !allowed.includes(value as T)) {
+  if (typeof value !== 'string') {
     fail(field, `期望 ${allowed.join(' | ')}`)
   }
-  return value as T
+  const text = value
+  const found = allowed.find((entry) => entry === text)
+  if (found === undefined) {
+    fail(field, `期望 ${allowed.join(' | ')}`)
+  }
+  return found
 }
 
 /** A timestamp the panel may not be able to read: an unreadable one reads as unknown, not as a broken snapshot. */

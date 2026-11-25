@@ -606,6 +606,7 @@
 2 src/main/ipc/filesystem/reads/local-log-tail.ts
 1 src/main/ipc/filesystem/search/filesystem-content-search-handler.ts
 2 src/main/ipc/filesystem/search/filesystem-list-files.ts
+1 src/main/ipc/filesystem/search/filesystem-scan-ripgrep-paths.ts # the ripgrep spawn moved here from filesystem-search-file-paths.ts, so the reference count moved with it
 1 src/main/ipc/filesystem/search/filesystem-search-file-paths.ts
 1 src/main/ipc/filesystem/search/markdown-documents.ts
 1 src/main/ipc/filesystem/source-control/filesystem-git-commit-generation-handlers.ts

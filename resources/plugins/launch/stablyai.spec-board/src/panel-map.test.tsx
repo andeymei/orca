@@ -1,9 +1,11 @@
 // `orca plugin test .` runs this in Node with the same runtime and checks Orca uses.
 // The 全貌 tab: the map of both frameworks, and the palette that runs their commands.
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
+import type { TestElement } from 'orca/testing'
 import * as panel from './panel'
 import { fixturePayload } from './panel-fixture'
 import type { BoardPayload } from './model'
+import { isRecord } from './unknown-values'
 
 /** A host that answers the board and records what the panel asked it to run. */
 function hostRecording(calls: unknown[]): ReturnType<typeof mockHost> {
@@ -23,6 +25,20 @@ async function mapTab(host: ReturnType<typeof mockHost>) {
   const view = await mount(panel, { host })
   await view.select({ label: '看板视图' }, 'map')
   return view
+}
+
+/** The pairs a correspondence row holds. */
+function correspondencePairs(row: TestElement | null): { label: string; value: string }[] {
+  const items = row?.props['items']
+  assert.ok(Array.isArray(items))
+  return items.map((item) => {
+    assert.ok(isRecord(item))
+    const label = item['label']
+    const value = item['value']
+    assert.ok(typeof label === 'string')
+    assert.ok(typeof value === 'string')
+    return { label, value }
+  })
 }
 
 test('the map is written down, not scanned: it is there with nothing loaded', async () => {
@@ -48,9 +64,9 @@ test('the map is written down, not scanned: it is there with nothing loaded', as
 test('the correspondence pairs the two frameworks artifact by artifact', async () => {
   const view = await mapTab(mockHost({ requests: { 'board.get': () => fixturePayload } }))
   const rows = view.find({ label: '对应关系' })
-  const items = rows?.props.items as { label: string; value: string }[] | undefined
+  const pairs = correspondencePairs(rows)
   assert.deepEqual(
-    items?.map((item) => item.label),
+    pairs.map((pair) => pair.label),
     [
       'proposal.md ↔ design spec 的 Context/Goals',
       'design.md ↔ design spec 的 Decisions/Risks',
@@ -59,7 +75,7 @@ test('the correspondence pairs the two frameworks artifact by artifact', async (
     ]
   )
   // Every row says what it means, not only which artifacts it pairs.
-  assert.ok(items?.[0]?.value.includes('两边都在回答'))
+  assert.ok(pairs[0]?.value.includes('两边都在回答'))
   await view.unmount()
 })
 
@@ -143,7 +159,9 @@ test('the panel names the action, never the command', async () => {
   await view.press({ type: 'Button', text: '列出变更' })
   // The request says what to run, not how to run it.
   assert.deepEqual(calls, [{ projectId: 'local|/repo', actionId: 'openspec.list' }])
-  assert.deepEqual(Object.keys(calls[0] as object).sort(), ['actionId', 'projectId'])
+  const call = calls[0]
+  assert.ok(isRecord(call))
+  assert.deepEqual(Object.keys(call).sort(), ['actionId', 'projectId'])
   await view.unmount()
 })
 

@@ -56,6 +56,18 @@ const NON_UNIT_TEST_RUNNERS = [
     mirrors: ["'tests/tools/benchmarks/bot-chat-tree/bot-chat-tree-notices-benchmark.ts'"]
   },
   {
+    // The board plugin runs its own tests through `orca plugin test`, which no CI job runs yet;
+    // listing the row here is what keeps that gap visible.
+    name: 'spec-board plugin (pnpm test:plugin:spec-board)',
+    manual: true,
+    include: [
+      'resources/plugins/launch/stablyai.spec-board/src/**/*.test.ts',
+      'resources/plugins/launch/stablyai.spec-board/src/**/*.test.tsx'
+    ],
+    sources: ['package.json'],
+    mirrors: ['plugin test resources/plugins/launch/stablyai.spec-board']
+  },
+  {
     name: 'mobile',
     include: ['mobile/src/**/*.test.ts', 'mobile/src/**/*.test.tsx', 'mobile/scripts/**/*.test.ts'],
     sources: ['mobile/vitest.config.ts'],

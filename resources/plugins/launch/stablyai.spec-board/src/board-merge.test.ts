@@ -215,7 +215,7 @@ test('an archived change of a remote project is not reported as stale', () => {
   const known = mergeBoard({
     snapshot: snapshot({ items: [archived] }),
     localScans: [],
-    specCapabilities: new Map([[archived.projectId, ['other'] as string[]]])
+    specCapabilities: new Map<string, string[] | undefined>([[archived.projectId, ['other']]])
   })
   assert.equal(
     known.items[0]!.gaps.some((gap) => gap.code === 'archived-spec-stale'),

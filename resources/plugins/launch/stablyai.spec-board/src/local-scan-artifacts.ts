@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { normalizeTopic } from './correlation'
 import { countCheckboxes, type CheckboxCount } from './markdown-tasks'
 import type { SnapshotProject } from './model'
+import { errorCode } from './unknown-values'
 
 const OPENSPEC_DIR = 'openspec'
 const CHANGES_DIR = 'changes'
@@ -44,7 +45,7 @@ export type ArtifactOnDisk = { path: string; topic: string }
 
 /** The codes that mean "there is nothing there", not "it could not be read". */
 function isAbsent(error: unknown): boolean {
-  const code = (error as { code?: unknown } | null)?.code
+  const code = errorCode(error)
   return code === 'ENOENT' || code === 'ENOTDIR'
 }
 

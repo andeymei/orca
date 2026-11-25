@@ -62,7 +62,10 @@ test('accepts a minimal valid snapshot', () => {
 test('rejects an unknown schemaVersion', () => {
   const result = parseBoardSnapshot({ ...valid, schemaVersion: 2 })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /schemaVersion/)
+  if (result.ok) {
+    return
+  }
+  assert.match(result.error, /schemaVersion/)
 })
 
 test('rejects progress where done exceeds total', () => {
@@ -72,7 +75,10 @@ test('rejects progress where done exceeds total', () => {
   }
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /\.tasksDone:/)
+  if (result.ok) {
+    return
+  }
+  assert.match(result.error, /\.tasksDone:/)
 })
 
 test('rejects progress where done plus in-progress exceeds total', () => {
@@ -82,7 +88,10 @@ test('rejects progress where done plus in-progress exceeds total', () => {
   }
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /\.tasksInProgress:/)
+  if (result.ok) {
+    return
+  }
+  assert.match(result.error, /\.tasksInProgress:/)
 })
 
 test('rejects a plan whose in-progress boxes exceed its total', () => {
@@ -99,7 +108,10 @@ test('rejects a plan whose in-progress boxes exceed its total', () => {
   }
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /\.planInProgress:/)
+  if (result.ok) {
+    return
+  }
+  assert.match(result.error, /\.planInProgress:/)
 })
 
 test('accepts progress where done plus in-progress fills the total', () => {
@@ -112,11 +124,14 @@ test('accepts progress where done plus in-progress fills the total', () => {
 })
 
 test('rejects a project without a path', () => {
-  const project = { ...valid.projects[0] } as Record<string, unknown>
+  const project: Record<string, unknown> = { ...valid.projects[0] }
   delete project.path
   const result = parseBoardSnapshot({ ...valid, projects: [project] })
   assert.equal(result.ok, false)
-  assert.match((result as { error: string }).error, /path/)
+  if (result.ok) {
+    return
+  }
+  assert.match(result.error, /path/)
 })
 
 test('keeps a missing generatedAt parseable so the panel can say it is unknown', () => {
@@ -180,7 +195,7 @@ test('keeps a validator failure out of the user-facing message', () => {
 })
 
 test('still names the offending field for a malformed snapshot', () => {
-  const item = { ...valid.items[0] } as Record<string, unknown>
+  const item: Record<string, unknown> = { ...valid.items[0] }
   delete item.projectId
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)

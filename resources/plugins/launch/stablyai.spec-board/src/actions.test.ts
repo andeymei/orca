@@ -55,7 +55,7 @@ test('falls back to the agent form when the host has no CLI', () => {
   const actions = actionsForItem(item, false)
   for (const action of actions.filter((a) => a.framework === 'openspec')) {
     assert.equal(action.run.kind, 'agent', action.id)
-    assert.match((action.run as { prompt: string }).prompt, /openspec\/AGENTS\.md/)
+    assert.match(promptOf(action), /openspec\/AGENTS\.md/)
   }
 })
 
@@ -63,7 +63,7 @@ test('Superpowers actions are always dispatched to an agent', () => {
   const actions = actionsForItem(item, true)
   const plan = findAction(actions, 'superpowers.plan')!
   assert.equal(plan.run.kind, 'agent')
-  assert.match((plan.run as { prompt: string }).prompt, /superpowers:writing-plans/)
+  assert.match(promptOf(plan), /superpowers:writing-plans/)
   assert.equal(plan.mutates, true)
 })
 

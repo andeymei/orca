@@ -10,6 +10,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ProjectRef } from './model'
+import { errorCode, isRecord } from './unknown-values'
 
 /** The directory the plugin keeps its files in. */
 export function boardStoreDir(): string {
@@ -36,13 +37,13 @@ export type Registry = { schemaVersion: 1; projects: ProjectRef[] }
 
 /** Whether an error means "the file is not there" rather than "the file could not be read". */
 function isAbsent(error: unknown): boolean {
-  const code = (error as { code?: unknown } | null)?.code
+  const code = errorCode(error)
   return code === 'ENOENT' || code === 'ENOTDIR'
 }
 
 /** Whether an error means "the file is already there". */
 function isFileThere(error: unknown): boolean {
-  return (error as { code?: unknown } | null)?.code === 'EEXIST'
+  return errorCode(error) === 'EEXIST'
 }
 
 function messageOf(error: unknown): string {
@@ -51,13 +52,12 @@ function messageOf(error: unknown): string {
 
 /** A project entry: a name, a host and a path, all non-empty strings. */
 function readProjectRef(value: unknown): ProjectRef | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return null
   }
-  const entry = value as Record<string, unknown>
-  const name = entry['name']
-  const host = entry['host']
-  const path = entry['path']
+  const name = value['name']
+  const host = value['host']
+  const path = value['path']
   if (
     typeof name !== 'string' ||
     name.trim() === '' ||
@@ -78,15 +78,15 @@ function readProjectRef(value: unknown): ProjectRef | null {
  * the warning says what to fix.
  */
 function parseRegistry(raw: unknown): Registry | null {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     return null
   }
-  const source = raw as Record<string, unknown>
-  if (source['schemaVersion'] !== 1 || !Array.isArray(source['projects'])) {
+  const entries = raw['projects']
+  if (raw['schemaVersion'] !== 1 || !Array.isArray(entries)) {
     return null
   }
   const projects: ProjectRef[] = []
-  for (const entry of source['projects']) {
+  for (const entry of entries) {
     const project = readProjectRef(entry)
     if (project === null) {
       return null

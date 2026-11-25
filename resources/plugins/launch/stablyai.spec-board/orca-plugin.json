@@ -1,0 +1,26 @@
+{
+  "manifestVersion": 2,
+  "id": "spec-board",
+  "publisher": "stablyai",
+  "name": "OpenSpec × Superpowers 看板",
+  "version": "0.1.0",
+  "description": "把 OpenSpec 的规格变更与 Superpowers 的设计/计划画在同一块看板上，并标出两者脱节的地方。",
+  "engines": { "orca": ">=1.4.256" },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "contributes": {
+    "panels": [
+      {
+        "id": "board",
+        "title": "规格看板",
+        "icon": "layers",
+        "entry": "src/panel.tsx",
+        "ui": "components"
+      }
+    ]
+  },
+  "capabilities": [
+    { "kind": "storage:own" }
+  ]
+}

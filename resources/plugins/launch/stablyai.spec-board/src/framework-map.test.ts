@@ -1,5 +1,10 @@
 import { assert, test } from 'orca/testing'
-import { CORRESPONDENCE, OPENSPEC_STAGES, SUPERPOWERS_FLOW } from './framework-map'
+import {
+  CORRESPONDENCE,
+  OPENSPEC_DECISION_TREE,
+  OPENSPEC_STAGES,
+  SUPERPOWERS_FLOW
+} from './framework-map'
 
 test('every OpenSpec stage names artifacts and commands', () => {
   assert.equal(OPENSPEC_STAGES.length, 3)
@@ -22,4 +27,13 @@ test('every correspondence row names both frameworks', () => {
     assert.ok(row.superpowers.length > 0)
     assert.ok(row.note.length > 0)
   }
+})
+
+test('the decision tree says when to write a proposal and when to just fix', () => {
+  assert.equal(OPENSPEC_DECISION_TREE.length, 6)
+  for (const rule of OPENSPEC_DECISION_TREE) {
+    assert.ok(rule.situation.length > 0)
+    assert.ok(rule.action.length > 0)
+  }
+  assert.ok(OPENSPEC_DECISION_TREE.some((rule) => rule.situation.includes('拿不准')))
 })

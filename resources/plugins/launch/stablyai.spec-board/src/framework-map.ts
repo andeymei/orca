@@ -19,6 +19,8 @@ export type SuperpowersStep = {
 
 export type Correspondence = { openspec: string; superpowers: string; note: string }
 
+export type DecisionRule = { situation: string; action: string }
+
 /** OpenSpec's three stages: the files each stage works on, and the CLI that drives it. */
 export const OPENSPEC_STAGES: readonly FrameworkStage[] = [
   {
@@ -60,6 +62,20 @@ export const OPENSPEC_STAGES: readonly FrameworkStage[] = [
       { label: '严格校验归档结果', command: 'openspec validate --strict' }
     ]
   }
+]
+
+/**
+ * Whether a request needs a proposal at all, from openspec/AGENTS.md's decision tree. It is a
+ * separate export from the stages: the stages describe how a change flows, this says whether
+ * to start one.
+ */
+export const OPENSPEC_DECISION_TREE: readonly DecisionRule[] = [
+  { situation: '修 bug：行为本就符合 spec', action: '直接改，不用写 proposal' },
+  { situation: '改错别字、格式、注释', action: '直接改，不用写 proposal' },
+  { situation: '新增功能或能力', action: '写 proposal' },
+  { situation: '破坏性变更（API、schema）', action: '写 proposal' },
+  { situation: '架构或模式变更', action: '写 proposal' },
+  { situation: '拿不准', action: '写 proposal（更安全）' }
 ]
 
 /**

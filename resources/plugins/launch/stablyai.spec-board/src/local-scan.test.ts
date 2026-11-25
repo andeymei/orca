@@ -196,6 +196,23 @@ test('a Superpowers artifact with no change of its own is an item on its own', a
   assert.equal(result.items.length, 2)
 })
 
+test('a plan with no checkboxes reads as planned', async () => {
+  const root = await fixture()
+  await writeFile(
+    join(root, 'docs/superpowers/plans/2026-11-21-unstarted.md'),
+    '# Plan\n\nNothing ticked yet.\n'
+  )
+  const result = await scanProject({ name: 'demo', host: 'local', path: root })
+  const item = result.items.find(
+    (candidate) => candidate.superpowers?.plan === 'docs/superpowers/plans/2026-11-21-unstarted.md'
+  )
+  assert.ok(item, 'the plan is an item of its own')
+  assert.equal(item.superpowers?.stage, 'planned')
+  assert.equal(item.superpowers?.planDone, 0)
+  assert.equal(item.superpowers?.planInProgress, 0)
+  assert.equal(item.superpowers?.planTotal, 0)
+})
+
 test('lists the capabilities the project already has specs for', async () => {
   const root = await fixture()
   await mkdir(join(root, 'openspec/specs/y'), { recursive: true })

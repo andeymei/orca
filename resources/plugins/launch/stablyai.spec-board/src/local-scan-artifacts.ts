@@ -119,18 +119,24 @@ export async function rootProblem(path: string): Promise<string | null> {
   }
 }
 
-/** The checkboxes in a file; a file that cannot be read counts as no boxes. */
-export async function countBoxes(file: string, warnings: string[]): Promise<CheckboxCount> {
-  const text = await readFileText(file, warnings)
+/** The checkboxes in a file under the project root; a file that cannot be read counts as none. */
+export async function countBoxes(
+  root: string,
+  relative: string,
+  warnings: string[]
+): Promise<CheckboxCount> {
+  const text = await readFileText(join(root, relative), warnings)
   return text === null ? NO_CHECKBOXES : countCheckboxes(text)
 }
 
 /** One OpenSpec change: the three files it owns, and the capabilities it changes. */
 async function readChange(
-  changeDir: string,
+  root: string,
   changeId: string,
   warnings: string[]
 ): Promise<ChangeOnDisk> {
+  const relative = `${OPENSPEC_DIR}/${CHANGES_DIR}/${changeId}`
+  const changeDir = join(root, OPENSPEC_DIR, CHANGES_DIR, changeId)
   const tasksFile = join(changeDir, TASKS_FILE)
   const [hasProposal, hasDesign, hasTasks] = await Promise.all([
     fileExists(join(changeDir, PROPOSAL_FILE), warnings),
@@ -139,13 +145,13 @@ async function readChange(
   ])
   const delta = await readDirectory(join(changeDir, SPECS_DIR), warnings)
   return {
-    path: `${OPENSPEC_DIR}/${CHANGES_DIR}/${changeId}`,
+    path: relative,
     topic: normalizeTopic(changeId),
     changeId,
     hasProposal,
     hasDesign,
     hasTasks,
-    tasks: hasTasks ? await countBoxes(tasksFile, warnings) : NO_CHECKBOXES,
+    tasks: hasTasks ? await countBoxes(root, `${relative}/${TASKS_FILE}`, warnings) : NO_CHECKBOXES,
     capabilities: delta === null ? [] : namesOf(delta, isDirectory)
   }
 }
@@ -166,7 +172,7 @@ export async function scanOpenspec(
       : namesOf(changesDir, isDirectory).filter((name) => name !== ARCHIVE_DIR)
   const found: ChangeOnDisk[] = []
   for (const changeId of changeIds) {
-    found.push(await readChange(join(changesRoot, changeId), changeId, warnings))
+    found.push(await readChange(root, changeId, warnings))
   }
   const present = changesDir !== null || specsDir !== null
   return {

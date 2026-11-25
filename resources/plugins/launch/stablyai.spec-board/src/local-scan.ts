@@ -3,7 +3,6 @@
 // cannot be read becomes an error on that one project, never a thrown scan, because one bad
 // registry entry must not blank the whole board.
 
-import { join } from 'node:path'
 import {
   countBoxes,
   messageOf,
@@ -134,8 +133,7 @@ async function buildItems(
     const change = bucket.changes[0] ?? null
     const designSpec = bucket.specs[0] ?? null
     const plan = bucket.plans[0] ?? null
-    const planTasks =
-      plan === null ? NO_CHECKBOXES : await countBoxes(join(root, plan.path), warnings)
+    const planTasks = plan === null ? NO_CHECKBOXES : await countBoxes(root, plan.path, warnings)
     items.push({
       id: `${projectId}#${topic}`,
       projectId,

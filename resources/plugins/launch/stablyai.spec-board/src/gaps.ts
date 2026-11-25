@@ -36,59 +36,57 @@ export function detectGaps(item: {
   // Work that has shipped is not work in flight: the four in-flight gaps would only be noise
   // there. What is still worth saying about finished work is what it left undone — a change
   // that still needs archiving, or a capability that never reached the specs.
-  const finished = openspec?.stage === 'archived' || superpowers?.stage === 'done'
+  const inFlight = openspec?.stage !== 'archived' && superpowers?.stage !== 'done'
 
-  if (!finished) {
-    if (openspec && !superpowers) {
+  if (inFlight && openspec && !superpowers) {
+    gaps.push({
+      code: 'openspec-only',
+      severity: 'warning',
+      message: '有 OpenSpec 变更，没有对应的 Superpowers 设计'
+    })
+  }
+  if (inFlight && superpowers && !openspec) {
+    gaps.push({
+      code: 'superpowers-only',
+      severity: 'warning',
+      message: '有 Superpowers 设计或计划，没有对应的 OpenSpec 变更'
+    })
+  }
+
+  if (inFlight && openspec && superpowers) {
+    const tasks: Checklist = {
+      done: openspec.tasksDone,
+      inProgress: openspec.tasksInProgress,
+      total: openspec.tasksTotal
+    }
+    const plan: Checklist = {
+      done: superpowers.planDone,
+      inProgress: superpowers.planInProgress,
+      total: superpowers.planTotal
+    }
+    const taskCompletion = completion(tasks)
+    const planCompletion = completion(plan)
+    if (
+      taskCompletion !== null &&
+      planCompletion !== null &&
+      started(tasks) &&
+      started(plan) &&
+      Math.abs(taskCompletion - planCompletion) > DRIFT_THRESHOLD
+    ) {
       gaps.push({
-        code: 'openspec-only',
+        code: 'progress-drift',
         severity: 'warning',
-        message: '有 OpenSpec 变更，没有对应的 Superpowers 设计'
+        message: `进度已经漂移：OpenSpec 任务 ${tasks.done}/${tasks.total}，Superpowers 计划 ${plan.done}/${plan.total}`
       })
     }
-    if (superpowers && !openspec) {
-      gaps.push({
-        code: 'superpowers-only',
-        severity: 'warning',
-        message: '有 Superpowers 设计或计划，没有对应的 OpenSpec 变更'
-      })
-    }
+  }
 
-    if (openspec && superpowers) {
-      const tasks: Checklist = {
-        done: openspec.tasksDone,
-        inProgress: openspec.tasksInProgress,
-        total: openspec.tasksTotal
-      }
-      const plan: Checklist = {
-        done: superpowers.planDone,
-        inProgress: superpowers.planInProgress,
-        total: superpowers.planTotal
-      }
-      const taskCompletion = completion(tasks)
-      const planCompletion = completion(plan)
-      if (
-        taskCompletion !== null &&
-        planCompletion !== null &&
-        started(tasks) &&
-        started(plan) &&
-        Math.abs(taskCompletion - planCompletion) > DRIFT_THRESHOLD
-      ) {
-        gaps.push({
-          code: 'progress-drift',
-          severity: 'warning',
-          message: `进度已经漂移：OpenSpec 任务 ${tasks.done}/${tasks.total}，Superpowers 计划 ${plan.done}/${plan.total}`
-        })
-      }
-    }
-
-    if (openspec?.hasTasks && !openspec.hasDesign) {
-      gaps.push({
-        code: 'no-design',
-        severity: 'info',
-        message: '有 tasks.md，但缺少 design.md'
-      })
-    }
+  if (inFlight && openspec?.hasTasks && !openspec.hasDesign) {
+    gaps.push({
+      code: 'no-design',
+      severity: 'info',
+      message: '有 tasks.md，但缺少 design.md'
+    })
   }
 
   // Outside the gate on purpose: a plan that is done while its change still sits in `changes/`

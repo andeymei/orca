@@ -12,6 +12,17 @@ const DESIGN_SUFFIX = '-design'
 /** Below this the two topics are different work, not the same work spelled differently. */
 const SIMILARITY_FLOOR = 0.6
 
+/** A candidate pairing: one change, one artifact, and how sure the pair is. */
+type Edge = {
+  changeId: string
+  artifactId: string
+  exact: boolean
+  weight: number
+}
+
+/** A pairing the matching settled on. */
+type Pairing = { changeId: string; confidence: number }
+
 /**
  * The topic a file name carries: no date prefix, no `-design` suffix, no extension, lower case
  * kebab. `2026-11-17-next-edit-suggestion-design.md` and `next-edit-suggestion` name one work.
@@ -55,14 +66,6 @@ export function topicSimilarity(a: string, b: string): number {
   return shared / union
 }
 
-/** One candidate pairing, with the score the ranking uses. */
-type Candidate = {
-  openspecId: string
-  superpowersId: string
-  exact: boolean
-  similarity: number
-}
-
 /** Orders ids the same way every run, without asking a locale about it. */
 function byId(a: string, b: string): number {
   if (a < b) {
@@ -74,9 +77,103 @@ function byId(a: string, b: string): number {
   return 0
 }
 
+/** The more confident pair first; an exact topic beats a merely similar one. */
+function byConfidence(a: Edge, b: Edge): number {
+  if (a.exact !== b.exact) {
+    return a.exact ? -1 : 1
+  }
+  if (a.weight !== b.weight) {
+    return b.weight - a.weight
+  }
+  return byId(a.artifactId, b.artifactId) || byId(a.changeId, b.changeId)
+}
+
 /**
- * Pairs the two sides one to one: the best pairing wins, and neither side is used twice, so one
- * plan can never satisfy two changes.
+ * The candidate edges between the two sides. Two empty topics are not the same topic: a name
+ * that carries no topic at all pairs with nothing.
+ */
+function candidateEdges(
+  openspec: readonly CorrelationInput[],
+  superpowers: readonly CorrelationInput[]
+): Edge[] {
+  const edges: Edge[] = []
+  for (const artifact of superpowers) {
+    for (const change of openspec) {
+      const changeTopic = normalizeTopic(change.topic)
+      const artifactTopic = normalizeTopic(artifact.topic)
+      const exact = changeTopic !== '' && changeTopic === artifactTopic
+      const weight = exact ? 1 : topicSimilarity(changeTopic, artifactTopic)
+      if (!exact && weight < SIMILARITY_FLOOR) {
+        continue
+      }
+      edges.push({ changeId: change.id, artifactId: artifact.id, exact, weight })
+    }
+  }
+  return edges
+}
+
+/**
+ * Pairs the two sides with as many pairs as the candidate edges allow: Kuhn's augmenting-path
+ * algorithm, which finds a maximum-cardinality matching. A greedy walk would strand an artifact
+ * that could have been paired, and a stranded artifact is reported as a gap — a false warning
+ * about work the user did. The edges are visited from the most confident down, so among
+ * matchings of the same size the confident pairs win.
+ */
+function matchByMaximumCardinality(edges: readonly Edge[]): Map<string, Pairing> {
+  const byArtifact = new Map<string, Edge[]>()
+  for (const edge of edges) {
+    const list = byArtifact.get(edge.artifactId)
+    if (list) {
+      list.push(edge)
+    } else {
+      byArtifact.set(edge.artifactId, [edge])
+    }
+  }
+  for (const list of byArtifact.values()) {
+    list.sort(byConfidence)
+  }
+
+  // The artifacts go first with their most confident edge, so the confident pairs are placed
+  // before the doubtful ones.
+  const artifacts = [...byArtifact.keys()].sort((a, b) => {
+    const left = byArtifact.get(a)?.[0]
+    const right = byArtifact.get(b)?.[0]
+    if (!left || !right) {
+      return byId(a, b)
+    }
+    return byConfidence(left, right) || byId(a, b)
+  })
+
+  const partner = new Map<string, Pairing>()
+  const holder = new Map<string, string>()
+  const visited = new Set<string>()
+
+  const augment = (artifact: string): boolean => {
+    if (visited.has(artifact)) {
+      return false
+    }
+    visited.add(artifact)
+    for (const edge of byArtifact.get(artifact) ?? []) {
+      const current = holder.get(edge.changeId)
+      if (current === undefined || augment(current)) {
+        holder.set(edge.changeId, artifact)
+        partner.set(artifact, { changeId: edge.changeId, confidence: edge.weight })
+        return true
+      }
+    }
+    return false
+  }
+
+  for (const artifact of artifacts) {
+    visited.clear()
+    augment(artifact)
+  }
+  return partner
+}
+
+/**
+ * Pairs the two sides one to one: as many pairs as the topics allow, and neither side used
+ * twice, so one plan can never satisfy two changes.
  */
 export function correlate(
   openspec: readonly CorrelationInput[],
@@ -86,60 +183,28 @@ export function correlate(
   unmatchedOpenspec: string[]
   unmatchedSuperpowers: string[]
 } {
-  const candidates: Candidate[] = []
-  for (const artifact of superpowers) {
-    for (const change of openspec) {
-      const changeTopic = normalizeTopic(change.topic)
-      const artifactTopic = normalizeTopic(artifact.topic)
-      const exact = changeTopic === artifactTopic
-      candidates.push({
-        openspecId: change.id,
-        superpowersId: artifact.id,
-        exact,
-        similarity: exact ? 1 : topicSimilarity(changeTopic, artifactTopic)
-      })
-    }
-  }
-
-  // An exact topic beats a merely similar one, a better overlap beats a worse one, and the ids
-  // break a tie, so the same input always pairs the same way.
-  candidates.sort((a, b) => {
-    if (a.exact !== b.exact) {
-      return a.exact ? -1 : 1
-    }
-    return (
-      b.similarity - a.similarity ||
-      byId(a.superpowersId, b.superpowersId) ||
-      byId(a.openspecId, b.openspecId)
-    )
-  })
+  const pairing = matchByMaximumCardinality(candidateEdges(openspec, superpowers))
 
   const matches: CorrelationMatch[] = []
-  const usedOpenspec = new Set<string>()
-  const usedSuperpowers = new Set<string>()
-  for (const candidate of candidates) {
-    if (candidate.similarity < SIMILARITY_FLOOR) {
+  const usedChanges = new Set<string>()
+  for (const artifact of superpowers) {
+    const matched = pairing.get(artifact.id)
+    if (!matched) {
       continue
     }
-    if (usedOpenspec.has(candidate.openspecId) || usedSuperpowers.has(candidate.superpowersId)) {
-      continue
-    }
-    usedOpenspec.add(candidate.openspecId)
-    usedSuperpowers.add(candidate.superpowersId)
+    usedChanges.add(matched.changeId)
     matches.push({
-      openspecId: candidate.openspecId,
-      superpowersId: candidate.superpowersId,
-      confidence: candidate.exact ? 1 : candidate.similarity
+      openspecId: matched.changeId,
+      superpowersId: artifact.id,
+      confidence: matched.confidence
     })
   }
 
   return {
     matches,
-    unmatchedOpenspec: openspec
-      .filter((change) => !usedOpenspec.has(change.id))
-      .map((change) => change.id),
+    unmatchedOpenspec: openspec.filter((change) => !usedChanges.has(change.id)).map((c) => c.id),
     unmatchedSuperpowers: superpowers
-      .filter((artifact) => !usedSuperpowers.has(artifact.id))
+      .filter((artifact) => !pairing.has(artifact.id))
       .map((artifact) => artifact.id)
   }
 }

@@ -60,17 +60,40 @@ test('leaves everything unmatched when nothing overlaps', () => {
   assert.deepEqual(result.unmatchedSuperpowers, ['s1'])
 })
 
-test('never lets one Superpowers artifact satisfy two changes', () => {
+test('finds a second match that a greedy walk would strand', () => {
   const result = correlate(
     [
-      { id: 'o1', topic: 'add-x-auth' },
-      { id: 'o2', topic: 'update-x-auth' }
+      { id: 'o1', topic: 'add-x' },
+      { id: 'o2', topic: 'add-x-ui' }
     ],
-    [{ id: 's1', topic: 'x-auth' }]
+    [
+      { id: 's1', topic: 'add-x' },
+      { id: 's2', topic: 'add-x-v2' }
+    ]
+  )
+  assert.equal(result.matches.length, 2)
+  assert.deepEqual(result.unmatchedOpenspec, [])
+  assert.deepEqual(result.unmatchedSuperpowers, [])
+})
+
+test('never pairs two topics that are both empty', () => {
+  const result = correlate([{ id: 'o1', topic: '---' }], [{ id: 's1', topic: '.md' }])
+  assert.deepEqual(result.matches, [])
+  assert.deepEqual(result.unmatchedOpenspec, ['o1'])
+  assert.deepEqual(result.unmatchedSuperpowers, ['s1'])
+})
+
+test('takes the most confident candidate of an artifact first', () => {
+  const result = correlate(
+    [
+      { id: 'o1', topic: 'add-x' },
+      { id: 'o2', topic: 'add-x-ui' }
+    ],
+    [{ id: 's1', topic: 'add-x-ui' }]
   )
   assert.equal(result.matches.length, 1)
-  assert.deepEqual(result.unmatchedOpenspec, ['o2'])
-  assert.deepEqual(result.unmatchedSuperpowers, [])
+  assert.equal(result.matches[0]!.openspecId, 'o2')
+  assert.deepEqual(result.unmatchedOpenspec, ['o1'])
 })
 
 test('never lets one change claim two Superpowers artifacts', () => {

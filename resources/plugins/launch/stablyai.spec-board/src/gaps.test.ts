@@ -194,6 +194,20 @@ test('reports no in-flight gap for work whose plan is done', () => {
   )
 })
 
+test('reports no gap for finished Superpowers work with no OpenSpec change', () => {
+  assert.deepEqual(codes({ openspec: null, superpowers: superpowers({ stage: 'done' }) }), [])
+})
+
+test('reports no drift gap for a finished OpenSpec change', () => {
+  assert.deepEqual(
+    codes({
+      openspec: openspec({ stage: 'archived', tasksDone: 4, tasksTotal: 4 }),
+      superpowers: superpowers({ planDone: 1, planTotal: 4 })
+    }),
+    []
+  )
+})
+
 test('still reminds an unarchived change whose plan is done', () => {
   assert.deepEqual(
     codes({

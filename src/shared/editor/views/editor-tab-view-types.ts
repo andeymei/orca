@@ -89,6 +89,8 @@ export type RefactorReviewState = {
   jobId: string
   worktreeId: string
   relativePath: string
+  /** The runtime environment that owns the workspace; absent for a workspace of this machine. */
+  runtimeEnvironmentId?: string | null
 }
 
 /** An editor tab's view, keyed by its mode, with exactly the open-file fields that mode uses today. The view is not saved. */

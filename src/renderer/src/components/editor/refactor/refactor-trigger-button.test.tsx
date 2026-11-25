@@ -2,13 +2,21 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 import type { FileContent } from '../loading/editor-panel-content-types'
 import { RefactorTriggerButton, refactorSourceContent } from './refactor-trigger-button'
 import { endRefactorStart, isRefactorStarting } from './refactor-start-guard'
 
 const mocks = vi.hoisted(() => ({
   openRefactorReviewTab:
-    vi.fn<(input: { worktreeId: string; relativePath: string; content: string }) => Promise<void>>()
+    vi.fn<
+      (input: {
+        target: RuntimeClientTarget
+        worktreeId: string
+        relativePath: string
+        content: string
+      }) => Promise<void>
+    >()
 }))
 
 vi.mock('@/i18n/i18n', () => ({
@@ -19,6 +27,12 @@ vi.mock('@/i18n/i18n', () => ({
 vi.mock('./refactor-review-tab-open', () => ({
   openRefactorReviewTab: mocks.openRefactorReviewTab
 }))
+
+vi.mock('@/runtime/rpc/targets/use-worktree-runtime-target', () => {
+  // Why one object: the tab restarts its poll when the owner changes, so the target must be stable.
+  const target = { kind: 'local' } as const
+  return { useFileOwnerRuntimeTarget: () => target }
+})
 
 function loaded(overrides: Partial<FileContent> = {}): FileContent {
   return {
@@ -81,10 +95,30 @@ describe('the refactoring trigger', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refactor' }))
     await waitFor(() =>
       expect(mocks.openRefactorReviewTab).toHaveBeenCalledWith({
+        target: { kind: 'local' },
         worktreeId: 'wt-1',
         relativePath: 'src/foo.ts',
         content: 'const a = 1\n'
       })
+    )
+  })
+
+  it('names the runtime that owns the workspace, so the review tab asks it about the job', async () => {
+    render(
+      <RefactorTriggerButton
+        fileId="file-1"
+        worktreeId="wt-1"
+        relativePath="src/foo.ts"
+        runtimeEnvironmentId="env-1"
+        drafts={{}}
+        fileContents={{ 'file-1': loaded() }}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Refactor' }))
+    await waitFor(() =>
+      expect(mocks.openRefactorReviewTab).toHaveBeenCalledWith(
+        expect.objectContaining({ runtimeEnvironmentId: 'env-1' })
+      )
     )
   })
 
@@ -93,6 +127,7 @@ describe('the refactoring trigger', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refactor' }))
     await waitFor(() =>
       expect(mocks.openRefactorReviewTab).toHaveBeenCalledWith({
+        target: { kind: 'local' },
         worktreeId: 'wt-1',
         relativePath: 'src/foo.ts',
         content: 'const a = 2\n'

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 import type { RefactorHunk, RefactorPlan } from '../../../../../shared/refactor/refactor-types'
 import type * as RefactorRuntimeClient from './refactor-runtime-client'
 import { refactorReviewStore } from './refactor-review-store'
@@ -30,13 +31,23 @@ const mocks = vi.hoisted(() => {
       settings: { diffDefaultView: 'side-by-side' },
       getKnownWorktreeById: vi.fn(() => ({ path: '/repo' }))
     },
-    applyRefactor: vi.fn<(jobId: string, hunkIds: readonly string[]) => Promise<ApplyResult>>(),
-    discardRefactor: vi.fn<(jobId: string) => Promise<boolean>>(),
-    fetchRefactorStatus: vi.fn<(jobId: string) => Promise<JobStatus>>(),
-    fetchRefactorPlan: vi.fn<(jobId: string) => Promise<RefactorPlan | null>>(),
+    applyRefactor:
+      vi.fn<
+        (
+          target: RuntimeClientTarget,
+          jobId: string,
+          hunkIds: readonly string[]
+        ) => Promise<ApplyResult>
+      >(),
+    discardRefactor: vi.fn<(target: RuntimeClientTarget, jobId: string) => Promise<boolean>>(),
+    fetchRefactorStatus:
+      vi.fn<(target: RuntimeClientTarget, jobId: string) => Promise<JobStatus>>(),
+    fetchRefactorPlan:
+      vi.fn<(target: RuntimeClientTarget, jobId: string) => Promise<RefactorPlan | null>>(),
     proposeRefactor:
       vi.fn<
         (input: {
+          target: RuntimeClientTarget
           worktreeId: string
           relativePath: string
           content: string
@@ -71,6 +82,12 @@ vi.mock('./refactor-runtime-client', async (importOriginal) => {
     fetchRefactorPlan: mocks.fetchRefactorPlan,
     proposeRefactor: mocks.proposeRefactor
   }
+})
+
+vi.mock('@/runtime/rpc/targets/use-worktree-runtime-target', () => {
+  // Why one object: the tab restarts its poll when the owner changes, so the target must be stable.
+  const target = { kind: 'local' } as const
+  return { useFileOwnerRuntimeTarget: () => target }
 })
 
 vi.mock('sonner', () => ({
@@ -266,7 +283,9 @@ describe('the refactor review tab', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
     await waitFor(() =>
-      expect(mocks.applyRefactor).toHaveBeenCalledWith('job-1', ['src/foo.ts:h1'])
+      expect(mocks.applyRefactor).toHaveBeenCalledWith({ kind: 'local' }, 'job-1', [
+        'src/foo.ts:h1'
+      ])
     )
     await waitFor(() =>
       expect(mocks.state.closeFile).toHaveBeenCalledWith('wt-1::refactor-review:job-1')
@@ -277,7 +296,9 @@ describe('the refactor review tab', () => {
     renderTab()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Accept code block 1 of src/foo.ts' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply accepted changes' }))
-    await waitFor(() => expect(mocks.discardRefactor).toHaveBeenCalledWith('job-1'))
+    await waitFor(() =>
+      expect(mocks.discardRefactor).toHaveBeenCalledWith({ kind: 'local' }, 'job-1')
+    )
   })
 
   it('keeps the job when the write was refused, so the user can read why', async () => {
@@ -404,6 +425,7 @@ describe('the refactor review tab', () => {
 describe('starting a refactoring review', () => {
   it('opens a tab that names the job', async () => {
     await openRefactorReviewTab({
+      target: { kind: 'local' },
       worktreeId: 'wt-1',
       relativePath: 'src/foo.ts',
       content: 'const a = 1'
@@ -413,14 +435,39 @@ describe('starting a refactoring review', () => {
         filePath: 'wt-1::refactor-review:job-1',
         worktreeId: 'wt-1',
         mode: 'refactor-review',
-        refactorReview: { jobId: 'job-1', worktreeId: 'wt-1', relativePath: 'src/foo.ts' }
+        refactorReview: {
+          jobId: 'job-1',
+          worktreeId: 'wt-1',
+          relativePath: 'src/foo.ts',
+          runtimeEnvironmentId: undefined
+        }
       }),
       expect.objectContaining({ reopenId: 'wt-1::refactor-review:job-1' })
     )
   })
 
+  it('names the runtime that owns the workspace, so the tab asks it about the job', async () => {
+    await openRefactorReviewTab({
+      target: { kind: 'environment', environmentId: 'env-1' },
+      worktreeId: 'wt-1',
+      relativePath: 'src/foo.ts',
+      content: 'const a = 1',
+      runtimeEnvironmentId: 'env-1'
+    })
+    // Why: the job lives in that runtime, and the tab asks it for the status, the plan and the
+    // writes. A tab that forgot the owner would ask this app's runtime, which knows no such job.
+    expect(mocks.state.openFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeEnvironmentId: 'env-1',
+        refactorReview: expect.objectContaining({ runtimeEnvironmentId: 'env-1' })
+      }),
+      expect.anything()
+    )
+  })
+
   it('names the tab apart from the file it reviews, for the surfaces that read the label', async () => {
     await openRefactorReviewTab({
+      target: { kind: 'local' },
       worktreeId: 'wt-1',
       relativePath: 'src/foo.ts',
       content: 'const a = 1'
@@ -439,6 +486,7 @@ describe('starting a refactoring review', () => {
         'Refactoring on a remote host is not supported: start it in a workspace on this machine.'
     })
     await openRefactorReviewTab({
+      target: { kind: 'local' },
       worktreeId: 'wt-1',
       relativePath: 'src/foo.ts',
       content: 'const a = 1'

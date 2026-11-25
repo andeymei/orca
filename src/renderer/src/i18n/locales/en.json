@@ -18672,6 +18672,9 @@
         },
         "RefactorTriggerButton": {
           "refactor": "Refactor"
+        },
+        "RefactorRuntimeClient": {
+          "remoteRuntimeTooOld": "The server that owns this workspace does not support refactoring yet. Update Orca on that server and try again."
         }
       },
       "diff": {

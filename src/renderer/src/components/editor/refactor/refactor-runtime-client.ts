@@ -1,6 +1,8 @@
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import { RuntimeRpcCallError } from '@/runtime/rpc/calls/runtime-rpc-result'
 import { toRuntimeWorktreeSelector } from '@/runtime/rpc/targets/runtime-worktree-selector'
+import { translate } from '@/i18n/i18n'
+import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 import {
   RefactorApplyResult,
   RefactorDiscardResult,
@@ -48,8 +50,13 @@ export type RefactorProposeOutcome = { jobId: string } | RefactorProposeFailure
  *
  * Why an outcome instead of a throw: the caller opens a tab and a toast, and a failed start has
  * no tab to show an error in — so the reason travels with the answer instead of on a stack.
+ *
+ * Why the target: the job lives in the runtime that owns the workspace, so the request has to
+ * reach that runtime. Asking this app's runtime for another runtime's workspace answers
+ * `selector_not_found`, which says nothing about the workspace.
  */
 export async function proposeRefactor(input: {
+  target: RuntimeClientTarget
   worktreeId: string
   relativePath: string
   content: string
@@ -57,6 +64,7 @@ export async function proposeRefactor(input: {
 }): Promise<RefactorProposeOutcome> {
   try {
     const response = await callRefactorRpc<RefactorProposeResult>(
+      input.target,
       'refactor.propose',
       {
         // Why a selector: the runtime addresses a workspace by its selector, not by the renderer's
@@ -82,10 +90,25 @@ export async function proposeRefactor(input: {
 
 /** Why the runtime started no job, in the words the user reads. */
 function proposeFailure(error: unknown): RefactorProposeFailure {
-  if (error instanceof RuntimeRpcCallError && error.message.length > 0) {
-    return { failure: 'refused', reason: error.message }
+  if (error instanceof RuntimeRpcCallError) {
+    if (error.code === 'method_not_found' && error.target?.kind === 'environment') {
+      // Why: the runtime that owns the workspace is an older build without this feature, and
+      // "Unknown method: refactor.propose" tells the user nothing they can act on.
+      return { failure: 'refused', reason: remoteRuntimeTooOldMessage() }
+    }
+    if (error.message.length > 0) {
+      return { failure: 'refused', reason: error.message }
+    }
   }
   return { failure: 'unreachable' }
+}
+
+/** The runtime that owns the workspace runs a build without this feature. */
+function remoteRuntimeTooOldMessage(): string {
+  return translate(
+    'auto.components.editor.RefactorRuntimeClient.remoteRuntimeTooOld',
+    'The server that owns this workspace does not support refactoring yet. Update Orca on that server and try again.'
+  )
 }
 
 /**
@@ -94,10 +117,14 @@ function proposeFailure(error: unknown): RefactorProposeFailure {
  * Why a failure throws: the poller turns it into a failed state, and a status that reads as
  * "still running" would leave the review tab waiting for an answer that is never coming.
  */
-export async function fetchRefactorStatus(jobId: string): Promise<RefactorStatusResult> {
+export async function fetchRefactorStatus(
+  target: RuntimeClientTarget,
+  jobId: string
+): Promise<RefactorStatusResult> {
   let response: RefactorStatusResult
   try {
     response = await callRefactorRpc<RefactorStatusResult>(
+      target,
       'refactor.status',
       { jobId },
       REFACTOR_STATUS_TIMEOUT_MS
@@ -115,9 +142,13 @@ export async function fetchRefactorStatus(jobId: string): Promise<RefactorStatus
 }
 
 /** The plan of a finished job; null when the runtime has no plan for it yet. */
-export async function fetchRefactorPlan(jobId: string): Promise<RefactorPlan | null> {
+export async function fetchRefactorPlan(
+  target: RuntimeClientTarget,
+  jobId: string
+): Promise<RefactorPlan | null> {
   try {
     const response = await callRefactorRpc<RefactorPlanResult>(
+      target,
       'refactor.plan',
       { jobId },
       REFACTOR_PLAN_TIMEOUT_MS
@@ -141,12 +172,14 @@ export async function fetchRefactorPlan(jobId: string): Promise<RefactorPlan | n
  * worst outcome, so the caller has to be able to say so.
  */
 export async function applyRefactor(
+  target: RuntimeClientTarget,
   jobId: string,
   acceptedHunkIds: readonly string[]
 ): Promise<RefactorApplyResult> {
   let response: RefactorApplyResult
   try {
     response = await callRefactorRpc<RefactorApplyResult>(
+      target,
       'refactor.apply',
       { jobId, acceptedHunkIds: [...acceptedHunkIds] },
       REFACTOR_APPLY_TIMEOUT_MS,
@@ -166,9 +199,13 @@ export async function applyRefactor(
 }
 
 /** Drop a job and its scratch files; false when the runtime kept it. */
-export async function discardRefactor(jobId: string): Promise<boolean> {
+export async function discardRefactor(
+  target: RuntimeClientTarget,
+  jobId: string
+): Promise<boolean> {
   try {
     const response = await callRefactorRpc<RefactorDiscardResult>(
+      target,
       'refactor.discard',
       { jobId },
       REFACTOR_DISCARD_TIMEOUT_MS
@@ -186,12 +223,13 @@ export async function discardRefactor(jobId: string): Promise<boolean> {
 }
 
 /**
- * Call the local runtime under a deadline the renderer keeps.
+ * Call the runtime that owns the workspace under a deadline the renderer keeps.
  *
  * Why the controller: the local branch of the transport drops the timeout but keeps the signal, so
  * the renderer aborts the call itself and a request nobody waits for stops working in the runtime.
  */
 async function callRefactorRpc<TResult>(
+  target: RuntimeClientTarget,
   method: string,
   params: unknown,
   timeoutMs: number,
@@ -202,7 +240,7 @@ async function callRefactorRpc<TResult>(
   let answered = false
   try {
     const response = await settleBeforeDeadline(
-      callRuntimeRpc<TResult>({ kind: 'local' }, method, params, {
+      callRuntimeRpc<TResult>(target, method, params, {
         signal: controller.signal,
         timeoutMs
       }),

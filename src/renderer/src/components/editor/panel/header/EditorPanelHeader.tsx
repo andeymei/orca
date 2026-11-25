@@ -233,6 +233,7 @@ export function EditorPanelHeader({
           fileId={activeFile.id}
           worktreeId={activeFile.worktreeId}
           relativePath={activeFile.relativePath}
+          runtimeEnvironmentId={activeFile.runtimeEnvironmentId}
           drafts={editorDrafts}
           fileContents={fileContents}
         />

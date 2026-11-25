@@ -189,6 +189,7 @@ export function EditorContent({
         jobId={refactorReview.jobId}
         worktreeId={refactorReview.worktreeId}
         relativePath={refactorReview.relativePath}
+        runtimeEnvironmentId={refactorReview.runtimeEnvironmentId}
       />
     )
   }

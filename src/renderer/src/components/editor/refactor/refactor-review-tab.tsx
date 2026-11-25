@@ -3,10 +3,13 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { useTranslate, type Translate } from '@/i18n/use-translate'
+import { fileOwnerUnresolvedMessage } from '@/lib/files/access/file-owner-runtime-target'
 import { joinPath } from '@/lib/path'
 import { recomputeOn } from '@/lib/recompute-on'
+import { useFileOwnerRuntimeTarget } from '@/runtime/rpc/targets/use-worktree-runtime-target'
 import { useAppStore } from '@/store/index'
 
+import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 import type { RefactorProposal } from '../../../../../shared/refactor/refactor-types'
 import { RefactorHunkView } from './refactor-hunk-view'
 import { pollRefactorJob } from './refactor-job-poller'
@@ -32,13 +35,16 @@ export type RefactorReviewTabProps = {
   worktreeId: string
   /** The file the job was started on. */
   relativePath: string
+  /** The runtime environment that owns the workspace; absent for a workspace of this machine. */
+  runtimeEnvironmentId?: string | null
 }
 
 /** The review tab: the proposals on the left, the change under review on the right. */
 export function RefactorReviewTab({
   jobId,
   worktreeId,
-  relativePath
+  relativePath,
+  runtimeEnvironmentId
 }: RefactorReviewTabProps): React.JSX.Element {
   const t = useTranslate()
   const ownerKey = refactorReviewTabId(worktreeId, jobId)
@@ -49,6 +55,9 @@ export function RefactorReviewTab({
   const [writing, setWriting] = useState(false)
   const [discarding, setDiscarding] = useState(false)
   const [wholeFile, setWholeFile] = useState(false)
+  // Why the owner: the job lives in the runtime that holds the workspace's files, so every
+  // request about it has to go there and not to this app's runtime.
+  const target = useFileOwnerRuntimeTarget(worktreeId, runtimeEnvironmentId)
   const sideBySide = useAppStore((state) => state.settings?.diffDefaultView === 'side-by-side')
   // Why the workspace root: the diff viewers resolve a file against the workspace, so they need
   // the absolute path, not the path the plan names.
@@ -66,7 +75,7 @@ export function RefactorReviewTab({
     let cancelled = false
     const stop = pollRefactorJob({
       jobId,
-      fetchStatus: fetchRefactorStatus,
+      fetchStatus: (id) => fetchRefactorStatus(requireJobRuntime(target), id),
       onStatus: (status) => {
         if (cancelled) {
           return
@@ -75,7 +84,7 @@ export function RefactorReviewTab({
         if (status.state !== 'done' || refactorReviewStore.getPlan(jobId)) {
           return
         }
-        void fetchRefactorPlan(jobId).then((fetched) => {
+        void fetchRefactorPlan(requireJobRuntime(target), jobId).then((fetched) => {
           if (cancelled) {
             return
           }
@@ -99,7 +108,9 @@ export function RefactorReviewTab({
         refactorReviewStore.remove(jobId)
       }
     }
-  }, [jobId])
+    // Why the owner: the poll asks the runtime that holds the job, so it starts over when the
+    // workspace's owner is known to be another runtime.
+  }, [jobId, target])
 
   useEffect(() => {
     if (!plan) {
@@ -138,7 +149,7 @@ export function RefactorReviewTab({
     await runAndClear(
       async () => {
         try {
-          const result = await applyRefactor(jobId, hunkIds)
+          const result = await applyRefactor(requireJobRuntime(target), jobId, hunkIds)
           if (result.refusals.length > 0) {
             // Why the tab stays open: the user has to read why a file was not written.
             setRefusals(result.refusals)
@@ -156,7 +167,7 @@ export function RefactorReviewTab({
           toast.success(writtenLabel(result.applied.length, t))
           // Why the order: the tab closes on success, so the release starts before the component
           // goes away.
-          releaseRefactorJob(jobId)
+          releaseRefactorJob(requireJobRuntime(target), jobId)
           closeTab()
         } catch (error) {
           const message = applyFailureMessage(error, t)
@@ -192,7 +203,7 @@ export function RefactorReviewTab({
     setDiscarding(true)
     await runAndClear(
       async () => {
-        const discarded = await discardRefactor(jobId)
+        const discarded = await discardRefactor(requireJobRuntime(target), jobId)
         if (!discarded) {
           // Why the tab stays open: the job may still be running, and the user has to know.
           setFailure(
@@ -335,12 +346,25 @@ async function runAndClear(work: () => Promise<void>, clear: () => void): Promis
  * component goes away. `discardRefactor` answers false instead of throwing, so the call cannot be
  * lost and cannot leave an unhandled rejection behind.
  */
-function releaseRefactorJob(jobId: string): void {
-  void discardRefactor(jobId).then((discarded) => {
+function releaseRefactorJob(target: RuntimeClientTarget, jobId: string): void {
+  void discardRefactor(target, jobId).then((discarded) => {
     if (!discarded) {
       console.error('[refactor] The finished job could not be released.')
     }
   })
+}
+
+/**
+ * The runtime that holds the job, or a refusal.
+ *
+ * Why: the rows disagree on who owns the workspace, so no runtime can be named for it and every
+ * request about the job would go nowhere.
+ */
+function requireJobRuntime(target: RuntimeClientTarget | null): RuntimeClientTarget {
+  if (!target) {
+    throw new Error(fileOwnerUnresolvedMessage())
+  }
+  return target
 }
 
 /**

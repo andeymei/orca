@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store/index'
 import { openWorkspaceEditorItem } from '@/store/slices/editor/tabs/workspace-editor-item'
+import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 
 import { getRefactorReviewLabel } from '../panel/header/editor-labels'
 import { proposeRefactor } from './refactor-runtime-client'
@@ -24,9 +25,13 @@ export function refactorReviewTabId(worktreeId: string, jobId: string): string {
  * surface as a broken app instead of a refused request.
  */
 export async function openRefactorReviewTab(input: {
+  /** The runtime that owns the workspace; the job lives there. */
+  target: RuntimeClientTarget
   worktreeId: string
   relativePath: string
   content: string
+  /** The runtime environment that owns the workspace; absent for a workspace of this machine. */
+  runtimeEnvironmentId?: string | null
   instruction?: string
 }): Promise<void> {
   const outcome = await proposeRefactor(input)
@@ -72,7 +77,15 @@ export async function openRefactorReviewTab(input: {
       worktreeId: input.worktreeId,
       language: 'plaintext',
       mode: 'refactor-review',
-      refactorReview: { jobId, worktreeId: input.worktreeId, relativePath: input.relativePath }
+      // Why the owner: the job lives in the runtime that owns the workspace, so the tab has to
+      // name that runtime when it asks for the job's status, plan and writes.
+      runtimeEnvironmentId: input.runtimeEnvironmentId,
+      refactorReview: {
+        jobId,
+        worktreeId: input.worktreeId,
+        relativePath: input.relativePath,
+        runtimeEnvironmentId: input.runtimeEnvironmentId
+      }
     },
     { reopenId: id, preview: false, tabLabel: label }
   )

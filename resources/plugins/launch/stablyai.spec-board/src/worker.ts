@@ -64,6 +64,9 @@ function failureMessage(reason: ActionFailure, request: ActionRequest): string {
   if (reason === 'needs-change-id') {
     return '请先选择一个变更'
   }
+  if (reason === 'placeholder-in-project-action') {
+    return '这个动作作用于整个项目，不能带变更占位符'
+  }
   return `变更 id 不安全：${displayText(request.changeId ?? '')}`
 }
 

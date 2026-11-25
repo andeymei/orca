@@ -4,6 +4,9 @@
 
 import type { ActionScope } from './model'
 
+/** The change a palette command names until the panel picks a concrete one. */
+export const CHANGE_ID_PLACEHOLDER = '<change-id>'
+
 /** One OpenSpec command: what it runs, and what an agent is asked to do instead. */
 export type OpenspecCommand = {
   id: string
@@ -60,6 +63,27 @@ export const OPENSPEC_COMMANDS: readonly OpenspecCommand[] = [
     task: 'Stage 1 生成 proposal、tasks 和增量 spec'
   }
 ]
+
+/**
+ * The catalog's own invariant: a command that acts on the whole project names no change, so it
+ * never carries the placeholder — the palette resolves the change when the person presses, and a
+ * project-scoped action has no change to resolve. A command that broke this would type the
+ * literal `<change-id>` into a terminal.
+ */
+function assertProjectCommandNamesNoChange(command: OpenspecCommand): void {
+  if (command.scope !== 'project') {
+    return
+  }
+  const names = command.task.includes(CHANGE_ID_PLACEHOLDER)
+  const runs = command.command !== null && command.command.includes(CHANGE_ID_PLACEHOLDER)
+  if (names || runs) {
+    throw new Error(`项目级命令不能带变更占位符：${command.id}`)
+  }
+}
+
+for (const command of OPENSPEC_COMMANDS) {
+  assertProjectCommandNamesNoChange(command)
+}
 
 /** One Superpowers skill: the agent it dispatches and what that agent is asked to do. */
 export type SuperpowersSkill = {

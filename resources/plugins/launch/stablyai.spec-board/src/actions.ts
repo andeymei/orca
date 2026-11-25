@@ -12,6 +12,7 @@
 
 import type { Action, ActionRun, OpenspecFacts, SuperpowersFacts } from './model'
 import {
+  CHANGE_ID_PLACEHOLDER,
   OPENSPEC_COMMANDS,
   SUPERPOWERS_SKILLS,
   type OpenspecCommand,
@@ -20,7 +21,7 @@ import {
 import { isSafeCommandPath, isSafeCommandValue } from './command-values'
 
 /** The change a palette command names until the panel picks a concrete one. */
-export const CHANGE_ID_PLACEHOLDER = '<change-id>'
+export { CHANGE_ID_PLACEHOLDER }
 
 /** The guide the agent follows where the OpenSpec CLI is not installed. */
 const OPENSPEC_GUIDE = 'openspec/AGENTS.md'
@@ -214,6 +215,13 @@ export function needsChangeId(action: Action): boolean {
   return action.scope === 'change'
 }
 
+/** Whether an action's run still names a change. */
+function carriesPlaceholder(action: Action): boolean {
+  return action.run.kind === 'terminal'
+    ? action.run.command.includes(CHANGE_ID_PLACEHOLDER)
+    : action.run.prompt.includes(CHANGE_ID_PLACEHOLDER)
+}
+
 /**
  * The palette action with a real change id in it. The panel names the action and the change;
  * the worker resolves it here, so a command line is never built in the renderer. A change id
@@ -222,8 +230,15 @@ export function needsChangeId(action: Action): boolean {
 export function resolvePaletteAction(
   action: Action,
   changeId: string | undefined
-): { ok: true; action: Action } | { ok: false; reason: 'needs-change-id' | 'unsafe-change-id' } {
+):
+  | { ok: true; action: Action }
+  | { ok: false; reason: 'needs-change-id' | 'unsafe-change-id' | 'placeholder-in-project-action' } {
   if (!needsChangeId(action)) {
+    // A project-scoped action names no change, so it must not carry the placeholder: there is no
+    // change to put in it, and the literal would reach the terminal.
+    if (carriesPlaceholder(action)) {
+      return { ok: false, reason: 'placeholder-in-project-action' }
+    }
     return { ok: true, action }
   }
   if (changeId === undefined) {

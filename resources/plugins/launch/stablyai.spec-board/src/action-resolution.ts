@@ -16,7 +16,12 @@ export type ActionRequest = {
 }
 
 /** Why an action could not be resolved. */
-export type ActionFailure = 'unknown-item' | 'unknown-action' | 'needs-change-id' | 'unsafe-change-id'
+export type ActionFailure =
+  | 'unknown-item'
+  | 'unknown-action'
+  | 'needs-change-id'
+  | 'unsafe-change-id'
+  | 'placeholder-in-project-action'
 
 export type ActionResolution = { ok: true; action: Action } | { ok: false; reason: ActionFailure }
 

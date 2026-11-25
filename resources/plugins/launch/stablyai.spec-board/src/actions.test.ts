@@ -640,12 +640,12 @@ test('a change-scoped command needs no command line of its own', () => {
 })
 
 test('the scope decides, not the text of the run', () => {
-  // A project-scoped action whose text mentions the change needs no change id.
+  // A project-scoped action needs no change id.
   const project: Action = {
     id: 'openspec.list',
     label: '列出变更',
     framework: 'openspec',
-    run: { kind: 'terminal', command: 'openspec list <change-id>' },
+    run: { kind: 'terminal', command: 'openspec list' },
     mutates: false,
     scope: 'project'
   }
@@ -665,4 +665,44 @@ test('the scope decides, not the text of the run', () => {
     ok: false,
     reason: 'needs-change-id'
   })
+})
+
+test('a project-scoped action that carries the placeholder is refused', () => {
+  // There is no change to put in it: the literal would reach the terminal as it is.
+  const project: Action = {
+    id: 'openspec.list',
+    label: '列出变更',
+    framework: 'openspec',
+    run: { kind: 'terminal', command: 'openspec list <change-id>' },
+    mutates: false,
+    scope: 'project'
+  }
+  assert.deepEqual(resolvePaletteAction(project, undefined), {
+    ok: false,
+    reason: 'placeholder-in-project-action'
+  })
+  const prompt: Action = {
+    id: 'openspec.propose',
+    label: '新建提案',
+    framework: 'openspec',
+    run: { kind: 'agent', prompt: '归档变更 <change-id>' },
+    mutates: true,
+    scope: 'project'
+  }
+  assert.deepEqual(resolvePaletteAction(prompt, 'add-x'), {
+    ok: false,
+    reason: 'placeholder-in-project-action'
+  })
+})
+
+test('no project-scoped command names a change', () => {
+  const projectCommands = OPENSPEC_COMMANDS.filter((command) => command.scope === 'project')
+  assert.deepEqual(
+    projectCommands.map((command) => command.id),
+    ['openspec.list', 'openspec.propose']
+  )
+  for (const command of projectCommands) {
+    assert.equal(command.task.includes(CHANGE_ID_PLACEHOLDER), false, command.id)
+    assert.equal(command.command?.includes(CHANGE_ID_PLACEHOLDER) ?? false, false, command.id)
+  }
 })

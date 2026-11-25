@@ -70,13 +70,15 @@ function readNonEmptyString(value: unknown, field: string): string {
   return value
 }
 
+/** An optional field: absent and null both mean "not written". */
 function readOptionalString(value: unknown, field: string): string | undefined {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return undefined
   }
   return readString(value, field)
 }
 
+/** A field whose type allows null: there null is a value, not an absence. */
 function readNullableString(value: unknown, field: string): string | null {
   if (value === undefined || value === null) {
     return null
@@ -241,7 +243,7 @@ function readItem(value: unknown, field: string): SnapshotItem {
   const superpowers = readNullable(source['superpowers'], `${field}.superpowers`, readSuperpowersFacts)
   const summary = readOptionalString(source['summary'], `${field}.summary`)
   const nextAction =
-    source['nextAction'] === undefined
+    source['nextAction'] === undefined || source['nextAction'] === null
       ? undefined
       : readNextAction(source['nextAction'], `${field}.nextAction`)
   return {
@@ -288,9 +290,9 @@ export function parseBoardSnapshot(raw: unknown): ParseResult {
     if (isFailure(error)) {
       return { ok: false, error: error.message }
     }
-    return {
-      ok: false,
-      error: `快照无法解析: ${error instanceof Error ? error.message : String(error)}`
-    }
+    // A bug in this validator, not a malformed snapshot: the panel gets a message it can show
+    // and the real cause stays in the log, rather than an English fragment in Chinese copy.
+    console.error('[spec-board] the snapshot validator failed unexpectedly', error)
+    return { ok: false, error: '快照校验器内部错误' }
   }
 }

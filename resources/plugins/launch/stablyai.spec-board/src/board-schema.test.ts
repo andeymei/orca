@@ -73,3 +73,29 @@ test('keeps a missing generatedAt parseable so the panel can say it is unknown',
   assert.equal(result.ok, true)
   assert.equal(result.ok === true ? result.value.generatedAt : '', '')
 })
+
+test('reads null as absent for the optional fields but keeps a null framework', () => {
+  const result = parseBoardSnapshot({
+    ...valid,
+    projects: [
+      {
+        ...valid.projects[0],
+        openspecCli: { available: true, version: null, path: null },
+        error: null
+      }
+    ],
+    items: [{ ...valid.items[0], summary: null, nextAction: null }]
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) {
+    return
+  }
+  const project = result.value.projects[0]!
+  const item = result.value.items[0]!
+  assert.equal('error' in project, false)
+  assert.equal('version' in project.openspecCli!, false)
+  assert.equal('path' in project.openspecCli!, false)
+  assert.equal('summary' in item, false)
+  assert.equal('nextAction' in item, false)
+  assert.equal(item.superpowers, null)
+})

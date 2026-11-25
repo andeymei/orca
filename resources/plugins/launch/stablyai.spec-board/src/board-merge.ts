@@ -58,7 +58,13 @@ function mergeProject(
   return agent ?? local ?? null
 }
 
-/** The gaps of both sides, one per code: the first one that says it wins. */
+/**
+ * The gaps of both sides, one per code. The rule is the agent's gap wins: the local scan only
+ * adds a code the agent did not report. The agent's snapshot is what the person asked for, and
+ * its numbers are the ones the board shows — but when the local scan sees a code the agent did
+ * not, that is worth saying, and when the two disagree about the same code, the agent's message
+ * is the one that goes with the facts on the card.
+ */
 function unionGaps(lists: readonly (readonly Gap[])[]): Gap[] {
   const byCode = new Map<Gap['code'], Gap>()
   for (const list of lists) {

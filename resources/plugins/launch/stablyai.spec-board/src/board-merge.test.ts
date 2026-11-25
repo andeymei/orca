@@ -126,6 +126,42 @@ test('the gaps of an item are deduped by code', () => {
   )
 })
 
+test("the agent's gap wins when the two sides disagree about the same code", () => {
+  const superpowers = {
+    designSpec: null,
+    plan: 'docs/superpowers/plans/add-x.md',
+    stage: 'executing' as const,
+    planDone: 4,
+    planInProgress: 0,
+    planTotal: 4
+  }
+  const facts = (tasksDone: number) => ({
+    changeId: 'add-x',
+    stage: 'implementing' as const,
+    hasProposal: true,
+    hasDesign: true,
+    hasTasks: true,
+    tasksDone,
+    tasksInProgress: 0,
+    tasksTotal: 4,
+    capabilities: []
+  })
+  const merged = mergeBoard({
+    snapshot: snapshot({
+      projects: [project()],
+      items: [item({ openspec: facts(1), superpowers })]
+    }),
+    localScans: [
+      { project: project(), items: [item({ openspec: facts(2), superpowers })] }
+    ],
+    specCapabilities: new Map()
+  })
+  const drift = merged.items[0]!.gaps.find((gap) => gap.code === 'progress-drift')
+  // The agent's message wins: its numbers are the ones the card shows.
+  assert.match(drift?.message ?? '', /任务 1\/4/)
+  assert.equal(drift?.message.includes('2/4'), false)
+})
+
 test('the stage and the actions are the worker own derivations', () => {
   const merged = mergeBoard({
     snapshot: snapshot({ projects: [project()], items: [item()] }),

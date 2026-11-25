@@ -91,6 +91,8 @@ ${input.registryPath}
 
 远程项目（\`host\` 是 \`ssh:<target>\`）要 **ssh 到那台主机上读**：\`ssh <target> 'cat <路径>'\`，或者 \`ssh <target> ls <路径>\`。不要猜路径，也不要把远程项目的路径当成本地路径读。
 
+每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，把结果写进这个项目的 \`openspecCli\`——本地项目就在本地跑，远程项目就 ssh 到那台主机上跑（\`ssh <target> openspec --version\`）。有就用 \`{ "available": true, "version": "1.8.0" }\`，没有就写 \`{ "available": false }\`。看板上这个项目的「校验」一类按钮是终端命令还是交给 agent，就看这一项——写漏了，远程项目的命令就悄悄变成了交给 agent 的提示词。
+
 ## 第三步：写快照
 
 快照要写到：

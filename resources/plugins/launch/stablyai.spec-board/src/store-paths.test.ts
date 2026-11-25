@@ -50,6 +50,20 @@ test('a registry whose shape is wrong is refused as well', async () => {
   )
   const { registry, warning } = await readRegistry()
   assert.equal(registry, null)
+  // The warning says the shape is wrong, not that the registry is empty: a broken entry is not
+  // the same thing as no entry.
+  assert.ok(warning !== null && warning.includes('格式不对'))
+})
+
+test('an empty registry reads as no registry', async () => {
+  const root = await home()
+  await writeFile(
+    join(root, 'projects.json'),
+    JSON.stringify({ schemaVersion: 1, projects: [] }),
+    'utf8'
+  )
+  const { registry, warning } = await readRegistry()
+  assert.equal(registry, null)
   assert.ok(warning !== null && warning.includes('projects.json'))
 })
 

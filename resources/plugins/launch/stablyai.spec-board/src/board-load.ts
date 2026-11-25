@@ -116,7 +116,8 @@ export async function snapshotAt(): Promise<number | null> {
 
 /** The snapshot on disk, and when it was written. */
 async function readSnapshot(
-  warnings: string[]
+  warnings: string[],
+  state: BoardState
 ): Promise<{ value: BoardSnapshot | null; at: number | null }> {
   const path = snapshotPath()
   let raw: string
@@ -133,14 +134,24 @@ async function readSnapshot(
     parsed = JSON.parse(raw)
   } catch (error) {
     warnings.push(`快照不是合法的 JSON：${path}（${messageOf(error)}）`)
-    return { value: null, at: null }
+    return lastValid(state)
   }
   const result = parseBoardSnapshot(parsed)
   if (!result.ok) {
     warnings.push(`快照不合 schema：${path}（${result.error}）`)
-    return { value: null, at: null }
+    return lastValid(state)
   }
-  return { value: result.value, at: await snapshotAt() }
+  const at = await snapshotAt()
+  state.lastValidSnapshot = { value: result.value, at }
+  return { value: result.value, at }
+}
+
+/** The last snapshot that parsed, or nothing when there never was one. */
+function lastValid(state: BoardState): { value: BoardSnapshot | null; at: number | null } {
+  return {
+    value: state.lastValidSnapshot?.value ?? null,
+    at: state.lastValidSnapshot?.at ?? null
+  }
 }
 
 /** The capability directories of every local project; a remote project has none to read. */
@@ -192,8 +203,24 @@ async function applyCliProbe(
   }
 }
 
+/**
+ * What the worker keeps between its requests. The last snapshot that parsed lives here, so a
+ * snapshot that no longer parses does not take the agent's half of the board with it: the error
+ * card names the file and the parse error, and the board keeps what the agent last wrote down.
+ */
+export type BoardState = { lastValidSnapshot: { value: BoardSnapshot; at: number | null } | null }
+
+/** The state of a worker that has not read a snapshot yet. */
+export function newBoardState(): BoardState {
+  return { lastValidSnapshot: null }
+}
+
 /** The board: the agent's snapshot merged over the local scan. */
-export async function buildBoard(orca: OrcaWorkerApi, warnings: string[]): Promise<Board> {
+export async function buildBoard(
+  orca: OrcaWorkerApi,
+  warnings: string[],
+  state: BoardState
+): Promise<Board> {
   const { registry: stored, warning } = await readRegistry()
   if (warning !== null) {
     warnings.push(warning)
@@ -205,7 +232,12 @@ export async function buildBoard(orca: OrcaWorkerApi, warnings: string[]): Promi
     // so the person can add the remote ones to a file.
     const refs = projectRefsFromWorkspaces(workspaces)
     registry = { schemaVersion: 1, projects: refs }
-    await writeRegistryIfAbsent(refs)
+    // Only a scan that found something is written back. An empty registry would lock the board
+    // empty — the file is read back as a valid registry — and only a hand-deleted file would
+    // free it.
+    if (refs.length > 0) {
+      await writeRegistryIfAbsent(refs)
+    }
   }
   let settings: Settings = { refreshAgent: '', refreshWorkspace: '', scanRoots: '' }
   try {
@@ -223,7 +255,7 @@ export async function buildBoard(orca: OrcaWorkerApi, warnings: string[]): Promi
     warnings.push(...scan.warnings)
     localScans.push({ project: scan.project, items: scan.items })
   }
-  const snapshot = await readSnapshot(warnings)
+  const snapshot = await readSnapshot(warnings, state)
   const specCapabilities = await specCapabilitiesOf(localScans, snapshot.value)
   await applyCliProbe(localScans, snapshot.value)
   const merged = mergeBoard({ snapshot: snapshot.value, localScans, specCapabilities })

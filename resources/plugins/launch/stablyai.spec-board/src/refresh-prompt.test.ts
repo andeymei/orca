@@ -57,6 +57,12 @@ test('names all six progress counts, and says they have to be written', () => {
   assert.match(prompt, /done \+ inProgress <= total/)
 })
 
+test('asks for the CLI answer of every project, local and remote', () => {
+  assert.match(prompt, /openspec --version/)
+  assert.match(prompt, /openspecCli/)
+  assert.match(prompt, /ssh <target> openspec --version/)
+})
+
 test('asks for plain slugs', () => {
   assert.ok(prompt.includes('/^[A-Za-z0-9][A-Za-z0-9._-]*$/'))
   assert.match(prompt, /changeId/)

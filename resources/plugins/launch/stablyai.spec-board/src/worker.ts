@@ -14,6 +14,7 @@ import {
   displayText,
   findProject,
   messageOf,
+  newBoardState,
   readSettings,
   snapshotAt
 } from './board-load'
@@ -25,6 +26,7 @@ import {
   snapshotPath
 } from './store-paths'
 import { findWorkspaceId } from './workspace-match'
+import type { BoardState } from './board-load'
 
 /** The warnings the worker recorded while running an action; the next board.get carries them. */
 const recordedWarnings: string[] = []
@@ -41,6 +43,14 @@ function record(message: string): void {
   while (recordedWarnings.length > MAX_RECORDED_WARNINGS) {
     recordedWarnings.shift()
   }
+}
+
+/**
+ * An error the panel can act on: the host reads the code off the error, and an error without a
+ * known code reaches the panel as `action_failed`.
+ */
+function requestError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code })
 }
 
 /** Why an action could not be run, in the words the person reads. */
@@ -60,10 +70,11 @@ function failureMessage(reason: ActionFailure, request: ActionRequest): string {
 /** Runs the action the panel named. */
 async function runAction(
   orca: OrcaWorkerApi,
-  request: ActionRequest
+  request: ActionRequest,
+  state: BoardState
 ): Promise<{ kind: 'terminal' | 'agent'; terminalId: string }> {
   const warnings: string[] = []
-  const board = await buildBoard(orca, warnings)
+  const board = await buildBoard(orca, warnings, state)
   // The board's projects are the authority on where a project lives. An id that is not on the
   // board names nothing: the caller's string is never read back as a path, because that would
   // let the request choose the directory the command runs in.
@@ -132,7 +143,7 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string }> {
     workspaceId = context?.workspaceId ?? ''
   }
   if (workspaceId === '') {
-    throw new Error('没有可用的 workspace 来刷新')
+    throw requestError('invalid_params', '没有可用的 workspace 来刷新')
   }
   const prompt = buildRefreshPrompt({ registryPath: registryPath(), snapshotPath: snapshotPath() })
   await mkdir(boardStoreDir(), { recursive: true })
@@ -165,13 +176,21 @@ function startWatcher(orca: OrcaWorkerApi): FSWatcher | null {
 }
 
 export default async function activate(orca: OrcaWorkerApi): Promise<void> {
+  // What the worker keeps between its requests; it lives as long as the worker does.
+  const state = newBoardState()
   orca.panels.handle('board.get', async () => {
     const warnings = [...recordedWarnings]
-    return (await buildBoard(orca, warnings)).payload
+    return (await buildBoard(orca, warnings, state)).payload
   })
   orca.panels.handle('board.refresh', async () => refresh(orca))
-  orca.panels.handle('action.run', async (input) => runAction(orca, input))
-  await mkdir(boardStoreDir(), { recursive: true })
+  orca.panels.handle('action.run', async (input) => runAction(orca, input, state))
+  try {
+    await mkdir(boardStoreDir(), { recursive: true })
+  } catch (error) {
+    // A directory that cannot be created is not a reason to refuse to start: the board still
+    // reads the projects it can, and the snapshot may well live somewhere else.
+    orca.log(`[spec-board] 无法创建 ${boardStoreDir()}：${messageOf(error)}`)
+  }
   watcher = startWatcher(orca)
 }
 

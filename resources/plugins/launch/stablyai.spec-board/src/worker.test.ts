@@ -1,7 +1,7 @@
 // The worker: it merges the agent's snapshot with the local scan, refreshes the snapshot, and
 // runs the actions the board offers.
 import { afterEach, assert, mockHost, mountWorker, test } from 'orca/testing'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as main from './worker'
@@ -180,6 +180,23 @@ test('reports a broken snapshot without losing the local scan', async () => {
   await worker.deactivate()
 })
 
+test('an empty registry does not lock the board empty', async () => {
+  const root = await home()
+  await writeFile(
+    join(root, 'projects.json'),
+    JSON.stringify({ schemaVersion: 1, projects: [] }),
+    'utf8'
+  )
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  assert.equal(
+    payload.projects.some((p) => p.id === 'local|/repo/demo'),
+    true
+  )
+  await worker.deactivate()
+})
+
 test('a malformed registry is a warning, and the local scan still runs', async () => {
   const root = await home()
   await writeFile(join(root, 'projects.json'), '{ not json', 'utf8')
@@ -191,6 +208,30 @@ test('a malformed registry is a warning, and the local scan still runs', async (
     payload.projects.some((p) => p.id === 'local|/repo/demo'),
     true
   )
+  await worker.deactivate()
+})
+
+test('a local project that has the capability reports the archived change as stale', async () => {
+  const root = await home()
+  const project = join(root, 'project')
+  await mkdir(join(project, 'openspec', 'specs', 'core'), { recursive: true })
+  await writeFile(
+    join(root, 'board.json'),
+    snapshotJson(`local|${project}`, 'add-x', {
+      stage: 'archived',
+      tasksDone: 4,
+      capabilities: ['other']
+    }),
+    'utf8'
+  )
+  const host = mockHost({
+    results: { 'workspace.list': workspaces },
+    settings: { scanRoots: project }
+  })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  const item = payload.items.find((i) => i.projectId === `local|${project}`)!
+  assert.ok(item.gaps.some((gap) => gap.code === 'archived-spec-stale'))
   await worker.deactivate()
 })
 
@@ -487,6 +528,20 @@ test('the fallback registry is written once, so the person can add the remote pr
   await worker.deactivate()
 })
 
+test('a failed workspace list does not write an empty registry', async () => {
+  const root = await home()
+  // No result for workspace.list: the host refuses the call, the way it does when it cannot
+  // answer.
+  const host = mockHost({ results: {} })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  assert.ok(payload.warnings.some((w) => w.includes('workspace')))
+  // The fallback is only written when the scan found something: an empty registry would lock
+  // the board empty.
+  await assert.rejects(readFile(join(root, 'projects.json'), 'utf8'))
+  await worker.deactivate()
+})
+
 test('the local scan is dated, so the board can say when it ran', async () => {
   await home()
   const host = mockHost({ results: { 'workspace.list': workspaces } })
@@ -511,6 +566,51 @@ test('the extra scan roots of the setting are scanned too', async () => {
     payload.items.some((item) => item.topic === 'add-y'),
     true
   )
+  await worker.deactivate()
+})
+
+test('an action on a remote project runs in that project workspace', async () => {
+  const root = await home()
+  machineHasCli(true)
+  await writeFile(
+    join(root, 'board.json'),
+    snapshotJson('ssh:yolo|C:/work/remote', 'add-y'),
+    'utf8'
+  )
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'terminal.create': { terminalId: 't2' },
+      'terminal.focus': { focused: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  const result = await worker.request('action.run', {
+    projectId: 'ssh:yolo|C:/work/remote',
+    actionId: 'openspec.validate',
+    itemId: 'ssh:yolo|C:/work/remote#add-y'
+  })
+  assert.deepEqual(result, { kind: 'terminal', terminalId: 't2' })
+  const created = host.callsOf('terminal.create')[0] as { workspaceId: string; command: string }
+  assert.equal(created.workspaceId, 'w2')
+  assert.equal(created.command, 'openspec validate add-y --strict')
+  await worker.deactivate()
+})
+
+test('a broken snapshot keeps the last snapshot that parsed', async () => {
+  const root = await home()
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const first = await worker.request('board.get')
+  assert.ok(first.items.length > 0)
+  const at = first.sources.agentAt
+  await writeFile(join(root, 'board.json'), '{ not json', 'utf8')
+  const second = await worker.request('board.get')
+  assert.ok(second.warnings.some((w) => w.includes('board.json')))
+  assert.equal(second.items.length, first.items.length)
+  assert.equal(second.sources.agentAt, at)
   await worker.deactivate()
 })
 
@@ -566,16 +666,52 @@ test('refresh runs in the workspace the setting names', async () => {
   await worker.deactivate()
 })
 
+test('a refresh without a workspace is refused with invalid_params', async () => {
+  await home()
+  const host = mockHost({
+    results: { 'workspace.list': workspaces, 'workspace.readContext': null }
+  })
+  const worker = await mountWorker(main, { host })
+  await assert.rejects(worker.request('board.refresh'), (error: unknown) => {
+    return (error as { code?: string }).code === 'invalid_params'
+  })
+  await worker.deactivate()
+})
+
+test('the worker starts even when the store directory cannot be created', async () => {
+  const root = await home()
+  // The store directory points inside a file, so it can never be a directory.
+  const blocker = join(root, 'blocker')
+  await writeFile(blocker, 'x', 'utf8')
+  process.env.SPEC_BOARD_HOME = join(blocker, 'store')
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  assert.equal(
+    payload.projects.some((p) => p.id === 'local|/repo/demo'),
+    true
+  )
+  await worker.deactivate()
+})
+
 test('a new snapshot reaches the open panels', async () => {
   const root = await home()
   const host = mockHost({ results: { 'workspace.list': workspaces } })
   const worker = await mountWorker(main, { host })
   await worker.request('board.get')
-  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const file = join(root, 'board.json')
+  await writeFile(file, snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
   const posted = await waitFor(() =>
     worker.posts.some((post) => post.event === 'board.changed')
   )
   assert.equal(posted, true)
+  const mtime = (await stat(file)).mtimeMs
+  const posts = worker.posts.filter((post) => post.event === 'board.changed')
+  assert.ok(
+    posts.some(
+      (post) => (post.payload as { agentAt: number | null }).agentAt === mtime
+    )
+  )
   await worker.deactivate()
 })
 

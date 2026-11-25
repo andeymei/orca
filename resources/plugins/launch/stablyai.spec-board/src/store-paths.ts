@@ -6,7 +6,7 @@
 // is not there is not an error, and a file that cannot be read or does not have the shape is a
 // warning and no registry — never a thrown error, because one bad file must not blank the board.
 
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ProjectRef } from './model'
@@ -38,6 +38,11 @@ export type Registry = { schemaVersion: 1; projects: ProjectRef[] }
 function isAbsent(error: unknown): boolean {
   const code = (error as { code?: unknown } | null)?.code
   return code === 'ENOENT' || code === 'ENOTDIR'
+}
+
+/** Whether an error means "the file is already there". */
+function isFileThere(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === 'EEXIST'
 }
 
 function messageOf(error: unknown): string {
@@ -123,6 +128,12 @@ export async function readRegistry(): Promise<{
       warning: `项目注册表格式不对：${path}（期望 schemaVersion 为 1，projects 为项目数组，每项有 name、host、path）`
     }
   }
+  if (registry.projects.length === 0) {
+    // An empty registry is no registry: it would lock the board empty, and only a hand-deleted
+    // file would free it. The fallback is derived again instead, so the local projects are still
+    // on the board.
+    return { registry: null, warning: `项目注册表是空的：${path}（没有项目可扫描）` }
+  }
   return { registry, warning: null }
 }
 
@@ -133,18 +144,17 @@ export async function readRegistry(): Promise<{
 export async function writeRegistryIfAbsent(projects: readonly ProjectRef[]): Promise<void> {
   const path = registryPath()
   try {
-    await stat(path)
-    return
-  } catch (error) {
-    if (!isAbsent(error)) {
-      return
-    }
-  }
-  try {
     await mkdir(boardStoreDir(), { recursive: true })
-    await writeFile(path, `${JSON.stringify({ schemaVersion: 1, projects }, null, 2)}\n`, 'utf8')
+    // 'wx' refuses to overwrite: a registry a person edited in the meantime is theirs, and the
+    // file is written in one step rather than checked and then written.
+    await writeFile(path, `${JSON.stringify({ schemaVersion: 1, projects }, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx'
+    })
   } catch (error) {
-    // The board works without a registry: the fallback is derived again next time.
-    console.error('[spec-board] 无法写入项目注册表', error)
+    if (!isFileThere(error)) {
+      // The board works without a registry: the fallback is derived again next time.
+      console.error('[spec-board] 无法写入项目注册表', error)
+    }
   }
 }

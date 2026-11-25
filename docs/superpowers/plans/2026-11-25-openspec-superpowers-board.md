@@ -491,7 +491,7 @@ report its field name.
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `orca plugin test resources/plugins/launch/stablyai.spec-board --json`
-Expected: PASS — 5 tests.
+Expected: PASS — 15 tests (7 board-schema + 4 framework-map + 2 panel/worker scaffold).
 
 - [ ] **Step 5: Commit**
 

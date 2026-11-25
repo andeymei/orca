@@ -45,7 +45,11 @@ export const VENDORED_DIRECTORIES: ReadonlySet<string> = new Set([
   'thirdparty',
   'third-party',
   'extern',
-  'external'
+  'external',
+  // Extracted checkouts of other revisions: their files are copies of source, not the tree being edited.
+  'checkouts',
+  'cross-version-checkouts',
+  '.cross-version-checkouts'
 ])
 
 /** Suffixes of files a generator rewrites wholesale. */

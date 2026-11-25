@@ -102,3 +102,12 @@ describe('vendored third-party code', () => {
     expect(isSourceSearchPath('src/core/vendor_client.ts')).toBe(true)
   })
 })
+
+describe('extracted checkouts of other revisions', () => {
+  it('ranks a copied source tree below the tree being edited', () => {
+    expect(
+      isGeneratedSearchPath('tests/e2e/.cross-version-checkouts/v1.4.190/src/shared/text-search.ts')
+    ).toBe(true)
+    expect(isSourceSearchPath('src/shared/text-search.ts')).toBe(true)
+  })
+})

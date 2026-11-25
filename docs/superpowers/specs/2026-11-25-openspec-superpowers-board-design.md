@@ -81,15 +81,24 @@
 ```
 resources/plugins/launch/stablyai.spec-board/
 ├── orca-plugin.json
+├── tsconfig.json            extends ./.orca/types/tsconfig.json
 ├── src/
-│   ├── panel.tsx            组件面板：全貌 / 看板 / 项目 三个 Tab
-│   ├── worker.mjs           trusted-worker：本地扫描、读快照、发起刷新
+│   ├── panel.tsx            组件面板：看板 / 全貌 / 项目 三个 Tab
+│   ├── panel.check.ts       orca plugin check 的场景
+│   ├── panel.fixture.ts     测试与 check 共用的样例负载
+│   ├── worker.ts            trusted-worker：合并、刷新、执行动作
 │   ├── protocol.ts          panel ↔ worker 请求与事件契约
+│   ├── model.ts             共享类型（快照 / 工作项 / 动作 / 阶段）
+│   ├── board-schema.ts      快照校验（parseBoardSnapshot）
+│   ├── stage.ts             统一阶段推导（deriveStage）
+│   ├── gaps.ts              缺口判定（detectGaps）
+│   ├── markdown-tasks.ts    勾选框计数（countCheckboxes）
+│   ├── correlation.ts       topic 归一化与配对（correlate）
+│   ├── local-scan.ts        本地确定性扫描（node:fs）
+│   ├── workspace-match.ts   路径归一化、worktree 折叠、workspace 定位
+│   ├── actions.ts           动作推导（actionsForItem / frameworkActions）
 │   ├── framework-map.ts     两个框架的全貌静态知识（手写）
-│   ├── board-schema.ts      快照校验 + 阶段推导 + 缺口判定（纯函数）
-│   ├── local-scan.ts        本地确定性扫描（纯 Node，无依赖）
-│   ├── correlation.ts       OpenSpec 变更 ↔ Superpowers 产物的配对（纯函数）
-│   ├── actions.ts           动作推导：项目 + 工作项 → 可执行动作（纯函数）
+│   ├── store-paths.ts       ~/.orca/spec-board 路径（测试可覆盖）
 │   └── refresh-prompt.ts    交给 agent 的采集指令
 └── README.md
 ```
@@ -209,9 +218,10 @@ resources/plugins/launch/stablyai.spec-board/
 ```
 
 注册表**不存在时的回退**：worker 调 `workspace.list`，取 `hostId` 为 `local` 或 `null`
-的条目，按 `path` 去重后直接扫描。首次扫描成功时，worker 把这份回退结果**写回
-`projects.json` 一次**（仅在文件不存在时写），于是项目 Tab 从第一次打开起就有内容，
-后续由 agent 增删远程条目。
+的条目。同一个 `projectId` 下的多个 worktree 必须**折叠成一条**（保留最短路径，即主
+检出目录）；否则每个 agent worktree 都会变成看板上一个独立项目。首次扫描成功时，
+worker 把这份回退结果**写回 `projects.json` 一次**（仅在文件不存在时写），于是项目
+Tab 从第一次打开起就有内容，后续由 agent 增删远程条目。
 
 `scanRoots` 设置是**额外的本地根目录**（每行一个绝对路径），用于扫描不在 Orca
 workspace 里的仓库；空字符串表示不额外扫描。
@@ -224,7 +234,7 @@ type BoardSnapshot = {
   generatedAt: string
   generatedBy: { agent: string; workspace?: string; host?: string }
   projects: ProjectRecord[]
-  items: WorkItem[]
+  items: SnapshotItem[]
   notes?: string[]
 }
 
@@ -247,12 +257,12 @@ type ProjectRecord = {
 
 type UnifiedStage = 'proposal' | 'design' | 'plan' | 'implement' | 'validate' | 'archive'
 
-type WorkItem = {
+/** 落盘的快照里只有事实，没有判定：agent 写错判定的风险由此消除。 */
+type SnapshotItem = {
   id: string // "<projectId>#<topic>"
   projectId: string
   title: string
   topic: string // 归一化主题键，用于配对
-  stage: UnifiedStage
   openspec: {
     changeId: string
     stage: 'proposed' | 'implementing' | 'validated' | 'archived'
@@ -270,9 +280,15 @@ type WorkItem = {
     planDone: number
     planTotal: number
   } | null
-  gaps: { code: GapCode; severity: 'info' | 'warning' | 'error'; message: string }[]
   summary?: string
   nextAction?: { label: string; detail: string }
+}
+
+/** worker 返回给面板的形态：事实 + 它自己算出来的判定与动作。 */
+type WorkItem = SnapshotItem & {
+  stage: UnifiedStage
+  gaps: { code: GapCode; severity: 'info' | 'warning' | 'error'; message: string }[]
+  actions: Action[]
 }
 ```
 
@@ -314,13 +330,13 @@ agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并�
 ### 4.9 框架全貌（静态内容）
 
 `src/framework-map.ts` 手写，内容来自实测的两份权威文档
-（`openspec/AGENTS.md` 与 superpowers 的 14 个 `SKILL.md`）：
+（`openspec/AGENTS.md` 与 superpowers 的 15 个 `SKILL.md`）：
 
 - **OpenSpec**：三阶段（创建变更 / 实现变更 / 归档变更），每阶段的产物文件
   （`proposal.md` / `design.md` / `tasks.md` / `specs/<capability>/spec.md` / `archive/`）、
   CLI 命令（`list` / `show` / `validate --strict` / `archive`），
   以及"什么时候该写 proposal、什么时候直接改"的判定树。
-- **Superpowers**：14 个技能按过程排序，标注每个技能产出什么、门禁在哪
+- **Superpowers**：15 个技能按过程排序，标注每个技能产出什么、门禁在哪
   （例如"设计未批准不得写代码"、"spec 批准后才允许写实施计划"）。
 - **对应关系**：`proposal.md ↔ design spec 的 Context/Goals`、
   `design.md ↔ design spec 的 Decisions/Risks`、`tasks.md ↔ plan`、

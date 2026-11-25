@@ -1958,11 +1958,14 @@ git commit -m "feat(spec-board): draw the stage rail, cards and gap badges"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `src/panel.test.tsx`:
+Add to `src/panel.test.tsx`. The payload now lives in `src/panel-fixture.ts` and is imported —
+`panel.test.tsx` no longer defines a local one:
 
 ```tsx
+import { fixturePayload } from './panel-fixture'
+
 test('the map tab shows both frameworks and a project picker', async () => {
-  const host = mockHost({ requests: { 'board.get': () => payload } })
+  const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
   const view = await mount(panel, { host })
   await view.select({ label: '看板视图' }, 'map')
   assert.ok(view.summary().includes('OpenSpec'))
@@ -1972,7 +1975,7 @@ test('the map tab shows both frameworks and a project picker', async () => {
 })
 
 test('the palette only offers commands allowed for the chosen project', async () => {
-  const host = mockHost({ requests: { 'board.get': () => payload } })
+  const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
   const view = await mount(panel, { host })
   await view.select({ label: '看板视图' }, 'map')
   assert.ok(view.find({ text: /openspec validate/ }))
@@ -2029,9 +2032,11 @@ git commit -m "feat(spec-board): make the framework map a command palette"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `src/panel.test.tsx`:
+Add to `src/panel.test.tsx`. The payload comes from the shared fixture module:
 
 ```tsx
+import { fixturePayload } from './panel-fixture'
+
 test('shows a warning card for a broken snapshot but keeps the map', async () => {
   const broken = {
     items: [],
@@ -2051,7 +2056,7 @@ test('refresh dispatches the worker and disables the button while busy', async (
   let resolve!: (value: { terminalId: string }) => void
   const host = mockHost({
     requests: {
-      'board.get': () => payload,
+      'board.get': () => fixturePayload,
       'board.refresh': () =>
         new Promise((r) => {
           resolve = r as typeof resolve

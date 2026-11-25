@@ -3,6 +3,7 @@
 // cannot be read becomes an error on that one project, never a thrown scan, because one bad
 // registry entry must not blank the whole board.
 
+import { correlate } from './correlation'
 import {
   countBoxes,
   messageOf,
@@ -23,8 +24,17 @@ export type ScanProjectResult = {
   warnings: string[]
 }
 
-/** What the two sides say about one topic, gathered into one board item. */
-type TopicBucket = { changes: ChangeOnDisk[]; specs: ArtifactOnDisk[]; plans: ArtifactOnDisk[] }
+/** One topic of the OpenSpec side: the change that owns it. */
+type OpenspecTopic = { topic: string; change: ChangeOnDisk }
+
+/** One topic of the Superpowers side: the design spec and the plan that own it. */
+type SuperpowersTopic = {
+  topic: string
+  spec: ArtifactOnDisk | null
+  plan: ArtifactOnDisk | null
+  /** The file name the topic came from: the pairing normalizes a name itself. */
+  source: string
+}
 
 function openspecFacts(change: ChangeOnDisk): OpenspecFacts {
   const { done, inProgress, total } = change.tasks
@@ -74,8 +84,43 @@ function superpowersFacts(
 }
 
 /**
- * The board items of one project. A change, its design spec and its plan share one topic, so
- * they land on one item: the two frameworks' view of the same work belongs on the same card.
+ * The artifacts of one kind, grouped by their topic. The first of a topic wins; the rest are
+ * reported, because a person who named two things the same should hear about it.
+ */
+function groupByTopic<T extends { topic: string; path: string }>(
+  artifacts: readonly T[],
+  label: string,
+  warnings: string[]
+): Map<string, T[]> {
+  const groups = new Map<string, T[]>()
+  for (const artifact of artifacts) {
+    if (artifact.topic === '') {
+      warnings.push(`跳过了没有主题的内容：${artifact.path}`)
+      continue
+    }
+    const existing = groups.get(artifact.topic)
+    if (existing) {
+      existing.push(artifact)
+    } else {
+      groups.set(artifact.topic, [artifact])
+    }
+  }
+  for (const [topic, list] of groups) {
+    if (list.length > 1) {
+      warnings.push(`主题重复：${topic}（${list.length} 个${label}归为一项，只用第一个）`)
+    }
+  }
+  return groups
+}
+
+/**
+ * The board items of one project. The two frameworks' work is paired by topic — the same topic
+ * or a close one — so a change and the plan that covers it land on one card, and work only one
+ * side knows about still gets a card of its own.
+ *
+ * The pairing is a maximum-cardinality matching, not a greedy walk: a greedy walk strands work
+ * that could have been paired, and a stranded artifact is reported as a gap — a false warning
+ * about work the user did.
  */
 async function buildItems(
   projectId: string,
@@ -84,66 +129,95 @@ async function buildItems(
   superpowers: { specs: ArtifactOnDisk[]; plans: ArtifactOnDisk[] },
   warnings: string[]
 ): Promise<SnapshotItem[]> {
-  const buckets = new Map<string, TopicBucket>()
-  const bucketFor = (topic: string, path: string): TopicBucket | null => {
-    if (topic === '') {
-      warnings.push(`跳过了没有主题的内容：${path}`)
-      return null
-    }
-    const existing = buckets.get(topic)
+  const changeGroups = groupByTopic(openspec.changes, '变更', warnings)
+  const specGroups = groupByTopic(superpowers.specs, '设计', warnings)
+  const planGroups = groupByTopic(superpowers.plans, '计划', warnings)
+
+  const openspecTopics: OpenspecTopic[] = [...changeGroups.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([topic, list]) => ({ topic, change: list[0]! }))
+
+  const superpowersTopics = new Map<string, SuperpowersTopic>()
+  for (const [topic, list] of specGroups) {
+    const spec = list[0]!
+    superpowersTopics.set(topic, { topic, spec, plan: null, source: spec.name })
+  }
+  for (const [topic, list] of planGroups) {
+    const plan = list[0]!
+    const existing = superpowersTopics.get(topic)
     if (existing) {
-      return existing
-    }
-    const created: TopicBucket = { changes: [], specs: [], plans: [] }
-    buckets.set(topic, created)
-    return created
-  }
-  for (const change of openspec.changes) {
-    const bucket = bucketFor(change.topic, change.path)
-    if (bucket) {
-      bucket.changes.push(change)
+      existing.plan = plan
+    } else {
+      superpowersTopics.set(topic, { topic, spec: null, plan, source: plan.name })
     }
   }
-  for (const spec of superpowers.specs) {
-    const bucket = bucketFor(spec.topic, spec.path)
-    if (bucket) {
-      bucket.specs.push(spec)
-    }
-  }
-  for (const plan of superpowers.plans) {
-    const bucket = bucketFor(plan.topic, plan.path)
-    if (bucket) {
-      bucket.plans.push(plan)
+
+  const pairing = correlate(
+    openspecTopics.map((entry) => ({
+      id: entry.change.changeId,
+      topic: entry.change.changeId
+    })),
+    [...superpowersTopics.values()].map((entry) => ({ id: entry.topic, topic: entry.source }))
+  )
+  const superpowersOf = new Map<string, SuperpowersTopic>()
+  for (const match of pairing.matches) {
+    const entry = superpowersTopics.get(match.superpowersId)
+    if (entry) {
+      superpowersOf.set(match.openspecId, entry)
     }
   }
 
   const items: SnapshotItem[] = []
-  for (const topic of [...buckets.keys()].sort()) {
-    const bucket = buckets.get(topic)!
-    for (const [kind, label] of [
-      ['changes', '变更'],
-      ['specs', '设计'],
-      ['plans', '计划']
-    ] as const) {
-      const list = bucket[kind]
-      if (list.length > 1) {
-        warnings.push(`主题重复：${topic}（${list.length} 个${label}归为一项，只用第一个）`)
-      }
-    }
-    const change = bucket.changes[0] ?? null
-    const designSpec = bucket.specs[0] ?? null
-    const plan = bucket.plans[0] ?? null
-    const planTasks = plan === null ? NO_CHECKBOXES : await countBoxes(root, plan.path, warnings)
-    items.push({
-      id: `${projectId}#${topic}`,
-      projectId,
-      title: change?.changeId ?? topic,
-      topic,
-      openspec: change === null ? null : openspecFacts(change),
-      superpowers: designSpec || plan ? superpowersFacts(designSpec, plan, planTasks) : null
-    })
+  for (const entry of openspecTopics) {
+    items.push(
+      await buildItem(
+        projectId,
+        root,
+        entry.topic,
+        entry.change,
+        superpowersOf.get(entry.change.changeId) ?? null,
+        warnings
+      )
+    )
   }
-  return items
+  const unmatched = new Set(pairing.unmatchedSuperpowers)
+  for (const entry of superpowersTopics.values()) {
+    if (!unmatched.has(entry.topic)) {
+      continue
+    }
+    items.push(await buildItem(projectId, root, entry.topic, null, entry, warnings))
+  }
+  return items.sort((left, right) =>
+    left.topic < right.topic ? -1 : left.topic > right.topic ? 1 : 0
+  )
+}
+
+/**
+ * One board item: what the two sides say about one piece of work. The item's topic is the
+ * OpenSpec one when there is one — the change id is what the commands act on, so it is the more
+ * stable name — and the Superpowers one otherwise.
+ */
+async function buildItem(
+  projectId: string,
+  root: string,
+  topic: string,
+  change: ChangeOnDisk | null,
+  superpowers: SuperpowersTopic | null,
+  warnings: string[]
+): Promise<SnapshotItem> {
+  const plan = superpowers?.plan ?? null
+  const planTasks = plan === null ? NO_CHECKBOXES : await countBoxes(root, plan.path, warnings)
+  return {
+    id: `${projectId}#${topic}`,
+    projectId,
+    title: change?.changeId ?? topic,
+    topic,
+    openspec: change === null ? null : openspecFacts(change),
+    superpowers:
+      superpowers === null
+        ? null
+        : superpowersFacts(superpowers.spec, superpowers.plan, planTasks)
+  }
 }
 
 /** The id a project keeps across scans: the host it lives on, and where. */

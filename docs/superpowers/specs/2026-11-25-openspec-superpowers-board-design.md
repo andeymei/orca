@@ -362,6 +362,9 @@ export type WorkItem = SnapshotItem & {
 报成 `superpowers-only`，被搁下的变更会被报成 `openspec-only`**，也就是对着用户明明做过的工作
 发出假的缺口告警。
 
+配对后的工作项以 OpenSpec 变更的 topic 为准（没有 OpenSpec 一侧时用 Superpowers 的 topic），
+因为变更 id 是命令作用的对象。
+
 ### 4.8 缺口规则（纯函数，可单测）
 
 | 代码                          | 触发条件                                                                  | 严重度  |

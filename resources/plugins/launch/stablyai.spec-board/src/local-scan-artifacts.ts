@@ -41,7 +41,7 @@ export type ChangeOnDisk = {
 }
 
 /** One Superpowers file, as the disk holds it. */
-export type ArtifactOnDisk = { path: string; topic: string }
+export type ArtifactOnDisk = { path: string; topic: string; name: string }
 
 /** The codes that mean "there is nothing there", not "it could not be read". */
 function isAbsent(error: unknown): boolean {
@@ -220,7 +220,8 @@ export async function scanSuperpowers(
     present = true
     found[dir.kind] = namesOf(entries, isMarkdown).map((name) => ({
       path: `${dir.path}/${name}`,
-      topic: normalizeTopic(name)
+      topic: normalizeTopic(name),
+      name
     }))
   }
   return {

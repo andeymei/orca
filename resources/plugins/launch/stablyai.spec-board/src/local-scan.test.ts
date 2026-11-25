@@ -2,6 +2,7 @@ import { afterEach, assert, test } from 'orca/testing'
 import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { detectGaps } from './gaps'
 import { projectIdFor, scanProject } from './local-scan'
 
 const roots: string[] = []
@@ -241,4 +242,58 @@ test('a file whose name carries no topic is skipped, and the warning names it', 
     result.warnings.some((warning) => warning.includes('openspec/changes/---')),
     result.warnings.join(' | ')
   )
+})
+
+test('a change and a close plan land on one card, and the card is not a gap', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'spec-board-pair-'))
+  roots.push(root)
+  await mkdir(join(root, 'openspec/changes/add-x'), { recursive: true })
+  await writeFile(join(root, 'openspec/changes/add-x/proposal.md'), '# Change: Add X\n')
+  await mkdir(join(root, 'docs/superpowers/plans'), { recursive: true })
+  await writeFile(join(root, 'docs/superpowers/plans/2026-11-21-add-x-v2.md'), '- [x] a\n')
+  const result = await scanProject({ name: 'demo', host: 'local', path: root })
+  // The two names are one work: the card is one, and it carries both sides.
+  assert.equal(result.items.length, 1)
+  const item = result.items[0]!
+  assert.equal(item.openspec?.changeId, 'add-x')
+  assert.equal(item.superpowers?.plan, 'docs/superpowers/plans/2026-11-21-add-x-v2.md')
+  // The topic is the change's: the change id is what the commands act on.
+  assert.equal(item.topic, 'add-x')
+  assert.equal(item.id, `${projectIdFor('local', root)}#add-x`)
+  // A work both sides did is not a gap in either direction.
+  assert.deepEqual(
+    detectGaps({ openspec: item.openspec, superpowers: item.superpowers }).map(
+      (gap) => gap.code
+    ),
+    []
+  )
+})
+
+test('a greedy pairing would strand a change and a plan of the same work', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'spec-board-match-'))
+  roots.push(root)
+  for (const id of ['add-x', 'add-x-ui']) {
+    await mkdir(join(root, 'openspec/changes', id), { recursive: true })
+    await writeFile(join(root, 'openspec/changes', id, 'proposal.md'), '# Change\n')
+  }
+  await mkdir(join(root, 'docs/superpowers/plans'), { recursive: true })
+  await writeFile(join(root, 'docs/superpowers/plans/2026-11-21-add-x.md'), '- [x] a\n')
+  await writeFile(join(root, 'docs/superpowers/plans/2026-11-21-add-x-v2.md'), '- [x] b\n')
+  const result = await scanProject({ name: 'demo', host: 'local', path: root })
+  // Two changes, two plans: the matching pairs both, so no work is left to be reported as a gap.
+  assert.equal(result.items.length, 2)
+  const paired = result.items.filter((item) => item.openspec !== null && item.superpowers !== null)
+  assert.equal(paired.length, 2)
+  assert.deepEqual(
+    result.items.map((item) => item.openspec?.changeId ?? null),
+    ['add-x', 'add-x-ui']
+  )
+  for (const item of result.items) {
+    assert.deepEqual(
+      detectGaps({ openspec: item.openspec, superpowers: item.superpowers }).map(
+        (gap) => gap.code
+      ),
+      []
+    )
+  }
 })

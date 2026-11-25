@@ -334,14 +334,14 @@ export type WorkItem = SnapshotItem & {
 
 按顺序命中第一条：
 
-| 条件                                                                                          | 统一阶段    |
-| --------------------------------------------------------------------------------------------- | ----------- |
-| 项目里已归档（`changes/archive/` 有对应条目）                                                 | `archive`   |
-| tasks/plan 全部勾选但未归档                                                                   | `validate`  |
-| tasks 或 plan 存在且已开始（`done + inProgress > 0`；OpenSpec 的 `- [-]` / `- [~]` 即进行中） | `implement` |
-| tasks 或 plan 存在但零勾选                                                                    | `plan`      |
-| 有 `design.md` 或 Superpowers design spec，无 tasks/plan                                      | `design`    |
-| 只有 `proposal.md`                                                                            | `proposal`  |
+| 条件                                                                                             | 统一阶段    |
+| ------------------------------------------------------------------------------------------------ | ----------- |
+| 项目里已归档（`changes/archive/` 有对应条目）                                                    | `archive`   |
+| 存在的进度对里，非空的那些全部勾完（`done === total`，进行中不算完成），且至少有一对非空；未归档 | `validate`  |
+| tasks 或 plan 存在且已开始（`done + inProgress > 0`；OpenSpec 的 `- [-]` / `- [~]` 即进行中）    | `implement` |
+| tasks 或 plan 存在但零勾选                                                                       | `plan`      |
+| 有 `design.md` 或 Superpowers design spec，无 tasks/plan                                         | `design`    |
+| 只有 `proposal.md`                                                                               | `proposal`  |
 
 ### 4.7 配对规则
 

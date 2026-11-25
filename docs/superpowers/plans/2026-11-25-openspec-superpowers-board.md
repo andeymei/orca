@@ -694,7 +694,7 @@ git commit -m "feat(spec-board): count task checkboxes and derive the unified st
   export function detectGaps(item: {
     openspec: OpenspecFacts | null
     superpowers: SuperpowersFacts | null
-    archivedCapabilities?: readonly string[]
+    existingSpecCapabilities?: readonly string[]
   }): Gap[]
   ```
 
@@ -742,14 +742,16 @@ test('pairs exact topics first, then the best remaining overlap', () => {
 test('pairs one-to-one when two changes share a topic', () => {
   const result = correlate(
     [
-      { id: 'o1', topic: 'add-x' },
-      { id: 'o2', topic: 'update-x' }
+      { id: 'o1', topic: 'add-x-auth' },
+      { id: 'o2', topic: 'update-x-auth' }
     ],
-    [{ id: 's1', topic: 'x' }]
+    [{ id: 's1', topic: 'x-auth' }]
   )
-  const used = new Set(result.matches.map((m) => m.superpowersId))
-  assert.equal(result.matches.length, used.size)
-  assert.equal(result.unmatchedSuperpowers.length + result.matches.length, 1)
+  // Exactly one of the two changes gets the single plan, and the other is reported unmatched.
+  assert.equal(result.matches.length, 1)
+  assert.equal(result.matches[0]!.superpowersId, 's1')
+  assert.equal(result.unmatchedOpenspec.length, 1)
+  assert.deepEqual(result.unmatchedSuperpowers, [])
 })
 
 test('leaves everything unmatched when nothing overlaps', () => {
@@ -841,7 +843,7 @@ test('reports an archived change whose capability never reached specs', () => {
     codes({
       openspec: openspec({ stage: 'archived', capabilities: ['x'] }),
       superpowers: null,
-      archivedCapabilities: []
+      existingSpecCapabilities: []
     }).includes('archived-spec-stale')
   )
 })
@@ -861,6 +863,14 @@ Expected: FAIL — modules not found.
 `correlate` sorts candidate pairs by (exact match first, then similarity), keeps the best above a 0.6 floor, and marks both sides used — that is what makes a shared topic pair one-to-one instead of one plan satisfying two changes.
 
 `detectGaps` implements the spec's §4.8 table, including the `> 0.30` drift threshold and the rule that drift is only reported when both sides have started.
+
+A **finished** work item — the OpenSpec change is archived, or the Superpowers plan is `done` —
+reports only `archived-spec-stale`. The other gaps describe work in flight, and nagging about a
+change that already shipped is noise that dilutes the signal.
+
+`existingSpecCapabilities` is the list of capability directories that exist under the project's
+`openspec/specs/`. It is optional, and **absent means unknown**, not "every archived capability is
+stale": with no list, `archived-spec-stale` is not reported at all.
 
 - [ ] **Step 4: Run them to verify they pass**
 

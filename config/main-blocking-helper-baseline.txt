@@ -606,7 +606,7 @@
 2 src/main/ipc/filesystem/reads/local-log-tail.ts
 1 src/main/ipc/filesystem/search/filesystem-content-search-handler.ts
 2 src/main/ipc/filesystem/search/filesystem-list-files.ts
-2 src/main/ipc/filesystem/search/filesystem-search-file-paths.ts
+1 src/main/ipc/filesystem/search/filesystem-search-file-paths.ts
 1 src/main/ipc/filesystem/search/markdown-documents.ts
 1 src/main/ipc/filesystem/source-control/filesystem-git-commit-generation-handlers.ts
 4 src/main/ipc/filesystem/source-control/filesystem-git-diff-handlers.ts

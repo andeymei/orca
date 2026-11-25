@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { prepareQuickOpenFiles, rankQuickOpenFiles } from './quick-open-path-search'
+import {
+  prepareQuickOpenFiles,
+  QuickOpenPathRanker,
+  rankQuickOpenFiles
+} from './quick-open-path-search'
 
 describe('rankQuickOpenFiles', () => {
   it('ranks an authored file ahead of a build artifact with the same name', () => {
@@ -26,5 +30,15 @@ describe('rankQuickOpenFiles', () => {
     const ranked = rankQuickOpenFiles('job', files, 10).map((result) => result.path)
     expect(ranked[0]).toBe('src/job.ts')
     expect(ranked).toHaveLength(4)
+  })
+})
+
+describe('QuickOpenPathRanker', () => {
+  it('counts a path once when a tracked and an ignored scan list it', () => {
+    const ranker = new QuickOpenPathRanker('job', 32)
+    ranker.consider('src/core/job.js')
+    ranker.consider('src/core/job.js')
+    expect(ranker.result().totalCount).toBe(1)
+    expect(ranker.result().paths).toEqual(['src/core/job.js'])
   })
 })

@@ -5,6 +5,7 @@ import {
 import { isClipboardTextByteLengthOverLimit } from '../clipboard/clipboard-text'
 import { compareFileNames } from '../file-listing/file-name-sort'
 import { searchFileRank } from '../file-search/search-file-classification'
+import { QuickOpenSeenPaths } from './quick-open-seen-paths'
 import {
   composeQuickOpenText,
   getIdentifierBoundaries,
@@ -89,6 +90,8 @@ function narrowsQuickOpenQuery(
 export class QuickOpenPathRanker {
   private readonly normalizedQuery: readonly QuickOpenQueryTerm[] | null
   private readonly retained: QuickOpenRankedResult[] = []
+  /** A tracked scan and an ignored scan list the same paths; the second pass must not double-count them. */
+  private readonly seenPaths = new QuickOpenSeenPaths()
   private inputIndex = 0
   private matchCount = 0
 
@@ -101,6 +104,9 @@ export class QuickOpenPathRanker {
   }
 
   consider(path: string): void {
+    if (!this.seenPaths.admit(path)) {
+      return
+    }
     const file = prepareQuickOpenFile(path, this.inputIndex++)
     if (this.normalizedQuery === null) {
       return

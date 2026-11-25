@@ -1,5 +1,9 @@
 import { assert, test } from 'orca/testing'
-import { OPENSPEC_COMMANDS, type OpenspecCommand } from './action-catalog'
+import {
+  OPENSPEC_COMMANDS,
+  assertCatalogNamesNoChange,
+  type OpenspecCommand
+} from './action-catalog'
 import type { Action } from './model'
 import {
   CHANGE_ID_PLACEHOLDER,
@@ -639,7 +643,7 @@ test('a change-scoped command needs no command line of its own', () => {
   )
 })
 
-test('the scope decides, not the text of the run', () => {
+test('a project-scoped action needs no change id, a change-scoped one does', () => {
   // A project-scoped action needs no change id.
   const project: Action = {
     id: 'openspec.list',
@@ -664,6 +668,17 @@ test('the scope decides, not the text of the run', () => {
   assert.deepEqual(resolvePaletteAction(change, undefined), {
     ok: false,
     reason: 'needs-change-id'
+  })
+  // A change-scoped action may carry the placeholder: it is filled in when the change is named.
+  const placeholder: Action = {
+    ...change,
+    run: { kind: 'terminal', command: 'openspec validate <change-id> --strict' }
+  }
+  const resolved = resolvePaletteAction(placeholder, 'add-x')
+  assert.equal(resolved.ok, true)
+  assert.deepEqual(resolved.ok && resolved.action.run, {
+    kind: 'terminal',
+    command: 'openspec validate add-x --strict'
   })
 })
 
@@ -695,14 +710,46 @@ test('a project-scoped action that carries the placeholder is refused', () => {
   })
 })
 
-test('no project-scoped command names a change', () => {
-  const projectCommands = OPENSPEC_COMMANDS.filter((command) => command.scope === 'project')
-  assert.deepEqual(
-    projectCommands.map((command) => command.id),
-    ['openspec.list', 'openspec.propose']
-  )
-  for (const command of projectCommands) {
+test('no project-scoped command of the catalog names a change', () => {
+  // The rule, not the catalog's inventory: any project-scoped command that carries the
+  // placeholder fails here, whether or not the catalog's own guard still throws.
+  for (const command of OPENSPEC_COMMANDS) {
+    if (command.scope !== 'project') {
+      continue
+    }
     assert.equal(command.task.includes(CHANGE_ID_PLACEHOLDER), false, command.id)
     assert.equal(command.command?.includes(CHANGE_ID_PLACEHOLDER) ?? false, false, command.id)
   }
+})
+
+test('the catalog refuses a project-scoped command that names a change', () => {
+  // The guard the catalog builds itself: a violation throws there, so it never reaches a terminal.
+  assert.throws(
+    () =>
+      assertCatalogNamesNoChange([
+        {
+          id: 'openspec.example',
+          label: '示例',
+          mutates: false,
+          scope: 'project',
+          command: 'openspec example <change-id>',
+          task: '示例'
+        }
+      ]),
+    /项目级命令不能带变更占位符/
+  )
+  assert.throws(
+    () =>
+      assertCatalogNamesNoChange([
+        {
+          id: 'openspec.example',
+          label: '示例',
+          mutates: false,
+          scope: 'project',
+          command: null,
+          task: '示例 <change-id>'
+        }
+      ]),
+    /项目级命令不能带变更占位符/
+  )
 })

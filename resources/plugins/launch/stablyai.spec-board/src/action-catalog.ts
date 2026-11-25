@@ -70,20 +70,20 @@ export const OPENSPEC_COMMANDS: readonly OpenspecCommand[] = [
  * project-scoped action has no change to resolve. A command that broke this would type the
  * literal `<change-id>` into a terminal.
  */
-function assertProjectCommandNamesNoChange(command: OpenspecCommand): void {
-  if (command.scope !== 'project') {
-    return
-  }
-  const names = command.task.includes(CHANGE_ID_PLACEHOLDER)
-  const runs = command.command !== null && command.command.includes(CHANGE_ID_PLACEHOLDER)
-  if (names || runs) {
-    throw new Error(`项目级命令不能带变更占位符：${command.id}`)
+export function assertCatalogNamesNoChange(commands: readonly OpenspecCommand[]): void {
+  for (const command of commands) {
+    if (command.scope !== 'project') {
+      continue
+    }
+    const names = command.task.includes(CHANGE_ID_PLACEHOLDER)
+    const runs = command.command !== null && command.command.includes(CHANGE_ID_PLACEHOLDER)
+    if (names || runs) {
+      throw new Error(`项目级命令不能带变更占位符：${command.id}`)
+    }
   }
 }
 
-for (const command of OPENSPEC_COMMANDS) {
-  assertProjectCommandNamesNoChange(command)
-}
+assertCatalogNamesNoChange(OPENSPEC_COMMANDS)
 
 /** One Superpowers skill: the agent it dispatches and what that agent is asked to do. */
 export type SuperpowersSkill = {

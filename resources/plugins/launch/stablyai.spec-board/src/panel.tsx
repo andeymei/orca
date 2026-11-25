@@ -1,37 +1,19 @@
-// The board panel. It draws what the worker returns and asks the worker to do things; it never
-// builds a command line of its own.
-import {
-  atom,
-  Badge,
-  Button,
-  Heading,
-  plugin,
-  read,
-  Row,
-  set,
-  Stack,
-  Text,
-  type PanelContext
-} from 'orca'
-import type { BoardPayload } from './model'
+// The panel: three tabs, and the board the person opens first. It draws what the worker answered
+// with and asks the worker to do things; it never builds a command line of its own.
 
-/** What the worker last answered. */
-const board = atom<BoardPayload | null>(null)
+import { Callout, Heading, Stack, Tab, Tabs, Text, plugin, read, set } from 'orca'
+import type { PanelContext } from 'orca'
+import { BoardTab } from './panel-board'
+import { error, load, stopWaiting, tab } from './panel-state'
 
-/** Why the board could not be read, if it could not. */
-const failure = atom<string | null>(null)
-
-/** Reads the board again. */
-async function load(): Promise<void> {
-  try {
-    set(board, await plugin.request('board.get'))
-    set(failure, null)
-  } catch (error) {
-    set(failure, error instanceof Error ? error.message : String(error))
+/** The tab a press on the tab bar asks for. */
+function changeTab(value: string): void {
+  if (value === 'board' || value === 'map' || value === 'projects') {
+    set(tab, value)
   }
 }
 
-export function setup(ctx: PanelContext): void {
+export function setup(ctx: PanelContext): () => void {
   // The agent wrote a new snapshot: the board is read again.
   ctx.subscriptions.push(
     plugin.on('board.changed', () => {
@@ -39,45 +21,33 @@ export function setup(ctx: PanelContext): void {
     })
   )
   void load()
+  return () => {
+    stopWaiting()
+  }
 }
 
 export default function Panel() {
-  const payload = read(board)
-  const error = read(failure)
+  const current = read(tab)
+  const failure = read(error)
   return (
     <Stack gap="md">
-      <Row justify="between">
-        <Heading level={2}>规格看板</Heading>
-        <Button
-          onPress={() => {
-            void load()
-          }}
-        >
-          重新读取
-        </Button>
-      </Row>
-      {error !== null ? <Text tone="danger">{error}</Text> : null}
-      {payload === null ? (
-        <Text muted>读取中…</Text>
-      ) : (
-        <Stack gap="xs">
-          {payload.items.length === 0 ? (
-            <Text muted>还没有工作项。点「刷新」让 agent 扫一遍。</Text>
-          ) : (
-            payload.items.map((item) => (
-              <Row key={item.id} justify="between">
-                <Text>{item.title}</Text>
-                <Badge tone="accent">{item.stage}</Badge>
-              </Row>
-            ))
-          )}
-          {payload.warnings.map((warning) => (
-            <Text key={warning} tone="warning" size="xs">
-              {warning}
-            </Text>
-          ))}
-        </Stack>
+      <Heading level={2}>规格看板</Heading>
+      {failure === null ? null : (
+        <Callout tone="danger" title={failure.code}>
+          <Text>{failure.message}</Text>
+        </Callout>
       )}
+      <Tabs label="看板视图" value={current} onChange={changeTab}>
+        <Tab value="board" label="看板">
+          <BoardTab />
+        </Tab>
+        <Tab value="map" label="全貌">
+          <Text muted>这个标签页由后面的任务完成</Text>
+        </Tab>
+        <Tab value="projects" label="项目">
+          <Text muted>这个标签页由后面的任务完成</Text>
+        </Tab>
+      </Tabs>
     </Stack>
   )
 }

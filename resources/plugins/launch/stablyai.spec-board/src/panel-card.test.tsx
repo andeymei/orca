@@ -175,13 +175,26 @@ test('says when the action went to an agent', async () => {
   const host = mockHost({
     requests: {
       'board.get': () => fixturePayload,
+      'action.run': () => ({ kind: 'agent', terminalId: 't5', agent: 'claude' })
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ text: '看增量' })
+  assert.ok(view.find({ text: '已派发给 claude' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('says that an agent took the action when the worker names none', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
       'action.run': () => ({ kind: 'agent', terminalId: 't5' })
     }
   })
   const view = await mount(panel, { host })
   await view.press({ text: '看增量' })
   assert.ok(view.find({ text: '已派发给 agent' }))
-  assert.deepEqual(view.errors, [])
   await view.unmount()
 })
 

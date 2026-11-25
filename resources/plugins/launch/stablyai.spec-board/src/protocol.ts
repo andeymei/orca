@@ -11,6 +11,9 @@ declare module 'orca' {
     /**
      * Runs one action. The panel names the action and, for a change-scoped command, the change
      * it picked — never a command line: the worker resolves that itself.
+     *
+     * On the agent channel the answer carries the agent that took the action: the worker launched
+     * it, so the worker's answer is the truth about what ran.
      */
     'action.run': {
       input: {
@@ -19,7 +22,7 @@ declare module 'orca' {
         itemId?: string
         changeId?: string
       }
-      output: { kind: 'terminal' | 'agent'; terminalId: string }
+      output: { kind: 'terminal' | 'agent'; terminalId: string; agent?: string }
     }
   }
   // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging needs an interface

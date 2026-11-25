@@ -92,9 +92,13 @@ export async function load(): Promise<void> {
   }
 }
 
-/** What the card says after its action ran: which channel took it. */
-function feedbackOf(kind: 'terminal' | 'agent'): string {
-  return kind === 'terminal' ? '已在终端打开' : '已派发给 agent'
+/** What the card says after its action ran: which channel took it, and which agent. */
+function feedbackOf(answer: { kind: 'terminal' | 'agent'; agent?: string }): string {
+  if (answer.kind === 'terminal') {
+    return '已在终端打开'
+  }
+  // The worker names the agent it launched; an answer without a name says only that one did.
+  return `已派发给 ${answer.agent ?? 'agent'}`
 }
 
 /** Runs one action: the panel names it, the worker resolves it into a command or a prompt. */
@@ -107,7 +111,7 @@ async function run(item: WorkItem, action: Action): Promise<void> {
       actionId: action.id,
       itemId: item.id
     })
-    set(feedback, { ...read(feedback), [item.id]: feedbackOf(answer.kind) })
+    set(feedback, { ...read(feedback), [item.id]: feedbackOf(answer) })
   } catch (thrown) {
     set(error, { code: codeOf(thrown), message: messageOf(thrown) })
   }

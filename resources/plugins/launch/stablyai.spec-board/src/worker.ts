@@ -72,7 +72,7 @@ async function runAction(
   orca: OrcaWorkerApi,
   request: ActionRequest,
   state: BoardState
-): Promise<{ kind: 'terminal' | 'agent'; terminalId: string }> {
+): Promise<{ kind: 'terminal' | 'agent'; terminalId: string; agent?: string }> {
   const warnings: string[] = []
   const board = await buildBoard(orca, warnings, state)
   // The board's projects are the authority on where a project lives. An id that is not on the
@@ -126,12 +126,14 @@ async function runAction(
     return { kind: 'terminal', terminalId: created.terminalId }
   }
   const settings = await readSettings(orca)
+  const agent = settings.refreshAgent === '' ? 'claude' : settings.refreshAgent
   const launched = await orca.host.call('agent.launch', {
     workspaceId,
-    agent: settings.refreshAgent === '' ? 'claude' : settings.refreshAgent,
+    agent,
     prompt: action.run.prompt
   })
-  return { kind: 'agent', terminalId: launched.terminalId }
+  // The panel says who took the action; only the worker knows which agent it launched.
+  return { kind: 'agent', terminalId: launched.terminalId, agent }
 }
 
 /** Starts the agent that writes the snapshot. */

@@ -301,8 +301,32 @@ test('the CLI probe decides for a local project', async () => {
     actionId: 'openspec.validate',
     itemId: 'local|/repo/demo#add-x'
   })
-  assert.deepEqual(result, { kind: 'agent', terminalId: 't9' })
+  assert.deepEqual(result, { kind: 'agent', terminalId: 't9', agent: 'claude' })
   assert.deepEqual(host.callsOf('terminal.create'), [])
+  await worker.deactivate()
+})
+
+test('the answer names the agent the worker launched', async () => {
+  const root = await home()
+  machineHasCli(false)
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'agent.launch': { terminalId: 't9' },
+      'terminal.create': { terminalId: 't1' }
+    },
+    settings: { refreshAgent: 'codex' }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  const result = await worker.request('action.run', {
+    projectId: 'local|/repo/demo',
+    actionId: 'openspec.validate',
+    itemId: 'local|/repo/demo#add-x'
+  })
+  // The panel says who took the action, so the answer names the agent that did.
+  assert.deepEqual(result, { kind: 'agent', terminalId: 't9', agent: 'codex' })
   await worker.deactivate()
 })
 

@@ -474,8 +474,15 @@ snapshot and blank the board. So `readOptionalString` returns `undefined` for bo
 `designSpec`, `plan`, `openspec`, `superpowers` — keep their `null`, because there `null` is
 meaningful.
 
+`notes` is optional too (`notes?: string[]`), so `notes: null` reads as absent by the same rule —
+the LLM writes it, and one `null` must not blank the board.
+
 An unexpected exception inside the validator is a bug in the validator, not a malformed snapshot:
 log it and answer with a generic Chinese message that does not leak the English stack fragment.
+That branch is reachable from outside the module — a value with a throwing getter reaches it through
+the public entry point — so it gets a test that asserts the property rather than the copy:
+the returned message must not contain the English fragment, and a malformed snapshot must still
+report its field name.
 
 - [ ] **Step 4: Run it to verify it passes**
 
@@ -1484,8 +1491,8 @@ The prompt must state the snapshot schema **exactly as the validator enforces it
 mismatch shows the user a broken-snapshot card instead of a board: the `stage` enum spellings, that
 `id`/`name`/`host`/`path`/`title`/`topic` are non-empty strings, that counts are non-negative
 integers, and that optional fields (`error`, `summary`, `nextAction`, `openspecCli.version`,
-`openspecCli.path`, `generatedBy.workspace`, `generatedBy.host`) are **omitted** rather than
-written as `null`. The validator reads `null` as absent either way; omitting is what the prompt
+`openspecCli.path`, `generatedBy.workspace`, `generatedBy.host`, `notes`) are **omitted** rather
+than written as `null`. The validator reads `null` as absent either way; omitting is what the prompt
 should ask for.
 
 - [ ] **Step 5: Run it to verify it passes**

@@ -25,6 +25,11 @@ function machineHasCli(available: boolean): void {
     available ? { available: true, version: '1.8.0' } : { available: false }
 }
 
+/** The board faces a machine the probe cannot tell anything about. */
+function machineCannotTell(): void {
+  cliProbe.read = async () => null
+}
+
 async function home(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'spec-board-home-'))
   roots.push(root)
@@ -352,6 +357,38 @@ test('a remote project keeps the answer the agent gave about the CLI', async () 
   const item = payload.items.find((i) => i.projectId === 'ssh:yolo|C:/work/remote')!
   const validate = item.actions.find((action) => action.id === 'openspec.validate')
   assert.equal(validate?.run.kind, 'terminal')
+  await worker.deactivate()
+})
+
+test('a probe that cannot tell does not overrule the agent about the CLI', async () => {
+  const root = await home()
+  machineCannotTell()
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  const project = payload.projects.find((p) => p.id === 'local|/repo/demo')!
+  // The agent says the CLI is there, and the probe could not tell: the answer that stands is the
+  // agent's, not a false 无 CLI.
+  assert.equal(project.openspecCli?.available, true)
+  await worker.deactivate()
+})
+
+test('a project nobody answered for stays unknown when the probe cannot tell', async () => {
+  const root = await home()
+  const other = join(root, 'other')
+  await mkdir(other, { recursive: true })
+  machineCannotTell()
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: { 'workspace.list': workspaces },
+    settings: { scanRoots: other }
+  })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  const unknown = payload.projects.find((p) => p.path === other)!
+  // The probe could not tell, so the board says it does not know — not that there is no CLI.
+  assert.equal(unknown.openspecCli, null)
   await worker.deactivate()
 })
 

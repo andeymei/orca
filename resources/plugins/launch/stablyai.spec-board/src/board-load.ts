@@ -186,6 +186,9 @@ async function specCapabilitiesOf(
  * snapshot that claims a CLI this machine does not have would offer a terminal button that runs
  * a command the user does not have. A remote project keeps the agent's answer — the CLI is on
  * the other host, and the worker cannot run it.
+ *
+ * A probe that could not tell says nothing: the agent's answer stands, and a project nobody
+ * answered for keeps `null` — the board says it does not know — rather than a false 无 CLI.
  */
 async function applyCliProbe(
   localScans: readonly LocalScan[],
@@ -199,6 +202,9 @@ async function applyCliProbe(
     return
   }
   const probe = await cliProbe.read()
+  if (probe === null) {
+    return
+  }
   for (const project of projects) {
     project.openspecCli = probe
   }

@@ -467,6 +467,16 @@ Expected: FAIL — `Cannot find module './board-schema'`.
 
 Each rejection returns `{ ok: false, error: '<field>: <what is wrong>' }` so the panel can name the field.
 
+**`null` means absent for optional fields.** The snapshot is written by an LLM, and `null` for an
+absent optional is the most common thing it produces. A single `null` must not reject the whole
+snapshot and blank the board. So `readOptionalString` returns `undefined` for both `undefined` and
+`null`, and `nextAction: null` is read as absent. The fields whose type says `string | null` —
+`designSpec`, `plan`, `openspec`, `superpowers` — keep their `null`, because there `null` is
+meaningful.
+
+An unexpected exception inside the validator is a bug in the validator, not a malformed snapshot:
+log it and answer with a generic Chinese message that does not leak the English stack fragment.
+
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `orca plugin test resources/plugins/launch/stablyai.spec-board --json`
@@ -1469,6 +1479,14 @@ The worker also watches the store directory with `node:fs` `watch` and posts `bo
 `action.run` resolves the project, then the workspace by normalized absolute path (forward slashes, lower-cased on Windows-style paths), and rejects with a message containing "workspace" when nothing matches. A `terminal` run calls `terminal.create` then `terminal.focus`; an `agent` run calls `agent.launch`.
 
 `board.refresh` resolves the workspace from the `refreshWorkspace` setting, else `workspace.readContext`, writes the prompt to `last-refresh-prompt.md`, then calls `agent.launch`.
+
+The prompt must state the snapshot schema **exactly as the validator enforces it**, because a
+mismatch shows the user a broken-snapshot card instead of a board: the `stage` enum spellings, that
+`id`/`name`/`host`/`path`/`title`/`topic` are non-empty strings, that counts are non-negative
+integers, and that optional fields (`error`, `summary`, `nextAction`, `openspecCli.version`,
+`openspecCli.path`, `generatedBy.workspace`, `generatedBy.host`) are **omitted** rather than
+written as `null`. The validator reads `null` as absent either way; omitting is what the prompt
+should ask for.
 
 - [ ] **Step 5: Run it to verify it passes**
 

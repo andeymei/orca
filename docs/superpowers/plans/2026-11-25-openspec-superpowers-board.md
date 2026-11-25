@@ -883,6 +883,9 @@ Expected: FAIL — modules not found.
 
 `topicSimilarity` is the Jaccard index over kebab tokens; two empty token sets score 0.
 
+`correlate` returns its `matches` **ordered by the Superpowers artifact's input position**, not by
+descending confidence. Task 7 must not assume confidence ordering.
+
 `correlate` builds the candidate edges — an exact topic match (both topics non-empty) or a
 similarity of at least 0.6 — and then finds a **maximum-cardinality matching** over them with
 Kuhn's augmenting-path algorithm, visiting candidate edges in descending weight so that

@@ -1881,10 +1881,12 @@ The `Tabs` control takes the required `label` prop, set to `看板视图` — te
 Board tab:
 
 - A `Row` of six stage `Button`s with counts; the selected one uses `variant="solid"`, the rest `variant="ghost"`.
-- A `Stack` of `Card`s for the selected stage. The item title is rendered as a `<Text>` **child** of the card (not only as the `Card` `title` prop) and the project line as a `<Text>` child too — the test kit's query matcher compares against an element's rendered `text`, so a value that lives only in a prop is not findable.
+- A `Stack` of `Card`s for the selected stage. The item title is rendered as a `<Text>` **child** of the card (not only as the `Card` `title` prop) — the test kit's query matcher compares against an element's rendered `text`, so a value that lives only in a prop is not findable. The project line is a `Badge` (`<Badge tone="neutral">repo · local</Badge>`): a `Badge` takes **text children only** — a `Badge` containing a node kills the whole render — and a Badge's rendered `text` **is** its text child, so it stays findable.
 - Inside each card: a `Row` with two `Progress` — each preceded by a `<Text>` caption reading `OpenSpec 2/5` and `Superpowers 1/8`. The captions are `<Text>` elements for the same reason the title is. `Progress.value` is a **percentage from 0 to 100** (Orca's Progress wraps Radix's, whose indicator translates `100 - value` percent — not a 0-to-1 fraction), and the `Progress` is omitted when that side is null.
 - A `Row` of `Badge`s, one per gap, `tone` from severity (`info` → neutral, `warning` → warning, `error` → danger`). The badge text is the gap's `message`.
-- A `Row` of action `Button`s. A `mutates` action needs two presses within 3 s: the first sets `pendingAction`, the second calls `action.run`. The label changes to `确认执行？` while pending.
+- **One primary action button, the rest behind 「更多」.** The primary is chosen by the item's stage — 提案/设计→`superpowers.brainstorm`, 计划→`superpowers.plan`, 实现→`superpowers.execute`, 校验→`openspec.validate`, 归档→`openspec.archive` — falling back to the card's first offered action when the preferred one is not on it; the table lives in the panel, because it promotes one of the buttons that already exist rather than deriving a fact. The rest go inside a `Collapsible` titled `更多` as `variant="outline"`. The primary is `variant="solid"`.
+- `nextAction` is drawn as a **hint** (its label and its detail), never as a button: it is `{label, detail}` with no action id, so there is nothing for a press to run.
+- A `mutates` action needs two presses within 3 s: the first sets `pendingAction`, the second calls `action.run`. The label changes to `确认执行？` while pending.
 - When the selected stage is empty, an `EmptyState`.
 
 `src/panel.check.ts`:

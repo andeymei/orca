@@ -1,5 +1,5 @@
 import { assert, test } from 'orca/testing'
-import { OPENSPEC_COMMANDS } from './action-catalog'
+import { OPENSPEC_COMMANDS, type OpenspecCommand } from './action-catalog'
 import type { Action } from './model'
 import {
   CHANGE_ID_PLACEHOLDER,
@@ -580,13 +580,63 @@ test('the scope of an action is the scope of the command it came from', () => {
   )
 })
 
-test('every change-scoped command names the change it acts on', () => {
-  // The scope says the command acts on a change, so both of its forms must name it: the
-  // command line and the task an agent is asked to do.
-  for (const command of OPENSPEC_COMMANDS.filter((entry) => entry.scope === 'change')) {
-    assert.ok(command.command?.includes(CHANGE_ID_PLACEHOLDER), command.id)
-    assert.ok(command.task.includes(CHANGE_ID_PLACEHOLDER), command.id)
+/**
+ * The invariant, as a predicate: a change-scoped command names the change in every form it
+ * has. The task an agent is asked to do always names it; a command line, when the CLI has one,
+ * names it too — otherwise the change would have nowhere to go.
+ */
+function namesTheChange(command: OpenspecCommand): boolean {
+  if (!command.task.includes(CHANGE_ID_PLACEHOLDER)) {
+    return false
   }
+  return command.command === null || command.command.includes(CHANGE_ID_PLACEHOLDER)
+}
+
+test('every change-scoped command names the change it acts on', () => {
+  // The scope says the command acts on a change, so every form it has must name it.
+  for (const command of OPENSPEC_COMMANDS.filter((entry) => entry.scope === 'change')) {
+    assert.equal(namesTheChange(command), true, command.id)
+  }
+})
+
+test('a change-scoped command needs no command line of its own', () => {
+  // An agent-only command names the change in its task, and that is enough: there is no
+  // command line for the change to go into.
+  assert.equal(
+    namesTheChange({
+      id: 'openspec.example',
+      label: '示例',
+      mutates: false,
+      scope: 'change',
+      command: null,
+      task: '严格校验变更 <change-id>'
+    }),
+    true
+  )
+  // One with nowhere to put the change is caught.
+  assert.equal(
+    namesTheChange({
+      id: 'openspec.example',
+      label: '示例',
+      mutates: false,
+      scope: 'change',
+      command: 'openspec example',
+      task: '严格校验变更 <change-id>'
+    }),
+    false
+  )
+  // One whose task names no change is caught: the agent would never be told which change.
+  assert.equal(
+    namesTheChange({
+      id: 'openspec.example',
+      label: '示例',
+      mutates: false,
+      scope: 'change',
+      command: 'openspec validate <change-id> --strict',
+      task: '严格校验变更'
+    }),
+    false
+  )
 })
 
 test('the scope decides, not the text of the run', () => {

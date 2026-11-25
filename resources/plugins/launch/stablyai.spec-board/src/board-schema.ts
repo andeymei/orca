@@ -104,6 +104,14 @@ function readStringArray(value: unknown, field: string): string[] {
   return readArray(value, field).map((entry, index) => readString(entry, `${field}[${index}]`))
 }
 
+/** An optional field: absent and null both mean "not written". */
+function readOptionalStringArray(value: unknown, field: string): string[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+  return readStringArray(value, field)
+}
+
 function readEnum<T extends string>(value: unknown, allowed: readonly T[], field: string): T {
   if (typeof value !== 'string' || !allowed.includes(value as T)) {
     fail(field, `期望 ${allowed.join(' | ')}`)
@@ -263,7 +271,7 @@ function readSnapshot(raw: unknown): BoardSnapshot {
   if (source['schemaVersion'] !== 1) {
     fail('schemaVersion', '期望 1')
   }
-  const notes = source['notes'] === undefined ? undefined : readStringArray(source['notes'], 'notes')
+  const notes = readOptionalStringArray(source['notes'], 'notes')
   return {
     schemaVersion: 1,
     generatedAt: readTime(source['generatedAt']),

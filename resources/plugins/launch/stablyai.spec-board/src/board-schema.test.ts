@@ -1,5 +1,6 @@
 import { assert, test } from 'orca/testing'
 import { parseBoardSnapshot } from './board-schema'
+import type { ParseResult } from './board-schema'
 
 const valid = {
   schemaVersion: 1,
@@ -36,6 +37,20 @@ const valid = {
       superpowers: null
     }
   ]
+}
+
+/** Parses without letting the validator's error log reach the test output. */
+function parseSilently(raw: unknown): { result: ParseResult; logged: unknown[][] } {
+  const logged: unknown[][] = []
+  const original = console.error
+  console.error = (...args: unknown[]) => {
+    logged.push(args)
+  }
+  try {
+    return { result: parseBoardSnapshot(raw), logged }
+  } finally {
+    console.error = original
+  }
 }
 
 test('accepts a minimal valid snapshot', () => {
@@ -98,4 +113,42 @@ test('reads null as absent for the optional fields but keeps a null framework', 
   assert.equal('summary' in item, false)
   assert.equal('nextAction' in item, false)
   assert.equal(item.superpowers, null)
+})
+
+test('reads notes: null as absent', () => {
+  const result = parseBoardSnapshot({ ...valid, notes: null })
+  assert.equal(result.ok, true)
+  if (!result.ok) {
+    return
+  }
+  assert.equal('notes' in result.value, false)
+})
+
+test('keeps a validator failure out of the user-facing message', () => {
+  const { result, logged } = parseSilently({
+    ...valid,
+    get projects(): unknown {
+      throw new TypeError("Cannot read properties of undefined (reading 'x')")
+    }
+  })
+  assert.equal(result.ok, false)
+  if (result.ok) {
+    return
+  }
+  assert.equal(result.error.includes('Cannot read properties'), false)
+  assert.equal(
+    logged.flat().some((entry) => String(entry).includes('TypeError')),
+    true
+  )
+})
+
+test('still names the offending field for a malformed snapshot', () => {
+  const item = { ...valid.items[0] } as Record<string, unknown>
+  delete item.projectId
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, false)
+  if (result.ok) {
+    return
+  }
+  assert.match(result.error, /projectId/)
 })

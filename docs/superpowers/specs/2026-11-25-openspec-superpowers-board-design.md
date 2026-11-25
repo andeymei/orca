@@ -476,6 +476,10 @@ type Action = {
 `terminal` 换成 `agent`，prompt 改成"按 `openspec/AGENTS.md` 执行 <动作>"，卡片上标
 `无 CLI` badge。
 
+**动作集按工作项裁剪**：已经归档的变更（`stage === 'archived'`）不再提供"归档"，那条命令只会
+失败。Superpowers 的 `<topic>` 用工作项自己的 topic，不用 OpenSpec 的 change id——一件
+Superpowers 的活有自己的名字，借用 change id 会把它标错。
+
 **命令与提示词里的项目来源值必须先校验**：change id 是 `openspec/changes/` 下的目录名，
 Superpowers 产物路径是 `docs/superpowers/` 下的文件名——两者都来自用户可能克隆下来的仓库，
 因此都是**外部可控**的。`openspec validate <change-id> --strict` 会被敲进终端，是一条 shell

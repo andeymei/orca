@@ -24,6 +24,11 @@ function hashPackagedPluginTree(root) {
       if (directory === root && entry.name === '.git') {
         continue
       }
+      // Why: `.orca` holds a plugin author's generated typings, never shipped; the packaging drops
+      // it, so the hash must not see it either — the same folders the runtime skips for a dev tree.
+      if (entry.name === '.orca') {
+        continue
+      }
       const entryPath = join(directory, entry.name)
       const metadata = lstatSync(entryPath)
       entriesVisited += 1

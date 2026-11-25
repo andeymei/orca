@@ -249,7 +249,7 @@ The sixth export, `OPENSPEC_DECISION_TREE`, holds the six rules from `openspec/A
 - [ ] **Step 7: Run it to verify it passes**
 
 Run: `orca plugin test resources/plugins/launch/stablyai.spec-board --json`
-Expected: PASS — 3 tests.
+Expected: PASS — 6 tests (4 framework-map + 2 scaffold).
 
 - [ ] **Step 8: Type-check**
 

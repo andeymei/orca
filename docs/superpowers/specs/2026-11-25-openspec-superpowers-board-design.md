@@ -94,7 +94,8 @@ resources/plugins/launch/stablyai.spec-board/
 │   ├── gaps.ts              缺口判定（detectGaps）
 │   ├── markdown-tasks.ts    勾选框计数（countCheckboxes）
 │   ├── correlation.ts       topic 归一化与配对（correlate）
-│   ├── local-scan.ts        本地确定性扫描（node:fs）
+│   ├── local-scan.ts        本地扫描的编排（scanProject / projectIdFor / 组装 item）
+│   ├── local-scan-artifacts.ts 本地扫描的文件读取（OpenSpec / Superpowers 读取器）
 │   ├── workspace-match.ts   路径归一化、worktree 折叠、workspace 定位
 │   ├── actions.ts           动作推导（actionsForItem / frameworkActions）
 │   ├── framework-map.ts     两个框架的全貌静态知识（手写）

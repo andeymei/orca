@@ -935,6 +935,7 @@ git commit -m "feat(spec-board): correlate the two frameworks and detect gaps"
 **Files:**
 
 - Create: `src/local-scan.ts`
+- Create: `src/local-scan-artifacts.ts`
 - Test: `src/local-scan.test.ts`
 
 **Interfaces:**
@@ -1043,7 +1044,13 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `local-scan.ts`**
 
-Read with `node:fs/promises`. `openspec` is present when `openspec/changes` or `openspec/specs` exists. Active changes are directories under `openspec/changes/` other than `archive`; archived ones are directories under `openspec/changes/archive/`. Capabilities are directory names under `openspec/specs/`. Superpowers artifacts are `.md` files under `docs/superpowers/specs/` and `docs/superpowers/plans/`, matched by topic.
+Read with `node:fs/promises`. `openspec` is present when `openspec/changes` or `openspec/specs` exists —
+and **"exists" means the directory is there, not that it could be listed**. A directory that exists
+but cannot be read yields an empty list plus a warning, never a false "this project has no
+OpenSpec".
+
+`proposal.md` and `design.md` are checked with `stat`, not read: only `tasks.md` needs its content,
+because only the task list's content carries progress. Active changes are directories under `openspec/changes/` other than `archive`; archived ones are directories under `openspec/changes/archive/`. Capabilities are directory names under `openspec/specs/`. Superpowers artifacts are `.md` files under `docs/superpowers/specs/` and `docs/superpowers/plans/`, matched by topic.
 
 Every artifact becomes one item, keyed by `projectIdFor(host, path) + '#' + topic`, with
 `openspec`/`superpowers` filled from whichever side exists. The progress triples come straight
@@ -1051,6 +1058,15 @@ from `countCheckboxes`: `tasksDone` / `tasksInProgress` / `tasksTotal` for the O
 `planDone` / `planInProgress` / `planTotal` for the Superpowers side. A change and its plan therefore land on one item. Unmatched Superpowers artifacts become items with `openspec: null`.
 
 An unreadable path returns a project with `error` set and no items — it must never throw, because one bad registry entry must not blank the whole board.
+
+**Two modules, not one.** `local-scan.ts` holds the orchestration — `scanProject`, `projectIdFor`,
+the item assembly — and `local-scan-artifacts.ts` holds the filesystem reading: the OpenSpec
+reader, the Superpowers reader, and the directory helpers they share. The root oxlint config caps a
+file at 300 lines and the single-file version sat right at that edge, so the seam keeps both files
+comfortably under it and gives the reading rules one place to live.
+
+A warning that drops something must name what it dropped: the empty-topic warning carries the
+offending file path, not just "a file whose name cannot be normalized".
 
 - [ ] **Step 4: Run it to verify it passes**
 

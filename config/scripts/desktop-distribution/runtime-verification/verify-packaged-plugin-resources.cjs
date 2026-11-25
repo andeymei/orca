@@ -12,6 +12,11 @@ function hashLength(hash, length) {
   hash.update(framedLength)
 }
 
+/** Whether a file is a plugin's own test: the packaging drops it, so the hash skips it. */
+function isPluginTestFile(name) {
+  return name.endsWith('.test.ts') || name.endsWith('.test.tsx')
+}
+
 function hashPackagedPluginTree(root) {
   const files = []
   let entriesVisited = 0
@@ -41,6 +46,11 @@ function hashPackagedPluginTree(root) {
       if (metadata.isDirectory()) {
         visit(entryPath)
       } else if (metadata.isFile()) {
+        // Why: the packaging drops a plugin's own tests, so the hash must not see them either —
+        // the source tree and the packaged tree describe the same bytes.
+        if (isPluginTestFile(entry.name)) {
+          continue
+        }
         totalBytes += metadata.size
         if (totalBytes > MAX_PLUGIN_TOTAL_BYTES) {
           throw new Error(`plugin exceeds the ${MAX_PLUGIN_TOTAL_BYTES}-byte limit`)

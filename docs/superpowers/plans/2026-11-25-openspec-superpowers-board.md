@@ -1891,7 +1891,7 @@ Board tab:
 
 ```ts
 import { defineCheck } from 'orca/testing'
-import { fixturePayload } from './panel.fixture'
+import { fixturePayload } from './panel-fixture'
 
 export default defineCheck({
   empty: {
@@ -1918,7 +1918,18 @@ export default defineCheck({
 })
 ```
 
-Export the fixture payload from `src/panel.fixture.ts` so the test and `panel.check.ts` share it.
+Export the fixture payload from `src/panel-fixture.ts` so the test and `panel.check.ts` share it.
+
+**The file is named `panel-fixture.ts`, not `panel.fixture.ts`.** Two independent reasons, both
+verified: Orca's plugin module loader takes the **last dot** of an import target as the extension
+(`posix.extname` in `src/main/plugins/source-loading/plugin-module-candidate-paths.ts`), so
+`./panel.fixture` is read as the extension `.fixture` and the loader never tries
+`panel.fixture.ts` — it refuses with 「cannot import "./panel.fixture": no such file in the
+plugin」. And the repo's own oxlint config **bans importing** `*.fixture.ts`
+(`.oxlintrc.json`: "Component fixtures are dev-only and load through the fixture explorer's
+import.meta.glob; importing one would ship it in a production bundle") — that name is reserved
+for the dev-only React component fixtures. `panel-fixture.ts` has one dot, so the loader resolves
+it extensionlessly and the lint rule does not match it.
 
 - [ ] **Step 4: Run it to verify it passes**
 
@@ -2171,6 +2182,6 @@ git -c http.version=HTTP/1.1 push origin main
 ## Self-Review Notes
 
 - **Spec coverage:** §4.1–4.4 → Tasks 1, 2, 7; §4.5–4.8 → Tasks 2, 3, 4; §4.9 → Task 1; §4.10 → Tasks 8, 9, 10; §4.11 → Tasks 6, 7, 9; §5 → Task 7; §6 → Tasks 2, 7, 10; §8 → every task's tests plus Task 12; §4.1 bundling → Task 11.
-- **Two files beyond the spec's §4.1 tree:** `workspace-match.ts` (path normalization, worktree collapsing and workspace lookup — split out so Review Focus 3 is unit-testable instead of buried in the worker) and `panel.fixture.ts` (the test and `panel.check.ts` share one payload). Both were added back to the spec's tree.
+- **Two files beyond the spec's §4.1 tree:** `workspace-match.ts` (path normalization, worktree collapsing and workspace lookup — split out so Review Focus 3 is unit-testable instead of buried in the worker) and `panel-fixture.ts` (the test and `panel.check.ts` share one payload). Both were added back to the spec's tree.
 - **Deliberate omission:** no unit test for the `fs.watch` wiring; it is covered by Task 12's acceptance point 3 instead, because a watch test in Node would only prove Node's watcher works.
 - **Pre-flight fixes applied to this plan before Task 1** (both found by reading the test kit's matcher and the worker test's own data flow): the board card's title and progress captions are rendered as `<Text>` children so they are findable by text, and Task 7's terminal-action test seeds `board.json` because the local scan cannot find anything on a fake path.

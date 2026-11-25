@@ -85,7 +85,7 @@ resources/plugins/launch/stablyai.spec-board/
 ├── src/
 │   ├── panel.tsx            组件面板：看板 / 全貌 / 项目 三个 Tab
 │   ├── panel.check.ts       orca plugin check 的场景
-│   ├── panel.fixture.ts     测试与 check 共用的样例负载
+│   ├── panel-fixture.ts     测试与 check 共用的样例负载
 │   ├── worker.ts            trusted-worker：合并、刷新、执行动作
 │   ├── protocol.ts          panel ↔ worker 请求与事件契约
 │   ├── model.ts             共享类型（快照 / 工作项 / 动作 / 阶段）
@@ -509,7 +509,9 @@ shell 元字符。规则同时适用于 change id、工作项的 topic 和 Super
 "该项目不在 Orca workspace 里"，不猜。
 
 **确认**：`mutates: true` 的动作要二次确认——按钮第一次按下变成"确认执行？"，
-3 秒内再按才真的执行；`mutates: false` 一键执行。
+3 秒内再按才真的执行；`mutates: false` 一键执行。这个 3 秒窗口用**定时器**实现，所以后台标签页
+的定时器被节流时，窗口只会**变长**不会变短。变长的方向是安全的：按钮在窗口里一直显示
+"确认执行？"，用户按下它就是明确在确认，不存在"没确认就跑了"的路径。
 
 **结果反馈**：terminal 通道执行后卡片显示"已在终端打开"；agent 通道显示"已派发给
 &lt;agent&gt;"。插件不申请 `terminal:read`，结果以终端/agent 自身为准。

@@ -865,8 +865,13 @@ Expected: FAIL — modules not found.
 `detectGaps` implements the spec's §4.8 table, including the `> 0.30` drift threshold and the rule that drift is only reported when both sides have started.
 
 A **finished** work item — the OpenSpec change is archived, or the Superpowers plan is `done` —
-reports only `archived-spec-stale`. The other gaps describe work in flight, and nagging about a
-change that already shipped is noise that dilutes the signal.
+reports only `archived-spec-stale` and `tasks-complete-not-archived`. The other four gaps describe
+work in flight, and nagging about a change that already shipped is noise that dilutes the signal.
+
+`tasks-complete-not-archived` keeps its own precondition — the OpenSpec change is not archived and
+all its tasks are ticked — and stays **outside** that gate. Otherwise a Superpowers plan that is
+done while its OpenSpec change still sits in `changes/` with every task ticked would report
+nothing, even though that change still needs archiving.
 
 `existingSpecCapabilities` is the list of capability directories that exist under the project's
 `openspec/specs/`. It is optional, and **absent means unknown**, not "every archived capability is

@@ -365,8 +365,13 @@ export type WorkItem = SnapshotItem & {
 规则只在 worker 里跑，输入是已校验的快照 + 本地扫描结果，输出附加到 `WorkItem.gaps`。
 agent 也可以在快照里直接写 `gaps`，worker 与 agent 的缺口取并集，按 `code` 去重。
 
-**已完成的工作项只报 `archived-spec-stale`**：OpenSpec 变更已归档、或 Superpowers 计划已完成时，
-其余缺口描述的是"进行中的工作"。对已经发布的东西报警只是噪音，会稀释真正要看的信号。
+**已完成的工作项只报 `archived-spec-stale` 与 `tasks-complete-not-archived`**：OpenSpec 变更已
+归档、或 Superpowers 计划已完成时，其余四条缺口描述的是"进行中的工作"。对已经发布的东西报警
+只是噪音，会稀释真正要看的信号。
+
+`tasks-complete-not-archived` 保留自己的前置条件（变更未归档且任务全勾），并且**不受这个闸门
+约束**——否则"Superpowers 计划已完成、但 OpenSpec 变更还在 `changes/` 里等着归档"这种情况会
+一条告警都不报，而那个变更明明还没归档。
 
 判定"能力清单未知"用的是 `existingSpecCapabilities` 是否提供——它就是这个项目
 `openspec/specs/` 下的能力目录列表。没提供就不报 `archived-spec-stale`，而不是默认每个已归档

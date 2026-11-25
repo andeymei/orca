@@ -61,6 +61,8 @@ function createRuntime(stub: {
   executionHostId: string
   workspacePath: string
   writeFileExplorerFile?: (...args: unknown[]) => Promise<unknown>
+  /** Keeps the job in the running state: the launch never finishes. */
+  holdAgentLaunch?: boolean
 }): OrcaRuntimeService {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the refactor handlers read only resolveRuntimeFileTarget, requireStore, prepareHostAgentLaunch, getHostAgentLaunchEnv and writeFileExplorerFile.
   const runtime = {
@@ -72,6 +74,9 @@ function createRuntime(stub: {
     requireStore: () => ({ getSettings: () => ({}) }),
     // The safety net: a test that lets the background run start must never spawn an agent.
     prepareHostAgentLaunch: async () => {
+      if (stub.holdAgentLaunch) {
+        await new Promise(() => {})
+      }
       throw new Error('the test must not start an agent')
     },
     getHostAgentLaunchEnv: () => ({}),
@@ -180,6 +185,27 @@ describe('the refactoring RPC methods', () => {
       error: {
         message:
           'Refactoring on a remote host is not supported: start it in a workspace on this machine.'
+      }
+    })
+  })
+
+  it('refuses a second refactoring of a file that is already running', async () => {
+    // Why: two turns on one file compete for the same agent and the same budget, and the user
+    // pays for two reviews of one change.
+    const root = await workspaceRoot()
+    const runtime = createRuntime({
+      executionHostId: 'local',
+      workspacePath: root,
+      holdAgentLaunch: true
+    })
+    const first = await dispatch(runtime, 'refactor.propose', PROPOSE_PARAMS)
+    expect(first).toMatchObject({ ok: true })
+    const second = await dispatch(runtime, 'refactor.propose', PROPOSE_PARAMS)
+    expect(second).toMatchObject({
+      ok: false,
+      error: {
+        message:
+          'A refactoring of this file is already running. Wait for it to finish before starting another one.'
       }
     })
   })

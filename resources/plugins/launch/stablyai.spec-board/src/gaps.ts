@@ -33,8 +33,9 @@ export function detectGaps(item: {
   const existingSpecCapabilities = item.existingSpecCapabilities
   const gaps: Gap[] = []
 
-  // Work that has shipped is not work in flight: the five in-flight gaps would only be noise
-  // there. What is still worth saying about it is a capability that never reached the specs.
+  // Work that has shipped is not work in flight: the four in-flight gaps would only be noise
+  // there. What is still worth saying about finished work is what it left undone — a change
+  // that still needs archiving, or a capability that never reached the specs.
   const finished = openspec?.stage === 'archived' || superpowers?.stage === 'done'
 
   if (!finished) {
@@ -88,19 +89,22 @@ export function detectGaps(item: {
         message: '有 tasks.md，但缺少 design.md'
       })
     }
+  }
 
-    if (
-      openspec &&
-      openspec.hasTasks &&
-      openspec.tasksTotal > 0 &&
-      openspec.tasksDone === openspec.tasksTotal
-    ) {
-      gaps.push({
-        code: 'tasks-complete-not-archived',
-        severity: 'info',
-        message: 'tasks.md 全部勾完，但变更还在 changes/ 里没有归档'
-      })
-    }
+  // Outside the gate on purpose: a plan that is done while its change still sits in `changes/`
+  // with every task ticked is a change that still needs archiving, and that is worth saying.
+  if (
+    openspec &&
+    openspec.stage !== 'archived' &&
+    openspec.hasTasks &&
+    openspec.tasksTotal > 0 &&
+    openspec.tasksDone === openspec.tasksTotal
+  ) {
+    gaps.push({
+      code: 'tasks-complete-not-archived',
+      severity: 'info',
+      message: 'tasks.md 全部勾完，但变更还在 changes/ 里没有归档'
+    })
   }
 
   if (openspec?.stage === 'archived' && existingSpecCapabilities) {

@@ -1,11 +1,12 @@
 // What the panel knows while it is open: the board the worker answered with, which tab is
 // showing, which stage the rail is on, and the action that waits for its second press.
 //
-// The panel never builds a command line. It names an action and the item it belongs to; the
-// worker resolves that into a command or a prompt, and only the worker can reach a terminal.
+// The panel never builds a command line. It names an action and what it applies to — a work
+// item, or a change; the worker resolves that into a command or a prompt, and only the worker
+// can reach a terminal.
 
 import { atom, plugin, read, set } from 'orca'
-import type { Action, BoardPayload, UnifiedStage, WorkItem } from './model'
+import type { Action, BoardPayload, UnifiedStage } from './model'
 
 /** Which of the three tabs the panel shows. */
 export type PanelTab = 'board' | 'map' | 'projects'
@@ -15,6 +16,12 @@ export const payload = atom<BoardPayload | null>(null)
 
 /** The tab that is open. */
 export const tab = atom<PanelTab>('board')
+
+/** The project the map's commands run in; null means "the first project the board knows". */
+export const mapProject = atom<string | null>(null)
+
+/** The change the map's change-scoped commands act on; null means "none picked yet". */
+export const mapChange = atom<string | null>(null)
 
 /** The stage the rail is on; null means "the first stage that has work". */
 export const stage = atom<UnifiedStage | null>(null)
@@ -26,9 +33,9 @@ export const error = atom<{ code: string; message: string } | null>(null)
 export const busy = atom<boolean>(false)
 
 /** The action that waits for its second press. */
-export const pendingAction = atom<{ itemId: string; actionId: string } | null>(null)
+export const pendingAction = atom<{ scope: string; actionId: string } | null>(null)
 
-/** What the last action on each card did, by the card's item id. */
+/** What the last action on each button did, by the scope the press was filed under. */
 export const feedback = atom<Record<string, string>>({})
 
 /** How long a mutating action waits for its second press. */
@@ -120,17 +127,51 @@ function feedbackOf(answer: { kind: 'terminal' | 'agent'; agent?: string }): str
   return `已派发给 ${answer.agent ?? 'agent'}`
 }
 
+/**
+ * What a press on a button names: the action, the project it runs in, and what it applies to.
+ * A card's press names a work item; the map's press names a change, or nothing at all.
+ */
+export type ActionPress = {
+  /** Where the press is filed: the item's id, or the map's own key. */
+  scope: string
+  projectId: string
+  action: Action
+  /** The work item the action belongs to; a command of the map's palette names none. */
+  itemId?: string
+  /** The change a change-scoped command acts on. */
+  changeId?: string
+}
+
+/**
+ * The request the worker gets: what the panel names, never a command. A field the press does
+ * not carry is left out, so the request says exactly what it means.
+ */
+function requestOf(press: ActionPress): {
+  projectId: string
+  actionId: string
+  itemId?: string
+  changeId?: string
+} {
+  const request: { projectId: string; actionId: string; itemId?: string; changeId?: string } = {
+    projectId: press.projectId,
+    actionId: press.action.id
+  }
+  if (press.itemId !== undefined) {
+    request.itemId = press.itemId
+  }
+  if (press.changeId !== undefined) {
+    request.changeId = press.changeId
+  }
+  return request
+}
+
 /** Runs one action: the panel names it, the worker resolves it into a command or a prompt. */
-async function run(item: WorkItem, action: Action): Promise<void> {
+async function run(press: ActionPress): Promise<void> {
   // The callout describes the latest attempt: a new action clears the failure of the last one.
   set(error, null)
   try {
-    const answer = await plugin.request('action.run', {
-      projectId: item.projectId,
-      actionId: action.id,
-      itemId: item.id
-    })
-    set(feedback, { ...read(feedback), [item.id]: feedbackOf(answer) })
+    const answer = await plugin.request('action.run', requestOf(press))
+    set(feedback, { ...read(feedback), [press.scope]: feedbackOf(answer) })
   } catch (thrown) {
     set(error, { code: codeOf(thrown), message: messageOf(thrown) })
   }
@@ -146,8 +187,8 @@ export function stopWaiting(): void {
 }
 
 /** Asks for the second press: the button asks, and the press within the window runs the action. */
-function ask(itemId: string, actionId: string): void {
-  set(pendingAction, { itemId, actionId })
+function ask(scope: string, actionId: string): void {
+  set(pendingAction, { scope, actionId })
   if (confirmTimer !== null) {
     clearTimeout(confirmTimer)
   }
@@ -158,13 +199,14 @@ function ask(itemId: string, actionId: string): void {
 }
 
 /** What a press on an action's button does: run it, or ask for the second press first. */
-export function pressAction(item: WorkItem, action: Action): void {
+export function pressAction(press: ActionPress): void {
   const waiting = read(pendingAction)
-  const asked = waiting !== null && waiting.itemId === item.id && waiting.actionId === action.id
-  if (action.mutates && !asked) {
-    ask(item.id, action.id)
+  const asked =
+    waiting !== null && waiting.scope === press.scope && waiting.actionId === press.action.id
+  if (press.action.mutates && !asked) {
+    ask(press.scope, press.action.id)
     return
   }
   stopWaiting()
-  void run(item, action)
+  void run(press)
 }

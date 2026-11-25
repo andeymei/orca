@@ -7,7 +7,11 @@ export type FrameworkStage = {
   id: 'create' | 'implement' | 'archive'
   title: string
   artifacts: string[]
-  commands: { label: string; command: string }[]
+  /**
+   * The commands of the stage. `actionId` names the palette action the row's button runs; a row
+   * without one is documentation — a command the plugin shows but does not run.
+   */
+  commands: { label: string; command: string; actionId?: string }[]
 }
 
 export type SuperpowersStep = {
@@ -15,6 +19,8 @@ export type SuperpowersStep = {
   role: string
   artifact: string | null
   gate: string | null
+  /** The palette action that runs this skill; absent when the skill is not one to run. */
+  actionId?: string
 }
 
 export type Correspondence = { openspec: string; superpowers: string; note: string }
@@ -33,9 +39,18 @@ export const OPENSPEC_STAGES: readonly FrameworkStage[] = [
       'openspec/changes/<change-id>/specs/<capability>/spec.md'
     ],
     commands: [
-      { label: '列出进行中的变更', command: 'openspec list' },
+      { label: '列出进行中的变更', command: 'openspec list', actionId: 'openspec.list' },
       { label: '列出已有能力', command: 'openspec list --specs' },
-      { label: '严格校验提案', command: 'openspec validate <change-id> --strict' }
+      {
+        label: '严格校验提案',
+        command: 'openspec validate <change-id> --strict',
+        actionId: 'openspec.validate'
+      },
+      {
+        label: '生成 proposal、tasks 和增量 spec',
+        command: 'agent 按 openspec/AGENTS.md Stage 1 生成',
+        actionId: 'openspec.propose'
+      }
     ]
   },
   {
@@ -48,8 +63,12 @@ export const OPENSPEC_STAGES: readonly FrameworkStage[] = [
       'openspec/changes/<change-id>/specs/<capability>/spec.md'
     ],
     commands: [
-      { label: '查看变更内容', command: 'openspec show <change-id>' },
-      { label: '严格校验增量', command: 'openspec validate <change-id> --strict' }
+      { label: '查看变更内容', command: 'openspec show <change-id>', actionId: 'openspec.show' },
+      {
+        label: '严格校验增量',
+        command: 'openspec validate <change-id> --strict',
+        actionId: 'openspec.validate'
+      }
     ]
   },
   {
@@ -60,7 +79,7 @@ export const OPENSPEC_STAGES: readonly FrameworkStage[] = [
       'openspec/specs/<capability>/spec.md'
     ],
     commands: [
-      { label: '归档变更', command: 'openspec archive <change-id> --yes' },
+      { label: '归档变更', command: 'openspec archive <change-id> --yes', actionId: 'openspec.archive' },
       { label: '严格校验归档结果', command: 'openspec validate --strict' }
     ]
   }
@@ -96,13 +115,15 @@ export const SUPERPOWERS_FLOW: readonly SuperpowersStep[] = [
     skill: 'brainstorming',
     role: '设计阶段：问清需求与取舍，写出设计 spec 并拿到批准',
     artifact: 'docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md',
-    gate: 'spec 批准后才允许写实施计划'
+    gate: 'spec 批准后才允许写实施计划',
+    actionId: 'superpowers.brainstorm'
   },
   {
     skill: 'writing-plans',
     role: '计划阶段：把批准的设计 spec 拆成带勾选框的实施计划',
     artifact: 'docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md',
-    gate: '设计未批准不得写代码'
+    gate: '设计未批准不得写代码',
+    actionId: 'superpowers.plan'
   },
   {
     skill: 'using-git-worktrees',
@@ -114,7 +135,8 @@ export const SUPERPOWERS_FLOW: readonly SuperpowersStep[] = [
     skill: 'executing-plans',
     role: '执行方式一：当前会话里自己按计划一步步实现',
     artifact: null,
-    gate: null
+    gate: null,
+    actionId: 'superpowers.execute'
   },
   {
     skill: 'subagent-driven-development',
@@ -144,7 +166,8 @@ export const SUPERPOWERS_FLOW: readonly SuperpowersStep[] = [
     skill: 'requesting-code-review',
     role: '完成后：请求一次代码评审',
     artifact: null,
-    gate: null
+    gate: null,
+    actionId: 'superpowers.review'
   },
   {
     skill: 'receiving-code-review',
@@ -156,7 +179,8 @@ export const SUPERPOWERS_FLOW: readonly SuperpowersStep[] = [
     skill: 'verification-before-completion',
     role: '声称完成前：跑验证命令、看真实输出再下结论',
     artifact: null,
-    gate: null
+    gate: null,
+    actionId: 'superpowers.verify'
   },
   {
     skill: 'finishing-a-development-branch',

@@ -4,6 +4,7 @@
 import { Callout, Heading, Stack, Tab, Tabs, Text, plugin, read, set } from 'orca'
 import type { PanelContext } from 'orca'
 import { BoardTab } from './panel-board'
+import { MapTab } from './panel-map'
 import { error, newBoardReads, stopWaiting, tab } from './panel-state'
 
 /** The tab a press on the tab bar asks for. */
@@ -46,7 +47,7 @@ export default function Panel() {
           <BoardTab />
         </Tab>
         <Tab value="map" label="全貌">
-          <Text muted>这个标签页由后面的任务完成</Text>
+          <MapTab />
         </Tab>
         <Tab value="projects" label="项目">
           <Text muted>这个标签页由后面的任务完成</Text>

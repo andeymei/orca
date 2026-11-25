@@ -1,4 +1,5 @@
 import { assert, test } from 'orca/testing'
+import { frameworkActions } from './actions'
 import {
   CORRESPONDENCE,
   OPENSPEC_DECISION_TREE,
@@ -33,6 +34,7 @@ test('the OpenSpec stages are the three real stages, with their real files', () 
       'openspec list',
       'openspec list --specs',
       'openspec validate <change-id> --strict',
+      'agent 按 openspec/AGENTS.md Stage 1 生成',
       'openspec show <change-id>',
       'openspec validate <change-id> --strict',
       'openspec archive <change-id> --yes',
@@ -102,4 +104,67 @@ test('the decision tree says when to write a proposal and when to just fix', () 
       ['拿不准', '写 proposal（更安全）']
     ]
   )
+})
+
+test('the OpenSpec rows name the catalog action of the command they document', () => {
+  assert.deepEqual(
+    OPENSPEC_STAGES.flatMap((stage) =>
+      stage.commands.map((command) => [command.command, command.actionId ?? null])
+    ),
+    [
+      ['openspec list', 'openspec.list'],
+      // The plugin does not run this one: the CLI has no form of it for the palette.
+      ['openspec list --specs', null],
+      ['openspec validate <change-id> --strict', 'openspec.validate'],
+      ['agent 按 openspec/AGENTS.md Stage 1 生成', 'openspec.propose'],
+      ['openspec show <change-id>', 'openspec.show'],
+      ['openspec validate <change-id> --strict', 'openspec.validate'],
+      ['openspec archive <change-id> --yes', 'openspec.archive'],
+      // It validates without a change, so no change-scoped action covers it.
+      ['openspec validate --strict', null]
+    ]
+  )
+})
+
+test('the Superpowers steps name the catalog action of the skill they describe', () => {
+  assert.deepEqual(
+    SUPERPOWERS_FLOW.map((step) => [step.skill, step.actionId ?? null]),
+    [
+      // The session entry is not a step to run.
+      ['using-superpowers', null],
+      ['brainstorming', 'superpowers.brainstorm'],
+      ['writing-plans', 'superpowers.plan'],
+      ['using-git-worktrees', null],
+      ['executing-plans', 'superpowers.execute'],
+      ['subagent-driven-development', null],
+      ['dispatching-parallel-agents', null],
+      ['test-driven-development', null],
+      ['systematic-debugging', null],
+      ['requesting-code-review', 'superpowers.review'],
+      ['receiving-code-review', null],
+      ['verification-before-completion', 'superpowers.verify'],
+      ['finishing-a-development-branch', null],
+      ['diagnosing-superpowers', null],
+      ['writing-skills', null]
+    ]
+  )
+})
+
+test('every action the map names is an action of the catalog', () => {
+  const palette = frameworkActions(true)
+  const catalog = new Set([
+    ...palette.openspec.map((action) => action.id),
+    ...palette.superpowers.map((action) => action.id)
+  ])
+  const named = [
+    ...OPENSPEC_STAGES.flatMap((stage) =>
+      stage.commands.map((command) => command.actionId)
+    ),
+    ...SUPERPOWERS_FLOW.map((step) => step.actionId)
+  ].filter((actionId): actionId is string => actionId !== undefined)
+  // Ten distinct actions: the five OpenSpec commands of the palette and the five skills.
+  assert.equal(new Set(named).size, 10)
+  for (const actionId of named) {
+    assert.ok(catalog.has(actionId), `${actionId} is not an action of the catalog`)
+  }
 })

@@ -202,6 +202,17 @@ export function frameworkActions(cliAvailable: boolean): {
 }
 
 /**
+ * Whether the action names a change. The panel asks this before it offers the action, and the
+ * worker asks it before it runs it: one signal, so "pick a change first" and "needs-change-id"
+ * cannot disagree.
+ */
+export function needsChangeId(action: Action): boolean {
+  return action.run.kind === 'terminal'
+    ? action.run.command.includes(CHANGE_ID_PLACEHOLDER)
+    : action.run.prompt.includes(CHANGE_ID_PLACEHOLDER)
+}
+
+/**
  * The palette action with a real change id in it. The panel names the action and the change;
  * the worker resolves it here, so a command line is never built in the renderer. A change id
  * that fails the gate is refused: the palette is for a repository the user may have cloned.
@@ -210,11 +221,7 @@ export function resolvePaletteAction(
   action: Action,
   changeId: string | undefined
 ): { ok: true; action: Action } | { ok: false; reason: 'needs-change-id' | 'unsafe-change-id' } {
-  const carriesPlaceholder =
-    action.run.kind === 'terminal'
-      ? action.run.command.includes(CHANGE_ID_PLACEHOLDER)
-      : action.run.prompt.includes(CHANGE_ID_PLACEHOLDER)
-  if (!carriesPlaceholder) {
+  if (!needsChangeId(action)) {
     return { ok: true, action }
   }
   if (changeId === undefined) {

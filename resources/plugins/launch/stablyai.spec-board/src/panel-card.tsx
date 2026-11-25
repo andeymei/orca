@@ -32,11 +32,11 @@ function projectLine(project: SnapshotProject | null, item: WorkItem): string {
 
 /** The label on an action's button: the action's own, or the question it asks first. */
 function actionLabel(
-  item: WorkItem,
+  scope: string,
   action: Action,
-  waiting: { itemId: string; actionId: string } | null
+  waiting: { scope: string; actionId: string } | null
 ): string {
-  const asked = waiting !== null && waiting.itemId === item.id && waiting.actionId === action.id
+  const asked = waiting !== null && waiting.scope === scope && waiting.actionId === action.id
   return asked ? '确认执行？' : action.label
 }
 
@@ -133,10 +133,15 @@ export function WorkCard({
               size="sm"
               variant="solid"
               onPress={() => {
-                pressAction(item, primary)
+                pressAction({
+                  scope: item.id,
+                  projectId: item.projectId,
+                  action: primary,
+                  itemId: item.id
+                })
               }}
             >
-              {actionLabel(item, primary, waiting)}
+              {actionLabel(item.id, primary, waiting)}
             </Button>
           )}
           {others.length === 0 ? null : (
@@ -148,10 +153,15 @@ export function WorkCard({
                     size="sm"
                     variant="outline"
                     onPress={() => {
-                      pressAction(item, action)
+                      pressAction({
+                        scope: item.id,
+                        projectId: item.projectId,
+                        action,
+                        itemId: item.id
+                      })
                     }}
                   >
-                    {actionLabel(item, action, waiting)}
+                    {actionLabel(item.id, action, waiting)}
                   </Button>
                 ))}
               </Row>

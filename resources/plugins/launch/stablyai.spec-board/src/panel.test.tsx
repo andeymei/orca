@@ -181,7 +181,8 @@ test('the other two tabs are there', async () => {
   const view = await mount(panel, { host })
   assert.ok(view.find({ type: 'Tabs' }))
   await view.select({ type: 'Tabs' }, 'map')
-  assert.ok(view.find({ text: '这个标签页由后面的任务完成' }))
+  // The map is drawn in its own tab, and the board's cards are not in it.
+  assert.ok(view.find({ text: 'OpenSpec' }))
   assert.equal(view.find({ text: 'Add X' }), null)
   await view.unmount()
 })

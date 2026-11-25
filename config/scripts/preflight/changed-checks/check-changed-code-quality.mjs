@@ -8,6 +8,7 @@ import { scanAstGrep } from '../../static-analysis/structural-scan/ast-grep-scan
 import { resolvePullRequestDiffBase } from '../../git/pr-diff-base/git-pull-request-diff-base.mjs'
 import { resolveOxlintInvocation } from '../../tool-invocation/oxlint-cli-invocation.mjs'
 import { createExistingTypeAssertionMatcher } from '../../static-analysis/type-assertion-budget/existing-type-assertions.mjs'
+import { chunkForCommandLine, commandLineCharLimit } from './command-line-file-chunks.mjs'
 import {
   JS_PLUGINS_CONFIG,
   JS_PLUGIN_DISABLE_PATTERN,
@@ -544,38 +545,42 @@ function isSuppressedDiagnostic(diagnostic, root) {
 
 function runOxlintScan(root, scan, files) {
   const { command, prefixArgs } = resolveOxlintInvocation(root)
-  const result = spawnSync(command, [...prefixArgs, ...scan.args, '--format', 'json', ...files], {
-    cwd: root,
-    encoding: 'utf8',
-    maxBuffer: 128 * 1024 * 1024,
-    windowsHide: true
+  return chunkForCommandLine(files, commandLineCharLimit()).flatMap((chunk) => {
+    const result = spawnSync(command, [...prefixArgs, ...scan.args, '--format', 'json', ...chunk], {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 128 * 1024 * 1024,
+      windowsHide: true
+    })
+    if (result.error) {
+      throw result.error
+    }
+    if (!result.stdout.trim()) {
+      process.stderr.write(result.stderr)
+      throw new Error(`${scan.label} failed before producing diagnostics.`)
+    }
+    return parseOxlintOutput(result.stdout, scan.label).diagnostics ?? []
   })
-  if (result.error) {
-    throw result.error
-  }
-  if (!result.stdout.trim()) {
-    process.stderr.write(result.stderr)
-    throw new Error(`${scan.label} failed before producing diagnostics.`)
-  }
-  return parseOxlintOutput(result.stdout, scan.label).diagnostics ?? []
 }
 
 /** ast-grep matches as Oxlint-shaped diagnostics; `info` flaky-test rules are owned by their ratchet. */
 export function runAstGrepScan(root, files) {
-  return scanAstGrep(root, { minSeverity: 'warning', paths: files }).map((match) => ({
-    filename: match.file,
-    code: `ast-grep(${match.ruleId})`,
-    message: match.message,
-    labels: [
-      {
-        span: {
-          line: match.range.start.line + 1,
-          offset: match.range.byteOffset.start,
-          length: match.range.byteOffset.end - match.range.byteOffset.start
+  return chunkForCommandLine(files, commandLineCharLimit())
+    .flatMap((chunk) => scanAstGrep(root, { minSeverity: 'warning', paths: chunk }))
+    .map((match) => ({
+      filename: match.file,
+      code: `ast-grep(${match.ruleId})`,
+      message: match.message,
+      labels: [
+        {
+          span: {
+            line: match.range.start.line + 1,
+            offset: match.range.byteOffset.start,
+            length: match.range.byteOffset.end - match.range.byteOffset.start
+          }
         }
-      }
-    ]
-  }))
+      ]
+    }))
 }
 
 export function main(

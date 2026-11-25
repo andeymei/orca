@@ -19,14 +19,18 @@ import {
   selectImportingTests
 } from './check-changed-direct-tests.mjs'
 import { planChangedChecks } from './check-changed-selection.mjs'
+import {
+  chunkForCommandLine,
+  commandLineCharLimit,
+  fitsCommandLine
+} from './command-line-file-chunks.mjs'
 import { resolveOxcCliInvocation } from '../../tool-invocation/oxc-cli-invocation.mjs'
 import { resolvePnpmCliInvocation } from '../../tool-invocation/pnpm-cli-invocation.mjs'
 
 const OUTPUT_TAIL_LINES = 200
 const HEARTBEAT_MS = 60_000
 const DEFAULT_STEP_TIMEOUT_MINUTES = 30
-// Windows caps a command line near 32K characters; past this, lint the whole tree instead.
-const MAX_PATH_ARGUMENT_CHARS = 24_000
+const MAX_PATH_ARGUMENT_CHARS = commandLineCharLimit()
 // Concurrent agents each run this gate; automatic Vitest sizing per run overloaded shared hosts.
 const DEFAULT_VITEST_MAX_WORKERS = '2'
 const LINTABLE = /\.[cm]?[jt]sx?$/
@@ -109,24 +113,6 @@ function tail(text) {
     `… ${lines.length - OUTPUT_TAIL_LINES} earlier lines omitted`,
     ...lines.slice(-OUTPUT_TAIL_LINES)
   ].join('\n')
-}
-
-function fitsCommandLine(files) {
-  return files.reduce((total, file) => total + file.length + 1, 0) <= MAX_PATH_ARGUMENT_CHARS
-}
-
-function chunkForCommandLine(files) {
-  const chunks = [[]]
-  let length = 0
-  for (const file of files) {
-    if (length + file.length + 1 > MAX_PATH_ARGUMENT_CHARS && chunks.at(-1).length > 0) {
-      chunks.push([])
-      length = 0
-    }
-    chunks.at(-1).push(file)
-    length += file.length + 1
-  }
-  return chunks
 }
 
 // Changed tests plus tests that import a changed module; transitive fan-out stays with CI.
@@ -233,13 +219,13 @@ function buildTasks(root, plan, { files, mergeBase, maxWorkers, bun, transitive 
         ...(useRelated
           ? [
               vitest(
-                fitsCommandLine(related)
+                fitsCommandLine(related, MAX_PATH_ARGUMENT_CHARS)
                   ? ['related', '--run', ...related]
                   : ['run', `--changed=${mergeBase}`]
               )
             ]
           : []),
-        ...chunkForCommandLine(explicit)
+        ...chunkForCommandLine(explicit, MAX_PATH_ARGUMENT_CHARS)
           .filter((chunk) => chunk.length > 0)
           .map((chunk) => vitest(['run', ...chunk]))
       ]
@@ -263,14 +249,14 @@ function buildTasks(root, plan, { files, mergeBase, maxWorkers, bun, transitive 
             ...oxfmt.prefixArgs,
             '--check',
             '--no-error-on-unmatched-pattern',
-            ...(fitsCommandLine(existing) ? existing : ['.'])
+            ...(fitsCommandLine(existing, MAX_PATH_ARGUMENT_CHARS) ? existing : ['.'])
           ])
         ]
       })
     }
     const lintable = existing.filter((file) => LINTABLE.test(file))
     if (lintable.length > 0) {
-      const wholeTree = !fitsCommandLine(lintable)
+      const wholeTree = !fitsCommandLine(lintable, MAX_PATH_ARGUMENT_CHARS)
       const antiSlop = lintable.filter((file) =>
         ANTI_SLOP_ROOTS.some((root) => file.startsWith(root))
       )

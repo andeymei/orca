@@ -15,7 +15,7 @@
 - Plugin directory: `resources/plugins/launch/stablyai.spec-board/`
 - Manifest: `manifestVersion: 2`, `id: "spec-board"`, `publisher: "stablyai"`, `execution: "trusted-worker"`, `engines.orca: ">=1.4.256"`.
 - The id must **not** start with `orca-`: that prefix installs only from the official catalog and would break local development installs.
-- Capabilities, exactly these five: `workspace:read`, `agent:launch`, `terminal:send`, `workspace:write`, `settings:own`. No more.
+- Capabilities are earned, not asserted: **a commit's manifest declares only the capabilities the code in that commit actually calls.** Task 1's scaffold calls `storage:own` and nothing else; Task 7's worker adds `workspace:read`, `agent:launch`, `terminal:send`, `workspace:write` and `settings:own` in the same commit that introduces the code using them, and drops `storage:own` (the finished worker keeps its snapshot in `~/.orca/spec-board/`, not in plugin storage). The shipped manifest declares exactly those five and nothing else.
 - Panel: id `board`, title `规格看板`, icon `layers`, `ui: "components"`.
 - Store files live under `~/.orca/spec-board/`; `process.env.SPEC_BOARD_HOME` overrides the directory in tests.
 - The plugin never writes to a project's files. It only launches `openspec` or an agent.
@@ -92,7 +92,9 @@ Expected: JSON with `"ok": true` and `"pluginKey": "local.spec-board"`.
   "name": "OpenSpec × Superpowers 看板",
   "version": "0.1.0",
   "description": "把 OpenSpec 的规格变更与 Superpowers 的设计/计划画在同一块看板上，并标出两者脱节的地方。",
-  "engines": { "orca": ">=1.4.256" },
+  "engines": {
+    "orca": ">=1.4.256"
+  },
   "execution": "trusted-worker",
   "pluginApi": 1,
   "main": "src/worker.ts",
@@ -105,33 +107,22 @@ Expected: JSON with `"ok": true` and `"pluginKey": "local.spec-board"`.
         "entry": "src/panel.tsx",
         "ui": "components"
       }
-    ],
-    "settings": [
-      { "key": "refreshAgent", "title": "刷新用的 agent", "type": "string", "default": "claude" },
-      {
-        "key": "refreshWorkspace",
-        "title": "刷新在哪个 workspace 运行",
-        "type": "string",
-        "default": ""
-      },
-      {
-        "key": "scanRoots",
-        "title": "额外扫描的本地根目录（每行一个绝对路径）",
-        "type": "string",
-        "multiline": true,
-        "default": ""
-      }
     ]
   },
   "capabilities": [
-    { "kind": "workspace:read" },
-    { "kind": "agent:launch" },
-    { "kind": "terminal:send" },
-    { "kind": "workspace:write" },
-    { "kind": "settings:own" }
+    {
+      "kind": "storage:own"
+    }
   ]
 }
 ```
+
+The four host capabilities (`workspace:read`, `agent:launch`, `terminal:send`,
+`workspace:write`) and the `settings:own` capability together with the
+`contributes.settings` block arrive in Task 7, in the same commit as the worker code that
+uses them. `settings:own` is required by `contributes.settings`, so the two cannot be
+separated. `storage:own` is what the generated scaffold's worker needs; Task 7's worker
+replaces it and drops the capability.
 
 - [ ] **Step 3: Validate the manifest**
 
@@ -1346,7 +1337,37 @@ test('refresh writes the prompt it will send and launches the agent', async () =
 Run: `orca plugin test resources/plugins/launch/stablyai.spec-board --json`
 Expected: FAIL — `board.get` is not handled (`unknown_method`).
 
-- [ ] **Step 3: Implement `store-paths.ts`, `refresh-prompt.ts`, `protocol.ts`, `worker.ts`**
+- [ ] **Step 3: Grant the capabilities the worker actually calls**
+
+In `orca-plugin.json`, replace the `capabilities` array with exactly the kinds this worker's
+code calls, and add the settings contribution the worker reads:
+
+```json
+"capabilities": [
+  { "kind": "workspace:read" },
+  { "kind": "agent:launch" },
+  { "kind": "terminal:send" },
+  { "kind": "workspace:write" },
+  { "kind": "settings:own" }
+]
+```
+
+`storage:own` goes away: the finished worker keeps its snapshot in `~/.orca/spec-board/`, not
+in plugin storage. Add to `contributes`:
+
+```json
+"settings": [
+  { "key": "refreshAgent", "title": "刷新用的 agent", "type": "string", "default": "claude" },
+  { "key": "refreshWorkspace", "title": "刷新在哪个 workspace 运行", "type": "string", "default": "" },
+  { "key": "scanRoots", "title": "额外扫描的本地根目录（每行一个绝对路径）", "type": "string", "multiline": true, "default": "" }
+]
+```
+
+Then run `orca plugin validate <dir> --json` and confirm `errors` is empty. Every kind listed
+must be called by the worker in this same commit — a declared-but-unused capability is a
+finding, not a harmless extra.
+
+- [ ] **Step 4: Implement `store-paths.ts`, `refresh-prompt.ts`, `protocol.ts`, `worker.ts`**
 
 `boardStoreDir()` returns `process.env.SPEC_BOARD_HOME ?? join(homedir(), '.orca', 'spec-board')`.
 
@@ -1365,12 +1386,12 @@ The worker also watches the store directory with `node:fs` `watch` and posts `bo
 
 `board.refresh` resolves the workspace from the `refreshWorkspace` setting, else `workspace.readContext`, writes the prompt to `last-refresh-prompt.md`, then calls `agent.launch`.
 
-- [ ] **Step 4: Run it to verify it passes**
+- [ ] **Step 5: Run it to verify it passes**
 
 Run: `orca plugin test resources/plugins/launch/stablyai.spec-board --json`
 Expected: PASS — 4 workspace-match tests, 5 worker tests, plus the earlier tasks' tests.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add resources/plugins/launch/stablyai.spec-board/src

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { defineMethod } from '../../core'
 import {
@@ -31,6 +32,7 @@ import {
 import { assertSafeRefactorTargetPath } from '../../../../refactor/refactor-path-rules'
 import { buildRefactorPlan } from '../../../../refactor/refactor-plan-builder'
 import { resolveRefactorAgentLaunch } from '../../../../refactor/refactor-agent-launch'
+import { readRefactorProviderEnv } from '../../../../refactor/refactor-provider-env'
 import { runRefactorTurn } from '../../../../refactor/refactor-runner'
 import {
   REFACTOR_SOURCE_DIRECTORY_NAME,
@@ -116,6 +118,7 @@ export const REFACTOR_METHODS = [
         // The account is pushed and Claude refreshed before the agent starts, so the launch
         // uses the account the user picked instead of a stale one.
         await runtime.prepareHostAgentLaunch('claude')
+        const hostEnv = runtime.getHostAgentLaunchEnv('claude')
         const launch = await resolveRefactorAgentLaunch({
           cwd: workspaceRoot,
           deps: {
@@ -124,10 +127,14 @@ export const REFACTOR_METHODS = [
             resolveCommand: (options) => resolveStructuredAgentCommand('claude', settings, options),
             // Only labels the sign-in failure; it does not pick the executable.
             resolveAuthPolicy: () => claudeStructuredAuthPolicyForSettings(settings),
-            // The user's own per-agent environment plus the environment of the current account.
-            resolveEnv: () => ({
+            // The user's own per-agent environment, the environment of the current account, and
+            // the provider connection the host's Claude settings carry.
+            resolveEnv: async () => ({
+              ...(await readRefactorProviderEnv(
+                hostEnv.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude')
+              )),
               ...resolveTuiAgentLaunchEnv('claude', settings),
-              ...runtime.getHostAgentLaunchEnv('claude')
+              ...hostEnv
             })
           },
           signal

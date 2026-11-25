@@ -4,9 +4,12 @@
 // derived here, so the agent never decides what the board says.
 //
 // The rules, in one place:
-// - a project the agent covered is the agent's; the local scan fills in what the agent left
-//   unknown, and a project only the local scan saw is the local scan's;
-// - an item the agent covered is the agent's; the local scan fills in the rest;
+// - a project the agent covered is the agent's — it is the fresher copy of the same project —
+//   and a field the agent left unknown is filled in from the local scan; a project only the
+//   local scan saw is the local scan's;
+// - an item the agent covered is the agent's, whole: the local scan's facts are not merged into
+//   it, so a task ticked since the last refresh is not shown — the agent's snapshot is the
+//   authority for the project it covers;
 // - the gaps of an item are the union of what both sides say, deduped by code: a disagreement
 //   between the two sources is worth showing, not worth hiding behind one of them.
 
@@ -131,6 +134,8 @@ export function mergeBoard(input: MergeInput): MergedBoard {
   for (const id of itemIds) {
     const agent = agentItems.get(id)
     const local = localItems.get(id)
+    // The agent's snapshot is the authority for the project it covers: its item wins whole, and
+    // the local scan's facts are not merged into it.
     const facts = agent ?? local
     if (!facts) {
       continue

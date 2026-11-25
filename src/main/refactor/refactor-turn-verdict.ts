@@ -36,6 +36,19 @@ function refactorFailureDetail(result: RefactorResultFrame, subtype: string): st
 }
 
 /**
+ * Stop reasons that only say the turn ended.
+ *
+ * Why they are dropped: a turn that failed on an API error carries a stop reason too, and naming
+ * it beside the error explains nothing — the error is the whole story. A reason that does
+ * explain (a token limit, a refusal, an error the SDK names) is still named.
+ */
+const ORDINARY_STOP_REASONS: ReadonlySet<string> = new Set([
+  'end_turn',
+  'stop_sequence',
+  'tool_use'
+])
+
+/**
  * Whether the SDK's result frame means the turn finished or failed. `subtype: 'success'` with
  * `is_error` is a turn that died on an API error, so only a clean success is a done.
  */
@@ -45,7 +58,10 @@ export function classifyRefactorResult(result: RefactorResultFrame): RefactorTur
   if (subtype === 'success' && result.is_error !== true) {
     return { state: 'done', warnings: [] }
   }
-  const stop = stopReason.length > 0 ? turnVerdictStopReasonMessage(stopReason) : ''
+  const stop =
+    stopReason.length > 0 && !ORDINARY_STOP_REASONS.has(stopReason)
+      ? turnVerdictStopReasonMessage(stopReason)
+      : ''
   return {
     state: 'failed',
     warnings: [turnVerdictEndedInErrorMessage(refactorFailureDetail(result, subtype), stop)]

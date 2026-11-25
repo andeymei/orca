@@ -8,7 +8,8 @@ import {
   parseRefactorToolProgress,
   readRefactorManifest,
   refactorFaultDetail,
-  refactorTurnCancelledFirst
+  refactorTurnCancelledFirst,
+  runRefactorTurn
 } from './refactor-runner'
 import { resolveRefactorGateRoots } from './refactor-write-gate'
 import { buildRefactorPrompt } from '../../shared/refactor/refactor-prompt'
@@ -130,6 +131,53 @@ describe('readRefactorManifest', () => {
     const read = await readRefactorManifest(root)
     expect(read.manifest).toBeNull()
     expect(read.warnings).toEqual(['The manifest is not valid JSON'])
+  })
+})
+
+describe('runRefactorTurn', () => {
+  /** A workspace with a scratch tree the agent never wrote a manifest into. */
+  async function workspaceWithScratch(): Promise<{
+    workspaceRoot: string
+    scratchRoot: string
+  }> {
+    const workspaceRoot = await realpath(await mkdtemp(path.join(os.tmpdir(), 'refactor-turn-')))
+    const scratchRoot = path.join(workspaceRoot, '.orca', 'refactor', 'job-1')
+    await mkdir(scratchRoot, { recursive: true })
+    return { workspaceRoot, scratchRoot }
+  }
+
+  it('does not report a missing manifest when the turn already failed', async () => {
+    const { workspaceRoot, scratchRoot } = await workspaceWithScratch()
+
+    const turn = await runRefactorTurn({
+      launch: {
+        pathToClaudeCodeExecutable: '/usr/bin/claude',
+        env: {},
+        cwd: workspaceRoot,
+        options: { permissionMode: 'default', allowedTools: ['Write(src/**)'] }
+      },
+      scratchRoot,
+      workspaceRoot,
+      prompt: { system: 'system', user: 'user' },
+      signal: new AbortController().signal,
+      openConnection: async (_launch, handlers) => {
+        handlers.onMessage?.({
+          type: 'result',
+          subtype: 'success',
+          is_error: true,
+          result: 'Not logged in \u00b7 Please run /login',
+          stop_reason: 'stop_sequence'
+        })
+        return { send: async () => undefined, close: async () => true }
+      }
+    })
+
+    expect(turn.state).toBe('failed')
+    // Why: the agent never ran, so it wrote no manifest; a second error about that file buries
+    // the one that says why the turn ended.
+    expect(turn.warnings).toEqual([
+      'The refactoring ended in an error: Not logged in \u00b7 Please run /login'
+    ])
   })
 })
 
@@ -308,6 +356,21 @@ describe('classifyRefactorResult', () => {
     expect(
       classifyRefactorResult({ subtype: 'success', is_error: false, stop_reason: 'end_turn' })
     ).toEqual({ state: 'done', warnings: [] })
+  })
+
+  it('does not name a stop reason that only says the turn ended', () => {
+    // Why: the SDK stops a turn that died on an API error with an ordinary stop reason, so
+    // naming it beside the error explains nothing the error does not already say.
+    const verdict = classifyRefactorResult({
+      subtype: 'success',
+      is_error: true,
+      stop_reason: 'stop_sequence',
+      result: 'Not logged in \u00b7 Please run /login'
+    })
+    expect(verdict.state).toBe('failed')
+    expect(verdict.warnings).toEqual([
+      'The refactoring ended in an error: Not logged in \u00b7 Please run /login'
+    ])
   })
 
   it('reads a success frame that carries an API error as failed', () => {

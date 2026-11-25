@@ -351,7 +351,13 @@ export async function runRefactorTurn(input: {
     fault: faultMessage.length > 0 ? faultMessage : null
   })
 
-  const manifest = await readRefactorManifest(scratchRoot)
+  // Why only a finished turn reads the manifest: a turn that failed, timed out or was cancelled
+  // wrote no manifest, so reading it says nothing the turn's own verdict does not — and a second
+  // error about a file that was never written buries the reason the turn ended.
+  const manifest =
+    outcome.state === 'done'
+      ? await readRefactorManifest(scratchRoot)
+      : { manifest: null, warnings: [] }
   return {
     state: outcome.state,
     manifest: manifest.manifest,

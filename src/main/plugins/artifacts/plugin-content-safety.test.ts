@@ -113,4 +113,29 @@ describe('hash-addressed plugin content', () => {
       expect(firstHash.hash).not.toBe(secondHash.hash)
     }
   })
+
+  it('a tree with generated typings hashes as the tree without them', async () => {
+    // Why: `.orca` holds the typings `orca plugin types` writes; the packaging drops the folder and
+    // the runtime never reads it, so it must not change what a plugin's content identity is.
+    const plain = await tempRoot()
+    const generated = await tempRoot()
+    await writeFile(join(plain, 'orca-plugin.json'), '{}')
+    await writeFile(join(generated, 'orca-plugin.json'), '{}')
+    await mkdir(join(generated, '.orca', 'types'), { recursive: true })
+    await writeFile(join(generated, '.orca', 'types', 'orca.d.ts'), 'export {}')
+
+    const [plainHash, generatedHash, devHash] = await Promise.all([
+      hashPluginTree(plain),
+      hashPluginTree(generated),
+      hashPluginTree(generated, { devFolder: true })
+    ])
+
+    expect(plainHash).toMatchObject({ ok: true })
+    expect(generatedHash).toMatchObject({ ok: true })
+    expect(devHash).toMatchObject({ ok: true })
+    if (plainHash.ok && generatedHash.ok && devHash.ok) {
+      expect(generatedHash.hash).toBe(plainHash.hash)
+      expect(devHash.hash).toBe(plainHash.hash)
+    }
+  })
 })

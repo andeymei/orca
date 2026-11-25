@@ -3,10 +3,16 @@ import {
   buildParcelWatcherIgnoreOptions,
   type ParcelWatcherIgnoreOptions
 } from '../../ipc/filesystem/watchers/filesystem-watcher-ignore'
-import { DEV_FOLDER_SKIPPED_DIRECTORIES } from '../artifacts/plugin-content-hash'
+import {
+  ALWAYS_SKIPPED_DIRECTORIES,
+  DEV_FOLDER_SKIPPED_DIRECTORIES
+} from '../artifacts/plugin-content-hash'
 
 // Why these: the dev tree hash and plugin serving never read them, so their churn is not an edit.
-const IGNORED_DEV_DIRECTORIES: readonly string[] = [...DEV_FOLDER_SKIPPED_DIRECTORIES]
+const IGNORED_DEV_DIRECTORIES: readonly string[] = [
+  ...ALWAYS_SKIPPED_DIRECTORIES,
+  ...DEV_FOLDER_SKIPPED_DIRECTORIES
+]
 const OS_JUNK_FILE_NAMES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini'])
 
 /** Native-side exclusions for a dev root's recursive subscription, at any depth. */

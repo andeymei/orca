@@ -11,14 +11,15 @@ export const MAX_PLUGIN_TOTAL_BYTES = 50 * 1024 * 1024
 
 type PluginFile = { path: string; size: number }
 
-// Why dev only: an author's folder holds generated types, Git data and installed packages, at any
-// depth (a nested build/node_modules too); installed trees keep hashing everything but the root
-// .git, so nothing they run escapes the content hash.
-export const DEV_FOLDER_SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set([
-  '.git',
-  '.orca',
-  'node_modules'
-])
+// Why always: a plugin's `.orca` folder holds the typings its author generated on their own
+// machine; it is git-ignored, never loaded and never shipped, so it must not change what a
+// plugin's content identity is — in the checkout and in the package alike.
+export const ALWAYS_SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set(['.orca'])
+
+// Why dev only: an author's folder holds Git data and installed packages, at any depth (a nested
+// build/node_modules too); installed trees keep hashing everything but the root .git, so nothing
+// they run escapes the content hash.
+export const DEV_FOLDER_SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set(['.git', 'node_modules'])
 
 export type PluginTreeHashResult =
   | { ok: true; hash: string; fileCount: number; totalBytes: number }
@@ -99,7 +100,9 @@ export async function hashPluginTree(
   const files: PluginFile[] = []
   try {
     const counters = { entries: 0, bytes: 0 }
-    const skipped = options.devFolder ? DEV_FOLDER_SKIPPED_DIRECTORIES : new Set<string>()
+    const skipped = options.devFolder
+      ? new Set([...ALWAYS_SKIPPED_DIRECTORIES, ...DEV_FOLDER_SKIPPED_DIRECTORIES])
+      : ALWAYS_SKIPPED_DIRECTORIES
     const error = await collectFiles(root, root, files, counters, skipped)
     if (error) {
       return { ok: false, error }

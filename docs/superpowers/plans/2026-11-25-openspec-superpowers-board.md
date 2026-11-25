@@ -2076,7 +2076,9 @@ test('refresh dispatches the worker and disables the button while busy', async (
 
 test('renders an unknown snapshot time instead of throwing', async () => {
   const host = mockHost({
-    requests: { 'board.get': () => ({ ...payload, sources: { localAt: null, agentAt: null } }) }
+    requests: {
+      'board.get': () => ({ ...fixturePayload, sources: { localAt: null, agentAt: null } })
+    }
   })
   const view = await mount(panel, { host })
   await view.select({ label: '看板视图' }, 'projects')
@@ -2094,6 +2096,12 @@ Expected: FAIL — no projects tab.
 - [ ] **Step 3: Implement**
 
 Projects tab: one `Card` per project showing name, host, openspec/superpowers presence, `openspecCli` availability, and `RelativeTime` for `scannedAt` — or the literal `尚未扫描` when `scannedAt` is empty. A `Button` labelled `刷新` calls `board.refresh`; while the request is in flight the label becomes `刷新中…` and the button is disabled.
+
+A project whose scan failed carries `error`; its card shows that error as a `Badge`, and the other projects render as usual (design §6).
+
+**A per-project failure is reported once.** `local-scan.ts` puts the failure message in **both** `project.error` and the scan's `warnings`, and the worker collects those warnings into the payload's board-level `warnings` — so the same string would appear twice: once as the card's error badge and once in the board-level warning `Callout`. Two channels for one fact reads as a bug. Fix it at the source: the scan reports the failure on `project.error` **only**, and the board-level `warnings` carry board-level problems (a broken snapshot, an unreadable registry, an unsafe change id).
+
+**The warnings move to the shell in this task, and the board tab's warning lines go with them.** Task 8 drew `payload.warnings` inside the board tab; this task draws them as a `Callout` above the tabs so they are visible from every tab. Removing the board tab's lines without adding them to the shell would drop the warnings entirely — so both halves happen here, together.
 
 Warnings render as a `Callout` with `tone="warning"` and `icon="warning"` above the tab content, so a broken snapshot is visible from every tab. A `Callout` with `tone="danger"` replaces it when `sources.localAt === null` and `warnings` is non-empty.
 

@@ -910,8 +910,9 @@ so an id containing `;` or `$(...)` would execute.
 Every value that reaches a terminal command or an agent prompt is therefore validated against
 `/^[A-Za-z0-9][A-Za-z0-9._-]*$/` — the first character is alphanumeric, so neither a leading `-`
 (option injection) nor a leading `.` (path traversal) can get through, and no shell metacharacter
-can appear at all. The rule applies to the change id **and to every segment of a Superpowers
-artifact path**.
+can appear at all. The rule applies to the change id, to the work item's topic, **and to every
+segment of a Superpowers artifact path**. A path is split on `/`; empty segments are skipped (so
+an absolute path is fine) and every other segment must pass the rule, which rejects `..`.
 
 What happens when a value fails the rule differs by destination, because the two destinations
 cannot tolerate the same thing:
@@ -923,10 +924,14 @@ cannot tolerate the same thing:
   same generic label the code already uses when the artifact is missing, so the button still works
   and no attacker-controlled text reaches the agent.
 
-The validated value is then **shell-quoted** before it goes into a command line, as a second layer
-behind the rule. A structured argv (`{ kind: 'terminal', argv: [...] }`) would be the stronger
-shape, but the host API's `terminal.create` takes a command string and offers no argv form, so
-validation plus quoting is the defence available here.
+**One gate, not two.** The rule admits only characters that carry no meaning to a shell, and the
+first character must be alphanumeric, so a value can never be read as an option. A second
+shell-quoting layer would therefore give an already-safe value a second encoding, and would make
+the command the user sees differ from the §4.11 tables for no gain. A structured argv
+(`{ kind: 'terminal', argv: [...] }`) would be the stronger shape, but the host API's
+`terminal.create` takes a command string and offers no argv form, so the rule is the defence
+available here. It is applied **where the command is built**, so there is exactly one place where
+a project-derived value can reach a shell, and the tests can prove it there.
 
 `detectGaps` implements the spec's §4.8 table, including the `> 0.30` drift threshold and the rule that drift is only reported when both sides have started.
 
@@ -1136,6 +1141,7 @@ git commit -m "feat(spec-board): scan a local project for both frameworks"
   ```ts
   export function actionsForItem(
     item: {
+      topic: string
       openspec: OpenspecFacts | null
       superpowers: SuperpowersFacts | null
     },
@@ -1146,7 +1152,18 @@ git commit -m "feat(spec-board): scan a local project for both frameworks"
     superpowers: Action[]
   }
   export function findAction(actions: readonly Action[], actionId: string): Action | null
+  export function resolvePaletteAction(
+    action: Action,
+    changeId: string | undefined
+  ): { ok: true; action: Action } | { ok: false; reason: 'needs-change-id' | 'unsafe-change-id' }
   ```
+
+  `resolvePaletteAction` is how the palette's change-scoped commands get a concrete change id.
+  The panel never builds a command line: it names the action and, for a change-scoped command, the
+  change it picked; the worker calls this and runs the result. A palette action that still carries
+  the `<change-id>` placeholder needs a change id — without one the answer is `needs-change-id`,
+  and a change id that fails the slug rule is `unsafe-change-id`. A palette action with no
+  placeholder in it resolves to itself and ignores the change id.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1157,6 +1174,7 @@ import { assert, test } from 'orca/testing'
 import { actionsForItem, findAction, frameworkActions } from './actions'
 
 const item = {
+  topic: 'add-x',
   openspec: {
     changeId: 'add-x',
     stage: 'implementing' as const,
@@ -1203,7 +1221,10 @@ test('Superpowers actions are always dispatched to an agent', () => {
 })
 
 test('omits OpenSpec actions for an item with no change', () => {
-  const actions = actionsForItem({ openspec: null, superpowers: item.superpowers }, true)
+  const actions = actionsForItem(
+    { topic: 'add-x', openspec: null, superpowers: item.superpowers },
+    true
+  )
   assert.equal(actions.filter((a) => a.framework === 'openspec').length, 0)
   assert.ok(actions.length > 0)
 })
@@ -1226,6 +1247,35 @@ Expected: FAIL — module not found.
 Action ids are fixed strings: `openspec.list`, `openspec.validate`, `openspec.show`, `openspec.archive`, `openspec.propose`, `superpowers.brainstorm`, `superpowers.plan`, `superpowers.execute`, `superpowers.review`, `superpowers.verify`.
 
 Only `openspec.archive`, `openspec.propose`, `superpowers.brainstorm`, `superpowers.plan`, `superpowers.execute` are `mutates: true`. The command strings are exactly the ones in the spec's §4.11 tables. The agent fallback prompt names `openspec/AGENTS.md` and the change id.
+
+**The gate.** Every project-derived value that reaches a terminal command or an agent prompt is
+validated against `/^[A-Za-z0-9][A-Za-z0-9._-]*$/` before it is used:
+
+- The **change id** is validated whole.
+- The **topic** is validated whole.
+- A **Superpowers artifact path** is split on `/`; empty segments are skipped, every other
+  segment is validated whole.
+
+What a failure means depends on the destination:
+
+- The terminal commands **need** the change id, so an invalid id means the OpenSpec actions are
+  **not offered** for that item — and `actionsForItem` must not throw, because one bad directory
+  must not blank the whole board.
+- The agent prompts can do without a path, so an invalid spec path, plan path or topic falls back
+  to the generic label the code already uses for a missing artifact (`设计 spec` / `实施计划` /
+  `这个工作项`), and the button still works.
+
+The Superpowers subject uses the **item's own topic**, not the OpenSpec change id: a Superpowers
+piece of work has its own name, and borrowing the change id mislabels it. The topic is validated
+like every other project-derived value.
+
+`openspec.archive` is not offered for a change that is already archived
+(`openspec.stage === 'archived'`) — the command would only fail.
+
+The palette keeps the `<change-id>` placeholder in its change-scoped commands and their agent
+prompts; the placeholder is a sentinel the module owns, not a project-derived value, so it is not
+gated. `resolvePaletteAction` is the one place that turns the placeholder into a real id, and it
+gates that id like any other.
 
 - [ ] **Step 4: Run it to verify it passes**
 
@@ -1292,7 +1342,12 @@ git commit -m "feat(spec-board): derive executable actions for both frameworks"
       'board.get': { output: BoardPayload }
       'board.refresh': { output: { terminalId: string } }
       'action.run': {
-        input: { projectId: string; actionId: string }
+        input: {
+          projectId: string
+          actionId: string
+          itemId?: string
+          changeId?: string
+        }
         output: { kind: 'terminal' | 'agent'; terminalId: string }
       }
     }
@@ -1512,7 +1567,8 @@ test('runs a terminal action on the workspace that owns the project', async () =
   await worker.request('board.get')
   const result = await worker.request('action.run', {
     projectId: 'local|/repo/demo',
-    actionId: 'openspec.validate'
+    actionId: 'openspec.validate',
+    itemId: 'local|/repo/demo#add-x'
   })
   assert.deepEqual(result, { kind: 'terminal', terminalId: 't1' })
   const created = host.callsOf('terminal.create')[0]!.params as {
@@ -1622,6 +1678,15 @@ The worker's `board.get` handler:
 The worker also watches the store directory with `node:fs` `watch` and posts `board.changed` with the new `agentAt`.
 
 `action.run` resolves the project, then the workspace by normalized absolute path (forward slashes, lower-cased on Windows-style paths), and rejects with a message containing "workspace" when nothing matches. A `terminal` run calls `terminal.create` then `terminal.focus`; an `agent` run calls `agent.launch`.
+
+**How the action is found.** The request names an action, never a command line — the panel cannot
+hand the worker a string to run. With `itemId`, the action is looked up among that item's own
+actions, which the worker derived and already gated. Without it, among the project's palette
+(`frameworkActions`). A palette action that still carries the `<change-id>` placeholder is
+resolved through `resolvePaletteAction` with the request's `changeId`: no change id rejects with
+`请先选择一个变更`, and an id that fails the slug rule rejects with `变更 id 不安全`. The worker
+records a warning naming any unsafe change id it is given, so the board can say why that item
+offers no commands.
 
 `board.refresh` resolves the workspace from the `refreshWorkspace` setting, else `workspace.readContext`, writes the prompt to `last-refresh-prompt.md`, then calls `agent.launch`.
 
@@ -1756,7 +1821,9 @@ test('runs a non-mutating action on the first press', async () => {
   })
   const view = await mount(panel, { host })
   await view.press({ text: '校验' })
-  assert.deepEqual(calls, [{ projectId: 'local|/repo', actionId: 'openspec.validate' }])
+  assert.deepEqual(calls, [
+    { projectId: 'local|/repo', actionId: 'openspec.validate', itemId: 'local|/repo#add-x' }
+  ])
   await view.unmount()
 })
 
@@ -1775,7 +1842,9 @@ test('holds a mutating action until a second press', async () => {
   await view.press({ text: '归档' })
   assert.deepEqual(calls, [])
   await view.press({ text: '确认执行？' })
-  assert.deepEqual(calls, [{ projectId: 'local|/repo', actionId: 'openspec.archive' }])
+  assert.deepEqual(calls, [
+    { projectId: 'local|/repo', actionId: 'openspec.archive', itemId: 'local|/repo#add-x' }
+  ])
   await view.unmount()
 })
 ```
@@ -1897,9 +1966,12 @@ The correspondence rows render as a `KeyValue` under the two cards. Below them, 
 `OPENSPEC_DECISION_TREE` renders as a list of `Card`s, one per rule, with the situation as the
 title and the action as the description — it answers "do I need a proposal for this at all?".
 
-The command buttons substitute a concrete change id into the map's `<change-id>` placeholder
-before running; a command whose id is still a placeholder is disabled with the label
-`先选一个变更`.
+The command buttons never build a command line themselves. The map carries a second `Select` for
+the change the change-scoped OpenSpec commands apply to, listing the selected project's change
+ids; a chosen change is sent as `changeId` in the `action.run` request, and the worker resolves
+it through `resolvePaletteAction`. With no change chosen, those buttons are disabled with the
+label `先选一个变更`. The project-scoped commands (`openspec.list`, `openspec.propose`) and the
+Superpowers skills need no change id.
 
 When nothing is loaded yet the tab still renders the static map — it must never depend on a scan.
 

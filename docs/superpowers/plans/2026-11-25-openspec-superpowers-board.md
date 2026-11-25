@@ -421,6 +421,7 @@ const valid = {
         hasDesign: false,
         hasTasks: true,
         tasksDone: 2,
+        tasksInProgress: 0,
         tasksTotal: 5,
         capabilities: ['x']
       },
@@ -443,7 +444,7 @@ test('rejects an unknown schemaVersion', () => {
 test('rejects progress where done exceeds total', () => {
   const item = {
     ...valid.items[0],
-    openspec: { ...valid.items[0]!.openspec, tasksDone: 9, tasksTotal: 5 }
+    openspec: { ...valid.items[0]!.openspec, tasksDone: 9, tasksInProgress: 0, tasksTotal: 5 }
   }
   const result = parseBoardSnapshot({ ...valid, items: [item] })
   assert.equal(result.ok, false)
@@ -574,6 +575,7 @@ const openspec = (over: Partial<OpenspecFacts> = {}) => ({
   hasDesign: false,
   hasTasks: false,
   tasksDone: 0,
+  tasksInProgress: 0,
   tasksTotal: 0,
   capabilities: [],
   ...over
@@ -583,6 +585,7 @@ const superpowers = (over: Partial<SuperpowersFacts> = {}) => ({
   plan: null,
   stage: 'designed' as const,
   planDone: 0,
+  planInProgress: 0,
   planTotal: 0,
   ...over
 })
@@ -769,6 +772,7 @@ const openspec = (over: Partial<OpenspecFacts> = {}) => ({
   hasDesign: true,
   hasTasks: true,
   tasksDone: 1,
+  tasksInProgress: 0,
   tasksTotal: 4,
   capabilities: [],
   ...over
@@ -778,6 +782,7 @@ const superpowers = (over: Partial<SuperpowersFacts> = {}) => ({
   plan: 'plan.md',
   stage: 'executing' as const,
   planDone: 1,
+  planInProgress: 0,
   planTotal: 4,
   ...over
 })
@@ -794,20 +799,20 @@ test('reports Superpowers work with no change', () => {
 test('reports drift only when both sides have started and differ by more than 0.30', () => {
   assert.ok(
     codes({
-      openspec: openspec({ tasksDone: 4, tasksTotal: 4 }),
-      superpowers: superpowers({ planDone: 1, planTotal: 4 })
+      openspec: openspec({ tasksDone: 4, tasksInProgress: 0, tasksTotal: 4 }),
+      superpowers: superpowers({ planDone: 1, planInProgress: 0, planTotal: 4 })
     }).includes('progress-drift')
   )
   assert.ok(
     !codes({
-      openspec: openspec({ tasksDone: 2, tasksTotal: 4 }),
-      superpowers: superpowers({ planDone: 2, planTotal: 4 })
+      openspec: openspec({ tasksDone: 2, tasksInProgress: 0, tasksTotal: 4 }),
+      superpowers: superpowers({ planDone: 2, planInProgress: 0, planTotal: 4 })
     }).includes('progress-drift')
   )
   assert.ok(
     !codes({
-      openspec: openspec({ tasksDone: 0, tasksTotal: 4 }),
-      superpowers: superpowers({ planDone: 0, planTotal: 4 })
+      openspec: openspec({ tasksDone: 0, tasksInProgress: 0, tasksTotal: 4 }),
+      superpowers: superpowers({ planDone: 0, planInProgress: 0, planTotal: 4 })
     }).includes('progress-drift')
   )
 })
@@ -823,8 +828,8 @@ test('reports a change with tasks but no design', () => {
 test('reports a fully ticked change that was never archived', () => {
   assert.ok(
     codes({
-      openspec: openspec({ tasksDone: 4, tasksTotal: 4 }),
-      superpowers: superpowers({ planDone: 4, planTotal: 4 })
+      openspec: openspec({ tasksDone: 4, tasksInProgress: 0, tasksTotal: 4 }),
+      superpowers: superpowers({ planDone: 4, planInProgress: 0, planTotal: 4 })
     }).includes('tasks-complete-not-archived')
   )
 })
@@ -1048,6 +1053,7 @@ const item = {
     hasDesign: true,
     hasTasks: true,
     tasksDone: 1,
+    tasksInProgress: 0,
     tasksTotal: 2,
     capabilities: []
   },
@@ -1056,6 +1062,7 @@ const item = {
     plan: 'docs/superpowers/plans/x.md',
     stage: 'executing' as const,
     planDone: 1,
+    planInProgress: 0,
     planTotal: 2
   }
 }
@@ -1305,6 +1312,7 @@ test('merges the agent snapshot over the local scan', async () => {
             hasDesign: true,
             hasTasks: true,
             tasksDone: 1,
+            tasksInProgress: 0,
             tasksTotal: 4,
             capabilities: []
           },
@@ -1373,6 +1381,7 @@ test('runs a terminal action on the workspace that owns the project', async () =
             hasDesign: true,
             hasTasks: true,
             tasksDone: 1,
+            tasksInProgress: 0,
             tasksTotal: 4,
             capabilities: []
           },
@@ -1504,7 +1513,10 @@ The worker also watches the store directory with `node:fs` `watch` and posts `bo
 The prompt must state the snapshot schema **exactly as the validator enforces it**, because a
 mismatch shows the user a broken-snapshot card instead of a board: the `stage` enum spellings, that
 `id`/`name`/`host`/`path`/`title`/`topic` are non-empty strings, that counts are non-negative
-integers, that `done + inProgress <= total` on both sides, and that optional fields
+integers, that **every progress count is written explicitly** — `tasksDone`, `tasksInProgress`,
+`tasksTotal`, `planDone`, `planInProgress`, `planTotal`, where an in-progress count of `0` is a
+valid value and omitting the field is not — that `done + inProgress <= total` on both sides, and
+that optional fields
 (`error`, `summary`, `nextAction`, `openspecCli.version`,
 `openspecCli.path`, `generatedBy.workspace`, `generatedBy.host`, `notes`) are **omitted** rather
 than written as `null`. The validator reads `null` as absent either way; omitting is what the prompt
@@ -1565,6 +1577,7 @@ const item = {
     hasDesign: true,
     hasTasks: true,
     tasksDone: 2,
+    tasksInProgress: 0,
     tasksTotal: 5,
     capabilities: []
   },

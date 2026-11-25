@@ -476,6 +476,26 @@ type Action = {
 `terminal` 换成 `agent`，prompt 改成"按 `openspec/AGENTS.md` 执行 <动作>"，卡片上标
 `无 CLI` badge。
 
+**命令与提示词里的项目来源值必须先校验**：change id 是 `openspec/changes/` 下的目录名，
+Superpowers 产物路径是 `docs/superpowers/` 下的文件名——两者都来自用户可能克隆下来的仓库，
+因此都是**外部可控**的。`openspec validate <change-id> --strict` 会被敲进终端，是一条 shell
+命令行；id 里出现 `;` 或 `$(...)` 就会执行。
+
+因此凡是要进入终端命令或 agent 提示词的值，都要先通过 `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`：
+首字符必须是字母或数字，既挡住 `-` 开头的选项注入，也挡住 `.` 开头的路径穿越，且不可能含任何
+shell 元字符。规则同时适用于 change id 和 Superpowers 产物路径的**每一段**。
+
+校验失败时的处理按目的地区分，因为两者承受不了同一种结果：
+
+- **终端命令需要 change id**：id 不合法就**不提供**该变更的 OpenSpec 动作。**不能抛异常**——
+  `actionsForItem` 是逐项调用的，一个坏目录不能让整块看板变空白。
+- **agent 提示词可以没有路径**：spec 或 plan 路径不合法时，换成代码里"产物缺失"时已经在用的
+  通用说法，按钮照常可用，且不会有任何外部可控的文本进入 agent。
+
+通过校验的值在拼进命令行前再做一次 **shell 引号包裹**，作为规则之外的第二层。
+结构化 argv（`{ kind: 'terminal', argv: [...] }`）是更强的形态，但 host API 的 `terminal.create`
+只接受命令字符串、没有 argv 形式，所以此处可用的防御是校验加引号。
+
 **执行位置**：动作必须落在**拥有该项目的 workspace** 上。worker 用 `workspace.list`
 按 `path` 匹配 `project.path` 得到 `workspaceId`；匹配不到则禁用动作并提示
 "该项目不在 Orca workspace 里"，不猜。

@@ -901,6 +901,33 @@ among maximum-cardinality matchings; cardinality is what matters here.
 
 Tie-breaks are by id, so the result does not depend on iteration order or locale.
 
+**Nothing project-derived reaches a shell or a prompt unvalidated.** A change id is a directory name
+under `openspec/changes/`, and a Superpowers artifact path is a file name under
+`docs/superpowers/` — both come from a repository the user may have cloned, so both are
+attacker-controlled. `openspec validate <change-id> --strict` typed into a terminal is a shell line,
+so an id containing `;` or `$(...)` would execute.
+
+Every value that reaches a terminal command or an agent prompt is therefore validated against
+`/^[A-Za-z0-9][A-Za-z0-9._-]*$/` — the first character is alphanumeric, so neither a leading `-`
+(option injection) nor a leading `.` (path traversal) can get through, and no shell metacharacter
+can appear at all. The rule applies to the change id **and to every segment of a Superpowers
+artifact path**.
+
+What happens when a value fails the rule differs by destination, because the two destinations
+cannot tolerate the same thing:
+
+- **A terminal command needs the change id.** An invalid id means the OpenSpec actions are simply
+  **not offered** for that item. It must not throw: `actionsForItem` runs per item, and one bad
+  directory must not blank the whole board.
+- **An agent prompt can do without the path.** An invalid spec or plan path is replaced by the
+  same generic label the code already uses when the artifact is missing, so the button still works
+  and no attacker-controlled text reaches the agent.
+
+The validated value is then **shell-quoted** before it goes into a command line, as a second layer
+behind the rule. A structured argv (`{ kind: 'terminal', argv: [...] }`) would be the stronger
+shape, but the host API's `terminal.create` takes a command string and offers no argv form, so
+validation plus quoting is the defence available here.
+
 `detectGaps` implements the spec's §4.8 table, including the `> 0.30` drift threshold and the rule that drift is only reported when both sides have started.
 
 A **finished** work item — the OpenSpec change is archived, or the Superpowers plan is `done` —

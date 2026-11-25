@@ -1305,7 +1305,7 @@ git commit -m "feat(spec-board): derive executable actions for both frameworks"
 
 **Interfaces:**
 
-- Consumes: `parseBoardSnapshot` (Task 2), `deriveStage` (Task 3), `correlate`/`detectGaps` (Task 4), `scanProject`/`projectIdFor` (Task 5), `actionsForItem`/`findAction`/`resolvePaletteAction` (Task 6).
+- Consumes: `parseBoardSnapshot` (Task 2), `deriveStage` (Task 3), `correlate`/`detectGaps` (Task 4), `scanProject`/`projectIdFor` (Task 5), `actionsForItem`/`findAction`/`frameworkActions`/`resolvePaletteAction` (Task 6).
 - Produces:
   ```ts
   // store-paths.ts

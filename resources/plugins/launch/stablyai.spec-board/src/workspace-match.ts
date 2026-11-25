@@ -18,16 +18,24 @@ export type WorkspaceListRow = WorkspaceRow & {
 }
 
 /**
- * One path as one string: forward slashes, no repeated or trailing slash, lower case. The case
- * is folded because a registry path is typed by hand and a case-sensitive filesystem is not the
- * only one — the host decides, and the host is the same machine that wrote the registry.
+ * One path as one string: forward slashes, no repeated or trailing slash. The case is kept: two
+ * workspaces on one host whose paths differ only in case are two directories on a
+ * case-sensitive filesystem, and the command has to run in the one that was named.
  */
-export function normalizePath(path: string): string {
+function normalizeSeparators(path: string): string {
   return path
     .replace(/\\/g, '/')
     .replace(/\/{2,}/g, '/')
     .replace(/\/+$/, '')
-    .toLowerCase()
+}
+
+/**
+ * One path as one string: forward slashes, no repeated or trailing slash, lower case. The case
+ * is folded for the fallback comparison — a registry path typed by hand in another case still
+ * finds its row — while the exact comparison is tried first.
+ */
+export function normalizePath(path: string): string {
+  return normalizeSeparators(path).toLowerCase()
 }
 
 /**
@@ -44,17 +52,31 @@ function sameHost(rowHostId: string | null, projectHost: string): boolean {
 /**
  * The workspace that holds the project, or null when none does. The host has to match too: the
  * same path on two hosts is two different directories.
+ *
+ * The exact path wins over the case-folded one. Two workspaces on one host whose paths differ
+ * only in case are two directories on a case-sensitive filesystem, and a command run in the
+ * wrong one is the outcome this plugin must never produce. The folded comparison is the
+ * fallback: a registry path written by hand in another case still finds its row.
  */
 export function findWorkspaceId(
   rows: readonly WorkspaceRow[],
   project: { path: string; host: string }
 ): string | null {
-  const wanted = normalizePath(project.path)
+  const exact = normalizeSeparators(project.path)
   for (const row of rows) {
     if (!sameHost(row.hostId, project.host)) {
       continue
     }
-    if (normalizePath(row.path) === wanted) {
+    if (normalizeSeparators(row.path) === exact) {
+      return row.id
+    }
+  }
+  const folded = normalizePath(project.path)
+  for (const row of rows) {
+    if (!sameHost(row.hostId, project.host)) {
+      continue
+    }
+    if (normalizePath(row.path) === folded) {
       return row.id
     }
   }

@@ -5,15 +5,24 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as main from './worker'
+import { cliProbe } from './openspec-cli'
 
 const roots: string[] = []
+const realProbe = cliProbe.read
 
 afterEach(async () => {
+  cliProbe.read = realProbe
   for (const root of roots.splice(0)) {
     await rm(root, { recursive: true, force: true })
   }
   delete process.env.SPEC_BOARD_HOME
 })
+
+/** The board sees a machine with, or without, the OpenSpec CLI. */
+function machineHasCli(available: boolean): void {
+  cliProbe.read = async () =>
+    available ? { available: true, version: '1.8.0' } : { available: false }
+}
 
 async function home(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'spec-board-home-'))
@@ -187,6 +196,7 @@ test('a malformed registry is a warning, and the local scan still runs', async (
 
 test('runs a terminal action on the workspace that owns the project', async () => {
   const root = await home()
+  machineHasCli(true)
   // The local scan finds nothing on a fake path, so the item under test comes from the snapshot.
   await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
   const host = mockHost({
@@ -228,6 +238,133 @@ test('refuses an action for a project with no matching workspace', async () => {
   await worker.deactivate()
 })
 
+test('the CLI probe decides for a local project', async () => {
+  const root = await home()
+  machineHasCli(false)
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'agent.launch': { terminalId: 't9' },
+      'terminal.create': { terminalId: 't1' }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  const item = payload.items.find((i) => i.id === 'local|/repo/demo#add-x')!
+  // The snapshot says the CLI is there; this machine says it is not, and this machine wins.
+  const validate = item.actions.find((action) => action.id === 'openspec.validate')
+  assert.equal(validate?.run.kind, 'agent')
+  const result = await worker.request('action.run', {
+    projectId: 'local|/repo/demo',
+    actionId: 'openspec.validate',
+    itemId: 'local|/repo/demo#add-x'
+  })
+  assert.deepEqual(result, { kind: 'agent', terminalId: 't9' })
+  assert.deepEqual(host.callsOf('terminal.create'), [])
+  await worker.deactivate()
+})
+
+test('a remote project keeps the answer the agent gave about the CLI', async () => {
+  const root = await home()
+  machineHasCli(false)
+  await writeFile(
+    join(root, 'board.json'),
+    snapshotJson('ssh:yolo|C:/work/remote', 'add-y'),
+    'utf8'
+  )
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  const project = payload.projects.find((p) => p.id === 'ssh:yolo|C:/work/remote')!
+  assert.equal(project.openspecCli?.available, true)
+  const item = payload.items.find((i) => i.projectId === 'ssh:yolo|C:/work/remote')!
+  const validate = item.actions.find((action) => action.id === 'openspec.validate')
+  assert.equal(validate?.run.kind, 'terminal')
+  await worker.deactivate()
+})
+
+test('an item of another project is refused, and nothing runs', async () => {
+  const root = await home()
+  machineHasCli(true)
+  await writeFile(
+    join(root, 'board.json'),
+    snapshotJson('ssh:yolo|C:/work/remote', 'add-y'),
+    'utf8'
+  )
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'terminal.create': { terminalId: 't1' },
+      'terminal.focus': { focused: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  await assert.rejects(
+    worker.request('action.run', {
+      projectId: 'local|/repo/demo',
+      actionId: 'openspec.validate',
+      itemId: 'ssh:yolo|C:/work/remote#add-y'
+    }),
+    /不属于/
+  )
+  assert.deepEqual(host.callsOf('terminal.create'), [])
+  await worker.deactivate()
+})
+
+test('a project that is not on the board is refused', async () => {
+  const root = await home()
+  machineHasCli(true)
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'terminal.create': { terminalId: 't1' },
+      'terminal.focus': { focused: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  // The id names the directory of a workspace, but it is not the id of a project on the board,
+  // so it names nothing: the request may not choose the directory the command runs in.
+  await assert.rejects(
+    worker.request('action.run', {
+      projectId: 'local|/repo/demo/',
+      actionId: 'openspec.validate',
+      changeId: 'add-x'
+    }),
+    /workspace/
+  )
+  assert.deepEqual(host.callsOf('terminal.create'), [])
+  await worker.deactivate()
+})
+
+test('a project on the board with no workspace is refused', async () => {
+  const root = await home()
+  machineHasCli(true)
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/elsewhere', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'terminal.create': { terminalId: 't1' },
+      'terminal.focus': { focused: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  await assert.rejects(
+    worker.request('action.run', {
+      projectId: 'local|/elsewhere',
+      actionId: 'openspec.validate',
+      itemId: 'local|/elsewhere#add-x'
+    }),
+    /workspace/
+  )
+  assert.deepEqual(host.callsOf('terminal.create'), [])
+  await worker.deactivate()
+})
+
 test('the palette needs a change id', async () => {
   await home()
   const host = mockHost({ results: { 'workspace.list': workspaces } })
@@ -263,6 +400,7 @@ test('the palette refuses an unsafe change id, and the board says why', async ()
 
 test("the item's own action wins over a change id", async () => {
   const root = await home()
+  machineHasCli(true)
   await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
   const host = mockHost({
     results: {

@@ -35,6 +35,15 @@ test('collapses the worktrees of one project into a single entry', () => {
   )
 })
 
+test('two workspaces that differ only in case are not confused', () => {
+  const same = [
+    { id: 'w1', path: '/work/App', hostId: 'local' },
+    { id: 'w2', path: '/work/app', hostId: 'local' }
+  ]
+  assert.equal(findWorkspaceId(same, { path: '/work/app', host: 'local' }), 'w2')
+  assert.equal(findWorkspaceId(same, { path: '/work/App', host: 'local' }), 'w1')
+})
+
 test('a row without a host belongs to a local project', () => {
   const local = [{ id: 'w3', path: '/Users/me/group', hostId: null }]
   assert.equal(findWorkspaceId(local, { path: '/users/me/group', host: 'local' }), 'w3')

@@ -41,3 +41,10 @@ export function probeOpenspecCli(): Promise<CliProbe> {
     }
   })
 }
+
+/**
+ * How the worker asks about the CLI. The probe runs the real binary, so the answer is a fact
+ * about this machine; a test replaces `read` to answer for a machine it cannot change, which
+ * keeps the tests from depending on whether the machine running them has the CLI installed.
+ */
+export const cliProbe: { read: () => Promise<CliProbe> } = { read: probeOpenspecCli }

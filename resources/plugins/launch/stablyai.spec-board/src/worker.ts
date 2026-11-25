@@ -64,7 +64,22 @@ async function runAction(
 ): Promise<{ kind: 'terminal' | 'agent'; terminalId: string }> {
   const warnings: string[] = []
   const board = await buildBoard(orca, warnings)
+  // The board's projects are the authority on where a project lives. An id that is not on the
+  // board names nothing: the caller's string is never read back as a path, because that would
+  // let the request choose the directory the command runs in.
   const project = findProject(board, request.projectId)
+  if (project === null) {
+    throw new Error(`这个项目不在 Orca workspace 里：${request.projectId}`)
+  }
+  // An item has to belong to the project it runs in: the command is built from the item's own
+  // change, and it has to run in that project's directory.
+  const item =
+    request.itemId === undefined
+      ? null
+      : (board.payload.items.find((entry) => entry.id === request.itemId) ?? null)
+  if (request.itemId !== undefined && (item === null || item.projectId !== project.id)) {
+    throw new Error(`这个工作项不属于这个项目：${request.itemId ?? ''}`)
+  }
   const workspaceId = findWorkspaceId(board.workspaces, {
     path: project.path,
     host: project.host
@@ -73,9 +88,9 @@ async function runAction(
     throw new Error(`该项目不在 Orca workspace 里：${project.path}`)
   }
   const resolution = resolveAction({
-    items: board.payload.items,
+    items: item === null ? board.payload.items : [item],
     request,
-    cliAvailable: project.cliAvailable
+    cliAvailable: project.openspecCli?.available === true
   })
   if (!resolution.ok) {
     if (resolution.reason === 'unsafe-change-id') {

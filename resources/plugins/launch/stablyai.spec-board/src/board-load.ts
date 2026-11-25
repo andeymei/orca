@@ -10,8 +10,8 @@ import { mergeBoard, type LocalScan } from './board-merge'
 import { parseBoardSnapshot } from './board-schema'
 import { isSafeCommandValue } from './command-values'
 import { scanProject } from './local-scan'
-import type { BoardPayload, BoardSnapshot, ProjectRef } from './model'
-import { probeOpenspecCli } from './openspec-cli'
+import type { BoardPayload, BoardSnapshot, ProjectRef, SnapshotProject } from './model'
+import { cliProbe } from './openspec-cli'
 import { readSpecCapabilities } from './spec-capabilities'
 import {
   readRegistry,
@@ -167,22 +167,26 @@ async function specCapabilitiesOf(
 }
 
 /**
- * Fills in the OpenSpec CLI of the local projects that do not know it yet. A project the agent
- * covered keeps the agent's answer: the agent read the project, and the CLI it found is the one
- * that project has.
+ * The OpenSpec CLI of the local projects.
+ *
+ * The probe runs here, on this machine, so it is the ground truth: the agent's snapshot may
+ * have been written earlier, on another machine, or before the CLI was installed, and a
+ * snapshot that claims a CLI this machine does not have would offer a terminal button that runs
+ * a command the user does not have. A remote project keeps the agent's answer — the CLI is on
+ * the other host, and the worker cannot run it.
  */
-async function fillInCli(
+async function applyCliProbe(
   localScans: readonly LocalScan[],
   snapshot: BoardSnapshot | null
 ): Promise<void> {
   const projects = [
     ...localScans.map((scan) => scan.project),
     ...(snapshot?.projects ?? [])
-  ].filter((project) => project.host === 'local' && project.openspecCli === null)
+  ].filter((project) => project.host === 'local')
   if (projects.length === 0) {
     return
   }
-  const probe = await probeOpenspecCli()
+  const probe = await cliProbe.read()
   for (const project of projects) {
     project.openspecCli = probe
   }
@@ -221,7 +225,7 @@ export async function buildBoard(orca: OrcaWorkerApi, warnings: string[]): Promi
   }
   const snapshot = await readSnapshot(warnings)
   const specCapabilities = await specCapabilitiesOf(localScans, snapshot.value)
-  await fillInCli(localScans, snapshot.value)
+  await applyCliProbe(localScans, snapshot.value)
   const merged = mergeBoard({ snapshot: snapshot.value, localScans, specCapabilities })
   for (const item of merged.items) {
     const changeId = item.openspec?.changeId
@@ -240,24 +244,12 @@ export async function buildBoard(orca: OrcaWorkerApi, warnings: string[]): Promi
   return { payload, workspaces, registry }
 }
 
-/** The project a request names, and whether its CLI is there. */
-export function findProject(
-  board: Board,
-  projectId: string
-): { host: string; path: string; cliAvailable: boolean } {
-  const project = board.payload.projects.find((entry) => entry.id === projectId)
-  if (project) {
-    return {
-      host: project.host,
-      path: project.path,
-      cliAvailable: project.openspecCli?.available === true
-    }
-  }
-  // A project the board does not know yet: its id still names the host and the path.
-  const separator = projectId.indexOf('|')
-  return {
-    host: separator > 0 ? projectId.slice(0, separator) : 'local',
-    path: separator > 0 ? projectId.slice(separator + 1) : projectId,
-    cliAvailable: false
-  }
+/**
+ * The project a request names, or null. The board's projects are the authority on where a
+ * project lives: an id that is not on the board names nothing, and the caller's string is never
+ * read back as a host and a path — that would let the request choose the directory the command
+ * runs in.
+ */
+export function findProject(board: Board, projectId: string): SnapshotProject | null {
+  return board.payload.projects.find((entry) => entry.id === projectId) ?? null
 }

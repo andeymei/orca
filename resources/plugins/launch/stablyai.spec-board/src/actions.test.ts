@@ -862,3 +862,12 @@ test('a remote host that cannot be named safely has no action at all', () => {
   const actions = actionsForItem(item, true, { host: 'ssh:yolo; rm -rf /', path: 'C:/work/remote' })
   assert.deepEqual(actions, [])
 })
+
+test('the rules say how the ssh name is checked before it is used', () => {
+  // The name the agent resolves comes from a command's answer, so the agent has to look at it
+  // before it becomes a host on a command line.
+  const prompt = promptOf(findAction(actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' }), 'openspec.validate')!)
+  assert.match(prompt, /ssh -- <名字>/)
+  assert.match(prompt, /不能以 `-` 开头/)
+  assert.match(prompt, /shell 记号/)
+})

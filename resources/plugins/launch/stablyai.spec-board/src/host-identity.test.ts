@@ -17,6 +17,18 @@ test('refuses a host that could be read as an option', () => {
   assert.equal(isSafeHostId(''), false)
 })
 
+test('refuses a host whose name starts like an option or a path', () => {
+  // `ssh -F` reads a file, `ssh -o` sets an option: a name that starts with a dash is not a
+  // host, and one that starts with a dot is a path. The name is the part after the prefix.
+  assert.equal(isSafeHostId('ssh:-F'), false)
+  assert.equal(isSafeHostId('ssh:-o'), false)
+  assert.equal(isSafeHostId('ssh:.config'), false)
+  assert.equal(isSafeHostId('runtime:-x'), false)
+  // A name that starts with a letter or a digit is a host.
+  assert.equal(isSafeHostId('ssh:F'), true)
+  assert.equal(isSafeHostId('ssh:9host'), true)
+})
+
 test('refuses a host that carries shell syntax', () => {
   assert.equal(isSafeHostId('ssh:a b'), false)
   assert.equal(isSafeHostId('ssh:a;rm'), false)

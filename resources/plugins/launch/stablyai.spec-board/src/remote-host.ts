@@ -18,7 +18,9 @@ export function remoteHostRules(): string {
   return `**主机 id 不是 ssh 名字，不能直接拿去 ssh。先换成 ssh 名字：**
 
 - \`ssh:<id>\`：跑 \`orca host list --json\`，在 \`hosts\` 里找 \`id\` 相同的那一行，它的 \`name\` 就是 ssh 名字；没有这一行，就把 \`ssh:\` 后面那截当 ssh 名字试。
-- \`runtime:<id>\`：跑 \`orca environment show --environment <id> --json\`（\`<id>\` 是 \`runtime:\` 后面那截），读 \`environment.orcadDeployment.sshTargetId\`，再按上面 \`ssh:\` 的办法换成 ssh 名字。`
+- \`runtime:<id>\`：跑 \`orca environment show --environment <id> --json\`（\`<id>\` 是 \`runtime:\` 后面那截），读 \`environment.orcadDeployment.sshTargetId\`，再按上面 \`ssh:\` 的办法换成 ssh 名字。
+
+**换出来的名字先自己查一遍再用**：只能是一个主机名（不能有空格、引号、shell 记号或 \`=\`，不能以 \`-\` 开头）；不合就换个来源找，别拿它去连。ssh 写成 \`ssh -- <名字> …\`。`
 }
 
 /** A project that lives on another host. */

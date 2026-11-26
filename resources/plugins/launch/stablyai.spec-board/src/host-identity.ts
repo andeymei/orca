@@ -5,8 +5,14 @@
 // registry a person edited by hand is not, so the ones that are not are refused rather than
 // passed on.
 
-/** The three kinds of host a project can live on. */
-const HOST_ID = /^(local|ssh:[A-Za-z0-9._-]+|runtime:[A-Za-z0-9-]+)$/
+/**
+ * The three kinds of host a project can live on.
+ *
+ * The name after the prefix starts with a letter or a digit, like every other value this plugin
+ * puts in front of a command: a name that starts with a dash is an option (`ssh -F` reads a
+ * file, not a host), and one that starts with a dot is a path, not a host.
+ */
+const HOST_ID = /^(local|ssh:[A-Za-z0-9][A-Za-z0-9._-]*|runtime:[A-Za-z0-9][A-Za-z0-9-]*)$/
 
 /**
  * Whether a host id can be named in a command.

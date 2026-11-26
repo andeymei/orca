@@ -62,13 +62,18 @@ ${input.registryPath}
 
 变更目录里有 \`proposal.md\`、\`design.md\`、\`tasks.md\` 和 \`specs/<能力>/spec.md\`。\`tasks.md\` 里的复选框就是进度：\`- [ ]\` 未完成，\`- [x]\` 已完成，\`- [-]\` 进行中。代码块里的复选框不算。
 
-远程项目（\`host\` 是 \`ssh:<target>\`）要 **ssh 到那台主机上读**：\`ssh <target> 'cat <路径>'\`，或者 \`ssh <target> ls <路径>\`。不要猜路径，也不要把远程项目的路径当成本地路径读。
+远程项目（\`host\` 是 \`ssh:<target>\`）要 **ssh 到那台主机上读**。不要猜路径，也不要把远程项目的路径当成本地路径读。
 
-远程主机可能是 Windows（PowerShell，没有 \`cat\`/\`head\`/\`find\`）：先试 POSIX 命令，失败就换 \`ssh <target> powershell -NoProfile -Command "Get-Content -Raw <路径>"\`（列目录用 \`Get-ChildItem -Name\`）。
+**路径永远不要拼进命令。** 目录名和文件名是那台机器上的内容，可能是别人放的；拼进命令行就是把命令交给对方。先把路径编码成 base64（路径含特殊字符时，用 \`base64 <<'EOF'\` 这样的引号 heredoc 喂给它，别用引号包），再让远端解码后当数据用：
 
-\`ssh <target>\` 连不上时，在本机的 \`~/.ssh/config\` 里找这台机器（按地址或别名），找到就用那个名字。连不上的项目，把原因写进它的 \`error\` 字段——**不要跳过它**，看板要看得见它没扫到。
+- POSIX 主机：读文件 \`ssh -- <target> 'cat -- "$(printf %s "<B64>" | base64 --decode)"'\`；列目录把 \`cat\` 换成 \`ls -1A --\`。
+- Windows 主机（PowerShell，没有 \`cat\`/\`head\`/\`find\`）：读文件 \`ssh -- <target> powershell -NoProfile -Command "Get-Content -Raw -LiteralPath ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('<B64>')))"\`；列目录换成 \`Get-ChildItem -Name -LiteralPath (...)\`。
 
-每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，结果写进这个项目的 \`openspecCli\`——本地项目在本地跑，远程项目 ssh 到那台主机跑（\`ssh <target> openspec --version\`）。有就写 \`{ "available": true, "version": "1.8.0" }\`，没有写 \`{ "available": false }\`。写漏了这一项，远程项目的命令就会悄悄变成交给 agent 的提示词。
+\`<target>\` 用清单里的原样，不要改写它；\`ssh\` 后面那个 \`--\` 不能省（它让主机名不会被当成选项）。
+
+\`ssh -- <target>\` 连不上时，在本机的 \`~/.ssh/config\` 里找这台机器（按地址或别名），找到就用那个名字。连不上的项目，把原因写进它的 \`error\` 字段——**不要跳过它**，看板要看得见它没扫到。
+
+每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，结果写进这个项目的 \`openspecCli\`——本地项目在本地跑，远程项目 ssh 到那台主机跑（\`ssh -- <target> openspec --version\`）。有就写 \`{ "available": true, "version": "1.8.0" }\`，没有写 \`{ "available": false }\`。写漏了这一项，远程项目的命令就会悄悄变成交给 agent 的提示词。
 
 ## 第三步：写快照
 

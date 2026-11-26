@@ -162,6 +162,45 @@ test('a refresh with no focused workspace runs in a local one', async () => {
   await worker.deactivate()
 })
 
+test('a project whose host cannot be named safely is left out of the scan list', async () => {
+  const root = await home()
+  // A registry a person edited by hand: the host here could be read as an ssh option.
+  await writeFile(
+    join(root, 'projects.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [
+        { name: 'safe', host: 'ssh:yolocalc', path: 'C:/work/app' },
+        { name: 'unsafe', host: 'ssh:-oProxyCommand=evil', path: 'C:/work/other' }
+      ]
+    }),
+    'utf8'
+  )
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': {
+        workspaceId: 'w1',
+        branch: 'main',
+        displayName: 'demo',
+        terminals: []
+      },
+      'agent.launch': { terminalId: 't9' }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.refresh')
+  // The list the agent reads names the projects to scan, and the agent runs `ssh -- <target> …`
+  // with that host: a name a shell could read as an option must not be in it.
+  const list = JSON.parse(await readFile(join(root, 'scan-list.json'), 'utf8'))
+  const projects: unknown = list.projects
+  const hosts = Array.isArray(projects)
+    ? projects.filter(isRecord).map((project) => project['host'])
+    : []
+  assert.deepEqual(hosts, ['ssh:yolocalc'])
+  await worker.deactivate()
+})
+
 test('a refresh that cannot write its prompt is refused with a message', async () => {
   const root = await home()
   // The store directory points inside a file, so neither it nor the prompt file can exist.

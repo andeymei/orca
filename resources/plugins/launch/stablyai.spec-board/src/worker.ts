@@ -21,6 +21,7 @@ import {
   readSettings,
   type Settings
 } from './board-projects'
+import { safeHostOf } from './host-identity'
 import { buildRefreshPrompt } from './refresh-prompt'
 import { SNAPSHOT_FORMAT } from './snapshot-format'
 import {
@@ -226,11 +227,21 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent
  * Both are in a file, not in the prompt: the prompt has room for the task and the rules, and not
  * for the schema as well — `agent.launch` refuses a prompt over 4096 characters. Orca knows
  * projects the agent cannot see by itself, too: the ones on another host, above all.
+ *
+ * A project whose host cannot be named safely is left out: the agent runs `ssh -- <target> …`
+ * with that host, and a name a shell would read as an option is not a host.
  */
 async function writeScanList(
   orca: OrcaWorkerApi,
   projects: readonly ProjectRef[]
 ): Promise<void> {
+  const named = projects.filter((project) => {
+    if (safeHostOf(project.host) !== null) {
+      return true
+    }
+    orca.log(`[spec-board] 跳过了主机名不安全的项目：${project.host}（${project.path}）`)
+    return false
+  })
   try {
     await mkdir(boardStoreDir(), { recursive: true })
   } catch (error) {
@@ -239,14 +250,13 @@ async function writeScanList(
   try {
     await writeFile(
       scanListPath(),
-      `${JSON.stringify({ projects, snapshotFormat: SNAPSHOT_FORMAT }, null, 2)}\n`,
+      `${JSON.stringify({ projects: named, snapshotFormat: SNAPSHOT_FORMAT }, null, 2)}\n`,
       'utf8'
     )
   } catch (error) {
     throw requestError(
       'unavailable',
-      `无法写入 ${scanListPath()}：${messageOf(error)}`
-    )
+      `无法写入 ${scanListPath()}：${messageOf(error)}`)
   }
 }
 

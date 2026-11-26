@@ -37,6 +37,21 @@ test('tells the agent how to read a Windows host', () => {
   assert.match(prompt, /Get-Content -Raw/)
 })
 
+test('never lets a path be interpolated into a command', () => {
+  // The path is data: it comes from the other machine's filesystem, where a directory name may
+  // be anything. A path pasted into a command line is a command line somebody else wrote.
+  assert.match(prompt, /路径永远不要拼进命令/)
+  assert.match(prompt, /base64/)
+  assert.match(prompt, /--decode/)
+  // The Windows form reads the path as data and passes it literally.
+  assert.match(prompt, /Get-Content -Raw -LiteralPath/)
+  assert.match(prompt, /FromBase64String/)
+})
+
+test('the ssh target cannot be read as an option', () => {
+  assert.match(prompt, /ssh -- <target>/)
+})
+
 test('asks for the snapshot to be written in two steps, so no reader sees half a file', () => {
   assert.match(prompt, /\.tmp/)
   assert.match(prompt, /rename/)
@@ -80,7 +95,7 @@ test('names all six progress counts, and says they have to be written', () => {
 test('asks for the CLI answer of every project, local and remote', () => {
   assert.match(prompt, /openspec --version/)
   assert.match(prompt, /openspecCli/)
-  assert.match(prompt, /ssh <target> openspec --version/)
+  assert.match(prompt, /ssh -- <target> openspec --version/)
 })
 
 test('asks for plain slugs', () => {

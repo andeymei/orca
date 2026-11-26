@@ -1,7 +1,7 @@
 // The board's projects and the one the sidebar has selected: the board follows the sidebar, and
 // a project on another host is on the board even though this worker cannot read it.
 import { afterEach, assert, mockHost, mountWorker, test } from 'orca/testing'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as main from './worker'
@@ -80,5 +80,26 @@ test('a project on another host is on the board, waiting for the agent', async (
   // Nobody has read it: the worker cannot read a project on another host.
   assert.equal(remote.openspec, null)
   assert.equal(remote.superpowers, null)
+  await worker.deactivate()
+})
+
+test('an empty registry is filled with the projects Orca knows', async () => {
+  const root = await home()
+  await writeFile(
+    join(root, 'projects.json'),
+    JSON.stringify({ schemaVersion: 1, projects: [] }),
+    'utf8'
+  )
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  // The empty registry names nothing, and the board is not empty: Orca's projects are on it.
+  assert.equal(payload.projects.length, 2)
+  // And the file is filled in, so the person can see — and edit — what the board knows.
+  const written = JSON.parse(await readFile(join(root, 'projects.json'), 'utf8'))
+  assert.deepEqual(
+    written.projects.map((project: { path: string }) => project.path),
+    ['/repo/demo', 'C:/work/remote']
+  )
   await worker.deactivate()
 })

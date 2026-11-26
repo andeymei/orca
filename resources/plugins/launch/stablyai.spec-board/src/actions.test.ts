@@ -123,6 +123,21 @@ test('an item with only Superpowers work offers only the Superpowers skills', ()
   )
 })
 
+test('the design button says whether it writes a design or designs it again', () => {
+  // A work item with a design spec would have it designed again; one without gets one written.
+  const withDesign = actionsForItem(item, true).find((action) => action.id === 'superpowers.brainstorm')
+  assert.equal(withDesign?.label, '重新设计')
+  const withoutDesign = actionsForItem(
+    {
+      topic: 'add-y',
+      openspec: item.openspec,
+      superpowers: { ...item.superpowers, designSpec: null }
+    },
+    true
+  ).find((action) => action.id === 'superpowers.brainstorm')
+  assert.equal(withoutDesign?.label, '写设计')
+})
+
 test('an item with neither side offers nothing', () => {
   assert.deepEqual(actionsForItem({ topic: 'add-x', openspec: null, superpowers: null }, true), [])
 })
@@ -139,7 +154,7 @@ test('every action carries the label, the framework and the mutates flag of its 
       ['openspec.validate', '校验', 'openspec', false],
       ['openspec.show', '看增量', 'openspec', false],
       ['openspec.archive', '归档', 'openspec', true],
-      ['superpowers.brainstorm', '设计', 'superpowers', true],
+      ['superpowers.brainstorm', '重新设计', 'superpowers', true],
       ['superpowers.plan', '写实施计划', 'superpowers', true],
       ['superpowers.execute', '执行计划', 'superpowers', true],
       ['superpowers.review', '代码评审', 'superpowers', false],

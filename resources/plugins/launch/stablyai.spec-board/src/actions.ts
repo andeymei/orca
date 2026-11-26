@@ -104,10 +104,10 @@ function superpowersPrompt(skill: SuperpowersSkill, subject: Subject): string {
 }
 
 /** One Superpowers action: always an agent, because Superpowers has no shell command. */
-function superpowersAction(skill: SuperpowersSkill, subject: Subject): Action {
+function superpowersAction(skill: SuperpowersSkill, subject: Subject, label?: string): Action {
   return {
     id: skill.id,
-    label: skill.label,
+    label: label ?? skill.label,
     framework: 'superpowers',
     run: { kind: 'agent', prompt: superpowersPrompt(skill, subject) },
     mutates: skill.mutates,
@@ -171,10 +171,24 @@ export function actionsForItem(
       plan: safePath(item.superpowers.plan, '实施计划')
     }
     for (const skill of SUPERPOWERS_SKILLS) {
-      actions.push(superpowersAction(skill, subject))
+      actions.push(superpowersAction(skill, subject, labelOf(skill, item)))
     }
   }
   return actions
+}
+
+/**
+ * The button's own label, when the skill's own does not say what it does.
+ *
+ * The design skill writes the design spec; a work item that has none yet gets one written, and
+ * one that has one would have it designed again. The same button therefore reads "写设计" on one
+ * card and "重新设计" on another — the design stage holds the items that already have a design.
+ */
+function labelOf(skill: SuperpowersSkill, item: { superpowers: SuperpowersFacts | null }): string | undefined {
+  if (skill.id !== 'superpowers.brainstorm' || item.superpowers === null) {
+    return undefined
+  }
+  return item.superpowers.designSpec === null ? '写设计' : '重新设计'
 }
 
 /**

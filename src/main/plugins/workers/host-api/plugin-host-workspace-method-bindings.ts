@@ -42,13 +42,7 @@ const terminalReadAnswer = z.object({
   })
 })
 const agentLaunchAnswer = z.object({
-  outcome: z.object({ kind: z.enum(['structured', 'terminal']), handle: z.string() }),
-  // What the host did with the prompt, when the launch carried one.
-  prompt: z
-    .object({
-      outcome: z.enum(['handed-to-terminal', 'not-delivered', 'unconfirmed', 'journaled'])
-    })
-    .optional()
+  outcome: z.object({ kind: z.enum(['structured', 'terminal']), handle: z.string() })
 })
 
 function failureDetail(error: unknown): string {
@@ -75,9 +69,16 @@ function launchPromptFor(
   return { text: prompt, delivery: 'submit' }
 }
 
-/** What the host did with the prompt of a launch, when the answer names one. */
+/**
+ * What the host did with the prompt of a launch, when the answer names one.
+ *
+ * Read apart from the answer the terminal comes in: an outcome this build does not know must
+ * not turn a launch that started into a failed call.
+ */
 function promptOutcomeOf(answer: unknown): string | undefined {
-  const parsed = agentLaunchAnswer.safeParse(answer)
+  const parsed = z
+    .object({ prompt: z.object({ outcome: z.string() }).optional() })
+    .safeParse(answer)
   return parsed.success ? parsed.data.prompt?.outcome : undefined
 }
 

@@ -61,6 +61,17 @@ function scannedOf(project: SnapshotProject): boolean {
   return project.host === 'local' && failureOf(project) === null
 }
 
+/**
+ * Whether this project still waits for the agent.
+ *
+ * A project with no facts at all was never read: the worker cannot read a project on another
+ * host, and a local project the registry forgot is not read either. The badge says so, instead
+ * of leaving the person to wonder where their project went.
+ */
+function needsCollection(project: SnapshotProject): boolean {
+  return project.openspec === null && project.superpowers === null && failureOf(project) === null
+}
+
 /** The badge that says what a project has of a framework: it has it, it has not, or nobody knows. */
 function frameworkBadge(
   label: string,
@@ -88,7 +99,13 @@ function projectKey(id: string): string {
 }
 
 /** One project: where it is, what it carries, and what went wrong with it. */
-function ProjectCard({ project }: { project: SnapshotProject }) {
+function ProjectCard({
+  project,
+  focused
+}: {
+  project: SnapshotProject
+  focused: boolean
+}) {
   const cli = cliBadge(project.openspecCli)
   const failure = failureOf(project)
   const scanned = scannedOf(project)
@@ -97,10 +114,9 @@ function ProjectCard({ project }: { project: SnapshotProject }) {
       <Stack gap="sm">
         <Row gap="xs" align="center" wrap>
           <Badge tone="neutral">{`${project.name} · ${project.host}`}</Badge>
+          {focused ? <Badge tone="success">当前</Badge> : null}
           {failure === null ? null : <Badge tone="danger">{failure}</Badge>}
-          {project.host.startsWith('runtime:') ? (
-            <Badge tone="warning">需 agent 采集</Badge>
-          ) : null}
+          {needsCollection(project) ? <Badge tone="warning">需 agent 采集</Badge> : null}
         </Row>
         <Row gap="xs" wrap>
           <Badge tone="neutral">
@@ -126,6 +142,7 @@ function ProjectCard({ project }: { project: SnapshotProject }) {
 export function ProjectsTab() {
   const board = read(payload)
   const projects = board?.projects ?? []
+  const focus = board?.focus ?? null
   const isRefreshing = read(refreshing)
   const said = read(refreshFeedback)
   return (
@@ -163,7 +180,11 @@ export function ProjectsTab() {
       ) : (
         <Stack gap="sm">
           {projects.map((project) => (
-            <ProjectCard key={projectKey(project.id)} project={project} />
+            <ProjectCard
+              key={projectKey(project.id)}
+              project={project}
+              focused={focus !== null && project.id === focus.projectId}
+            />
           ))}
         </Stack>
       )}

@@ -106,10 +106,29 @@ export type BoardSnapshot = {
   notes?: string[]
 }
 
+/** The project the sidebar has selected. */
+export type BoardFocus = {
+  /** The board project's id. */
+  projectId: string
+  /** The focused workspace, as Orca names it. */
+  workspaceId: string
+  /** The host the workspace lives on: 'local', 'ssh:…' or 'runtime:…'. */
+  host: string
+  /** The workspace's own path, which is not the project's path. */
+  path: string
+}
+
 /** What the worker hands the panel. */
 export type BoardPayload = {
   items: WorkItem[]
   projects: SnapshotProject[]
+  /**
+   * The project the sidebar has selected, or null when nothing is selected.
+   *
+   * The board follows the sidebar: the panel shows the work of this project, and the projects
+   * tab marks it as the current one.
+   */
+  focus: BoardFocus | null
   sources: { localAt: number | null; agentAt: number | null }
   warnings: string[]
 }

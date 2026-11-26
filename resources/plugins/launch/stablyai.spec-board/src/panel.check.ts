@@ -12,6 +12,7 @@ export default defineCheck({
       'board.get': () => ({
         items: [],
         projects: [],
+        focus: null,
         sources: { localAt: null, agentAt: null },
         warnings: []
       })
@@ -23,6 +24,7 @@ export default defineCheck({
       'board.get': () => ({
         items: [],
         projects: [],
+        focus: null,
         sources: { localAt: null, agentAt: null },
         warnings: ['board.json: schemaVersion: 期望 1']
       })

@@ -182,6 +182,7 @@ export const fixturePayload: BoardPayload = {
       scannedAt: SCANNED_AT
     }
   ],
+  focus: null,
   sources: { localAt: Date.parse(SCANNED_AT), agentAt: null },
   warnings: []
 }

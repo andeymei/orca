@@ -19,14 +19,28 @@ import {
   type FrameworkStage,
   type SuperpowersStep
 } from './framework-map'
-import type { Action, SnapshotProject, WorkItem } from './model'
+import type { Action, BoardFocus, SnapshotProject, WorkItem } from './model'
 import { PaletteButton, type Palette } from './panel-map-actions'
 import { mapChange, mapProject, payload } from './panel-state'
 
-/** The project the palette runs in: the one picked, or the first the board knows. */
-function selectedProject(projects: readonly SnapshotProject[]): SnapshotProject | null {
+/**
+ * The project the palette runs in: the one picked, else the one the sidebar has selected, else
+ * the first the board knows.
+ *
+ * The pick is the person's own and outranks the sidebar; it is dropped when the sidebar moves,
+ * because a project picked for the previous workspace is not a pick for this one.
+ */
+function selectedProject(
+  projects: readonly SnapshotProject[],
+  focus: BoardFocus | null
+): SnapshotProject | null {
   const chosen = read(mapProject)
-  return projects.find((entry) => entry.id === chosen) ?? projects[0] ?? null
+  const picked = projects.find((entry) => entry.id === chosen)
+  if (picked !== undefined) {
+    return picked
+  }
+  const focused = focus === null ? undefined : projects.find((entry) => entry.id === focus.projectId)
+  return focused ?? projects[0] ?? null
 }
 
 /** The change ids of one project: the changes the board knows for it. */
@@ -241,7 +255,7 @@ export function MapTab() {
   const board = read(payload)
   const projects = board?.projects ?? []
   const items = board?.items ?? []
-  const project = selectedProject(projects)
+  const project = selectedProject(projects, board?.focus ?? null)
   const changes = project === null ? [] : changeIdsOf(project, items)
   const picked = read(mapChange)
   // A change the board no longer knows is not a change of this project.

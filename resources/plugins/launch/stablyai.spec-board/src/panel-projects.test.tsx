@@ -46,6 +46,7 @@ function boardWith(projects: readonly SnapshotProject[]): BoardPayload {
   return {
     items: [],
     projects: [...projects],
+    focus: null,
     sources: { localAt: 1, agentAt: null },
     warnings: []
   }

@@ -1,99 +1,74 @@
 // The instruction the refresh hands the agent.
 //
-// It states the task, not just the schema: an agent handed a schema and two file paths does not
-// know it is being asked to scan a registry and write a snapshot. It also states the schema
-// exactly as the validator enforces it — a mismatch shows the user a broken-snapshot card
-// instead of a board — and asks for plain slugs, because a change id and a topic end up in a
-// terminal command and in an agent prompt.
+// It states the task, not just a schema: an agent handed a schema and two file paths does not know
+// it is being asked to scan projects and write a snapshot. It also states the rules the validator
+// enforces — a mismatch shows the user a broken-snapshot card instead of a board — and asks for
+// plain slugs, because a change id and a topic end up in a terminal command and in an agent
+// prompt.
+//
+// The projects and the snapshot's shape are in a file the agent reads, not in the prompt: the
+// prompt has a hard limit of 4096 characters, and Orca knows projects this machine cannot see by
+// itself — the ones on another host, above all.
 
 /** The rule every change id and every topic has to match. */
 const SLUG_RULE = '/^[A-Za-z0-9][A-Za-z0-9._-]*$/'
 
-/** The snapshot, as the validator wants it. */
-const SCHEMA = `{
-  "schemaVersion": 1,
-  "generatedAt": "2026-11-25T10:00:00.000Z",
-  "generatedBy": { "agent": "claude" },
-  "projects": [
-    {
-      "id": "local|/Users/me/repo",
-      "name": "repo",
-      "host": "local",
-      "path": "/Users/me/repo",
-      "openspec": { "present": true, "capabilities": ["core"], "activeChanges": 1, "archived": 0 },
-      "superpowers": { "present": true, "specs": 1, "plans": 1 },
-      "openspecCli": { "available": true, "version": "1.8.0" },
-      "scannedAt": "2026-11-25T10:00:00.000Z"
-    }
-  ],
-  "items": [
-    {
-      "id": "local|/Users/me/repo#add-x",
-      "projectId": "local|/Users/me/repo",
-      "title": "新增 X",
-      "topic": "add-x",
-      "openspec": {
-        "changeId": "add-x",
-        "stage": "implementing",
-        "hasProposal": true,
-        "hasDesign": true,
-        "hasTasks": true,
-        "tasksDone": 1,
-        "tasksInProgress": 0,
-        "tasksTotal": 4,
-        "capabilities": []
-      },
-      "superpowers": {
-        "designSpec": "docs/superpowers/specs/add-x-design.md",
-        "plan": "docs/superpowers/plans/add-x.md",
-        "stage": "executing",
-        "planDone": 1,
-        "planInProgress": 0,
-        "planTotal": 4
-      }
-    }
-  ]
-}`
+/**
+ * The prompt has to fit: `agent.launch` refuses a prompt of more than 4096 characters, and a
+ * refresh that cannot start collects nothing. The projects and the snapshot's shape are in the
+ * file the agent reads; the prompt keeps the task and the rules.
+ */
+export const PROMPT_MAX_CHARS = 4096
 
 /**
- * The prompt the refresh sends. It names the registry and the snapshot file, the artifacts to
- * look for, the rule for a remote project, and the schema with every rule the validator
- * enforces.
+ * The prompt the refresh sends. It names the projects to scan, the artifacts to look for, the rule
+ * for a remote project, and the schema with every rule the validator enforces.
  */
-export function buildRefreshPrompt(input: { registryPath: string; snapshotPath: string }): string {
+export function buildRefreshPrompt(input: {
+  registryPath: string
+  scanListPath: string
+  snapshotPath: string
+}): string {
   return `你的任务是扫描一批项目，把它们的 OpenSpec 与 Superpowers 产物写成一份快照，供看板读取。
 
-## 第一步：读项目注册表
+## 第一步：扫哪些项目
+
+要扫的项目在这个文件里：
+${input.scanListPath}
+
+文件里每一项都要扫，每项一个对象：
+
+\`\`\`json
+{ "name": "prism_orca", "host": "local", "path": "/Users/me/code/prism_orca" }
+\`\`\`
+
+- \`name\`：项目的名字，看板上显示用。
+- \`host\`：项目所在的主机。\`local\` 表示就在这台机器上；\`ssh:<target>\` 表示在一台 SSH 主机上，\`<target>\` 是它的名字。
+- \`path\`：项目在那台主机上的绝对路径。
+
+**每一项都要扫**，包括别的机器上的。漏掉一项，看板上那个项目就是空的。
 
 注册表在：
 ${input.registryPath}
 
-它列出要扫描的项目，每项一个对象：
-
-\`\`\`json
-{ "name": "prism_orca", "host": "local", "path": "/Users/a1234/ctjt/code/prism_orca" }
-\`\`\`
-
-- \`name\`：项目的名字，随便起，看板上显示用。
-- \`host\`：项目所在的主机。\`local\` 表示就在这台机器上；\`ssh:<target>\` 表示在一台 SSH 主机上，\`<target>\` 是它的名字。
-- \`path\`：项目在那台主机上的绝对路径。
-
-注册表是**远程项目的唯一来源**：本地扫描只看得到这台机器，一个你没有扫描的项目，看板上就不会出现。所以注册表里的每一项都要扫。
-
-如果注册表文件不存在，那就**没有项目可扫描**：写一份 \`projects\` 为空数组的快照，并在最后的报告里说明这一点。不要凭空造项目。
+它可能还列了清单里没有的项目（比如不在 Orca 里的仓库）——也扫掉它。
 
 ## 第二步：逐个项目扫描
 
 每个项目要看的产物：
 
-- OpenSpec：\`openspec/changes/\`（进行中的变更，每个变更一个目录）和 \`openspec/specs/\`（已归档的能力，每个能力一个目录）。
+- OpenSpec：\`openspec/changes/\`（进行中的变更）和 \`openspec/specs/\`（已归档的能力）。
 - Superpowers：\`docs/superpowers/specs/\`（设计 spec）和 \`docs/superpowers/plans/\`（实施计划），都是 \`.md\` 文件。
 
-一个变更目录里有 \`proposal.md\`、\`design.md\`、\`tasks.md\`，以及 \`specs/<能力>/spec.md\`（增量 spec）。\`tasks.md\` 里的复选框就是进度：\`- [ ]\` 未完成，\`- [x]\` 已完成，\`- [-]\` 进行中。代码块里的复选框不算。
+变更目录里有 \`proposal.md\`、\`design.md\`、\`tasks.md\` 和 \`specs/<能力>/spec.md\`。\`tasks.md\` 里的复选框就是进度：\`- [ ]\` 未完成，\`- [x]\` 已完成，\`- [-]\` 进行中。代码块里的复选框不算。
 
 远程项目（\`host\` 是 \`ssh:<target>\`）要 **ssh 到那台主机上读**：\`ssh <target> 'cat <路径>'\`，或者 \`ssh <target> ls <路径>\`。不要猜路径，也不要把远程项目的路径当成本地路径读。
 
-每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，把结果写进这个项目的 \`openspecCli\`——本地项目就在本地跑，远程项目就 ssh 到那台主机上跑（\`ssh <target> openspec --version\`）。有就用 \`{ "available": true, "version": "1.8.0" }\`，没有就写 \`{ "available": false }\`。看板上这个项目的「校验」一类按钮是终端命令还是交给 agent，就看这一项——写漏了，远程项目的命令就悄悄变成了交给 agent 的提示词。
+远程主机可能是 Windows（PowerShell，没有 \`cat\`/\`head\`/\`find\`）：先试 POSIX 命令，失败就换 \`ssh <target> powershell -NoProfile -Command "Get-Content -Raw <路径>"\`（列目录用 \`Get-ChildItem -Name\`）。
+
+\`ssh <target>\` 连不上时，在本机的 \`~/.ssh/config\` 里找这台机器（按地址或别名），找到就用那个名字。连不上的项目，把原因写进它的 \`error\` 字段——**不要跳过它**，看板要看得见它没扫到。
+
+每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，结果写进这个项目的 \`openspecCli\`——本地项目在本地跑，远程项目 ssh 到那台主机跑（\`ssh <target> openspec --version\`）。有就写 \`{ "available": true, "version": "1.8.0" }\`，没有写 \`{ "available": false }\`。写漏了这一项，远程项目的命令就会悄悄变成交给 agent 的提示词。
 
 ## 第三步：写快照
 
@@ -102,14 +77,11 @@ ${input.snapshotPath}
 
 先写 \`${input.snapshotPath}.tmp\`，写完再 rename 成正式文件——这样读的人永远看不到写了一半的文件。
 
-快照的格式（字段名一字不差，\`schemaVersion\` 必须是 1）：
-
-\`\`\`json
-${SCHEMA}
-\`\`\`
+快照该有的样子在同一个文件的 \`snapshotFormat\` 字段里：${input.scanListPath}
 
 校验器会按下面的规则检查，写之前先自己核对一遍：
 
+- \`schemaVersion\` 必须是 1。
 - \`id\` / \`name\` / \`host\` / \`path\` / \`title\` / \`topic\` 必须是非空字符串。
 - 项目 id 形如 \`<host>|<path>\`；工作项 id 形如 \`<项目 id>#<topic>\`，\`projectId\` 指向它所属的项目 id。
 - 所有计数必须是非负整数。

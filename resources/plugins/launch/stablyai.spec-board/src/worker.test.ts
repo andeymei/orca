@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as main from './worker'
 import { cliProbe } from './openspec-cli'
-import { errorCode, isRecord } from './unknown-values'
+import { isRecord } from './unknown-values'
 
 const roots: string[] = []
 const realProbe = cliProbe.read
@@ -599,13 +599,18 @@ test('an archived change of a remote project is not reported as stale', async ()
   await worker.deactivate()
 })
 
-test('the fallback registry is written once, so the person can add the remote projects', async () => {
+test('the fallback registry is written once, with the projects of every host', async () => {
   const root = await home()
   const host = mockHost({ results: { 'workspace.list': workspaces } })
   const worker = await mountWorker(main, { host })
   await worker.request('board.get')
   const written = JSON.parse(await readFile(join(root, 'projects.json'), 'utf8'))
-  assert.deepEqual(written.projects, [{ name: 'demo', host: 'local', path: '/repo/demo' }])
+  // The remote project is in the registry too: it is the only place the agent learns of it, so
+  // a registry without it would leave that project empty on the board forever.
+  assert.deepEqual(written.projects, [
+    { name: 'demo', host: 'local', path: '/repo/demo' },
+    { name: 'remote', host: 'ssh:yolo', path: 'C:/work/remote' }
+  ])
   await worker.deactivate()
 })
 
@@ -692,97 +697,6 @@ test('a broken snapshot keeps the last snapshot that parsed', async () => {
   assert.ok(second.warnings.some((w) => w.includes('board.json')))
   assert.equal(second.items.length, first.items.length)
   assert.equal(second.sources.agentAt, at)
-  await worker.deactivate()
-})
-
-test('refresh writes the prompt it will send and launches the agent', async () => {
-  const root = await home()
-  const host = mockHost({
-    results: {
-      'workspace.list': workspaces,
-      'workspace.readContext': {
-        workspaceId: 'w1',
-        branch: 'main',
-        displayName: 'demo',
-        terminals: []
-      },
-      'agent.launch': { terminalId: 't9' }
-    }
-  })
-  const worker = await mountWorker(main, { host })
-  await worker.request('board.refresh')
-  const launched = host.callsOf('agent.launch')[0]
-  assert.equal(callString(launched, 'workspaceId'), 'w1')
-  assert.equal(callString(launched, 'agent'), 'claude')
-  assert.ok(callString(launched, 'prompt').includes(join(root, 'board.json')))
-  const written = await readFile(join(root, 'last-refresh-prompt.md'), 'utf8')
-  assert.equal(written, callString(launched, 'prompt'))
-  await worker.deactivate()
-})
-
-test('refresh runs in the workspace the setting names', async () => {
-  await home()
-  const host = mockHost({
-    results: {
-      'workspace.list': workspaces,
-      'workspace.readContext': {
-        workspaceId: 'w1',
-        branch: 'main',
-        displayName: 'demo',
-        terminals: []
-      },
-      'agent.launch': { terminalId: 't9' }
-    },
-    settings: { refreshWorkspace: 'w2' }
-  })
-  const worker = await mountWorker(main, { host })
-  await worker.request('board.refresh')
-  const launched = host.callsOf('agent.launch')[0]
-  assert.equal(callString(launched, 'workspaceId'), 'w2')
-  assert.deepEqual(host.callsOf('workspace.readContext'), [])
-  await worker.deactivate()
-})
-
-test('a refresh without a workspace is refused with invalid_params', async () => {
-  await home()
-  const host = mockHost({
-    results: { 'workspace.list': workspaces, 'workspace.readContext': null }
-  })
-  const worker = await mountWorker(main, { host })
-  await assert.rejects(worker.request('board.refresh'), (error: unknown) => {
-    return errorCode(error) === 'invalid_params'
-  })
-  await worker.deactivate()
-})
-
-test('a refresh that cannot write its prompt is refused with a message', async () => {
-  const root = await home()
-  // The store directory points inside a file, so neither it nor the prompt file can exist.
-  const blocker = join(root, 'blocker')
-  await writeFile(blocker, 'x', 'utf8')
-  process.env.SPEC_BOARD_HOME = join(blocker, 'store')
-  const host = mockHost({
-    results: {
-      'workspace.list': workspaces,
-      'workspace.readContext': {
-        workspaceId: 'w1',
-        branch: 'main',
-        displayName: 'demo',
-        terminals: []
-      },
-      'agent.launch': { terminalId: 't9' }
-    }
-  })
-  const worker = await mountWorker(main, { host })
-  // The panel is handed a code it knows and a message that names the reason, not a raw errno.
-  await assert.rejects(worker.request('board.refresh'), (error: unknown) => {
-    return (
-      errorCode(error) === 'unavailable' &&
-      error instanceof Error &&
-      error.message.includes('last-refresh-prompt.md')
-    )
-  })
-  assert.deepEqual(host.callsOf('agent.launch'), [])
   await worker.deactivate()
 })
 

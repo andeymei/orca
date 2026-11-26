@@ -27,6 +27,17 @@ export function registryPath(): string {
   return join(boardStoreDir(), 'projects.json')
 }
 
+/**
+ * The list of projects this refresh scans.
+ *
+ * The worker writes it before the agent starts: Orca knows the projects of every host it reaches,
+ * and the agent can only be told about them through a file — the prompt it is handed has room for
+ * the task and the schema, and nothing else.
+ */
+export function scanListPath(): string {
+  return join(boardStoreDir(), 'scan-list.json')
+}
+
 /** The prompt of the last refresh, kept so a person can read what the agent was asked. */
 export function refreshPromptPath(): string {
   return join(boardStoreDir(), 'last-refresh-prompt.md')
@@ -130,16 +141,19 @@ export async function readRegistry(): Promise<{
   }
   if (registry.projects.length === 0) {
     // An empty registry is no registry: it would lock the board empty, and only a hand-deleted
-    // file would free it. The fallback is derived again instead, so the local projects are still
-    // on the board.
-    return { registry: null, warning: `项目注册表是空的：${path}（没有项目可扫描）` }
+    // file would free it. The fallback is derived again instead, so the projects are still on the
+    // board — and the file is filled in, because an empty file is nobody's intent.
+    return { registry: null, warning: null }
   }
   return { registry, warning: null }
 }
 
 /**
- * Writes the registry, but only when there is none: the person may have edited it, and the
- * fallback the worker derives from Orca's own workspaces must not overwrite that.
+ * Writes the registry when there is none, and when the one there is empty.
+ *
+ * A registry a person edited is theirs: it is never overwritten. One that holds no project at all
+ * is a dead end — the board would be empty and only a hand-deleted file would free it — so it is
+ * filled with the projects Orca knows.
  */
 export async function writeRegistryIfAbsent(projects: readonly ProjectRef[]): Promise<void> {
   const path = registryPath()
@@ -151,10 +165,33 @@ export async function writeRegistryIfAbsent(projects: readonly ProjectRef[]): Pr
       encoding: 'utf8',
       flag: 'wx'
     })
+    return
   } catch (error) {
     if (!isFileThere(error)) {
       // The board works without a registry: the fallback is derived again next time.
       console.error('[spec-board] 无法写入项目注册表', error)
+      return
     }
+  }
+  // The file is there. An empty one is filled in; one with projects is the person's.
+  let raw: string
+  try {
+    raw = await readFile(path, 'utf8')
+  } catch {
+    return
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return
+  }
+  if (parseRegistry(parsed)?.projects.length !== 0) {
+    return
+  }
+  try {
+    await writeFile(path, `${JSON.stringify({ schemaVersion: 1, projects }, null, 2)}\n`, 'utf8')
+  } catch (error) {
+    console.error('[spec-board] 无法写入项目注册表', error)
   }
 }

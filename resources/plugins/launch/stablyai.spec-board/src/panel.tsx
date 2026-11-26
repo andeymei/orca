@@ -1,7 +1,20 @@
 // The panel: three tabs, and the board the person opens first. It draws what the worker answered
 // with and asks the worker to do things; it never builds a command line of its own.
 
-import { Callout, Heading, RelativeTime, Row, Stack, Tab, Tabs, Text, plugin, read, set } from 'orca'
+import {
+  Callout,
+  Heading,
+  RelativeTime,
+  Row,
+  Stack,
+  Tab,
+  Tabs,
+  Text,
+  on,
+  plugin,
+  read,
+  set
+} from 'orca'
 import type { PanelContext } from 'orca'
 import { BoardTab } from './panel-board'
 import { MapTab } from './panel-map'
@@ -9,6 +22,7 @@ import { ProjectsTab } from './panel-projects'
 import {
   currentTab,
   error,
+  mapProject,
   newBoardReads,
   payload,
   refreshError,
@@ -85,6 +99,14 @@ export function setup(ctx: PanelContext): () => void {
   // The agent wrote a new snapshot: the board is read again.
   ctx.subscriptions.push(
     plugin.on('board.changed', () => {
+      void board.load()
+    })
+  )
+  // The sidebar has selected another workspace: the board follows it, and the map's own pick goes
+  // with it — a project picked for the previous workspace is not a pick for this one.
+  ctx.subscriptions.push(
+    on('workspace.changed', () => {
+      set(mapProject, null)
       void board.load()
     })
   )

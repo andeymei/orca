@@ -3,7 +3,8 @@ import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { detectGaps } from './gaps'
-import { projectIdFor, scanProject } from './local-scan'
+import { scanProject } from './local-scan'
+import { projectIdFor } from './project-identity'
 import { deriveStage } from './stage'
 
 const roots: string[] = []

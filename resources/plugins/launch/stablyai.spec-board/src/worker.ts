@@ -13,19 +13,26 @@ import {
   buildBoard,
   displayText,
   findProject,
-  messageOf,
   newBoardState,
-  readSettings,
   snapshotAt
 } from './board-load'
+import {
+  boardProjects,
+  readSettings,
+  type Settings
+} from './board-projects'
 import { buildRefreshPrompt } from './refresh-prompt'
+import { SNAPSHOT_FORMAT } from './snapshot-format'
 import {
   boardStoreDir,
   refreshPromptPath,
   registryPath,
+  scanListPath,
   snapshotPath
 } from './store-paths'
-import { findWorkspaceId } from './workspace-match'
+import { findWorkspaceId, type WorkspaceRow } from './workspace-match'
+import { messageOf } from './unknown-values'
+import type { ProjectRef } from './model'
 import type { BoardState } from './board-load'
 
 /** The warnings the worker recorded while running an action; the next board.get carries them. */
@@ -139,19 +146,69 @@ async function runAction(
   return { kind: 'agent', terminalId: launched.terminalId, agent }
 }
 
+/**
+ * The workspace the refresh runs in.
+ *
+ * It runs on this machine, always: the snapshot it writes has to be where this worker reads it
+ * from, and a snapshot written on another host is a file nobody ever opens. The agent reaches the
+ * other hosts over ssh, so a remote project is still collected — it is only the agent that runs
+ * here.
+ *
+ * The workspace is the one the person named, else the focused one, else any local workspace.
+ */
+function refreshWorkspaceId(
+  settings: Settings,
+  workspaces: readonly WorkspaceRow[],
+  focusedId: string | null
+): string | null {
+  if (settings.refreshWorkspace !== '') {
+    return settings.refreshWorkspace
+  }
+  const focused = focusedId === null ? undefined : workspaces.find((row) => row.id === focusedId)
+  if (focused !== undefined && (focused.hostId === null || focused.hostId === 'local')) {
+    return focused.id
+  }
+  return workspaces.find((row) => row.hostId === null || row.hostId === 'local')?.id ?? null
+}
+
+/** Whether a workspace is on this machine. */
+function isLocal(row: WorkspaceRow): boolean {
+  return row.hostId === null || row.hostId === 'local'
+}
+
 /** Starts the agent that writes the snapshot. */
 async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent: string }> {
   const settings = await readSettings(orca)
-  let workspaceId = settings.refreshWorkspace
-  if (workspaceId === '') {
-    const context = await orca.host.call('workspace.readContext')
-    workspaceId = context?.workspaceId ?? ''
+  const warnings: string[] = []
+  const known = await boardProjects(orca, settings, warnings)
+  let focusedId: string | null = null
+  if (settings.refreshWorkspace === '') {
+    // The setting names the workspace; there is nothing to ask the host about.
+    try {
+      const context = await orca.host.call('workspace.readContext')
+      focusedId = context?.workspaceId ?? null
+    } catch (error) {
+      warnings.push(`无法读取当前 workspace：${messageOf(error)}`)
+    }
   }
-  if (workspaceId === '') {
-    throw requestError('invalid_params', '没有可用的 workspace 来刷新')
+  const workspaceId = refreshWorkspaceId(settings, known.workspaces, focusedId)
+  if (workspaceId === null) {
+    throw requestError('invalid_params', '本机没有可用的 workspace 来刷新')
   }
-  const prompt = buildRefreshPrompt({ registryPath: registryPath(), snapshotPath: snapshotPath() })
+  const named = known.workspaces.find((row) => row.id === workspaceId)
+  if (named !== undefined && !isLocal(named)) {
+    throw requestError(
+      'invalid_params',
+      '刷新必须在本机运行：快照只有写在本机，看板才读得到它。请把「刷新在哪个 workspace 运行」指向本机的 workspace。'
+    )
+  }
+  const prompt = buildRefreshPrompt({
+    registryPath: registryPath(),
+    scanListPath: scanListPath(),
+    snapshotPath: snapshotPath()
+  })
   await writeRefreshPrompt(orca, prompt)
+  await writeScanList(orca, known.projects)
   const agent = settings.refreshAgent === '' ? 'claude' : settings.refreshAgent
   const launched = await orca.host.call('agent.launch', {
     workspaceId,
@@ -161,6 +218,36 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent
   // The panel says who took the refresh; only the worker knows which agent it launched, and the
   // setting can change between the panel's read and this launch.
   return { terminalId: launched.terminalId, agent }
+}
+
+/**
+ * Writes what the agent is to scan, and the shape of the snapshot it writes.
+ *
+ * Both are in a file, not in the prompt: the prompt has room for the task and the rules, and not
+ * for the schema as well — `agent.launch` refuses a prompt over 4096 characters. Orca knows
+ * projects the agent cannot see by itself, too: the ones on another host, above all.
+ */
+async function writeScanList(
+  orca: OrcaWorkerApi,
+  projects: readonly ProjectRef[]
+): Promise<void> {
+  try {
+    await mkdir(boardStoreDir(), { recursive: true })
+  } catch (error) {
+    orca.log(`[spec-board] 无法创建 ${boardStoreDir()}：${messageOf(error)}`)
+  }
+  try {
+    await writeFile(
+      scanListPath(),
+      `${JSON.stringify({ projects, snapshotFormat: SNAPSHOT_FORMAT }, null, 2)}\n`,
+      'utf8'
+    )
+  } catch (error) {
+    throw requestError(
+      'unavailable',
+      `无法写入 ${scanListPath()}：${messageOf(error)}`
+    )
+  }
 }
 
 /**

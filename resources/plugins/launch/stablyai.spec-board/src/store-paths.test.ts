@@ -55,7 +55,7 @@ test('a registry whose shape is wrong is refused as well', async () => {
   assert.ok(warning !== null && warning.includes('格式不对'))
 })
 
-test('an empty registry reads as no registry', async () => {
+test('an empty registry reads as no registry, and says nothing', async () => {
   const root = await home()
   await writeFile(
     join(root, 'projects.json'),
@@ -64,7 +64,9 @@ test('an empty registry reads as no registry', async () => {
   )
   const { registry, warning } = await readRegistry()
   assert.equal(registry, null)
-  assert.ok(warning !== null && warning.includes('projects.json'))
+  // The projects come from Orca now, so an empty registry is nothing to warn about: it is the
+  // person's file, and it adds projects rather than naming the ones to scan.
+  assert.equal(warning, null)
 })
 
 test('a registry is read as it was written', async () => {

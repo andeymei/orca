@@ -198,15 +198,26 @@ resources/plugins/launch/stablyai.spec-board/
 - 按 `projectId` 归类。
 - 同一项目以 agent 快照为准（它更新更全）；agent 没覆盖的项目用本地扫描结果。
 - 缺口取并集，按 `code` 去重。
-- `board.get` 返回 `{ items, projects, sources: { localAt, agentAt }, warnings }`。
+- `board.get` 返回 `{ items, projects, focus, sources: { localAt, agentAt }, warnings }`。
+
+**看板跟随左侧选中项。** worker 用 `workspace.readContext` 读到侧边栏聚焦的
+workspace，把它落到项目上（worktree 的路径不是项目的路径：项目是那些 worktree
+所在的检出目录，也就是同一 `projectId` 下最短的那个路径；有 `project.list` 时以它
+为准）。`focus` 是这个项目；面板的「看板」页只画这个项目的工作项，「项目」页把它
+标成「当前」。没有聚焦的 workspace 时 `focus` 为 null，看板照旧画所有项目。
+
+**项目清单来自 Orca。** 面板上的项目是 Orca 自己的项目列表（`project.list`，或
+旧版 Orca 的 `workspace.list`）加上注册表里的项目加上 `scanRoots`。别的机器上的
+项目因此在看板上是看得见的——只是没人读过它，卡片上标着「需 agent 采集」。
 
 ### 4.4 落盘文件
 
-| 路径                                        | 谁写            | 谁读           | 说明                             |
-| ------------------------------------------- | --------------- | -------------- | -------------------------------- |
-| `~/.orca/spec-board/projects.json`          | agent（可手改） | worker / agent | 项目注册表                       |
-| `~/.orca/spec-board/board.json`             | agent           | worker         | 采集快照，可不存在               |
-| `~/.orca/spec-board/last-refresh-prompt.md` | worker          | 人             | 最近一次下发的采集指令，便于排查 |
+| 路径                                        | 谁写            | 谁读           | 说明                              |
+| ------------------------------------------- | --------------- | -------------- | --------------------------------- |
+| `~/.orca/spec-board/projects.json`          | agent（可手改） | worker / agent | 项目注册表                        |
+| `~/.orca/spec-board/board.json`             | agent           | worker         | 采集快照，可不存在                |
+| `~/.orca/spec-board/scan-list.json`         | worker          | agent          | 本次要扫的项目清单 + 快照格式样例 |
+| `~/.orca/spec-board/last-refresh-prompt.md` | worker          | 人             | 最近一次下发的采集指令，便于排查  |
 
 注册表格式：
 
@@ -227,16 +238,24 @@ export type ParseResult = { ok: true; value: BoardSnapshot } | { ok: false; erro
 export type BoardPayload = {
   items: WorkItem[]
   projects: SnapshotProject[]
+  focus: BoardFocus | null
   sources: { localAt: number | null; agentAt: number | null }
   warnings: string[]
 }
 ```
 
-注册表**不存在时的回退**：worker 调 `workspace.list`，取 `hostId` 为 `local` 或 `null`
-的条目。同一个 `projectId` 下的多个 worktree 必须**折叠成一条**（保留最短路径，即主
-检出目录）；否则每个 agent worktree 都会变成看板上一个独立项目。首次扫描成功时，
-worker 把这份回退结果**写回 `projects.json` 一次**（仅在文件不存在时写），于是项目
-Tab 从第一次打开起就有内容，后续由 agent 增删远程条目。
+注册表**不存在时的回退**：worker 调 `workspace.list`，**取每一台主机**的条目——远程
+项目也是看板上的一个项目，只把它筛掉就再也回不来了。同一个 `projectId` 下的多个
+worktree 必须**折叠成一条**（保留最短路径，即主检出目录）；否则每个 agent worktree
+都会变成看板上一个独立项目。首次扫描成功时，worker 把这份回退结果**写回
+`projects.json` 一次**（文件不存在或为空时写；人改过的注册表永远不动），于是项目
+Tab 从第一次打开起就有内容。
+
+注册表是**加法**的：它加的是 Orca 不知道的项目（不在任何 workspace 里的仓库），
+不是"要扫哪些"的清单。要扫的清单是 worker 每次刷新时写下的
+`scan-list.json`：Orca 的项目 + 注册表的项目 + `scanRoots`。提示词有 4096 字符的
+上限（`agent.launch` 拒绝更长的），项目清单和快照格式因此都放进文件，提示词只留
+任务和规则。
 
 `scanRoots` 设置是**额外的本地根目录**（每行一个绝对路径），用于扫描不在 Orca
 workspace 里的仓库；空字符串表示不额外扫描。
@@ -534,13 +553,20 @@ shell 元字符。规则同时适用于 change id、工作项的 topic 和 Super
 2. worker 读设置 `refreshAgent`（默认 `claude`）与 `refreshWorkspace`；后者为空时取
    当前聚焦 workspace（`workspace.readContext`）。没有可用 workspace → 返回
    `invalid_params`，面板显示原因。
-3. worker 把 `refresh-prompt.ts` 的内容（含快照 schema 与注册表格式）写入
-   `last-refresh-prompt.md`，然后 `agent.launch({ workspaceId, agent, prompt })`。
+3. worker 把 `refresh-prompt.ts` 的内容（任务与校验规则）写入
+   `last-refresh-prompt.md`，把要扫的项目清单与快照格式样例写入 `scan-list.json`，
+   然后 `agent.launch({ workspaceId, agent, prompt })`。
 4. agent 扫描 → 写 `board.json`（先写 `.tmp` 再 rename）→ 结束。
 5. worker `fs.watch` 目录，检测到 `board.json` 变化后重新校验并
    `panels.post('board.changed', { agentAt })`。`agentAt` 是这份快照的 mtime，
    面板拿它显示"上次有效时间"。
 6. 面板重新 `board.get` 并重绘。
+
+刷新一定在**本机**的 workspace 里跑：快照只有写在本机，worker 才读得到它；写在那台
+机器上的快照是一个没人打开过的文件。远程项目照旧采集——agent 就在本机，它用 `ssh`
+去读那台机器。选 workspace 的顺序是：`refreshWorkspace` 设置 → 侧边栏聚焦的那个
+（若在本机）→ 任意一个本机 workspace。本机一个 workspace 都没有时，刷新以
+`invalid_params` 拒绝，并说明原因。
 
 刷新是**手动**的，不自动轮询（agent 有成本）。
 

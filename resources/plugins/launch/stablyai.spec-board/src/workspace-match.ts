@@ -9,13 +9,18 @@
 import type { ProjectRef } from './model'
 
 /** One workspace as Orca reports it. */
-export type WorkspaceRow = { id: string; path: string; hostId: string | null }
-
-/** One workspace with the fields the registry needs. */
-export type WorkspaceListRow = WorkspaceRow & {
+export type WorkspaceRow = {
+  id: string
+  path: string
+  hostId: string | null
+  /** The project the workspace belongs to, when Orca knows one. */
   projectId?: string | null
+  /** The project's name, when Orca knows one. */
   project?: string | null
 }
+
+/** One workspace with the fields the registry needs. */
+export type WorkspaceListRow = WorkspaceRow
 
 /**
  * One path as one string: forward slashes, no repeated or trailing slash. The case is kept: two
@@ -93,26 +98,26 @@ export function baseName(path: string): string {
 }
 
 /**
- * The projects the local workspaces stand for. Only the rows on this machine are kept — the
- * remote ones come from the registry — and the worktrees of one project are collapsed into the
- * shortest path of that project, which is the main checkout: otherwise every agent worktree of a
- * repository would be a project of its own on the board.
+ * The projects the workspaces stand for. Every host is kept — a project on another machine is a
+ * project of the board, and dropping it is what made the remote ones invisible — and the
+ * worktrees of one project are collapsed into the shortest path of that project, which is the
+ * main checkout: otherwise every agent worktree of a repository would be a project of its own on
+ * the board.
  */
 export function projectRefsFromWorkspaces(rows: readonly WorkspaceListRow[]): ProjectRef[] {
-  const byProject = new Map<string, { path: string; name: string }>()
+  const byProject = new Map<string, { path: string; name: string; host: string }>()
   for (const row of rows) {
-    if (row.hostId !== null && row.hostId !== 'local') {
-      continue
-    }
-    const key = row.projectId ?? row.path
+    const host = row.hostId ?? 'local'
+    // Two hosts may hold a project of the same id; the host is part of the key.
+    const key = `${host}|${row.projectId ?? row.path}`
     const existing = byProject.get(key)
     if (existing === undefined || row.path.length < existing.path.length) {
-      byProject.set(key, { path: row.path, name: row.project ?? baseName(row.path) })
+      byProject.set(key, { path: row.path, name: row.project ?? baseName(row.path), host })
     }
   }
   return [...byProject.values()].map((entry) => ({
     name: entry.name,
-    host: 'local',
+    host: entry.host,
     path: entry.path
   }))
 }

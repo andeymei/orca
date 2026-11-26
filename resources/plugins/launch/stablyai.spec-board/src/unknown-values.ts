@@ -14,3 +14,8 @@ export function errorCode(error: unknown): string | undefined {
   }
   return typeof error.code === 'string' ? error.code : undefined
 }
+
+/** What a failure says, in the words a person reads. */
+export function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}

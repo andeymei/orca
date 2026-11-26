@@ -16,6 +16,7 @@ import {
 } from './local-scan-artifacts'
 import type { CheckboxCount } from './markdown-tasks'
 import type { OpenspecFacts, SnapshotItem, SnapshotProject, SuperpowersFacts } from './model'
+import { projectIdFor } from './project-identity'
 
 /** What one scan of one project found. */
 export type ScanProjectResult = {
@@ -220,11 +221,6 @@ async function buildItem(
         ? null
         : superpowersFacts(superpowers.spec, superpowers.plan, planTasks)
   }
-}
-
-/** The id a project keeps across scans: the host it lives on, and where. */
-export function projectIdFor(host: string, path: string): string {
-  return `${host}|${path}`
 }
 
 /**

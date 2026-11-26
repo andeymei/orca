@@ -55,7 +55,8 @@ test('the agent snapshot wins over the local scan for the same project', () => {
   const merged = mergeBoard({
     snapshot: snapshot({ projects: [project({ name: 'from-the-agent' })] }),
     localScans: [{ project: project({ name: 'from-the-scan' }), items: [] }],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   assert.equal(merged.projects.length, 1)
   assert.equal(merged.projects[0]!.name, 'from-the-agent')
@@ -67,7 +68,8 @@ test('a project only the local scan saw is on the board', () => {
     localScans: [
       { project: project({ id: 'local|/other', name: 'other', path: '/other' }), items: [] }
     ],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   assert.deepEqual(
     merged.projects.map((entry) => entry.id),
@@ -79,7 +81,8 @@ test('an item the agent covered takes the agent facts', () => {
   const merged = mergeBoard({
     snapshot: snapshot({ items: [item({ title: 'from-the-agent' })] }),
     localScans: [{ project: project(), items: [item({ title: 'from-the-scan' })] }],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   assert.equal(merged.items.length, 1)
   assert.equal(merged.items[0]!.title, 'from-the-agent')
@@ -106,7 +109,8 @@ test('the gaps of an item are what both sides say, one per code', () => {
         ]
       }
     ],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   assert.deepEqual(
     merged.items[0]!.gaps.map((gap) => gap.code),
@@ -118,7 +122,8 @@ test('the gaps of an item are deduped by code', () => {
   const merged = mergeBoard({
     snapshot: snapshot({ items: [item({ superpowers: null })] }),
     localScans: [{ project: project(), items: [item({ superpowers: null })] }],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   assert.deepEqual(
     merged.items[0]!.gaps.map((gap) => gap.code),
@@ -154,7 +159,8 @@ test("the agent's gap wins when the two sides disagree about the same code", () 
     localScans: [
       { project: project(), items: [item({ openspec: facts(2), superpowers })] }
     ],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   const drift = merged.items[0]!.gaps.find((gap) => gap.code === 'progress-drift')
   // The agent's message wins: its numbers are the ones the card shows.
@@ -166,7 +172,8 @@ test('the stage and the actions are the worker own derivations', () => {
   const merged = mergeBoard({
     snapshot: snapshot({ projects: [project()], items: [item()] }),
     localScans: [],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   assert.equal(merged.items[0]!.stage, 'implement')
   const validate = merged.items[0]!.actions.find((action) => action.id === 'openspec.validate')
@@ -180,7 +187,8 @@ test('a project without the CLI offers the agent form of the command', () => {
       items: [item()]
     }),
     localScans: [],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   const validate = merged.items[0]!.actions.find((action) => action.id === 'openspec.validate')
   assert.equal(validate?.run.kind, 'agent')
@@ -205,7 +213,8 @@ test('an archived change of a remote project is not reported as stale', () => {
   const unknown = mergeBoard({
     snapshot: snapshot({ items: [archived] }),
     localScans: [],
-    specCapabilities: new Map()
+    specCapabilities: new Map(),
+    knownProjects: []
   })
   assert.equal(
     unknown.items[0]!.gaps.some((gap) => gap.code === 'archived-spec-stale'),
@@ -215,7 +224,8 @@ test('an archived change of a remote project is not reported as stale', () => {
   const known = mergeBoard({
     snapshot: snapshot({ items: [archived] }),
     localScans: [],
-    specCapabilities: new Map<string, string[] | undefined>([[archived.projectId, ['other']]])
+    specCapabilities: new Map<string, string[] | undefined>([[archived.projectId, ['other']]]),
+    knownProjects: []
   })
   assert.equal(
     known.items[0]!.gaps.some((gap) => gap.code === 'archived-spec-stale'),

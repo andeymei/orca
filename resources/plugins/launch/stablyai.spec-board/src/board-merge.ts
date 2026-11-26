@@ -15,8 +15,9 @@
 
 import { actionsForItem } from './actions'
 import { detectGaps } from './gaps'
+import { projectIdFor } from './project-identity'
 import { deriveStage } from './stage'
-import type { BoardSnapshot, Gap, SnapshotItem, SnapshotProject, WorkItem } from './model'
+import type { BoardSnapshot, Gap, ProjectRef, SnapshotItem, SnapshotProject, WorkItem } from './model'
 
 /** What the local scan found in one project. */
 export type LocalScan = { project: SnapshotProject; items: SnapshotItem[] }
@@ -31,6 +32,13 @@ export type MergeInput = {
    * claim the project has no capabilities at all.
    */
   specCapabilities: ReadonlyMap<string, readonly string[] | undefined>
+  /**
+   * The projects the board knows but nobody has read: the ones Orca lists and the registry names,
+   * whose artifacts this worker cannot reach — a project on another host, above all. They are on
+   * the board with no facts, so the panel can say they need collecting instead of leaving the
+   * person to wonder where their project went.
+   */
+  knownProjects: readonly ProjectRef[]
 }
 
 /** The board, merged. */
@@ -40,10 +48,14 @@ export type MergedBoard = { projects: SnapshotProject[]; items: WorkItem[] }
  * One project from both sides. A field the agent left null is unknown, not empty, so the local
  * scan fills it in; the agent's own values win. The agent's verdict on the project wins whole:
  * a project it read successfully has no error, even when the local scan could not read it.
+ *
+ * A project nobody read is still a project: it is on the board with no facts, and the panel says
+ * it needs collecting.
  */
 function mergeProject(
   agent: SnapshotProject | undefined,
-  local: SnapshotProject | undefined
+  local: SnapshotProject | undefined,
+  known: SnapshotProject | undefined
 ): SnapshotProject | null {
   if (agent && local) {
     const merged: SnapshotProject = {
@@ -58,7 +70,22 @@ function mergeProject(
     }
     return merged
   }
-  return agent ?? local ?? null
+  return agent ?? local ?? known ?? null
+}
+
+/** A project nobody has read: on the board, with nothing said about it yet. */
+function unknownProject(ref: ProjectRef): SnapshotProject {
+  const id = projectIdFor(ref.host, ref.path)
+  return {
+    id,
+    name: ref.name,
+    host: ref.host,
+    path: ref.path,
+    openspec: null,
+    superpowers: null,
+    openspecCli: null,
+    scannedAt: ''
+  }
 }
 
 /**
@@ -110,10 +137,20 @@ export function mergeBoard(input: MergeInput): MergedBoard {
   for (const scan of input.localScans) {
     localProjects.set(scan.project.id, scan.project)
   }
-  const projectIds = [...new Set([...agentProjects.keys(), ...localProjects.keys()])].sort()
+  const knownProjects = new Map<string, SnapshotProject>()
+  for (const ref of input.knownProjects) {
+    knownProjects.set(projectIdFor(ref.host, ref.path), unknownProject(ref))
+  }
+  const projectIds = [
+    ...new Set([...agentProjects.keys(), ...localProjects.keys(), ...knownProjects.keys()])
+  ].sort()
   const projects: SnapshotProject[] = []
   for (const id of projectIds) {
-    const merged = mergeProject(agentProjects.get(id), localProjects.get(id))
+    const merged = mergeProject(
+      agentProjects.get(id),
+      localProjects.get(id),
+      knownProjects.get(id)
+    )
     if (merged) {
       projects.push(merged)
     }

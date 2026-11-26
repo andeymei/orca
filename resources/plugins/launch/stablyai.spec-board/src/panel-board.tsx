@@ -4,7 +4,7 @@
 // them, and the buttons that run either framework's own commands.
 
 import { Button, EmptyState, Row, Stack, Text, read, set } from 'orca'
-import type { SnapshotProject, UnifiedStage, WorkItem } from './model'
+import type { BoardFocus, SnapshotProject, UnifiedStage, WorkItem } from './model'
 import { WorkCard } from './panel-card'
 import { busy, payload, stage } from './panel-state'
 
@@ -56,18 +56,17 @@ function StageRail({ items, current }: { items: readonly WorkItem[]; current: Un
 /** The cards of the stage, or the empty state when it has none. */
 function WorkList({
   items,
-  projects
+  projects,
+  empty
 }: {
   items: readonly WorkItem[]
   projects: readonly SnapshotProject[]
+  /** What the empty state says: the stage is empty, or the project has no work at all. */
+  empty: string
 }) {
   if (items.length === 0) {
     return (
-      <EmptyState
-        title="这个阶段还没有工作项"
-        description="换一个阶段看看，或者让 agent 再扫一遍工作区。"
-        icon="layers"
-      />
+      <EmptyState title="这个阶段还没有工作项" description={empty} icon="layers" />
     )
   }
   return (
@@ -79,19 +78,47 @@ function WorkList({
   )
 }
 
+/**
+ * The work of the project the sidebar has selected.
+ *
+ * The board follows the sidebar: the work of every project at once is nobody's work. A board with
+ * no focused workspace shows everything, which is what it did before the sidebar could steer it.
+ */
+function focusedItems(
+  items: readonly WorkItem[],
+  focus: BoardFocus | null
+): readonly WorkItem[] {
+  if (focus === null) {
+    return items
+  }
+  return items.filter((item) => item.projectId === focus.projectId)
+}
+
 /** The board tab: the stage rail, and the cards of the stage it is on. */
 export function BoardTab() {
   const board = read(payload)
-  const items = board?.items ?? []
+  const focus = board?.focus ?? null
+  const items = focusedItems(board?.items ?? [], focus)
   const current = selectedStage(items)
   const shown = items.filter((item) => item.stage === current)
+  const project = board?.projects.find((entry) => entry.id === focus?.projectId) ?? null
+  // A project with no work at all is not an empty stage: it has not been collected yet.
+  const empty =
+    focus !== null && items.length === 0
+      ? '这个项目还没有采集到工作项。到「项目」里点刷新，让 agent 采集它。'
+      : '换一个阶段看看，或者让 agent 再扫一遍工作区。'
   return (
     <Stack gap="md">
+      {project === null ? null : (
+        <Text size="xs" muted>
+          {`当前项目：${project.name} · ${project.host}`}
+        </Text>
+      )}
       <StageRail items={items} current={current} />
       {board === null ? (
         <Text muted>{read(busy) ? '读取中…' : '还没有读到看板。'}</Text>
       ) : (
-        <WorkList items={shown} projects={board.projects} />
+        <WorkList items={shown} projects={board.projects} empty={empty} />
       )}
     </Stack>
   )

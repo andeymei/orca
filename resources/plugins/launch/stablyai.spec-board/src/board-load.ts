@@ -6,29 +6,24 @@
 
 import { readFile, stat } from 'node:fs/promises'
 import type { OrcaWorkerApi } from 'orca/worker'
+import { focusOf } from './board-focus'
 import { mergeBoard, type LocalScan } from './board-merge'
 import { parseBoardSnapshot } from './board-schema'
+import {
+  boardProjects,
+  focusedWorkspaceId,
+  localScanProjects,
+  readSettings,
+  type Settings
+} from './board-projects'
 import { isSafeCommandValue } from './command-values'
 import { scanProject } from './local-scan'
-import type { BoardPayload, BoardSnapshot, ProjectRef, SnapshotProject } from './model'
+import type { BoardPayload, BoardSnapshot, SnapshotProject } from './model'
 import { cliProbe } from './openspec-cli'
 import { readSpecCapabilities } from './spec-capabilities'
-import { errorCode } from './unknown-values'
-import {
-  readRegistry,
-  snapshotPath,
-  writeRegistryIfAbsent,
-  type Registry
-} from './store-paths'
-import {
-  baseName,
-  findWorkspaceId,
-  projectRefsFromWorkspaces,
-  type WorkspaceRow
-} from './workspace-match'
-
-/** The settings the plugin owns, as plain strings. */
-export type Settings = { refreshAgent: string; refreshWorkspace: string; scanRoots: string }
+import { snapshotPath, type Registry } from './store-paths'
+import { errorCode, messageOf } from './unknown-values'
+import { findWorkspaceId, type WorkspaceRow } from './workspace-match'
 
 /** The board, and what the worker needed to build it. */
 export type Board = {
@@ -37,9 +32,8 @@ export type Board = {
   registry: Registry | null
 }
 
-export function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
+export { messageOf, readSettings }
+export type { Settings }
 
 /**
  * A value the board shows but may not trust: a change id read out of a repository can carry
@@ -56,54 +50,6 @@ export function displayText(value: string): string {
 function isAbsent(error: unknown): boolean {
   const code = errorCode(error)
   return code === 'ENOENT' || code === 'ENOTDIR'
-}
-
-/** The settings the plugin owns. A value that is not a string is not set. */
-export async function readSettings(orca: OrcaWorkerApi): Promise<Settings> {
-  const result = await orca.host.call('settings.get')
-  const text = (key: string): string => {
-    const value = result.settings[key]
-    return typeof value === 'string' ? value : ''
-  }
-  return {
-    refreshAgent: text('refreshAgent'),
-    refreshWorkspace: text('refreshWorkspace'),
-    scanRoots: text('scanRoots')
-  }
-}
-
-/** The workspaces Orca reports; a failure is a warning, not a broken board. */
-async function listWorkspaces(orca: OrcaWorkerApi, warnings: string[]): Promise<WorkspaceRow[]> {
-  try {
-    const result = await orca.host.call('workspace.list')
-    return result.workspaces.map((row) => ({
-      id: row.id,
-      path: row.path,
-      hostId: row.hostId,
-      projectId: row.projectId ?? null,
-      project: row.project ?? null
-    }))
-  } catch (error) {
-    warnings.push(`无法读取 workspace 列表：${messageOf(error)}`)
-    return []
-  }
-}
-
-/** The extra local roots the setting names; a relative path is refused, not guessed at. */
-function scanRootProjects(scanRoots: string, warnings: string[]): ProjectRef[] {
-  const projects: ProjectRef[] = []
-  for (const line of scanRoots.split('\n')) {
-    const path = line.trim()
-    if (path === '') {
-      continue
-    }
-    if (!path.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(path)) {
-      warnings.push(`跳过了不是绝对路径的扫描根目录：${path}`)
-      continue
-    }
-    projects.push({ name: baseName(path), host: 'local', path })
-  }
-  return projects
 }
 
 /** When the snapshot was written, or null when there is none. */
@@ -229,34 +175,18 @@ export async function buildBoard(
   warnings: string[],
   state: BoardState
 ): Promise<Board> {
-  const { registry: stored, warning } = await readRegistry()
-  if (warning !== null) {
-    warnings.push(warning)
-  }
-  const workspaces = await listWorkspaces(orca, warnings)
-  let registry = stored
-  if (registry === null) {
-    // No registry yet: the projects Orca knows are the fallback, and they are written back once
-    // so the person can add the remote ones to a file.
-    const refs = projectRefsFromWorkspaces(workspaces)
-    registry = { schemaVersion: 1, projects: refs }
-    // Only a scan that found something is written back. An empty registry would lock the board
-    // empty — the file is read back as a valid registry — and only a hand-deleted file would
-    // free it.
-    if (refs.length > 0) {
-      await writeRegistryIfAbsent(refs)
-    }
-  }
-  let settings: Settings = { refreshAgent: '', refreshWorkspace: '', scanRoots: '' }
-  try {
-    settings = await readSettings(orca)
-  } catch (error) {
-    warnings.push(`无法读取插件设置：${messageOf(error)}`)
-  }
-  const localProjects = [
-    ...registry.projects.filter((project) => project.host === 'local'),
-    ...scanRootProjects(settings.scanRoots, warnings)
-  ]
+  const settings = await readSettings(orca)
+  const { workspaces, orcaProjects, registry, scanRoots, projects: known } = await boardProjects(
+    orca,
+    settings,
+    warnings
+  )
+  const focus = focusOf({
+    workspaceId: await focusedWorkspaceId(orca, warnings),
+    workspaces,
+    projects: orcaProjects
+  })
+  const localProjects = localScanProjects(registry.projects, scanRoots, focus)
   const localScans: LocalScan[] = []
   for (const project of localProjects) {
     const scan = await scanProject(project)
@@ -266,7 +196,12 @@ export async function buildBoard(
   const snapshot = await readSnapshot(warnings, state)
   const specCapabilities = await specCapabilitiesOf(localScans, snapshot.value)
   await applyCliProbe(localScans, snapshot.value)
-  const merged = mergeBoard({ snapshot: snapshot.value, localScans, specCapabilities })
+  const merged = mergeBoard({
+    snapshot: snapshot.value,
+    localScans,
+    specCapabilities,
+    knownProjects: known
+  })
   // The workspaces are the authority on where a project lives: a project no workspace holds has
   // no command to run, and the panel has to say so before the person presses anything.
   const projects = merged.projects.map((project) => ({
@@ -285,6 +220,7 @@ export async function buildBoard(
   const payload: BoardPayload = {
     items: merged.items,
     projects,
+    focus,
     sources: { localAt: localScans.length > 0 ? Date.now() : null, agentAt: snapshot.at },
     warnings
   }

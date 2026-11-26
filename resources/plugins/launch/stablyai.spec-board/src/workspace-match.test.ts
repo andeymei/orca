@@ -31,7 +31,13 @@ test('collapses the worktrees of one project into a single entry', () => {
   ])
   assert.deepEqual(
     refs.map((ref) => ref.path),
-    ['/repo', '/other']
+    ['/repo', '/other', 'C:/remote']
+  )
+  // A project on another host is a project of the board: dropping it is what made the remote
+  // ones invisible.
+  assert.deepEqual(
+    refs.map((ref) => ref.host),
+    ['local', 'local', 'ssh:yolo']
   )
 })
 

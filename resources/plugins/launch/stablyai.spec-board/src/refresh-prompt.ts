@@ -64,7 +64,9 @@ ${input.registryPath}
 
 远程项目（\`host\` 是 \`ssh:<target>\`）要 **ssh 到那台主机上读**。不要猜路径，也不要把远程项目的路径当成本地路径读。
 
-**路径永远不要拼进命令。** 目录名和文件名是那台机器上的内容，可能是别人放的；拼进命令行就是把命令交给对方。先把路径编码成 base64（路径含特殊字符时，用 \`base64 <<'EOF'\` 这样的引号 heredoc 喂给它，别用引号包），再让远端解码后当数据用：
+**路径永远不要拼进命令。** 目录名和文件名是那台机器上的内容，可能是别人放的；拼进命令行就是把命令交给对方。
+
+路径要先变成 base64 再传过去（base64 里没有 shell 语法）。路径含换行或特殊字符时，**先把它写进一个临时文件**——用你的文件工具写，文件内容就是路径本身，一个字节都不要改——再 \`base64 < 那个文件\` 编码；不要把路径放进任何命令行。没有文件工具时，用随机分隔符的 heredoc（\`<<'DELIM_…'\`，分隔符随机取，并确认路径里没有整行正好等于它）。
 
 - POSIX 主机：读文件 \`ssh -- <target> 'cat -- "$(printf %s "<B64>" | base64 --decode)"'\`；列目录把 \`cat\` 换成 \`ls -1A --\`。
 - Windows 主机（PowerShell，没有 \`cat\`/\`head\`/\`find\`）：读文件 \`ssh -- <target> powershell -NoProfile -Command "Get-Content -Raw -LiteralPath ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('<B64>')))"\`；列目录换成 \`Get-ChildItem -Name -LiteralPath (...)\`。

@@ -48,6 +48,16 @@ test('never lets a path be interpolated into a command', () => {
   assert.match(prompt, /FromBase64String/)
 })
 
+test('encodes a path without a heredoc delimiter the path could end', () => {
+  // A fixed delimiter is not safe: a path holding a newline and that delimiter ends the heredoc
+  // early, and what follows is a command on this machine.
+  assert.equal(prompt.includes("<<'EOF'"), false)
+  // The path goes through a file the agent writes, or through a delimiter it made up.
+  assert.match(prompt, /base64 < 那个文件/)
+  assert.match(prompt, /随机分隔符/)
+  assert.match(prompt, /没有整行正好等于它/)
+})
+
 test('the ssh target cannot be read as an option', () => {
   assert.match(prompt, /ssh -- <target>/)
 })

@@ -38,7 +38,6 @@ import {
 import { isLocalWorkspace, type WorkspaceRow } from './workspace-match'
 import { messageOf } from './unknown-values'
 import { remoteOf } from './remote-host'
-import { remotePrompt } from './remote-target'
 import type { ProjectRef } from './model'
 import type { BoardState } from './board-load'
 
@@ -111,13 +110,12 @@ async function runAction(
   const settings = await readSettings(orca)
   // A project on another host: the action is a prompt the agent carries over there.
   const remote = remoteOf(project)
-  const workspaceId = actionWorkspaceId(board, project, settings)
+  // The project's own workspace, wherever it is: the agent runs where the files are.
+  const workspaceId = actionWorkspaceId(board, project)
   if (workspaceId === null) {
     throw requestError(
       'invalid_params',
-      remote === null
-        ? `该项目不在 Orca workspace 里：${project.path}`
-        : '远程项目的动作要在本机跑：本机没有可用的 workspace 给 agent 运行。先在本机打开一个 workspace。'
+      `该项目不在 Orca workspace 里：${project.path}`
     )
   }
   const resolution = resolveAction({
@@ -149,11 +147,10 @@ async function runAction(
     return { kind: 'terminal', terminalId: created.terminalId }
   }
   const agent = settings.refreshAgent === '' ? 'claude' : settings.refreshAgent
-  const prompt = remote === null ? action.run.prompt : await remotePrompt(action.run.prompt, remote)
   const launched = await orca.host.call('agent.launch', {
     workspaceId,
     agent,
-    prompt
+    prompt: action.run.prompt
   })
   // The panel says who took the action; only the worker knows which agent it launched.
   return { kind: 'agent', terminalId: launched.terminalId, agent }

@@ -824,50 +824,23 @@ test('the catalog is made of the commands the rule accepted', () => {
 })
 
 test('a remote project is acted on by an agent, not by a command here', () => {
-  // The project lives on another machine: a terminal on this machine would run the command in
-  // the wrong directory, so the action is a prompt the agent carries over.
+  // The project lives on another machine: the desktop cannot put its command in a terminal of
+  // its own, so the action is a prompt — and the agent that carries it runs there, in the
+  // project's own workspace.
   const actions = actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' })
   for (const action of actions.filter((entry) => entry.framework === 'openspec')) {
     assert.equal(action.run.kind, 'agent', action.id)
   }
+  // The prompt names the work, not the machine: the agent is already there.
   const prompt = promptOf(findAction(actions, 'openspec.validate')!)
-  assert.match(prompt, /ssh:yolo/)
-  // The agent has to ask Orca what the machine is called: a host id is not an ssh name.
-  assert.match(prompt, /主机 id 不是 ssh 名字/)
-})
-
-test('the remote path never goes into the prompt', () => {
-  // The path comes from another machine's filesystem, where a directory name may carry
-  // anything, and a prompt is read as instructions: it travels in a file instead.
-  const actions = actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' })
-  const prompt = promptOf(findAction(actions, 'openspec.validate')!)
+  assert.match(prompt, /严格校验变更 add-x/)
+  assert.equal(prompt.includes('ssh:yolo'), false)
   assert.equal(prompt.includes('C:/work/remote'), false)
-  assert.match(prompt, /<remote-target>/)
-  // And it is read as data, not as part of a command.
-  assert.match(prompt, /不要把它拼进命令行/)
 })
-
 
 test('the palette of a remote project is the agent form too', () => {
   const palette = frameworkActions(true, { host: 'runtime:env-1', path: 'C:/work/remote' })
   for (const action of palette.openspec) {
     assert.equal(action.run.kind, 'agent', action.id)
   }
-  assert.match(promptOf(palette.openspec[0]), /runtime:env-1/)
-})
-
-test('a remote host that cannot be named safely has no action at all', () => {
-  // The host id comes from a file a person edited by hand, and the agent would read it as a
-  // command: there is no action that could carry it safely.
-  const actions = actionsForItem(item, true, { host: 'ssh:yolo; rm -rf /', path: 'C:/work/remote' })
-  assert.deepEqual(actions, [])
-})
-
-test('the rules say how the ssh name is checked before it is used', () => {
-  // The name the agent resolves comes from a command's answer, so the agent has to look at it
-  // before it becomes a host on a command line.
-  const prompt = promptOf(findAction(actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' }), 'openspec.validate')!)
-  assert.match(prompt, /ssh -- <名字>/)
-  assert.match(prompt, /不能以 `-` 开头/)
-  assert.match(prompt, /shell 记号/)
 })

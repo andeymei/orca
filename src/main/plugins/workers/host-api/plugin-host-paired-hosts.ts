@@ -2,6 +2,7 @@ import type { PluginHostResult } from '../../../../shared/plugins/workers/plugin
 import { PLUGIN_WORKSPACE_LIST_LIMIT } from '../../../../shared/plugins/workers/plugin-host-api-workspace-methods'
 import { isRecord } from '../../../../shared/agent-status/child-work/agent-status-child-work-value-guards'
 import { isRepoHidden } from '../../../../shared/project/catalog/hidden-projects'
+import { PluginHostCallError } from './plugin-host-call-scope'
 import {
   branchName,
   LABEL_MAX,
@@ -28,8 +29,10 @@ export type PluginPairedHosts = {
 }
 
 /** The host id a paired server's rows carry: the server itself, not the host under it. */
+const PAIRED_HOST_PREFIX = 'runtime:'
+
 function pairedHostId(environmentId: string): `runtime:${string}` {
-  return `runtime:${environmentId}`
+  return `${PAIRED_HOST_PREFIX}${environmentId}`
 }
 
 /**
@@ -170,4 +173,70 @@ export function pairedWorkspaces(
     return Promise.resolve([])
   }
   return sharedRows(workspaceReads, pairedHosts, () => readPairedWorkspaces(pairedHosts))
+}
+
+/**
+ * The paired server that holds a workspace, or null when this machine holds it.
+ *
+ * The rows carry the server's own worktree ids, so the id a plugin passes names that server's
+ * workspace directly. The work there belongs to that server: an agent launched for it has to run
+ * there, in that server's own workspace.
+ */
+export async function pairedEnvironmentOf(
+  pairedHosts: PluginPairedHosts | null | undefined,
+  workspaceId: string
+): Promise<string | null> {
+  if (!pairedHosts) {
+    return null
+  }
+  const row = (await pairedWorkspaces(pairedHosts)).find((entry) => entry.id === workspaceId)
+  const hostId = row?.hostId ?? null
+  if (hostId === null || !hostId.startsWith(PAIRED_HOST_PREFIX)) {
+    return null
+  }
+  return hostId.slice(PAIRED_HOST_PREFIX.length)
+}
+
+/**
+ * A runtime method on one paired server.
+ *
+ * The desktop reaches the server over the paired runtime socket, and the server does the work in
+ * its own world — its own terminals, its own agents, its own files. A refusal comes back as the
+ * plugin sees any other one: a fixed message, with the server's wording in the detail.
+ */
+export async function pairedRuntimeCall(
+  pairedHosts: PluginPairedHosts,
+  environmentId: string,
+  method: string,
+  params: unknown
+): Promise<unknown> {
+  let answer: unknown
+  try {
+    answer = await pairedHosts.call(environmentId, method, params)
+  } catch (error) {
+    throw new PluginHostCallError(
+      'unavailable',
+      'the server that holds this workspace could not be reached',
+      undefined,
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+  if (!isRecord(answer)) {
+    throw new PluginHostCallError(
+      'unavailable',
+      'the server that holds this workspace did not answer'
+    )
+  }
+  if (answer['ok'] !== true) {
+    const error = answer['error']
+    const detail =
+      isRecord(error) && typeof error['message'] === 'string' ? error['message'] : undefined
+    throw new PluginHostCallError(
+      'action_failed',
+      'the server that holds this workspace refused the action',
+      undefined,
+      detail
+    )
+  }
+  return answer['result']
 }

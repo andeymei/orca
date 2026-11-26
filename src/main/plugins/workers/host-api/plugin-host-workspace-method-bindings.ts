@@ -1,7 +1,11 @@
 import { z } from 'zod'
 import { PLUGIN_HOST_API } from '../../../../shared/plugins/workers/plugin-host-api'
 import { PLUGIN_TERMINAL_READ_MAX_LINES } from '../../../../shared/plugins/workers/plugin-host-api-workspace-methods'
-import { bind, type BoundPluginHostMethod } from './plugin-host-method-bind'
+import {
+  bind,
+  type BoundPluginHostMethod,
+  type PluginHostMethodContext
+} from './plugin-host-method-bind'
 import { PluginHostCallError } from './plugin-host-call-scope'
 import { claimPluginReplacedActionRun } from '../../commands/plugin-command-replacement-deadline'
 import { parseWorkspaceKey } from '../../../../shared/workspace/identity/workspace-scope'
@@ -12,6 +16,11 @@ import {
   pluginWorkspaceSelector as workspaceSelector
 } from './plugin-host-runtime-call'
 import { listPluginProjects, listPluginWorkspaces } from './plugin-host-workspace-list'
+import {
+  pairedEnvironmentOf,
+  pairedRuntimeCall,
+  type PluginPairedHosts
+} from './plugin-host-paired-hosts'
 import { recordPluginOpenedTerminal } from './plugin-opened-terminals'
 
 const api = PLUGIN_HOST_API
@@ -39,6 +48,37 @@ function failureDetail(error: unknown): string {
     return error.detail ?? error.message
   }
   return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * The server that owns a workspace, when it is not this machine.
+ *
+ * A plugin may name a workspace on a paired server — `workspace.list` promises every host — and
+ * the work there belongs to that server: an agent launched for it has to run there, in that
+ * server's own workspace. This desktop cannot spawn there, but that server's runtime can, and the
+ * desktop reaches it over the paired runtime socket.
+ */
+async function workspaceOwner(
+  ctx: PluginHostMethodContext,
+  workspaceId: string
+): Promise<{ environmentId: string; pairedHosts: PluginPairedHosts } | null> {
+  const pairedHosts = ctx.services.pairedHosts?.() ?? null
+  if (!pairedHosts) {
+    return null
+  }
+  const environmentId = await pairedEnvironmentOf(pairedHosts, workspaceId)
+  return environmentId === null ? null : { environmentId, pairedHosts }
+}
+
+/** A runtime call on the server that owns the workspace; the plugin's approval still gates it. */
+async function pairedEffect(
+  ctx: PluginHostMethodContext,
+  owner: { environmentId: string; pairedHosts: PluginPairedHosts },
+  method: string,
+  params: unknown
+): Promise<unknown> {
+  ctx.scope.assertActive()
+  return pairedRuntimeCall(owner.pairedHosts, owner.environmentId, method, params)
 }
 
 export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
@@ -99,13 +139,19 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
     return { name: trimmed }
   }),
   'terminal.create': bind(api['terminal.create'], async (params, ctx) => {
-    const answer = await effect(ctx, 'terminal.create', {
+    const create = {
       worktree: workspaceSelector(params.workspaceId),
       ...(params.title ? { title: params.title } : {}),
       ...(params.command ? { command: params.command } : {}),
       // A mod works beside the person: never reveal or focus the new terminal.
       presentation: 'background'
-    })
+    }
+    // A workspace on a paired server runs there: its terminal belongs to that server.
+    const owner = await workspaceOwner(ctx, params.workspaceId)
+    const answer =
+      owner === null
+        ? await effect(ctx, 'terminal.create', create)
+        : await pairedEffect(ctx, owner, 'terminal.create', create)
     const terminalId = terminalCreateAnswer.parse(answer).terminal.handle
     // A plugin that lost approval, or a worker that cancelled, while the call ran gains no close
     // rights from it.
@@ -131,15 +177,22 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
   }),
   'agent.launch': bind(api['agent.launch'], async (params, ctx) => {
     const worktree = workspaceSelector(params.workspaceId)
-    const answer = await effect(ctx, 'agent.launch', {
-      target: { kind: 'existing', worktree },
+    const launch = {
+      target: { kind: 'existing' as const, worktree },
       agent: params.agent,
       // A terminal, so `terminal.read` and `terminal.sendText` reach the agent the call returns.
-      surface: 'terminal',
+      surface: 'terminal' as const,
       // A mod works beside the person: never take their focus.
-      presentation: 'background',
-      launchSource: 'plugin'
-    })
+      presentation: 'background' as const,
+      launchSource: 'plugin' as const
+    }
+    // A workspace on a paired server runs there: the agent belongs to that server, in that
+    // server's own workspace.
+    const owner = await workspaceOwner(ctx, params.workspaceId)
+    const answer =
+      owner === null
+        ? await effect(ctx, 'agent.launch', launch)
+        : await pairedEffect(ctx, owner, 'agent.launch', launch)
     const terminalId = agentLaunchAnswer.parse(answer).outcome.handle
     // A plugin that lost approval, or a worker that cancelled, while the call ran gains no close
     // rights from it.
@@ -149,14 +202,19 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
     }
     if (params.prompt) {
       // Delivery waits for the agent's composer (up to a minute), longer than a host call may take.
-      void effect(ctx, 'agent.launch', {
-        target: { kind: 'existing', worktree },
+      const deliver = {
+        target: { kind: 'existing' as const, worktree },
         agent: params.agent,
         reuseTerminal: { handle: terminalId },
-        prompt: { text: params.prompt, delivery: 'submit' },
-        presentation: 'background',
-        launchSource: 'plugin'
-      }).catch((error: unknown) => {
+        prompt: { text: params.prompt, delivery: 'submit' as const },
+        presentation: 'background' as const,
+        launchSource: 'plugin' as const
+      }
+      void (
+        owner === null
+          ? effect(ctx, 'agent.launch', deliver)
+          : pairedEffect(ctx, owner, 'agent.launch', deliver)
+      ).catch((error: unknown) => {
         ctx.scope.log?.(
           `agent.launch: the prompt did not reach ${terminalId}: ${failureDetail(error)}`
         )

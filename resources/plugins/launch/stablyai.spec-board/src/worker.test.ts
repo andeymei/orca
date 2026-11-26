@@ -657,7 +657,7 @@ test('the extra scan roots of the setting are scanned too', async () => {
   await worker.deactivate()
 })
 
-test('an action on a remote project runs in a local workspace, as a prompt', async () => {
+test('an action on a remote project runs in that project own workspace', async () => {
   const root = await home()
   machineHasCli(true)
   await writeFile(
@@ -679,20 +679,17 @@ test('an action on a remote project runs in a local workspace, as a prompt', asy
     actionId: 'openspec.validate',
     itemId: 'ssh:yolo|C:/work/remote#add-y'
   })
-  // The agent runs here — this desktop cannot dispatch into another machine — and reaches the
-  // project over ssh.
+  // The agent runs where the work is: in the remote project's own workspace, which is the
+  // workspace that holds that project.
   assert.deepEqual(result, { kind: 'agent', terminalId: 't3', agent: 'claude' })
   assert.deepEqual(host.callsOf('terminal.create'), [])
   const launched = host.callsOf('agent.launch')[0]
-  assert.equal(callString(launched, 'workspaceId'), 'w1')
+  assert.equal(callString(launched, 'workspaceId'), 'w2')
+  // The prompt names the work, not the machine: the agent is already on it.
   const prompt = callString(launched, 'prompt')
-  assert.match(prompt, /ssh:yolo/)
-  // The path is not in the prompt: it is in the file the prompt names.
+  assert.match(prompt, /严格校验变更 add-y/)
+  assert.equal(prompt.includes('ssh:yolo'), false)
   assert.equal(prompt.includes('C:/work/remote'), false)
-  const file = /本机的一个文件里：(\S+?)。/.exec(prompt)?.[1]
-  assert.ok(file, prompt)
-  const target = JSON.parse(await readFile(file!, 'utf8'))
-  assert.deepEqual(target, { host: 'ssh:yolo', path: 'C:/work/remote' })
   await worker.deactivate()
 })
 

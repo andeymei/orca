@@ -7,6 +7,8 @@
 // The same rules serve the refresh (which reads a remote project's artifacts) and a remote
 // project's actions (which change them): one place, so both read the same.
 
+import { isSafeHostId } from './host-identity'
+
 /** The rules that turn a host id into an ssh name. */
 export function remoteHostRules(): string {
   return `**主机 id 不是 ssh 名字，不能直接拿去 ssh。先换成 ssh 名字：**
@@ -24,15 +26,45 @@ export type RemoteProject = {
 }
 
 /**
+ * The project as a remote one, or null when it lives on this machine.
+ *
+ * `local` is this machine; `ssh:<id>` and `runtime:<id>` are others. A project the board does not
+ * know is not remote either: it is nowhere, and nothing runs on it.
+ */
+export function remoteOf(
+  project: { host: string; path: string } | null | undefined
+): RemoteProject | null {
+  if (project === null || project === undefined || project.host === 'local') {
+    return null
+  }
+  return { host: project.host, path: project.path }
+}
+
+/**
+ * Whether a remote host may be named in a prompt.
+ *
+ * The host id ends up in the command the agent runs over ssh, so one that a shell would read as
+ * syntax must never reach it. The ids Orca mints are safe; a registry a person edited by hand
+ * is not.
+ */
+export function isSafeRemoteHost(host: string): boolean {
+  return isSafeHostId(host)
+}
+
+/**
  * What an agent is told before it acts on a remote project.
  *
  * The work happens on the other machine: the files are there, the commands run there, and the
- * agent reaches them over ssh from this machine.
+ * agent reaches them over ssh from this machine. The path is data — it comes from another
+ * machine's filesystem, where a directory name may carry anything — so it never goes into a
+ * command line.
  */
 export function remotePreamble(remote: RemoteProject): string {
   return `这件事发生在远程项目上：项目在主机 \`${remote.host}\` 的 \`${remote.path}\`。
 产物和命令都在那台机器上——不要在本机找这个目录，也不要把本机的同名目录当成它。
 先按下面的规则把那台机器的 ssh 名字问出来，再 ssh 过去操作那个目录。
 
-${remoteHostRules()}`
+${remoteHostRules()}
+
+路径是数据：它来自那台机器的文件系统，目录名可能带任何东西。不要把它拼进命令行——base64 传过去，让远端按数据读回来。`
 }

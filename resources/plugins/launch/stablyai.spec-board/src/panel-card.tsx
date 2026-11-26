@@ -8,7 +8,7 @@ import { Badge, Button, Card, Collapsible, Progress, Row, Stack, Text, read } fr
 import type { Action, SnapshotProject, WorkItem } from './model'
 import { otherActions, primaryAction } from './panel-primary-action'
 import { feedback, pendingAction, pressAction } from './panel-state'
-import { canRunActions, NO_WORKSPACE } from './panel-workspace'
+import { canRunActions, noRunMessage, runChannel } from './panel-workspace'
 
 /** How far a checklist is, in the percent a Progress bar takes. */
 function percent(done: number, total: number): number {
@@ -88,17 +88,15 @@ export function WorkCard({
   const waiting = read(pendingAction)
   const results = read(feedback)
   const project = projects.find((entry) => entry.id === item.projectId) ?? null
-  // The badge says what the button does, not what the project owns: an OpenSpec action that runs
-  // no command goes to an agent instead, and the person must see that before pressing it.
-  const withoutCli = item.actions.some(
-    (action) => action.framework === 'openspec' && action.run.kind === 'agent'
-  )
+  // The badge says the project has no OpenSpec CLI — a fact, not a guess: a project nobody
+  // answered for keeps an unknown CLI, and unknown is not "no CLI".
+  const withoutCli = project?.openspecCli?.available === false
   const primary = primaryAction(item)
   const others = otherActions(item)
   const done = results[item.id]
-  // A project no workspace holds has nowhere to run: the button is off, and it says so.
+  // A project whose actions cannot run has nowhere to run them: the button is off, and it says so.
   const runnable = canRunActions(project)
-  const hint = runnable ? undefined : NO_WORKSPACE
+  const hint = runnable ? undefined : noRunMessage(project)
   return (
     <Card>
       <Stack gap="sm">
@@ -137,7 +135,7 @@ export function WorkCard({
               size="sm"
               variant="solid"
               disabled={!runnable}
-              tooltip={hint}
+              tooltip={hint ?? runChannel(primary)}
               onPress={() => {
                 pressAction({
                   scope: item.id,
@@ -159,7 +157,7 @@ export function WorkCard({
                     size="sm"
                     variant="outline"
                     disabled={!runnable}
-                    tooltip={hint}
+                    tooltip={hint ?? runChannel(action)}
                     onPress={() => {
                       pressAction({
                         scope: item.id,

@@ -22,6 +22,7 @@ import {
 import type { Action, BoardFocus, SnapshotProject, WorkItem } from './model'
 import { PaletteButton, type Palette } from './panel-map-actions'
 import { mapChange, mapProject, payload } from './panel-state'
+import { remoteOf } from './remote-host'
 
 /**
  * The project the palette runs in: the one picked, else the one the sidebar has selected, else
@@ -260,7 +261,7 @@ export function MapTab() {
   const picked = read(mapChange)
   // A change the board no longer knows is not a change of this project.
   const change = picked !== null && changes.includes(picked) ? picked : null
-  const catalog = frameworkActions(project?.openspecCli?.available === true)
+  const catalog = frameworkActions(project?.openspecCli?.available === true, remoteOf(project))
   const palette: Palette = {
     project,
     change,

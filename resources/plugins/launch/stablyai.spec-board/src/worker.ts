@@ -9,6 +9,7 @@ import { watch, type FSWatcher } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import type { OrcaWorkerApi } from 'orca/worker'
 import { resolveAction, type ActionFailure, type ActionRequest } from './action-resolution'
+import { actionWorkspaceId } from './action-workspace'
 import {
   buildBoard,
   displayText,
@@ -33,8 +34,9 @@ import {
   scanListPath,
   snapshotPath
 } from './store-paths'
-import { findWorkspaceId, type WorkspaceRow } from './workspace-match'
+import { isLocalWorkspace, type WorkspaceRow } from './workspace-match'
 import { messageOf } from './unknown-values'
+import { remoteOf } from './remote-host'
 import type { ProjectRef } from './model'
 import type { BoardState } from './board-load'
 
@@ -104,17 +106,23 @@ async function runAction(
   if (request.itemId !== undefined && (item === null || item.projectId !== project.id)) {
     throw new Error(`这个工作项不属于这个项目：${request.itemId ?? ''}`)
   }
-  const workspaceId = findWorkspaceId(board.workspaces, {
-    path: project.path,
-    host: project.host
-  })
+  const settings = await readSettings(orca)
+  // A project on another host: the action is a prompt the agent carries over there.
+  const remote = remoteOf(project)
+  const workspaceId = actionWorkspaceId(board, project, settings)
   if (workspaceId === null) {
-    throw new Error(`该项目不在 Orca workspace 里：${project.path}`)
+    throw requestError(
+      'invalid_params',
+      remote === null
+        ? `该项目不在 Orca workspace 里：${project.path}`
+        : '远程项目的动作要在本机跑：本机没有可用的 workspace 给 agent 运行。先在本机打开一个 workspace。'
+    )
   }
   const resolution = resolveAction({
     items: item === null ? board.payload.items : [item],
     request,
-    cliAvailable: project.openspecCli?.available === true
+    cliAvailable: project.openspecCli?.available === true,
+    remote
   })
   if (!resolution.ok) {
     if (resolution.reason === 'unsafe-change-id') {
@@ -138,7 +146,6 @@ async function runAction(
     }
     return { kind: 'terminal', terminalId: created.terminalId }
   }
-  const settings = await readSettings(orca)
   const agent = settings.refreshAgent === '' ? 'claude' : settings.refreshAgent
   const launched = await orca.host.call('agent.launch', {
     workspaceId,
@@ -174,11 +181,6 @@ function refreshWorkspaceId(
   return workspaces.find((row) => row.hostId === null || row.hostId === 'local')?.id ?? null
 }
 
-/** Whether a workspace is on this machine. */
-function isLocal(row: WorkspaceRow): boolean {
-  return row.hostId === null || row.hostId === 'local'
-}
-
 /** Starts the agent that writes the snapshot. */
 async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent: string }> {
   const settings = await readSettings(orca)
@@ -199,7 +201,7 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent
     throw requestError('invalid_params', '本机没有可用的 workspace 来刷新')
   }
   const named = known.workspaces.find((row) => row.id === workspaceId)
-  if (named !== undefined && !isLocal(named)) {
+  if (named !== undefined && !isLocalWorkspace(named)) {
     throw requestError(
       'invalid_params',
       '刷新必须在本机运行：快照只有写在本机，看板才读得到它。请把「刷新在哪个 workspace 运行」指向本机的 workspace。'

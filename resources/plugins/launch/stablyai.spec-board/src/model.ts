@@ -55,11 +55,14 @@ export type SnapshotProject = {
   scannedAt: string
   error?: string
   /**
-   * Whether an Orca workspace holds this project. The worker decides it — the board's workspaces
+   * Whether this project's actions can run here. The worker decides it — the board's workspaces
    * are the authority on where a project lives — and the panel draws the consequence: the
-   * actions of a project no workspace holds are off.
+   * actions of a project that cannot run are off, and they say why.
+   *
+   * A local project runs when a workspace holds it. A remote project runs when this machine has
+   * a workspace: its action is an agent that runs here and reaches the other machine over ssh.
    */
-  hasWorkspace?: boolean
+  canRun?: boolean
 }
 
 /** One piece of work as the agent found it: facts only, no judgment. */

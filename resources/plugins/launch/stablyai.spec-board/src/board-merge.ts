@@ -16,6 +16,7 @@
 import { actionsForItem } from './actions'
 import { detectGaps } from './gaps'
 import { projectIdFor } from './project-identity'
+import { remoteOf } from './remote-host'
 import { deriveStage } from './stage'
 import type { BoardSnapshot, Gap, ProjectRef, SnapshotItem, SnapshotProject, WorkItem } from './model'
 
@@ -187,7 +188,9 @@ export function mergeBoard(input: MergeInput): MergedBoard {
       ...facts,
       stage: deriveStage(facts),
       gaps,
-      actions: actionsForItem(facts, cliAvailable(project))
+      // A project on another host cannot run a command here: its actions are prompts the agent
+      // carries over there.
+      actions: actionsForItem(facts, cliAvailable(project), remoteOf(project))
     })
   }
   return { projects, items }

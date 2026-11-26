@@ -93,6 +93,8 @@ test('an item offers the commands of its change and the skills of its work', () 
     [
       'openspec.validate',
       'openspec.show',
+      'openspec.complete',
+      'openspec.implement',
       'openspec.archive',
       'superpowers.brainstorm',
       'superpowers.plan',
@@ -106,7 +108,13 @@ test('an item offers the commands of its change and the skills of its work', () 
 test('an item with only a change offers only the OpenSpec commands', () => {
   assert.deepEqual(
     actionsForItem(openspecOnly, true).map((action) => action.id),
-    ['openspec.validate', 'openspec.show', 'openspec.archive']
+    [
+      'openspec.validate',
+      'openspec.show',
+      'openspec.complete',
+      'openspec.implement',
+      'openspec.archive'
+    ]
   )
 })
 
@@ -153,6 +161,8 @@ test('every action carries the label, the framework and the mutates flag of its 
     [
       ['openspec.validate', '校验', 'openspec', false],
       ['openspec.show', '看增量', 'openspec', false],
+      ['openspec.complete', '补齐变更', 'openspec', true],
+      ['openspec.implement', '实现变更', 'openspec', true],
       ['openspec.archive', '归档', 'openspec', true],
       ['superpowers.brainstorm', '重新设计', 'superpowers', true],
       ['superpowers.plan', '写实施计划', 'superpowers', true],
@@ -163,12 +173,18 @@ test('every action carries the label, the framework and the mutates flag of its 
   )
 })
 
-test('every change-scoped OpenSpec command has a command of its own', () => {
-  // Why: the panel marks a card `无 CLI` when one of its OpenSpec actions runs no command. A
-  // change-scoped command that only ever had an agent form would put that badge on cards of
-  // projects that do have the CLI, and nothing else would notice.
+test('the OpenSpec steps the CLI has are the ones that run a command', () => {
+  // Why: a card's OpenSpec button either runs the CLI or hands the work to the agent. The two
+  // the CLI cannot do — filling the change in and implementing it — are the agent's, and they
+  // say so: their run is a prompt, never a command line.
   for (const command of OPENSPEC_COMMANDS.filter((entry) => entry.scope === 'change')) {
-    assert.notEqual(command.command, null, `${command.id} has no command of its own`)
+    const action = findAction(actionsForItem(item, true), command.id)
+    assert.ok(action, command.id)
+    if (command.command === null) {
+      assert.equal(action?.run.kind, 'agent', command.id)
+    } else {
+      assert.equal(action?.run.kind, 'terminal', command.id)
+    }
   }
 })
 
@@ -180,6 +196,8 @@ test('the OpenSpec commands are the ones the CLI actually has', () => {
     [
       { kind: 'terminal', command: 'openspec validate add-x --strict' },
       { kind: 'terminal', command: 'openspec show add-x --json --deltas-only' },
+      { kind: 'agent', prompt: '按 openspec/AGENTS.md 为变更 add-x 补齐 design、tasks 和增量 spec' },
+      { kind: 'agent', prompt: '按 openspec/AGENTS.md 实现变更 add-x，按它的 tasks.md 做' },
       { kind: 'terminal', command: 'openspec archive add-x --yes' }
     ]
   )
@@ -197,7 +215,7 @@ test('the agent fallback names the guide and the change it acts on', () => {
   const actions = actionsForItem(item, false).filter((action) => action.framework === 'openspec')
   assert.deepEqual(
     actions.map((action) => action.id),
-    ['openspec.validate', 'openspec.show', 'openspec.archive']
+    ['openspec.validate', 'openspec.show', 'openspec.complete', 'openspec.implement', 'openspec.archive']
   )
   for (const action of actions) {
     const prompt = promptOf(action)
@@ -251,10 +269,12 @@ test('the palette lists every command of both frameworks', () => {
     palette.openspec.map((action) => action.id),
     [
       'openspec.list',
+      'openspec.propose',
       'openspec.validate',
       'openspec.show',
-      'openspec.archive',
-      'openspec.propose'
+      'openspec.complete',
+      'openspec.implement',
+      'openspec.archive'
     ]
   )
   assert.deepEqual(
@@ -269,10 +289,12 @@ test('the palette lists every command of both frameworks', () => {
   )
 })
 
-test('the palette runs the CLI where there is one and leaves the proposal to the agent', () => {
+test('the palette runs the CLI where there is one and leaves the rest to the agent', () => {
   const palette = frameworkActions(true)
   assert.deepEqual(
-    palette.openspec.slice(0, 4).map((action) => action.run),
+    palette.openspec
+      .filter((action) => action.run.kind === 'terminal')
+      .map((action) => action.run),
     [
       { kind: 'terminal', command: 'openspec list' },
       { kind: 'terminal', command: 'openspec validate <change-id> --strict' },
@@ -280,8 +302,11 @@ test('the palette runs the CLI where there is one and leaves the proposal to the
       { kind: 'terminal', command: 'openspec archive <change-id> --yes' }
     ]
   )
-  assert.equal(palette.openspec[4]!.run.kind, 'agent')
-  assert.match(promptOf(palette.openspec[4]!), /openspec\/AGENTS\.md/)
+  // The steps the CLI has no command for are the agent's: the proposal, filling a change in and
+  // implementing it.
+  for (const action of palette.openspec.filter((entry) => entry.run.kind === 'agent')) {
+    assert.match(promptOf(action), /openspec\/AGENTS\.md/, action.id)
+  }
 })
 
 test('the palette grades every command with the mutates flag of its row', () => {
@@ -290,10 +315,12 @@ test('the palette grades every command with the mutates flag of its row', () => 
     palette.openspec.map((action) => [action.id, action.mutates]),
     [
       ['openspec.list', false],
+      ['openspec.propose', true],
       ['openspec.validate', false],
       ['openspec.show', false],
-      ['openspec.archive', true],
-      ['openspec.propose', true]
+      ['openspec.complete', true],
+      ['openspec.implement', true],
+      ['openspec.archive', true]
     ]
   )
   assert.deepEqual(
@@ -322,6 +349,8 @@ test('every action id the design lists exists', () => {
     [...palette.openspec, ...palette.superpowers].map((action) => action.id).sort(),
     [
       'openspec.archive',
+      'openspec.complete',
+      'openspec.implement',
       'openspec.list',
       'openspec.propose',
       'openspec.show',
@@ -462,6 +491,8 @@ test('an archived change is not offered the archive command', () => {
     [
       'openspec.validate',
       'openspec.show',
+      'openspec.complete',
+      'openspec.implement',
       'superpowers.brainstorm',
       'superpowers.plan',
       'superpowers.execute',
@@ -581,10 +612,12 @@ test('the scope of an action is the scope of the command it came from', () => {
     palette.openspec.map((action) => [action.id, action.scope]),
     [
       ['openspec.list', 'project'],
+      ['openspec.propose', 'project'],
       ['openspec.validate', 'change'],
       ['openspec.show', 'change'],
-      ['openspec.archive', 'change'],
-      ['openspec.propose', 'project']
+      ['openspec.complete', 'change'],
+      ['openspec.implement', 'change'],
+      ['openspec.archive', 'change']
     ]
   )
   // Superpowers has no command that acts on one change: a skill acts on the project.
@@ -595,7 +628,18 @@ test('the scope of an action is the scope of the command it came from', () => {
   // The item's own actions carry it too.
   assert.deepEqual(
     actionsForItem(item, true).map((action) => action.scope),
-    ['change', 'change', 'change', 'project', 'project', 'project', 'project', 'project']
+    [
+      'change',
+      'change',
+      'change',
+      'change',
+      'change',
+      'project',
+      'project',
+      'project',
+      'project',
+      'project'
+    ]
   )
 })
 
@@ -777,4 +821,39 @@ test('the catalog is made of the commands the rule accepted', () => {
   for (const command of OPENSPEC_COMMANDS) {
     assert.equal(Object.isFrozen(command), true, command.id)
   }
+})
+
+test('a remote project is acted on by an agent, not by a command here', () => {
+  // The project lives on another machine: a terminal on this machine would run the command in
+  // the wrong directory, so the action is a prompt the agent carries over.
+  const actions = actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' })
+  for (const action of actions.filter((entry) => entry.framework === 'openspec')) {
+    assert.equal(action.run.kind, 'agent', action.id)
+  }
+  const prompt = promptOf(findAction(actions, 'openspec.validate')!)
+  assert.match(prompt, /ssh:yolo/)
+  assert.match(prompt, /C:\/work\/remote/)
+  // The agent has to ask Orca what the machine is called: a host id is not an ssh name.
+  assert.match(prompt, /主机 id 不是 ssh 名字/)
+})
+
+test('the remote path is data, and never goes into a command line', () => {
+  const actions = actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' })
+  const prompt = promptOf(findAction(actions, 'openspec.validate')!)
+  assert.match(prompt, /不要把它拼进命令行/)
+})
+
+test('a remote host that cannot be named safely has no action at all', () => {
+  // The host id comes from a file a person edited by hand, and the agent would read it as a
+  // command: there is no action that could carry it safely.
+  const actions = actionsForItem(item, true, { host: 'ssh:yolo; rm -rf /', path: 'C:/work/remote' })
+  assert.deepEqual(actions, [])
+})
+
+test('the palette of a remote project is the agent form too', () => {
+  const palette = frameworkActions(true, { host: 'runtime:env-1', path: 'C:/work/remote' })
+  for (const action of palette.openspec) {
+    assert.equal(action.run.kind, 'agent', action.id)
+  }
+  assert.match(promptOf(palette.openspec[0]), /runtime:env-1/)
 })

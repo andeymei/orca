@@ -252,7 +252,7 @@ test('the actions of a project without a workspace are off, and they say why', a
   const board: BoardPayload = {
     ...fixturePayload,
     projects: fixturePayload.projects.map((project) =>
-      project.id === 'local|/repo' ? { ...project, hasWorkspace: false } : project
+      project.id === 'local|/repo' ? { ...project, canRun: false } : project
     )
   }
   const host = mockHost({

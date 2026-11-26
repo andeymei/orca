@@ -62,6 +62,14 @@ export const OPENSPEC_COMMANDS: readonly OpenspecCommand[] = buildOpenspecComman
     task: '列出当前进行中的变更'
   },
   {
+    id: 'openspec.propose',
+    label: '新建提案',
+    mutates: true,
+    scope: 'project',
+    command: null,
+    task: 'Stage 1 生成 proposal、tasks 和增量 spec'
+  },
+  {
     id: 'openspec.validate',
     label: '校验',
     mutates: false,
@@ -78,20 +86,28 @@ export const OPENSPEC_COMMANDS: readonly OpenspecCommand[] = buildOpenspecComman
     task: '查看变更 <change-id> 的增量 spec'
   },
   {
+    id: 'openspec.complete',
+    label: '补齐变更',
+    mutates: true,
+    scope: 'change',
+    command: null,
+    task: '为变更 <change-id> 补齐 design、tasks 和增量 spec'
+  },
+  {
+    id: 'openspec.implement',
+    label: '实现变更',
+    mutates: true,
+    scope: 'change',
+    command: null,
+    task: '实现变更 <change-id>，按它的 tasks.md 做'
+  },
+  {
     id: 'openspec.archive',
     label: '归档',
     mutates: true,
     scope: 'change',
     command: 'openspec archive <change-id> --yes',
     task: '归档变更 <change-id>'
-  },
-  {
-    id: 'openspec.propose',
-    label: '新建提案',
-    mutates: true,
-    scope: 'project',
-    command: null,
-    task: 'Stage 1 生成 proposal、tasks 和增量 spec'
   }
 ])
 

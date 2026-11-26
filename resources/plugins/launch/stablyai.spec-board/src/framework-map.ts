@@ -50,6 +50,11 @@ export const OPENSPEC_STAGES: readonly FrameworkStage[] = [
         label: '生成 proposal、tasks 和增量 spec',
         command: 'agent 按 openspec/AGENTS.md Stage 1 生成',
         actionId: 'openspec.propose'
+      },
+      {
+        label: '补齐变更的 design、tasks 和增量 spec',
+        command: 'agent 按 openspec/AGENTS.md 补齐',
+        actionId: 'openspec.complete'
       }
     ]
   },
@@ -68,6 +73,11 @@ export const OPENSPEC_STAGES: readonly FrameworkStage[] = [
         label: '严格校验增量',
         command: 'openspec validate <change-id> --strict',
         actionId: 'openspec.validate'
+      },
+      {
+        label: '按 tasks.md 实现变更',
+        command: 'agent 按 openspec/AGENTS.md 实现',
+        actionId: 'openspec.implement'
       }
     ]
   },

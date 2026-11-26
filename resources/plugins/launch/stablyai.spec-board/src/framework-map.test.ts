@@ -35,8 +35,10 @@ test('the OpenSpec stages are the three real stages, with their real files', () 
       'openspec list --specs',
       'openspec validate <change-id> --strict',
       'agent 按 openspec/AGENTS.md Stage 1 生成',
+      'agent 按 openspec/AGENTS.md 补齐',
       'openspec show <change-id>',
       'openspec validate <change-id> --strict',
+      'agent 按 openspec/AGENTS.md 实现',
       'openspec archive <change-id> --yes',
       'openspec validate --strict'
     ]
@@ -117,8 +119,10 @@ test('the OpenSpec rows name the catalog action of the command they document', (
       ['openspec list --specs', null],
       ['openspec validate <change-id> --strict', 'openspec.validate'],
       ['agent 按 openspec/AGENTS.md Stage 1 生成', 'openspec.propose'],
+      ['agent 按 openspec/AGENTS.md 补齐', 'openspec.complete'],
       ['openspec show <change-id>', 'openspec.show'],
       ['openspec validate <change-id> --strict', 'openspec.validate'],
+      ['agent 按 openspec/AGENTS.md 实现', 'openspec.implement'],
       ['openspec archive <change-id> --yes', 'openspec.archive'],
       // It validates without a change, so no change-scoped action covers it.
       ['openspec validate --strict', null]
@@ -162,8 +166,8 @@ test('every action the map names is an action of the catalog', () => {
     ),
     ...SUPERPOWERS_FLOW.map((step) => step.actionId)
   ].filter((actionId): actionId is string => actionId !== undefined)
-  // Ten distinct actions: the five OpenSpec commands of the palette and the five skills.
-  assert.equal(new Set(named).size, 10)
+  // Twelve distinct actions: the seven OpenSpec commands of the palette and the five skills.
+  assert.equal(new Set(named).size, 12)
   for (const actionId of named) {
     assert.ok(catalog.has(actionId), `${actionId} is not an action of the catalog`)
   }

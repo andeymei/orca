@@ -204,14 +204,14 @@ test('a command the plugin only documents draws no button', async () => {
   assert.ok(view.find({ text: 'openspec list --specs' }))
   assert.ok(view.find({ text: 'openspec validate --strict' }))
   const buttons = view.findAll({ type: 'Button' })
-  // Eleven rows of the map name an action; the two that do not draw no button.
-  assert.equal(buttons.length, 11)
+  // Thirteen rows of the map name an action; the two that do not draw no button.
+  assert.equal(buttons.length, 13)
   assert.deepEqual(
     buttons.filter((button) => !button.disabled).map((button) => button.text),
     ['列出变更', '新建提案', '设计', '写实施计划', '执行计划', '代码评审', '验证完成']
   )
-  // The four that act on a change wait for one.
-  assert.equal(buttons.filter((button) => button.disabled).length, 4)
+  // The six that act on a change wait for one.
+  assert.equal(buttons.filter((button) => button.disabled).length, 6)
   await view.unmount()
 })
 
@@ -392,7 +392,7 @@ test('the palette of a project without a workspace is off, and it says why', asy
   const board: BoardPayload = {
     ...fixturePayload,
     projects: fixturePayload.projects.map((project) =>
-      project.id === 'local|/repo' ? { ...project, hasWorkspace: false } : project
+      project.id === 'local|/repo' ? { ...project, canRun: false } : project
     )
   }
   const view = await mapTab(mockHost({ requests: { 'board.get': () => board } }))

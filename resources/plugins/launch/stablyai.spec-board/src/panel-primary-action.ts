@@ -1,5 +1,15 @@
 // Which action a card leads with.
 //
+// The stage says what the work is waiting for, and the leading button is the step that moves it
+// on: a card in the design stage leads with the plan, because a plan is what turns a design into
+// work. A card in the proposal stage has no design yet, so it leads with the one that writes it.
+//
+// Every stage names its step for both frameworks, because a card may carry only one of them: an
+// OpenSpec change has no Superpowers plan, and its own step is the one that finishes it. A stage
+// whose step this work item cannot take leads with the first action the card offers — a button
+// that does not move the work on says nothing about where the work is, and a card with no action
+// at all has no button. The rest of the actions stay behind 更多.
+//
 // The stage was derived by the worker and arrives in the payload; choosing which of the buttons
 // that already exist to promote is a presentation rule, so it lives here, in the panel. Moving it
 // into the worker would change the payload's shape (`WorkItem`) and the worker's own tests, for
@@ -7,25 +17,34 @@
 
 import type { Action, UnifiedStage, WorkItem } from './model'
 
-/** The action each stage waits for: the step the work in that stage is at. */
-const PREFERRED_BY_STAGE: Readonly<Record<UnifiedStage, string>> = {
-  proposal: 'superpowers.brainstorm',
-  design: 'superpowers.brainstorm',
-  plan: 'superpowers.plan',
-  implement: 'superpowers.execute',
-  validate: 'openspec.validate',
-  archive: 'openspec.archive'
+/** The actions each stage waits for, in the order they fit the work. */
+const PREFERRED_BY_STAGE: Readonly<Record<UnifiedStage, readonly string[]>> = {
+  // 提案：还没有设计，写设计才进下一栏；OpenSpec 那边是把这个变更补齐。
+  proposal: ['superpowers.brainstorm', 'openspec.complete'],
+  // 设计：设计有了，计划还没有，写实施计划才进下一栏。
+  design: ['superpowers.plan', 'openspec.complete'],
+  // 计划：计划有了，还没开工，执行它。
+  plan: ['superpowers.execute', 'openspec.implement'],
+  // 实现：开工了，接着做完。
+  implement: ['superpowers.execute', 'openspec.implement'],
+  // 校验：做完了，校验它；两边各有一套说法，OpenSpec 的先。
+  validate: ['openspec.validate', 'superpowers.verify'],
+  // 归档：已经归档，没有什么可推进的了——能看的只是它归档了什么。
+  archive: ['openspec.show', 'superpowers.review']
 }
 
 /**
- * The action the card leads with: the one its stage prefers, or the first one it offers when that
- * one is not there — an OpenSpec-only card has no Superpowers skill, a Superpowers-only card has
- * no OpenSpec command.
+ * The action the card leads with: the one that moves the work on, or the first one the card
+ * offers when it cannot take that step — a card with no action at all leads with nothing.
  */
 export function primaryAction(item: WorkItem): Action | null {
-  const preferred = PREFERRED_BY_STAGE[item.stage]
-  const found = item.actions.find((action) => action.id === preferred)
-  return found ?? item.actions.at(0) ?? null
+  for (const id of PREFERRED_BY_STAGE[item.stage]) {
+    const found = item.actions.find((action) => action.id === id)
+    if (found) {
+      return found
+    }
+  }
+  return item.actions.at(0) ?? null
 }
 
 /** The actions the card keeps behind 更多: everything but the one it leads with. */

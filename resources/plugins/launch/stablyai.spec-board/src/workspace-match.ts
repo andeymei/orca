@@ -89,6 +89,14 @@ export function findWorkspaceId(
 }
 
 /**
+ * Whether a row is a workspace on this machine. A row without a host is one on this machine: it
+ * is a project-group folder Orca cannot tie to a host.
+ */
+export function isLocalWorkspace(row: WorkspaceRow): boolean {
+  return row.hostId === null || row.hostId === 'local'
+}
+
+/**
  * The name a path carries: its last segment. Both separators count, because a path may be a
  * Windows one even when it is read on another machine.
  */

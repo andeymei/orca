@@ -11,6 +11,7 @@
 // sentinel, and it never stands in for a value that came out of a repository.
 
 import type { Action, ActionRun, OpenspecFacts, SuperpowersFacts } from './model'
+import { isSafeRemoteHost, remotePreamble, type RemoteProject } from './remote-host'
 import {
   CHANGE_ID_PLACEHOLDER,
   OPENSPEC_COMMANDS,
@@ -61,8 +62,13 @@ function changeText(change: ChangeRef): string | null {
 }
 
 /** The prompt the agent gets where the CLI is missing: the guide, and the task. */
-function openspecPrompt(command: OpenspecCommand, changeId: string): string {
-  return `按 ${OPENSPEC_GUIDE} ${withChangeId(command.task, changeId)}`
+function openspecPrompt(
+  command: OpenspecCommand,
+  changeId: string,
+  remote: RemoteProject | null
+): string {
+  const task = `按 ${OPENSPEC_GUIDE} ${withChangeId(command.task, changeId)}`
+  return remote === null ? task : `${remotePreamble(remote)}\n\n${task}`
 }
 
 /**
@@ -74,16 +80,19 @@ function openspecPrompt(command: OpenspecCommand, changeId: string): string {
 function openspecAction(
   command: OpenspecCommand,
   change: ChangeRef,
-  cliAvailable: boolean
+  cliAvailable: boolean,
+  remote: RemoteProject | null = null
 ): Action | null {
   const changeId = changeText(change)
   if (changeId === null) {
     return null
   }
+  // A remote project's command runs over there: a terminal on this machine would run it in the
+  // wrong directory, so the agent goes to that machine instead.
   const run: ActionRun =
-    command.command !== null && cliAvailable
+    command.command !== null && cliAvailable && remote === null
       ? { kind: 'terminal', command: withChangeId(command.command, changeId) }
-      : { kind: 'agent', prompt: openspecPrompt(command, changeId) }
+      : { kind: 'agent', prompt: openspecPrompt(command, changeId, remote) }
   return {
     id: command.id,
     label: command.label,
@@ -95,21 +104,31 @@ function openspecAction(
 }
 
 /** The prompt one Superpowers skill is dispatched with. */
-function superpowersPrompt(skill: SuperpowersSkill, subject: Subject): string {
+function superpowersPrompt(
+  skill: SuperpowersSkill,
+  subject: Subject,
+  remote: RemoteProject | null
+): string {
   const task = skill.task
     .replaceAll('<topic>', subject.topic)
     .replaceAll('<spec>', subject.spec)
     .replaceAll('<plan>', subject.plan)
-  return `用 ${skill.skill} ${task}`
+  const prompt = `用 ${skill.skill} ${task}`
+  return remote === null ? prompt : `${remotePreamble(remote)}\n\n${prompt}`
 }
 
 /** One Superpowers action: always an agent, because Superpowers has no shell command. */
-function superpowersAction(skill: SuperpowersSkill, subject: Subject, label?: string): Action {
+function superpowersAction(
+  skill: SuperpowersSkill,
+  subject: Subject,
+  label?: string,
+  remote: RemoteProject | null = null
+): Action {
   return {
     id: skill.id,
     label: label ?? skill.label,
     framework: 'superpowers',
-    run: { kind: 'agent', prompt: superpowersPrompt(skill, subject) },
+    run: { kind: 'agent', prompt: superpowersPrompt(skill, subject, remote) },
     mutates: skill.mutates,
     // Superpowers has no command that acts on one change: a skill acts on the project.
     scope: 'project'
@@ -142,9 +161,16 @@ export function actionsForItem(
     openspec: OpenspecFacts | null
     superpowers: SuperpowersFacts | null
   },
-  cliAvailable: boolean
+  cliAvailable: boolean,
+  /** The project, when it lives on another host: the agent has to go there. */
+  remote: RemoteProject | null = null
 ): Action[] {
   const actions: Action[] = []
+  if (remote !== null && !isSafeRemoteHost(remote.host)) {
+    // A host id a shell would read as syntax never reaches a prompt: the registry is a file a
+    // person edited by hand, and this is the one value the agent would read as a command.
+    return actions
+  }
   if (item.openspec) {
     for (const command of OPENSPEC_COMMANDS) {
       if (command.scope !== 'change') {
@@ -157,7 +183,8 @@ export function actionsForItem(
       const action = openspecAction(
         command,
         { kind: 'repository', changeId: item.openspec.changeId },
-        cliAvailable
+        cliAvailable,
+        remote
       )
       if (action) {
         actions.push(action)
@@ -171,7 +198,7 @@ export function actionsForItem(
       plan: safePath(item.superpowers.plan, '实施计划')
     }
     for (const skill of SUPERPOWERS_SKILLS) {
-      actions.push(superpowersAction(skill, subject, labelOf(skill, item)))
+      actions.push(superpowersAction(skill, subject, labelOf(skill, item), remote))
     }
   }
   return actions
@@ -197,13 +224,20 @@ function labelOf(skill: SuperpowersSkill, item: { superpowers: SuperpowersFacts 
  * the change; the agent prompts name it the same way. The placeholder is the module's own
  * sentinel, so it is not a value that has to clear the gate.
  */
-export function frameworkActions(cliAvailable: boolean): {
+export function frameworkActions(
+  cliAvailable: boolean,
+  /** The project, when it lives on another host: the agent has to go there. */
+  remote: RemoteProject | null = null
+): {
   openspec: Action[]
   superpowers: Action[]
 } {
   const openspec: Action[] = []
+  if (remote !== null && !isSafeRemoteHost(remote.host)) {
+    return { openspec, superpowers: [] }
+  }
   for (const command of OPENSPEC_COMMANDS) {
-    const action = openspecAction(command, { kind: 'placeholder' }, cliAvailable)
+    const action = openspecAction(command, { kind: 'placeholder' }, cliAvailable, remote)
     if (action) {
       openspec.push(action)
     }
@@ -215,7 +249,9 @@ export function frameworkActions(cliAvailable: boolean): {
   }
   return {
     openspec,
-    superpowers: SUPERPOWERS_SKILLS.map((skill) => superpowersAction(skill, subject))
+    superpowers: SUPERPOWERS_SKILLS.map((skill) =>
+      superpowersAction(skill, subject, undefined, remote)
+    )
   }
 }
 

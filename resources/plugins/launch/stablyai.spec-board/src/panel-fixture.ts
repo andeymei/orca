@@ -167,7 +167,7 @@ export const fixturePayload: BoardPayload = {
       openspec: { present: true, capabilities: [], activeChanges: 3, archived: 0 },
       superpowers: { present: true, specs: 1, plans: 1 },
       openspecCli: { available: true },
-      hasWorkspace: true,
+      canRun: true,
       scannedAt: SCANNED_AT
     },
     {
@@ -178,7 +178,7 @@ export const fixturePayload: BoardPayload = {
       openspec: { present: true, capabilities: [], activeChanges: 1, archived: 0 },
       superpowers: null,
       openspecCli: { available: false },
-      hasWorkspace: true,
+      canRun: true,
       scannedAt: SCANNED_AT
     }
   ],

@@ -8,7 +8,7 @@ import { Button, Stack, Text, read } from 'orca'
 import { needsChangeId } from './actions'
 import type { Action, SnapshotProject } from './model'
 import { feedback, pendingAction, pressAction } from './panel-state'
-import { canRunActions, NO_WORKSPACE } from './panel-workspace'
+import { canRunActions, noRunMessage, runChannel } from './panel-workspace'
 
 /** What a command of the palette needs to run: the project, the change, and the actions. */
 export type Palette = {
@@ -22,11 +22,6 @@ export type Palette = {
 
 /** The label on a button that cannot run yet: the person is one pick short. */
 const NEEDS_A_CHANGE = '先选一个变更'
-
-/** Where the action runs, in the words the person reads before pressing it. */
-function channelOf(action: Action): string {
-  return action.run.kind === 'terminal' ? '在终端里运行' : '交给 agent 执行'
-}
 
 /**
  * Where the press is filed: what the action will act on, and which button it was. A change
@@ -72,7 +67,7 @@ export function PaletteButton({
         variant="outline"
         icon="play"
         disabled={!ready || !runnable}
-        tooltip={runnable ? channelOf(action) : NO_WORKSPACE}
+        tooltip={runnable ? runChannel(action) : noRunMessage(project)}
         onPress={() => {
           pressAction({
             scope,

@@ -23,7 +23,7 @@ import { cliProbe } from './openspec-cli'
 import { readSpecCapabilities } from './spec-capabilities'
 import { snapshotPath, type Registry } from './store-paths'
 import { errorCode, messageOf } from './unknown-values'
-import { findWorkspaceId, type WorkspaceRow } from './workspace-match'
+import { findWorkspaceId, isLocalWorkspace, type WorkspaceRow } from './workspace-match'
 
 /** The board, and what the worker needed to build it. */
 export type Board = {
@@ -204,10 +204,16 @@ export async function buildBoard(
   })
   // The workspaces are the authority on where a project lives: a project no workspace holds has
   // no command to run, and the panel has to say so before the person presses anything.
+  //
+  // A remote project's action is an agent that runs on this machine and reaches the other machine
+  // over ssh, so it needs a workspace here rather than one there.
+  const localWorkspace = workspaces.find(isLocalWorkspace)?.id ?? null
   const projects = merged.projects.map((project) => ({
     ...project,
-    hasWorkspace:
-      findWorkspaceId(workspaces, { path: project.path, host: project.host }) !== null
+    canRun:
+      project.host === 'local'
+        ? findWorkspaceId(workspaces, { path: project.path, host: project.host }) !== null
+        : localWorkspace !== null
   }))
   for (const item of merged.items) {
     const changeId = item.openspec?.changeId

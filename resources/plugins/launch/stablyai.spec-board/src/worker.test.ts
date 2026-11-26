@@ -356,7 +356,9 @@ test('a remote project keeps the answer the agent gave about the CLI', async () 
   assert.equal(project.openspecCli?.available, true)
   const item = payload.items.find((i) => i.projectId === 'ssh:yolo|C:/work/remote')!
   const validate = item.actions.find((action) => action.id === 'openspec.validate')
-  assert.equal(validate?.run.kind, 'terminal')
+  // The CLI is on the other machine, and this desktop cannot run a command there: the action is
+  // a prompt the agent carries over.
+  assert.equal(validate?.run.kind, 'agent')
   await worker.deactivate()
 })
 
@@ -481,9 +483,9 @@ test('the board says which of its projects a workspace holds', async () => {
   const payload = await worker.request('board.get')
   // The panel draws the consequence: the actions of a project no workspace holds are off.
   const held = payload.projects.find((p) => p.id === 'local|/repo/demo')!
-  assert.equal(held.hasWorkspace, true)
+  assert.equal(held.canRun, true)
   const elsewhere = payload.projects.find((p) => p.id === 'local|/elsewhere')!
-  assert.equal(elsewhere.hasWorkspace, false)
+  assert.equal(elsewhere.canRun, false)
   await worker.deactivate()
 })
 
@@ -655,7 +657,7 @@ test('the extra scan roots of the setting are scanned too', async () => {
   await worker.deactivate()
 })
 
-test('an action on a remote project runs in that project workspace', async () => {
+test('an action on a remote project runs in a local workspace, as a prompt', async () => {
   const root = await home()
   machineHasCli(true)
   await writeFile(
@@ -666,8 +668,8 @@ test('an action on a remote project runs in that project workspace', async () =>
   const host = mockHost({
     results: {
       'workspace.list': workspaces,
-      'terminal.create': { terminalId: 't2' },
-      'terminal.focus': { focused: true }
+      'agent.launch': { terminalId: 't3' },
+      'terminal.create': { terminalId: 't2' }
     }
   })
   const worker = await mountWorker(main, { host })
@@ -677,10 +679,15 @@ test('an action on a remote project runs in that project workspace', async () =>
     actionId: 'openspec.validate',
     itemId: 'ssh:yolo|C:/work/remote#add-y'
   })
-  assert.deepEqual(result, { kind: 'terminal', terminalId: 't2' })
-  const created = host.callsOf('terminal.create')[0]
-  assert.equal(callString(created, 'workspaceId'), 'w2')
-  assert.equal(callString(created, 'command'), 'openspec validate add-y --strict')
+  // The agent runs here — this desktop cannot dispatch into another machine — and reaches the
+  // project over ssh.
+  assert.deepEqual(result, { kind: 'agent', terminalId: 't3', agent: 'claude' })
+  assert.deepEqual(host.callsOf('terminal.create'), [])
+  const launched = host.callsOf('agent.launch')[0]
+  assert.equal(callString(launched, 'workspaceId'), 'w1')
+  const prompt = callString(launched, 'prompt')
+  assert.match(prompt, /ssh:yolo/)
+  assert.match(prompt, /C:\/work\/remote/)
   await worker.deactivate()
 })
 

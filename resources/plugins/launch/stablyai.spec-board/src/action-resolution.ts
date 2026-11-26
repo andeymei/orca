@@ -6,6 +6,7 @@
 
 import { findAction, frameworkActions, resolvePaletteAction } from './actions'
 import type { Action, WorkItem } from './model'
+import type { RemoteProject } from './remote-host'
 
 /** What the panel sends: an action, and the item or the change it belongs to. */
 export type ActionRequest = {
@@ -39,6 +40,8 @@ export function resolveAction(input: {
   items: readonly WorkItem[]
   request: ActionRequest
   cliAvailable: boolean
+  /** The project, when it lives on another host: the agent has to go there. */
+  remote?: RemoteProject | null
 }): ActionResolution {
   const { request } = input
   if (request.itemId !== undefined) {
@@ -52,7 +55,7 @@ export function resolveAction(input: {
     }
     return { ok: true, action }
   }
-  const palette = frameworkActions(input.cliAvailable)
+  const palette = frameworkActions(input.cliAvailable, input.remote ?? null)
   const action = findAction([...palette.openspec, ...palette.superpowers], request.actionId)
   if (!action) {
     return { ok: false, reason: 'unknown-action' }

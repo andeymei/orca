@@ -198,7 +198,7 @@ function isAgentLaunchPlacementReceipt(value: unknown): value is AgentLaunchPlac
   )
 }
 
-function isAgentLaunchPromptReceipt(value: unknown): value is AgentLaunchPromptReceipt {
+export function isAgentLaunchPromptReceipt(value: unknown): value is AgentLaunchPromptReceipt {
   if (typeof value !== 'object' || value === null) {
     return false
   }

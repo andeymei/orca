@@ -644,6 +644,7 @@ shell 元字符。规则同时适用于 change id、工作项的 topic 和 Super
 | `board.json` 非法 JSON / 不合 schema       | 顶部错误卡：文件路径 + 解析错误 + 上次有效时间；其余 Tab 仍可用                        |
 | `projects.json` 非法                       | 回退到 `workspace.list` 本地扫描，并在项目 Tab 标一条警告                              |
 | `agent.launch` 被拒（能力未批准 / 未登录） | 错误卡显示 host API 的 `code` 原文，不做二次包装                                       |
+| 提示词没送到 agent                         | agent 起来了，动作也算派发；插件日志写明提示词没到，不假装任务已经交出去               |
 | 某个远程项目扫描失败                       | 该项目 `error` 字段有值，卡片上显示 error badge，其他项目照常渲染                      |
 | 扫描目录过大                               | 跳过 `node_modules` / `.git` / `dist` / `out` / `.cross-version-checkouts`，最大深度 4 |
 | 动作的目标项目找不到对应 workspace         | 动作按钮禁用，提示"该项目不在 Orca workspace 里"，不猜一个 workspace 执行              |

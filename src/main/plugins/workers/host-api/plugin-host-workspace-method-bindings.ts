@@ -3,6 +3,7 @@ import { PLUGIN_HOST_API } from '../../../../shared/plugins/workers/plugin-host-
 import { PLUGIN_TERMINAL_READ_MAX_LINES } from '../../../../shared/plugins/workers/plugin-host-api-workspace-methods'
 import { isTuiAgent } from '../../../../shared/agent-launch/catalog/tui-agent-config'
 import { agentPromptRidesLaunchCommand } from '../../../../shared/agent-launch/startup/tui-agent-startup'
+import { isAgentLaunchPromptReceipt } from '../../../../shared/agent-launch/contracts/agent-launch-intent'
 import {
   bind,
   type BoundPluginHostMethod,
@@ -70,16 +71,42 @@ function launchPromptFor(
 }
 
 /**
- * What the host did with the prompt of a launch, when the answer names one.
+ * What became of the prompt of a launch.
  *
  * Read apart from the answer the terminal comes in: an outcome this build does not know must
  * not turn a launch that started into a failed call.
  */
-function promptOutcomeOf(answer: unknown): string | undefined {
-  const parsed = z
-    .object({ prompt: z.object({ outcome: z.string() }).optional() })
-    .safeParse(answer)
-  return parsed.success ? parsed.data.prompt?.outcome : undefined
+type PromptFate = 'reached' | 'not-reached' | 'unknown'
+
+function promptFateOf(answer: unknown): PromptFate {
+  const parsed = z.object({ prompt: z.unknown().optional() }).safeParse(answer)
+  const prompt = parsed.success ? parsed.data.prompt : undefined
+  if (!isAgentLaunchPromptReceipt(prompt)) {
+    // A host that answers without a receipt took the prompt or dropped it; it did not say.
+    return 'unknown'
+  }
+  return prompt.outcome === 'handed-to-terminal' || prompt.outcome === 'journaled'
+    ? 'reached'
+    : prompt.outcome === 'not-delivered'
+      ? 'not-reached'
+      : 'unknown'
+}
+
+/**
+ * Say what became of a prompt, when the launch did not carry it through.
+ *
+ * A host that answers without a receipt may have taken the prompt or dropped it; either way the
+ * plugin is told, because a silent drop reads as a delivered task.
+ */
+function logPromptFate(ctx: PluginHostMethodContext, fate: PromptFate, terminalId: string): void {
+  if (fate === 'reached') {
+    return
+  }
+  ctx.scope.log?.(
+    fate === 'not-reached'
+      ? `agent.launch: the prompt did not reach ${terminalId}`
+      : `agent.launch: the host did not confirm the prompt for ${terminalId}`
+  )
 }
 
 /**
@@ -236,8 +263,8 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
     if (!ctx.scope.signal?.aborted) {
       recordPluginOpenedTerminal(ctx.pluginId, terminalId)
     }
-    if (launchPrompt && promptOutcomeOf(answer) === 'not-delivered') {
-      ctx.scope.log?.(`agent.launch: the prompt did not reach ${terminalId}`)
+    if (launchPrompt) {
+      logPromptFate(ctx, promptFateOf(answer), terminalId)
     }
     if (params.prompt !== undefined && !launchPrompt) {
       // The agent takes its prompt only after it starts: hand it to the running agent's composer.
@@ -256,9 +283,7 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
           : pairedEffect(ctx, owner, 'agent.launch', deliver)
       )
         .then((delivered: unknown) => {
-          if (promptOutcomeOf(delivered) === 'not-delivered') {
-            ctx.scope.log?.(`agent.launch: the prompt did not reach ${terminalId}`)
-          }
+          logPromptFate(ctx, promptFateOf(delivered), terminalId)
         })
         .catch((error: unknown) => {
           ctx.scope.log?.(

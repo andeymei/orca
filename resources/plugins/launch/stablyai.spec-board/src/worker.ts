@@ -37,6 +37,7 @@ import {
 import { isLocalWorkspace, type WorkspaceRow } from './workspace-match'
 import { messageOf } from './unknown-values'
 import { remoteOf } from './remote-host'
+import { remotePrompt } from './remote-target'
 import type { ProjectRef } from './model'
 import type { BoardState } from './board-load'
 
@@ -147,10 +148,11 @@ async function runAction(
     return { kind: 'terminal', terminalId: created.terminalId }
   }
   const agent = settings.refreshAgent === '' ? 'claude' : settings.refreshAgent
+  const prompt = remote === null ? action.run.prompt : await remotePrompt(action.run.prompt, remote)
   const launched = await orca.host.call('agent.launch', {
     workspaceId,
     agent,
-    prompt: action.run.prompt
+    prompt
   })
   // The panel says who took the action; only the worker knows which agent it launched.
   return { kind: 'agent', terminalId: launched.terminalId, agent }

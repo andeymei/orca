@@ -687,7 +687,12 @@ test('an action on a remote project runs in a local workspace, as a prompt', asy
   assert.equal(callString(launched, 'workspaceId'), 'w1')
   const prompt = callString(launched, 'prompt')
   assert.match(prompt, /ssh:yolo/)
-  assert.match(prompt, /C:\/work\/remote/)
+  // The path is not in the prompt: it is in the file the prompt names.
+  assert.equal(prompt.includes('C:/work/remote'), false)
+  const file = /本机的一个文件里：(\S+?)。/.exec(prompt)?.[1]
+  assert.ok(file, prompt)
+  const target = JSON.parse(await readFile(file!, 'utf8'))
+  assert.deepEqual(target, { host: 'ssh:yolo', path: 'C:/work/remote' })
   await worker.deactivate()
 })
 

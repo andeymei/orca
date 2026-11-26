@@ -832,23 +832,21 @@ test('a remote project is acted on by an agent, not by a command here', () => {
   }
   const prompt = promptOf(findAction(actions, 'openspec.validate')!)
   assert.match(prompt, /ssh:yolo/)
-  assert.match(prompt, /C:\/work\/remote/)
   // The agent has to ask Orca what the machine is called: a host id is not an ssh name.
   assert.match(prompt, /主机 id 不是 ssh 名字/)
 })
 
-test('the remote path is data, and never goes into a command line', () => {
+test('the remote path never goes into the prompt', () => {
+  // The path comes from another machine's filesystem, where a directory name may carry
+  // anything, and a prompt is read as instructions: it travels in a file instead.
   const actions = actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' })
   const prompt = promptOf(findAction(actions, 'openspec.validate')!)
+  assert.equal(prompt.includes('C:/work/remote'), false)
+  assert.match(prompt, /<remote-target>/)
+  // And it is read as data, not as part of a command.
   assert.match(prompt, /不要把它拼进命令行/)
 })
 
-test('a remote host that cannot be named safely has no action at all', () => {
-  // The host id comes from a file a person edited by hand, and the agent would read it as a
-  // command: there is no action that could carry it safely.
-  const actions = actionsForItem(item, true, { host: 'ssh:yolo; rm -rf /', path: 'C:/work/remote' })
-  assert.deepEqual(actions, [])
-})
 
 test('the palette of a remote project is the agent form too', () => {
   const palette = frameworkActions(true, { host: 'runtime:env-1', path: 'C:/work/remote' })
@@ -856,4 +854,11 @@ test('the palette of a remote project is the agent form too', () => {
     assert.equal(action.run.kind, 'agent', action.id)
   }
   assert.match(promptOf(palette.openspec[0]), /runtime:env-1/)
+})
+
+test('a remote host that cannot be named safely has no action at all', () => {
+  // The host id comes from a file a person edited by hand, and the agent would read it as a
+  // command: there is no action that could carry it safely.
+  const actions = actionsForItem(item, true, { host: 'ssh:yolo; rm -rf /', path: 'C:/work/remote' })
+  assert.deepEqual(actions, [])
 })

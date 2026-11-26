@@ -44,6 +44,17 @@ export function refreshPromptPath(): string {
 }
 
 /**
+ * The file that holds the path of a remote project.
+ *
+ * The path never goes into a prompt: it comes from another machine's filesystem, where a
+ * directory name may carry anything, and a prompt is read as instructions. The file's name
+ * carries an opaque id, so the name is not the path either.
+ */
+export function remoteTargetPath(key: string): string {
+  return join(boardStoreDir(), `remote-target-${key}.json`)
+}
+
+/**
  * How far the refresh in flight has come.
  *
  * The agent writes it after every project it scans, so the panel can draw a bar that moves

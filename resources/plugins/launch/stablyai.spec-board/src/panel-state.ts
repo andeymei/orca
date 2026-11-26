@@ -135,12 +135,62 @@ async function loadBoard(reads: BoardReads): Promise<void> {
  */
 export function newBoardReads(): { load: () => Promise<void>; close: () => void } {
   const reads: BoardReads = { inFlight: 0, last: 0, applied: 0, closed: false }
+  const load = (): Promise<void> => loadBoard(reads)
+  currentLoad = load
   return {
-    load: () => loadBoard(reads),
+    load,
     close: () => {
       reads.closed = true
+      stopSnapshotWatch()
+      if (currentLoad === load) {
+        currentLoad = null
+      }
     }
   }
+}
+
+/** How often, and for how long, the panel looks for the snapshot a refresh asked for. */
+const SNAPSHOT_WATCH_INTERVAL_MS = 5_000
+const SNAPSHOT_WATCH_MS = 15 * 60 * 1000
+
+/** The open panel's read, and the timer that looks for the snapshot a refresh asked for. */
+let currentLoad: (() => Promise<void>) | null = null
+let snapshotWatch: ReturnType<typeof setTimeout> | null = null
+
+function stopSnapshotWatch(): void {
+  if (snapshotWatch !== null) {
+    clearTimeout(snapshotWatch)
+    snapshotWatch = null
+  }
+}
+
+/**
+ * Looks for the snapshot a refresh asked for.
+ *
+ * The worker's watcher posts `board.changed` when the snapshot lands, but Orca reaps an idle
+ * worker and the agent can take minutes: the panel would then never hear about it. So it looks
+ * itself, until the snapshot changes or the wait runs out.
+ */
+function watchForSnapshot(before: number | null): void {
+  stopSnapshotWatch()
+  const load = currentLoad
+  if (load === null) {
+    return
+  }
+  const deadline = Date.now() + SNAPSHOT_WATCH_MS
+  const tick = async (): Promise<void> => {
+    snapshotWatch = null
+    if (Date.now() >= deadline) {
+      return
+    }
+    await load()
+    const landed = read(payload)?.sources.agentAt ?? null
+    if (landed !== null && landed !== before) {
+      return
+    }
+    snapshotWatch = setTimeout(() => void tick(), SNAPSHOT_WATCH_INTERVAL_MS)
+  }
+  snapshotWatch = setTimeout(() => void tick(), SNAPSHOT_WATCH_INTERVAL_MS)
 }
 
 /** What the card says after its action ran: which channel took it, and which agent. */
@@ -216,9 +266,11 @@ export async function refreshBoard(): Promise<void> {
   set(refreshError, null)
   set(refreshFeedback, null)
   set(refreshing, true)
+  const before = read(payload)?.sources.agentAt ?? null
   try {
     const answer = await plugin.request('board.refresh')
     set(refreshFeedback, `已派发 ${answer.agent ?? 'agent'} 刷新`)
+    watchForSnapshot(before)
   } catch (thrown) {
     set(refreshError, { code: codeOf(thrown), message: messageOf(thrown) })
   } finally {

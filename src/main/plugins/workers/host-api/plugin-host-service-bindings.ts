@@ -3,6 +3,7 @@ import type { PluginHostServices, PluginDesktopFrameServices } from './plugin-ho
 import type { PluginPanelBridgeServices } from './plugin-host-panel-method-bindings'
 import type { PluginStatusBarState } from '../../status-bar/plugin-status-bar-state'
 import type { PluginRuntimeRpc } from './plugin-host-runtime-call'
+import type { PluginPairedHosts } from './plugin-host-paired-hosts'
 import type { PluginHostRendererActions } from '../../view/plugin-host-renderer-actions'
 import {
   pluginSettingValueIssue,
@@ -53,6 +54,14 @@ export type PluginRuntimeDelegate = {
   listAgentTaskTitles?(): ReadonlyMap<string, string>
   /** The runtime RPC the `orca` CLI calls, in process; absent where none is bound. */
   callRuntime?: PluginRuntimeRpc
+  /**
+   * The servers this desktop is paired with; absent where none are, or where the relay is not
+   * bound. Their workspaces and projects are Orca's too.
+   *
+   * A provider, not a value: the plugin host is bound before the relay is, and the servers
+   * arrive later.
+   */
+  pairedHosts?: (() => PluginPairedHosts | null) | null
 }
 
 export function bindPluginHostServices(input: {
@@ -82,6 +91,7 @@ export function bindPluginHostServices(input: {
       ? statusBarServices(input.statusBar, input.declaredStatusBarItemIds, input.statusBarRevision)
       : null,
     runtimeRpc: delegate.callRuntime ?? null,
+    pairedHosts: delegate.pairedHosts ?? null,
     renderer: input.renderer ?? null,
     resolveActiveWorktreeContext: async () => {
       const context = await delegate.resolveActiveWorktreeContext()

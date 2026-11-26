@@ -14,7 +14,9 @@
 
 本机的产物由插件自己扫；别的机器上的产物由 agent 采集——插件的 host API 没有读文件的方法（连本地都没有），所以采集必须在那边跑。
 
-刷新时插件在本机启动 agent，把要扫的项目清单和快照格式写进 `~/.orca/spec-board/scan-list.json`，让 agent 按清单逐个扫：本地项目直接读，SSH 主机上的项目用 `ssh` 去读（Windows 主机用 PowerShell）。快照写回本机的 `~/.orca/spec-board/board.json`，插件再把它和本地扫描合并。
+刷新时插件在本机启动 agent，把要扫的项目清单和快照格式写进 `~/.orca/spec-board/scan-list.json`，让 agent 按清单逐个扫：本地项目直接读，别的机器上的项目用 `ssh` 去读（Windows 主机用 PowerShell）。快照写回本机的 `~/.orca/spec-board/board.json`，插件再把它和本地扫描合并。
+
+清单里的 `host` 是 Orca 的主机 id（`local`、`ssh:<目标id>`、`runtime:<环境id>`），不是 ssh 名字，agent 先向 Orca 问出那台机器的 ssh 名字再连。
 
 刷新一定在本机跑：快照只有写在本机，插件才读得到它。
 

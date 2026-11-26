@@ -14,6 +14,7 @@ import {
   type PluginWorkspaceTerminal
 } from './plugin-workspace-projection'
 import type { PluginHostCallScope } from './plugin-host-call-scope'
+import type { PluginPairedHosts } from './plugin-host-paired-hosts'
 import type { PluginDataArea } from '../../../../shared/plugins/workers/plugin-panel-bridge-protocol'
 import {
   PLUGIN_PANEL_BRIDGE_HANDLERS,
@@ -118,6 +119,14 @@ export type PluginHostServices = {
   statusBar?: PluginStatusBarServices | null
   /** The runtime methods the `orca` CLI calls, for workspace actions; absent without a runtime. */
   runtimeRpc?: PluginRuntimeRpc | null
+  /**
+   * The servers this desktop is paired with.
+   *
+   * A paired server is a host Orca reaches: `workspace.list` and `project.list` promise every
+   * host, so the paired servers' workspaces and projects belong on those lists too. A provider,
+   * because the servers arrive after the plugin host is bound.
+   */
+  pairedHosts?: (() => PluginPairedHosts | null) | null
   /** Orca's window, for actions only it can take; absent in headless serve. */
   renderer?: PluginHostRendererActions | null
   /** Asks the person before the plugin acts; absent where nobody can be asked (headless serve).

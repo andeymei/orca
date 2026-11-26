@@ -103,3 +103,76 @@ test('an empty registry is filled with the projects Orca knows', async () => {
   )
   await worker.deactivate()
 })
+
+/** The paired Orca server: the environment id it is reached by, and the project it holds. */
+const PAIRED_ENVIRONMENT_ID = 'db289643-131b-44b3-be01-eac5b5410e48'
+const PAIRED_PATH = 'D:/ctjt/code/ctjt-platform/ctjt-service'
+
+/** The workspace the paired server holds, as Orca lists it. */
+const pairedWorkspace = {
+  id: `wt-remote-1::${PAIRED_PATH}`,
+  kind: 'worktree',
+  name: 'ctjt-service',
+  project: 'ctjt-service',
+  projectId: 'repo-remote-1',
+  path: PAIRED_PATH,
+  branch: 'main',
+  hostId: `runtime:${PAIRED_ENVIRONMENT_ID}`
+}
+
+/** The project of the paired server, as Orca lists it. */
+const pairedProjectList = {
+  projects: [
+    {
+      id: 'repo-remote-1',
+      name: 'ctjt-service',
+      kind: 'git',
+      hostId: `runtime:${PAIRED_ENVIRONMENT_ID}`,
+      path: PAIRED_PATH,
+      hidden: false
+    }
+  ],
+  truncated: false
+}
+
+test('the project of a paired Orca server is on the board, under that server', async () => {
+  await home()
+  const host = mockHost({
+    results: {
+      'workspace.list': { workspaces: [pairedWorkspace], truncated: false },
+      'project.list': pairedProjectList
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  const project = payload.projects.find(
+    (entry) => entry.id === `runtime:${PAIRED_ENVIRONMENT_ID}|${PAIRED_PATH}`
+  )
+  assert.ok(project)
+  assert.equal(project.name, 'ctjt-service')
+  assert.equal(project.host, `runtime:${PAIRED_ENVIRONMENT_ID}`)
+  // Nobody has read it yet: the worker cannot read a project on another host by itself.
+  assert.equal(project.openspec, null)
+  await worker.deactivate()
+})
+
+test('the board follows the sidebar into a paired server’s project', async () => {
+  await home()
+  const host = mockHost({
+    results: {
+      'workspace.list': { workspaces: [pairedWorkspace], truncated: false },
+      'project.list': pairedProjectList,
+      'workspace.readContext': {
+        workspaceId: pairedWorkspace.id,
+        branch: 'main',
+        displayName: 'ctjt-service',
+        terminals: []
+      }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  assert.equal(payload.focus?.projectId, `runtime:${PAIRED_ENVIRONMENT_ID}|${PAIRED_PATH}`)
+  assert.equal(payload.focus?.workspaceId, pairedWorkspace.id)
+  await worker.deactivate()
+})

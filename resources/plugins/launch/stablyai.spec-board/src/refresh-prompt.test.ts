@@ -19,7 +19,17 @@ test('says every project of the list has to be scanned, the remote ones included
   assert.match(prompt, /每一项都要扫/)
   assert.match(prompt, /别的机器/)
   // The host is what tells a project on another machine from one on this one.
-  assert.match(prompt, /ssh:<target>/)
+  assert.match(prompt, /ssh:<id>/)
+  assert.match(prompt, /runtime:<id>/)
+})
+
+test('tells the agent how to turn a host id into an ssh name', () => {
+  // A host id is Orca's own name for a machine, not something ssh accepts: the agent has to
+  // ask Orca what the machine is called, or it never reaches the remote project at all.
+  assert.match(prompt, /不是\*\* ssh 名字/)
+  assert.match(prompt, /orca host list --json/)
+  assert.match(prompt, /orca environment show --environment <id> --json/)
+  assert.match(prompt, /environment\.orcadDeployment\.sshTargetId/)
 })
 
 test('states the task: read the registry, scan the projects, write the snapshot', () => {
@@ -59,7 +69,7 @@ test('encodes a path without a heredoc delimiter the path could end', () => {
 })
 
 test('the ssh target cannot be read as an option', () => {
-  assert.match(prompt, /ssh -- <target>/)
+  assert.match(prompt, /ssh -- <名字>/)
 })
 
 test('asks for the snapshot to be written in two steps, so no reader sees half a file', () => {
@@ -105,7 +115,7 @@ test('names all six progress counts, and says they have to be written', () => {
 test('asks for the CLI answer of every project, local and remote', () => {
   assert.match(prompt, /openspec --version/)
   assert.match(prompt, /openspecCli/)
-  assert.match(prompt, /ssh -- <target> openspec --version/)
+  assert.match(prompt, /ssh -- <名字> openspec --version/)
 })
 
 test('asks for plain slugs', () => {

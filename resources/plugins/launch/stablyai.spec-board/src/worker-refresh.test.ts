@@ -201,6 +201,58 @@ test('a project whose host cannot be named safely is left out of the scan list',
   await worker.deactivate()
 })
 
+test('the scan list names the project of a paired Orca server, with its host', async () => {
+  const root = await home()
+  const host = mockHost({
+    results: {
+      'workspace.list': {
+        workspaces: [
+          workspaces.workspaces[0],
+          {
+            id: 'wt-remote-1::D:/ctjt/code/ctjt-platform/ctjt-service',
+            kind: 'worktree',
+            name: 'ctjt-service',
+            project: 'ctjt-service',
+            projectId: 'repo-remote-1',
+            path: 'D:/ctjt/code/ctjt-platform/ctjt-service',
+            branch: 'main',
+            hostId: 'runtime:db289643-131b-44b3-be01-eac5b5410e48'
+          }
+        ],
+        truncated: false
+      },
+      'project.list': {
+        projects: [
+          {
+            id: 'repo-remote-1',
+            name: 'ctjt-service',
+            kind: 'git',
+            hostId: 'runtime:db289643-131b-44b3-be01-eac5b5410e48',
+            path: 'D:/ctjt/code/ctjt-platform/ctjt-service',
+            hidden: false
+          }
+        ],
+        truncated: false
+      },
+      'workspace.readContext': null,
+      'agent.launch': { terminalId: 't9' }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.refresh')
+  // The agent reads this list and scans every project in it: the one on the paired server is in
+  // it, under the host id that server is reached by — the agent turns that id into an ssh name.
+  const list = JSON.parse(await readFile(join(root, 'scan-list.json'), 'utf8'))
+  const projects: unknown = list.projects
+  const remote = Array.isArray(projects)
+    ? projects.filter(isRecord).find((project) => project['path'] === 'D:/ctjt/code/ctjt-platform/ctjt-service')
+    : undefined
+  assert.ok(remote)
+  assert.equal(remote['host'], 'runtime:db289643-131b-44b3-be01-eac5b5410e48')
+  assert.equal(remote['name'], 'ctjt-service')
+  await worker.deactivate()
+})
+
 test('a refresh that cannot write its prompt is refused with a message', async () => {
   const root = await home()
   // The store directory points inside a file, so neither it nor the prompt file can exist.

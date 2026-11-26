@@ -210,6 +210,12 @@ workspace，把它落到项目上（worktree 的路径不是项目的路径：�
 旧版 Orca 的 `workspace.list`）加上注册表里的项目加上 `scanRoots`。别的机器上的
 项目因此在看板上是看得见的——只是没人读过它，卡片上标着「需 agent 采集」。
 
+**「每台主机」包括配对的 Orca 服务器。** 一台配对的服务器（`hostId` 是
+`runtime:<环境id>`）也是 Orca 够得着的机器：它的项目和 workspace 跟本机的一样在
+`project.list` / `workspace.list` 上，主机就是那台服务器本身（`runtime:<环境id>`，
+不是它底下某台 ssh 机器）。它的工作项 id 用服务器自己的 workspace id，聚焦到它时
+看板跟到它那个项目。
+
 ### 4.4 落盘文件
 
 | 路径                                        | 谁写            | 谁读           | 说明                              |
@@ -574,6 +580,15 @@ shell 元字符。规则同时适用于 change id、工作项的 topic 和 Super
 文件`；没有文件工具就用自己随机取的分隔符，并确认路径里没有整行等于它），远端解码后交给
 `cat --` 或 `Get-Content -LiteralPath`。ssh 的主机名用 `--` 和选项隔开，插件本身也不把
 一个读起来像选项的主机名写进扫描清单。
+
+**主机 id 不是 ssh 名字，提示词先让 agent 换名再连。** 清单里的 `host` 是 Orca 自己的
+名字：`local`、`ssh:<目标id>`、`runtime:<环境id>`。后两种 ssh 不认；`runtime:` 那一台
+是配对的 Orca 服务器，它的机器在 `~/.ssh/config` 里也许有别名、也许没有。提示词给的
+换法是问 Orca 自己：`orca host list --json` 里 `id` 相同的那一行的 `name` 就是 ssh
+名字；`runtime:` 的先 `orca environment show --environment <环境id> --json` 取
+`environment.orcadDeployment.sshTargetId`，再按 `ssh:` 的换法换。换不出来就让 agent
+去 `~/.ssh/config` 里找这台机器；还是找不到，就把原因写进那个项目的 `error`——看板
+要看得见它没扫到。
 
 刷新是**手动**的，不自动轮询（agent 有成本）。
 

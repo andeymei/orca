@@ -4,12 +4,16 @@ import { savedWorkspaceCatalog } from '../../persistence/profile-save-domains'
 import type { PluginAgentStatusChangedPayload } from '../../../shared/plugins/events/plugin-events'
 import { PLUGIN_WORKSPACE_TERMINAL_LIMIT } from '../../../shared/plugins/workers/plugin-host-api-workspace-context'
 import type { PluginRuntimeDelegate } from '../workers/host-api/plugin-host-service-bindings'
+import type { PluginPairedHosts } from '../workers/host-api/plugin-host-paired-hosts'
 import type { PluginService } from '../plugin-service'
 import { installPluginHookRunner } from '../hooks/plugin-hook-participants'
 import { installPluginOpenedTerminalPruning } from '../workers/host-api/plugin-opened-terminals'
 import { installPluginAutomationOwnershipEnd } from '../contributions/plugin-automation-ownership'
 import { installPluginResidentWorkerWarmer } from '../workers/worker-admission/plugin-resident-worker'
 import type { OrcaRuntimeService } from '../../runtime/orca-runtime'
+import type { MobileDesktopRelayHosts } from '../../runtime/mobile-desktop-relay/mobile-desktop-relay-hosts'
+import { describeRelayHosts } from '../../runtime/mobile-desktop-relay/mobile-relay-host-descriptions'
+import { pairedRelayHostsOf } from '../../runtime/paired-relay-hosts'
 import { pluginRuntimeRpc } from './plugin-runtime-rpc'
 import type { DispatcherOptions } from '../../runtime/rpc/dispatcher'
 import type { PluginRuntimeRpc } from '../workers/host-api/plugin-host-runtime-call'
@@ -30,7 +34,7 @@ type PluginEvents = {
 
 type RuntimeDelegateSource = Omit<
   PluginRuntimeDelegate,
-  'listAgentStatuses' | 'listAgentTaskTitles' | 'callRuntime'
+  'listAgentStatuses' | 'listAgentTaskTitles' | 'callRuntime' | 'pairedHosts'
 > & {
   listAgentTasksByPaneKey(): Readonly<Record<string, PluginAgentTask>>
 }
@@ -71,6 +75,52 @@ function pluginAgentTaskTitles(
 
 const WORKSPACE_CHANGE_DEBOUNCE_MS = 150
 
+/**
+ * The paired servers, as the plugin host reaches them.
+ *
+ * The relay holds them; the plugin host asks the servers the way the sidebar does — over the
+ * relay, one server at a time — so that a plugin's workspace list holds every host Orca reaches
+ * and not only this machine.
+ */
+function pluginPairedHosts(hosts: MobileDesktopRelayHosts): PluginPairedHosts {
+  return {
+    list: async () => {
+      const listing = await hosts.list()
+      return listing.environments.map((environment) => environment.id)
+    },
+    call: async (environmentId: string, method: string, params: unknown) => {
+      // The relay fence: the request belongs to the pairing that admitted it, so a server that
+      // was re-paired since cannot answer for the old one.
+      const described = await describeRelayHosts(hosts)
+      const host = described.find((entry) => entry.environmentId === environmentId)
+      if (!host) {
+        return null
+      }
+      return hosts.call({ environmentId }, method, params, { expected: host.identity })
+    }
+  }
+}
+
+/**
+ * The paired servers, read when a plugin asks for them.
+ *
+ * The plugin host is bound before the relay is: the servers arrive later. Reading them per call
+ * is what makes them reach the plugin at all. One handle per relay keeps the shared rows shared.
+ */
+function pluginPairedHostsProvider(): () => PluginPairedHosts | null {
+  let built: { hosts: MobileDesktopRelayHosts; value: PluginPairedHosts } | null = null
+  return () => {
+    const hosts = pairedRelayHostsOf()
+    if (!hosts) {
+      return null
+    }
+    if (built?.hosts !== hosts) {
+      built = { hosts, value: pluginPairedHosts(hosts) }
+    }
+    return built.value
+  }
+}
+
 /** Main's runtime, plus the hook server's agent rows, as the plugin host's delegate. */
 export function pluginRuntimeDelegate(
   runtime: RuntimeDelegateSource,
@@ -79,6 +129,7 @@ export function pluginRuntimeDelegate(
 ): PluginRuntimeDelegate {
   return {
     ...(callRuntime ? { callRuntime } : {}),
+    pairedHosts: pluginPairedHostsProvider(),
     resolveActiveWorktreeContext: () => runtime.resolveActiveWorktreeContext(),
     listTerminals: (...args) => runtime.listTerminals(...args),
     sendTerminal: (...args) => runtime.sendTerminal(...args),

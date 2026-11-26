@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import type { PluginHostResult } from '../../../../shared/plugins/workers/plugin-host-api'
 import {
   PLUGIN_HOST_ID_MAX_LENGTH,
@@ -11,72 +10,23 @@ import { getRepoExecutionHostId } from '../../../../shared/execution-host/execut
 import { isRepoHidden } from '../../../../shared/project/catalog/hidden-projects'
 import type { PluginRuntimeRpc } from './plugin-host-runtime-call'
 import type { PluginHostServices } from './plugin-host-method-bindings'
+import {
+  pairedProjects,
+  pairedWorkspaces,
+  type PluginPairedHosts
+} from './plugin-host-paired-hosts'
+import {
+  branchName,
+  folderListAnswer,
+  LABEL_MAX,
+  projectListAnswer,
+  repoListAnswer,
+  worktreeListAnswer,
+  worktreePsAnswer
+} from './plugin-host-workspace-answers'
 
 type WorkspaceList = PluginHostResult<'workspace.list'>
 type WorkspaceStatus = NonNullable<WorkspaceList['workspaces'][number]['status']>
-
-// The parts of each runtime answer `workspace.list` and `project.list` read; the rest is dropped.
-const worktreeListAnswer = z.object({
-  worktrees: z.array(
-    z.object({
-      id: z.string(),
-      repoId: z.string(),
-      displayName: z.string(),
-      path: z.string(),
-      branch: z.string().optional(),
-      hostId: z.string().optional(),
-      identity: z.object({ key: z.string() }).optional()
-    })
-  ),
-  totalCount: z.number().optional(),
-  truncated: z.boolean().optional()
-})
-const repoRow = z.object({
-  id: z.string(),
-  kind: z.string().optional(),
-  displayName: z.string().optional(),
-  executionHostId: z.string().nullable().optional(),
-  connectionId: z.string().nullable().optional()
-})
-const repoListAnswer = z.object({ repos: z.array(repoRow) })
-const projectListAnswer = z.object({
-  repos: z.array(
-    // A malformed `hiddenAt` reads as shown, as Orca's sidebar reads it, not as a failed list.
-    repoRow.extend({ path: z.string(), hiddenAt: z.number().optional().catch(undefined) })
-  )
-})
-const folderListAnswer = z.object({
-  folderWorkspaces: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      folderPath: z.string(),
-      executionHostId: z.string().nullable().optional(),
-      connectionId: z.string().nullable().optional()
-    })
-  )
-})
-const worktreePsAnswer = z.object({
-  worktrees: z.array(
-    z.object({
-      worktreeId: z.string(),
-      identity: z.object({ key: z.string() }).optional(),
-      status: z.enum(['working', 'permission', 'done', 'active', 'inactive']),
-      unread: z.boolean(),
-      liveTerminalCount: z.number().int().nonnegative(),
-      lastOutputAt: z.number().finite().nullable().optional(),
-      lastActivityAt: z.number().finite().optional()
-    })
-  ),
-  totalCount: z.number().optional(),
-  truncated: z.boolean().optional()
-})
-
-/** `refs/heads/main` reads as `main`; a detached or folder workspace has none. */
-function branchName(branch: string | undefined): string | null {
-  const name = branch?.replace(/^refs\/heads\//, '') ?? ''
-  return name || null
-}
 
 type WorkspaceStatuses = { byId: Map<string, WorkspaceStatus>; truncated: boolean }
 
@@ -149,8 +99,6 @@ function projectHostId(repo: {
   return getRepoExecutionHostId(repo)
 }
 
-const LABEL_MAX = 512
-
 /** Whether a row's ids and path fit the public bounds; one that does not is left out. */
 function fitsBounds(row: {
   id: string
@@ -171,13 +119,15 @@ function fitsBounds(row: {
 export async function listPluginWorkspaces(
   call: PluginRuntimeRpc,
   includeStatus: boolean,
-  statusSource: PluginStatusListingOwner = call
+  statusSource: PluginStatusListingOwner = call,
+  pairedHosts?: PluginPairedHosts | null
 ): Promise<WorkspaceList> {
-  const [listed, repos, folderList, statuses] = await Promise.all([
+  const [listed, repos, folderList, statuses, paired] = await Promise.all([
     call('worktree.list', { limit: PLUGIN_WORKSPACE_LIST_LIMIT }),
     call('repo.list', {}),
     call('folderWorkspace.list', undefined),
-    includeStatus ? workspaceStatuses(call, statusSource) : null
+    includeStatus ? workspaceStatuses(call, statusSource) : null,
+    pairedWorkspaces(pairedHosts)
   ])
   const { worktrees, totalCount, truncated } = worktreeListAnswer.parse(listed)
   const repoRows = repoListAnswer.parse(repos).repos
@@ -215,7 +165,7 @@ export async function listPluginWorkspaces(
     })
   )
   const room = PLUGIN_WORKSPACE_LIST_LIMIT - worktreeRows.length
-  const candidates = [...worktreeRows, ...projectFolders.slice(0, room)]
+  const candidates = [...worktreeRows, ...projectFolders.slice(0, room), ...paired]
   const workspaces = candidates.filter(fitsBounds)
   return {
     workspaces,
@@ -232,9 +182,11 @@ export async function listPluginWorkspaces(
 
 /** `project.list`: the repositories and folders `repo.list` shows, which hides retired rows. */
 export async function listPluginProjects(
-  call: PluginRuntimeRpc
+  call: PluginRuntimeRpc,
+  pairedHosts?: PluginPairedHosts | null
 ): Promise<PluginHostResult<'project.list'>> {
-  const { repos } = projectListAnswer.parse(await call('repo.list', {}))
+  const [local, paired] = await Promise.all([call('repo.list', {}), pairedProjects(pairedHosts)])
+  const { repos } = projectListAnswer.parse(local)
   const candidates = repos.slice(0, PLUGIN_PROJECT_LIST_LIMIT).map((repo) => ({
     id: repo.id,
     name: (repo.displayName ?? '').slice(0, LABEL_MAX),
@@ -243,9 +195,12 @@ export async function listPluginProjects(
     path: repo.path,
     hidden: isRepoHidden(repo)
   }))
-  const projects = candidates.filter((project) => project.id.length > 0 && fitsBounds(project))
+  const all = [...candidates, ...paired]
+  const projects = all
+    .filter((project) => project.id.length > 0 && fitsBounds(project))
+    .slice(0, PLUGIN_PROJECT_LIST_LIMIT)
   return {
     projects,
-    truncated: repos.length > PLUGIN_PROJECT_LIST_LIMIT || projects.length < candidates.length
+    truncated: repos.length > PLUGIN_PROJECT_LIST_LIMIT || projects.length < all.length
   }
 }

@@ -17,6 +17,7 @@ import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
 import { MobileDesktopRelay } from '../../mobile-desktop-relay/mobile-desktop-relay'
 import type { MobileDesktopRelayHosts } from '../../mobile-desktop-relay/mobile-desktop-relay-hosts'
 import { MobileRelayHostCatalog } from '../../mobile-desktop-relay/mobile-relay-host-catalog'
+import { setPairedRelayHosts } from '../../paired-relay-hosts'
 import { OnDemandServerWorktreeRows } from '../../mobile-desktop-relay/on-demand-server-worktree-rows'
 import { getHostDisplayLabelOverrides } from '../../../../shared/execution-host/host-setting-overrides'
 import { DELEGATED_PHONE_NAME_MAX_CHARS } from '../../../../shared/remote-runtime/pairing/delegated-mobile-device-contract'
@@ -105,6 +106,9 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
 
   setMobileDesktopRelayHosts(hosts: MobileDesktopRelayHosts | null): void {
     this.mobileDesktopRelay?.dispose()
+    // Whoever lists the workspaces of every host Orca reaches asks the paired servers the same
+    // way the sidebar does; the handle is theirs.
+    setPairedRelayHosts(hosts)
     this.mobileDesktopRelay = hosts
       ? new MobileDesktopRelay({
           hosts,

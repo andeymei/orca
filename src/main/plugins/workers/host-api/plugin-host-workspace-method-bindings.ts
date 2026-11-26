@@ -46,11 +46,12 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
     listPluginWorkspaces(
       rpc(services),
       params?.includeStatus === true,
-      services.runtimeRpc ?? services
+      services.runtimeRpc ?? services,
+      services.pairedHosts?.() ?? null
     )
   ),
   'project.list': bind(api['project.list'], async (_params, { services }) =>
-    listPluginProjects(rpc(services))
+    listPluginProjects(rpc(services), services.pairedHosts?.() ?? null)
   ),
   'workspace.open': bind(api['workspace.open'], async ({ workspaceId }, ctx) => {
     const scope = parseWorkspaceKey(workspaceId)

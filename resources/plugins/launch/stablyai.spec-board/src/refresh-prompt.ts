@@ -43,7 +43,7 @@ ${input.scanListPath}
 \`\`\`
 
 - \`name\`：项目的名字，看板上显示用。
-- \`host\`：项目所在的主机。\`local\` 表示就在这台机器上；\`ssh:<target>\` 表示在一台 SSH 主机上，\`<target>\` 是它的名字。
+- \`host\`：项目所在的主机。\`local\` 表示就在这台机器上；\`ssh:<id>\` 表示一台 SSH 主机；\`runtime:<id>\` 表示一台配对的 Orca 服务器。
 - \`path\`：项目在那台主机上的绝对路径。
 
 **每一项都要扫**，包括别的机器上的。漏掉一项，看板上那个项目就是空的。
@@ -52,6 +52,15 @@ ${input.scanListPath}
 ${input.registryPath}
 
 它可能还列了清单里没有的项目（比如不在 Orca 里的仓库）——也扫掉它。
+
+### 远程主机怎么连
+
+清单里的 \`host\` 是 Orca 的主机 id，**不是** ssh 名字，不能直接拿去 ssh。先换成 ssh 名字：
+
+- \`ssh:<id>\`：跑 \`orca host list --json\`，在 \`hosts\` 里找 \`id\` 相同的那一行，它的 \`name\` 就是 ssh 名字；没有这一行，就把 \`ssh:\` 后面那截当 ssh 名字试。
+- \`runtime:<id>\`：跑 \`orca environment show --environment <id> --json\`（\`<id>\` 是 \`runtime:\` 后面那截），读 \`environment.orcadDeployment.sshTargetId\`，再按上面 \`ssh:\` 的办法换成 ssh 名字。
+
+换出来的 ssh 名字，这台机器上所有项目都用它。
 
 ## 第二步：逐个项目扫描
 
@@ -62,20 +71,22 @@ ${input.registryPath}
 
 变更目录里有 \`proposal.md\`、\`design.md\`、\`tasks.md\` 和 \`specs/<能力>/spec.md\`。\`tasks.md\` 里的复选框就是进度：\`- [ ]\` 未完成，\`- [x]\` 已完成，\`- [-]\` 进行中。代码块里的复选框不算。
 
-远程项目（\`host\` 是 \`ssh:<target>\`）要 **ssh 到那台主机上读**。不要猜路径，也不要把远程项目的路径当成本地路径读。
+远程项目（\`host\` 不是 \`local\`）要 **ssh 到那台主机上读**。不要猜路径，也不要把远程项目的路径当成本地路径读。
 
 **路径永远不要拼进命令。** 目录名和文件名是那台机器上的内容，可能是别人放的；拼进命令行就是把命令交给对方。
 
 路径要先变成 base64 再传过去（base64 里没有 shell 语法）。路径含换行或特殊字符时，**先把它写进一个临时文件**——用你的文件工具写，文件内容就是路径本身，一个字节都不要改——再 \`base64 < 那个文件\` 编码；不要把路径放进任何命令行。没有文件工具时，用随机分隔符的 heredoc（\`<<'DELIM_…'\`，分隔符随机取，并确认路径里没有整行正好等于它）。
 
-- POSIX 主机：读文件 \`ssh -- <target> 'cat -- "$(printf %s "<B64>" | base64 --decode)"'\`；列目录把 \`cat\` 换成 \`ls -1A --\`。
-- Windows 主机（PowerShell，没有 \`cat\`/\`head\`/\`find\`）：读文件 \`ssh -- <target> powershell -NoProfile -Command "Get-Content -Raw -LiteralPath ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('<B64>')))"\`；列目录换成 \`Get-ChildItem -Name -LiteralPath (...)\`。
+- POSIX 主机：读文件 \`ssh -- <名字> 'cat -- "$(printf %s "<B64>" | base64 --decode)"'\`；列目录把 \`cat\` 换成 \`ls -1A --\`。
+- Windows 主机（PowerShell，没有 \`cat\`/\`head\`/\`find\`）：读文件 \`ssh -- <名字> powershell -NoProfile -Command "Get-Content -Raw -LiteralPath ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('<B64>')))"\`；列目录换成 \`Get-ChildItem -Name -LiteralPath (...)\`。
 
-\`<target>\` 用清单里的原样，不要改写它；\`ssh\` 后面那个 \`--\` 不能省（它让主机名不会被当成选项）。
+路径以盘符开头（\`D:/…\`）或用反斜杠分隔的，是 Windows 主机，用 PowerShell 那条。
 
-\`ssh -- <target>\` 连不上时，在本机的 \`~/.ssh/config\` 里找这台机器（按地址或别名），找到就用那个名字。连不上的项目，把原因写进它的 \`error\` 字段——**不要跳过它**，看板要看得见它没扫到。
+\`<名字>\` 是上面换出来的 ssh 名字，用它的原样，不要改写它；\`ssh\` 后面那个 \`--\` 不能省（它让主机名不会被当成选项）。
 
-每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，结果写进这个项目的 \`openspecCli\`——本地项目在本地跑，远程项目 ssh 到那台主机跑（\`ssh -- <target> openspec --version\`）。有就写 \`{ "available": true, "version": "1.8.0" }\`，没有写 \`{ "available": false }\`。写漏了这一项，远程项目的命令就会悄悄变成交给 agent 的提示词。
+连不上时，在本机的 \`~/.ssh/config\` 里找这台机器（按地址或别名），找到就用那个名字。连不上的项目，把原因写进它的 \`error\` 字段——**不要跳过它**，看板要看得见它没扫到。
+
+每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，结果写进这个项目的 \`openspecCli\`——本地项目在本地跑，远程项目 ssh 到那台主机跑（\`ssh -- <名字> openspec --version\`）。有就写 \`{ "available": true, "version": "1.8.0" }\`，没有写 \`{ "available": false }\`。写漏了这一项，远程项目的命令就会悄悄变成交给 agent 的提示词。
 
 ## 第三步：写快照
 

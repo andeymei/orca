@@ -96,6 +96,31 @@ describe('a workspace on a paired server runs there', () => {
     expect(result?.value).toEqual({ terminalId: 'remote-handle' })
   })
 
+  it('hands the prompt to the server in the launch itself', async () => {
+    const pairedCalls: { method: string; params: unknown }[] = []
+    const runtimeCalls: { method: string; params: unknown }[] = []
+    const hosts = pairedHosts(pairedCalls)
+    const prepared = PLUGIN_WORKSPACE_ACTION_HANDLERS['agent.launch'].prepare({
+      workspaceId: REMOTE_WORKTREE_ID,
+      agent: 'claude',
+      prompt: 'do the work'
+    })
+
+    expect(prepared.ok).toBe(true)
+    if (!prepared.ok) {
+      return
+    }
+    await prepared.execute(context({ pairedHosts: () => hosts }, runtimeCalls))
+
+    // One launch, and the prompt is part of it: a pasted prompt needs an agent the server can
+    // prove in front of its shell, and a Windows server cannot prove that.
+    const launches = pairedCalls.filter((call) => call.method === 'agent.launch')
+    expect(launches).toHaveLength(1)
+    expect(launches[0]?.params).toMatchObject({
+      params: { prompt: { text: 'do the work', delivery: 'submit' } }
+    })
+  })
+
   it('starts the agent here when the workspace is this machine’s', async () => {
     const pairedCalls: { method: string; params: unknown }[] = []
     const runtimeCalls: { method: string; params: unknown }[] = []

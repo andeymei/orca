@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { PLUGIN_HOST_API } from '../../../../shared/plugins/workers/plugin-host-api'
 import { PLUGIN_TERMINAL_READ_MAX_LINES } from '../../../../shared/plugins/workers/plugin-host-api-workspace-methods'
+import { isTuiAgent } from '../../../../shared/agent-launch/catalog/tui-agent-config'
+import { agentPromptRidesLaunchCommand } from '../../../../shared/agent-launch/startup/tui-agent-startup'
 import {
   bind,
   type BoundPluginHostMethod,
@@ -40,7 +42,13 @@ const terminalReadAnswer = z.object({
   })
 })
 const agentLaunchAnswer = z.object({
-  outcome: z.object({ kind: z.enum(['structured', 'terminal']), handle: z.string() })
+  outcome: z.object({ kind: z.enum(['structured', 'terminal']), handle: z.string() }),
+  // What the host did with the prompt, when the launch carried one.
+  prompt: z
+    .object({
+      outcome: z.enum(['handed-to-terminal', 'not-delivered', 'unconfirmed', 'journaled'])
+    })
+    .optional()
 })
 
 function failureDetail(error: unknown): string {
@@ -48,6 +56,29 @@ function failureDetail(error: unknown): string {
     return error.detail ?? error.message
   }
   return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * The prompt a launch hands over in the same call, when the agent takes it on its launch command.
+ *
+ * The runtime then gives it to the agent as the agent starts, which is the one delivery every
+ * host can make: a Windows server cannot prove an agent in front of its shell, so a prompt
+ * pasted into a running agent never arrives there.
+ */
+function launchPromptFor(
+  agent: string,
+  prompt: string | undefined
+): { text: string; delivery: 'submit' } | undefined {
+  if (prompt === undefined || !isTuiAgent(agent) || !agentPromptRidesLaunchCommand(agent)) {
+    return undefined
+  }
+  return { text: prompt, delivery: 'submit' }
+}
+
+/** What the host did with the prompt of a launch, when the answer names one. */
+function promptOutcomeOf(answer: unknown): string | undefined {
+  const parsed = agentLaunchAnswer.safeParse(answer)
+  return parsed.success ? parsed.data.prompt?.outcome : undefined
 }
 
 /**
@@ -177,6 +208,7 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
   }),
   'agent.launch': bind(api['agent.launch'], async (params, ctx) => {
     const worktree = workspaceSelector(params.workspaceId)
+    const launchPrompt = launchPromptFor(params.agent, params.prompt)
     const launch = {
       target: { kind: 'existing' as const, worktree },
       agent: params.agent,
@@ -184,7 +216,10 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
       surface: 'terminal' as const,
       // A mod works beside the person: never take their focus.
       presentation: 'background' as const,
-      launchSource: 'plugin' as const
+      launchSource: 'plugin' as const,
+      // The prompt rides the launch, so the agent has it as its first message wherever the
+      // workspace runs — on this machine or on the server that holds it.
+      ...(launchPrompt ? { prompt: launchPrompt } : {})
     }
     // A workspace on a paired server runs there: the agent belongs to that server, in that
     // server's own workspace.
@@ -200,7 +235,11 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
     if (!ctx.scope.signal?.aborted) {
       recordPluginOpenedTerminal(ctx.pluginId, terminalId)
     }
-    if (params.prompt) {
+    if (launchPrompt && promptOutcomeOf(answer) === 'not-delivered') {
+      ctx.scope.log?.(`agent.launch: the prompt did not reach ${terminalId}`)
+    }
+    if (params.prompt !== undefined && !launchPrompt) {
+      // The agent takes its prompt only after it starts: hand it to the running agent's composer.
       // Delivery waits for the agent's composer (up to a minute), longer than a host call may take.
       const deliver = {
         target: { kind: 'existing' as const, worktree },
@@ -214,11 +253,17 @@ export const PLUGIN_WORKSPACE_ACTION_HANDLERS = {
         owner === null
           ? effect(ctx, 'agent.launch', deliver)
           : pairedEffect(ctx, owner, 'agent.launch', deliver)
-      ).catch((error: unknown) => {
-        ctx.scope.log?.(
-          `agent.launch: the prompt did not reach ${terminalId}: ${failureDetail(error)}`
-        )
-      })
+      )
+        .then((delivered: unknown) => {
+          if (promptOutcomeOf(delivered) === 'not-delivered') {
+            ctx.scope.log?.(`agent.launch: the prompt did not reach ${terminalId}`)
+          }
+        })
+        .catch((error: unknown) => {
+          ctx.scope.log?.(
+            `agent.launch: the prompt did not reach ${terminalId}: ${failureDetail(error)}`
+          )
+        })
     }
     return { terminalId }
   }),

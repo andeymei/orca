@@ -63,9 +63,62 @@ async function agentLaunchIntent(
   }
 }
 
-async function validateReusedTerminal(
+/**
+ * How long a reused terminal may still be starting its agent before the reuse is refused.
+ *
+ * A caller that launches an agent and then sends it a prompt reuses the terminal it was given:
+ * the agent is still starting then, and refusing that reuse drops the prompt on the floor.
+ */
+export const REUSED_TERMINAL_AGENT_READY_TIMEOUT_MS = 30_000
+const REUSED_TERMINAL_AGENT_POLL_MS = 500
+
+/** What the reuse check reads: the terminal's workspace, and whether its agent is running. */
+export type ReusedTerminalRuntime = {
+  showTerminal(handle: string): Promise<{ worktreeId: string }>
+  isTerminalRunningAgent(handle: string): Promise<boolean>
+}
+
+/** The clock the readiness wait reads, so a test can run it without waiting. */
+export type ReusedTerminalReadinessClock = {
+  now(): number
+  sleep(ms: number): Promise<void>
+}
+
+const REAL_CLOCK: ReusedTerminalReadinessClock = {
+  now: () => Date.now(),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Whether the terminal runs the agent yet.
+ *
+ * A terminal whose agent is still starting does not: the foreground process is the shell's, not
+ * the agent's. The wait ends when the agent proves itself, when the caller gives up, or when the
+ * budget runs out.
+ */
+async function waitForReusedTerminalAgent(
+  handle: string,
+  runtime: Pick<ReusedTerminalRuntime, 'isTerminalRunningAgent'>,
+  signal: AbortSignal | undefined,
+  clock: ReusedTerminalReadinessClock
+): Promise<boolean> {
+  const deadline = clock.now() + REUSED_TERMINAL_AGENT_READY_TIMEOUT_MS
+  for (;;) {
+    if (await runtime.isTerminalRunningAgent(handle)) {
+      return true
+    }
+    if (signal?.aborted || clock.now() >= deadline) {
+      return false
+    }
+    await clock.sleep(REUSED_TERMINAL_AGENT_POLL_MS)
+  }
+}
+
+export async function validateReusedTerminal(
   intent: AgentLaunchIntent,
-  runtime: Pick<OrcaRuntimeService, 'showTerminal' | 'isTerminalRunningAgent'>
+  runtime: ReusedTerminalRuntime,
+  signal?: AbortSignal,
+  clock: ReusedTerminalReadinessClock = REAL_CLOCK
 ): Promise<void> {
   if (!intent.reuseTerminal) {
     return
@@ -77,7 +130,7 @@ async function validateReusedTerminal(
   if (terminal.worktreeId !== intent.target.worktree) {
     throw new Error('agent_launch_terminal_worktree_mismatch')
   }
-  if (!(await runtime.isTerminalRunningAgent(intent.reuseTerminal.handle))) {
+  if (!(await waitForReusedTerminalAgent(intent.reuseTerminal.handle, runtime, signal, clock))) {
     throw new Error('agent_launch_terminal_not_running_agent')
   }
 }
@@ -87,10 +140,15 @@ export async function resolveUnlaunchedIntent(
   params: AgentLaunchParams,
   runtime: OrcaRuntimeService,
   early: EarlyAgentLaunchTab | null,
-  modeOptions: { terminalOnly?: boolean; callerRendersStructured?: boolean } = {}
+  modeOptions: {
+    terminalOnly?: boolean
+    callerRendersStructured?: boolean
+    /** The caller's own cancellation: a wait for a starting agent ends with it. */
+    signal?: AbortSignal
+  } = {}
 ): Promise<{ intent: ResolvedAgentLaunchIntent; decidedMode: AgentLaunchModeReceipt }> {
   const intent = await agentLaunchIntent(params, runtime, early?.paneKey)
-  await validateReusedTerminal(intent, runtime)
+  await validateReusedTerminal(intent, runtime, modeOptions.signal)
   const preflight = decideAgentLaunchIntentMode({ intent, runtime, ...modeOptions })
   const decidedMode =
     intent.target.kind === 'existing'

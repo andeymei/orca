@@ -26,7 +26,7 @@ test('says every project of the list has to be scanned, the remote ones included
 test('tells the agent how to turn a host id into an ssh name', () => {
   // A host id is Orca's own name for a machine, not something ssh accepts: the agent has to
   // ask Orca what the machine is called, or it never reaches the remote project at all.
-  assert.match(prompt, /不是\*\* ssh 名字/)
+  assert.match(prompt, /主机 id 不是 ssh 名字/)
   assert.match(prompt, /orca host list --json/)
   assert.match(prompt, /orca environment show --environment <id> --json/)
   assert.match(prompt, /environment\.orcadDeployment\.sshTargetId/)
@@ -122,4 +122,13 @@ test('asks for plain slugs', () => {
   assert.ok(prompt.includes('/^[A-Za-z0-9][A-Za-z0-9._-]*$/'))
   assert.match(prompt, /changeId/)
   assert.match(prompt, /topic/)
+})
+
+test('asks the agent to report the progress after every project', () => {
+  // The panel's bar is drawn from what the agent reports. A prompt that never asks for it leaves
+  // the board with a bar that never moves.
+  assert.match(prompt, /每扫完一个项目/)
+  assert.match(prompt, /进度/)
+  // The shape of the progress file travels in the list the agent reads, not in the prompt.
+  assert.match(prompt, /`progress`/)
 })

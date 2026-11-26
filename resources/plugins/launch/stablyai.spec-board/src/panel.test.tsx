@@ -137,6 +137,50 @@ test('a refused refresh does not hide the failure of a board read', async () => 
   await view.unmount()
 })
 
+test('the refresh draws a bar that moves with the agent’s progress', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
+      'board.refresh': () => ({ terminalId: 't1', agent: 'claude' })
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.select({ label: '看板视图' }, 'projects')
+  await view.press({ text: '刷新' })
+  await view.settled()
+  // The agent has not said anything yet: the bar is there, and it claims no number.
+  assert.ok(view.find({ type: 'Progress' }))
+  assert.equal(view.find({ type: 'Progress' })?.props.value, undefined)
+  assert.ok(view.find({ text: 'agent 正在采集' }))
+  // The agent reports: the bar takes the number the agent gave, and names the project it is on.
+  await view.post('board.progress.changed', {
+    progress: { done: 2, total: 5, current: 'ctjt-service' }
+  })
+  await view.settled()
+  assert.ok(view.find({ text: '已采集 2/5 个项目' }))
+  assert.ok(view.find({ text: '正在采集 ctjt-service' }))
+  assert.equal(view.find({ type: 'Progress' })?.props.value, 40)
+  await view.unmount()
+})
+
+test('the bar is above the tabs, so every tab shows the refresh', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
+      'board.refresh': () => ({ terminalId: 't1', agent: 'claude' })
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.select({ label: '看板视图' }, 'projects')
+  await view.press({ text: '刷新' })
+  await view.settled()
+  assert.ok(view.find({ type: 'Progress' }))
+  // The refresh is the whole board's, not one tab's: the bar stays where the person can see it.
+  await view.select({ label: '看板视图' }, 'board')
+  assert.ok(view.find({ type: 'Progress' }))
+  await view.unmount()
+})
+
 test('a board with nothing of its own shows the warnings as a danger, not a note', async () => {
   const host = mockHost({
     requests: {

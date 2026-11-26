@@ -7,6 +7,7 @@
 
 import { atom, plugin, read, set } from 'orca'
 import type { Action, BoardPayload, UnifiedStage } from './model'
+import type { RefreshProgress } from './refresh-progress'
 
 /** Which of the three tabs the panel shows. */
 export type PanelTab = 'board' | 'map' | 'projects'
@@ -45,6 +46,22 @@ export const busy = atom<boolean>(false)
 
 /** Whether a refresh is in flight. */
 export const refreshing = atom<boolean>(false)
+
+/**
+ * When the refresh in flight started; null when none is.
+ *
+ * It is persisted, because the refresh outlives the panel: the person closes the sidebar and
+ * comes back to it, and the board still has to say that the agent is working.
+ */
+export const refreshStartedAt = atom<number | null>('spec-board.refresh-started-at', null, {
+  persist: 'plugin'
+})
+
+/** What the agent last said about the refresh; null when it has not said. */
+export const refreshProgress = atom<RefreshProgress | null>(null)
+
+/** Whether the refresh has waited longer than it may. */
+export const refreshTimedOut = atom<boolean>(false)
 
 /** What the last refresh did: the agent the worker launched to write a new snapshot. */
 export const refreshFeedback = atom<string | null>(null)
@@ -113,6 +130,13 @@ async function loadBoard(reads: BoardReads): Promise<void> {
     reads.applied = number
     set(payload, answer)
     set(error, null)
+    // The snapshot that just landed is newer than the refresh that was waiting for it: the
+    // refresh has come back, and the bar has nothing left to say.
+    const startedAt = read(refreshStartedAt)
+    const landed = answer.sources.agentAt
+    if (startedAt !== null && landed !== null && landed >= startedAt) {
+      clearRefresh()
+    }
   } catch (thrown) {
     if (reads.closed || number < reads.applied) {
       return
@@ -181,6 +205,7 @@ function watchForSnapshot(before: number | null): void {
   const tick = async (): Promise<void> => {
     snapshotWatch = null
     if (Date.now() >= deadline) {
+      set(refreshTimedOut, true)
       return
     }
     await load()
@@ -191,6 +216,38 @@ function watchForSnapshot(before: number | null): void {
     snapshotWatch = setTimeout(() => void tick(), SNAPSHOT_WATCH_INTERVAL_MS)
   }
   snapshotWatch = setTimeout(() => void tick(), SNAPSHOT_WATCH_INTERVAL_MS)
+}
+
+/**
+ * Takes the refresh's state away.
+ *
+ * The board has its new data, so the bar has nothing left to say.
+ */
+export function clearRefresh(): void {
+  set(refreshStartedAt, null)
+  set(refreshProgress, null)
+  set(refreshTimedOut, false)
+}
+
+/** What the agent said about the refresh it is doing. */
+export function applyRefreshProgress(progress: RefreshProgress | null): void {
+  set(refreshProgress, progress)
+}
+
+/**
+ * Asks the worker how far the refresh has come.
+ *
+ * A panel that opens while the agent is working knows nothing yet: the worker posts the
+ * progress when it changes, and this asks for the one that is already there. A worker that
+ * cannot answer knows nothing either — the bar then says no number, which is true.
+ */
+export async function askRefreshProgress(): Promise<void> {
+  try {
+    const answer = await plugin.request('board.progress')
+    set(refreshProgress, answer.progress)
+  } catch {
+    // The progress is not the board: a worker that cannot answer it does not fail the refresh.
+  }
 }
 
 /** What the card says after its action ran: which channel took it, and which agent. */
@@ -270,9 +327,17 @@ export async function refreshBoard(): Promise<void> {
   try {
     const answer = await plugin.request('board.refresh')
     set(refreshFeedback, `已派发 ${answer.agent ?? 'agent'} 刷新`)
+    // The refresh is now running, and it outlives the button: the bar says so until the
+    // snapshot lands, however long the agent takes.
+    const startedAt = Date.now()
+    set(refreshStartedAt, startedAt)
+    set(refreshProgress, null)
+    set(refreshTimedOut, false)
     watchForSnapshot(before)
   } catch (thrown) {
     set(refreshError, { code: codeOf(thrown), message: messageOf(thrown) })
+    // No refresh is running, so there is no bar to show.
+    clearRefresh()
   } finally {
     set(refreshing, false)
   }

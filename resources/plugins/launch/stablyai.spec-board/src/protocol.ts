@@ -1,5 +1,6 @@
 // The panel <-> worker contract, declared once: src/panel.tsx and src/worker.ts both read it.
 import type { BoardPayload } from './model'
+import type { RefreshProgress } from './refresh-progress'
 
 declare module 'orca' {
   // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging needs an interface
@@ -12,6 +13,12 @@ declare module 'orca' {
      * panel's read and the launch, so only the worker knows what ran.
      */
     'board.refresh': { output: { terminalId: string; agent?: string } }
+    /**
+     * How far the refresh in flight has come. Null when the agent has not said yet — the agent
+     * writes the progress after every project, and a panel that opens mid-refresh asks for it
+     * here rather than wait for the next one.
+     */
+    'board.progress': { output: { progress: RefreshProgress | null } }
     /**
      * Runs one action. The panel names the action and, for a change-scoped command, the change
      * it picked — never a command line: the worker resolves that itself.
@@ -33,5 +40,7 @@ declare module 'orca' {
   interface PluginPanelEvents {
     /** Posted to every open panel when the snapshot on disk changed. */
     'board.changed': { agentAt: number | null }
+    /** Posted to every open panel when the agent reported how far its refresh has come. */
+    'board.progress.changed': { progress: RefreshProgress | null }
   }
 }

@@ -10,6 +10,8 @@
 // prompt has a hard limit of 4096 characters, and Orca knows projects this machine cannot see by
 // itself — the ones on another host, above all.
 
+import { remoteHostRules } from './remote-host'
+
 /** The rule every change id and every topic has to match. */
 const SLUG_RULE = '/^[A-Za-z0-9][A-Za-z0-9._-]*$/'
 
@@ -55,12 +57,11 @@ ${input.registryPath}
 
 ### 远程主机怎么连
 
-清单里的 \`host\` 是 Orca 的主机 id，**不是** ssh 名字，不能直接拿去 ssh。先换成 ssh 名字：
+清单里的 \`host\` 是 Orca 的主机 id，不能直接拿去 ssh。
 
-- \`ssh:<id>\`：跑 \`orca host list --json\`，在 \`hosts\` 里找 \`id\` 相同的那一行，它的 \`name\` 就是 ssh 名字；没有这一行，就把 \`ssh:\` 后面那截当 ssh 名字试。
-- \`runtime:<id>\`：跑 \`orca environment show --environment <id> --json\`（\`<id>\` 是 \`runtime:\` 后面那截），读 \`environment.orcadDeployment.sshTargetId\`，再按上面 \`ssh:\` 的办法换成 ssh 名字。
+${remoteHostRules()}
 
-换出来的 ssh 名字，这台机器上所有项目都用它。
+换出来的 ssh 名字，那台机器上所有项目都用它。
 
 ## 第二步：逐个项目扫描
 
@@ -88,14 +89,16 @@ ${input.registryPath}
 
 每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，结果写进这个项目的 \`openspecCli\`——本地项目在本地跑，远程项目 ssh 到那台主机跑（\`ssh -- <名字> openspec --version\`）。有就写 \`{ "available": true, "version": "1.8.0" }\`，没有写 \`{ "available": false }\`。写漏了这一项，远程项目的命令就会悄悄变成交给 agent 的提示词。
 
+**每扫完一个项目就写一次进度**：按 \`scan-list.json\` 里 \`progress\` 说的路径和字段写。看板靠它显示进度条，所以每扫完一个就写一次，不要攒到最后。
+
 ## 第三步：写快照
 
 快照要写到：
 ${input.snapshotPath}
 
-先写 \`${input.snapshotPath}.tmp\`，写完再 rename 成正式文件——这样读的人永远看不到写了一半的文件。
+先写同一个路径加上 \`.tmp\`，写完再 rename 成正式文件——这样读的人永远看不到写了一半的文件。
 
-快照该有的样子在同一个文件的 \`snapshotFormat\` 字段里：${input.scanListPath}
+快照该有的样子在清单文件（第一步那个路径）的 \`snapshotFormat\` 字段里。
 
 校验器会按下面的规则检查，写之前先自己核对一遍：
 

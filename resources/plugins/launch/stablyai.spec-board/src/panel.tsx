@@ -19,13 +19,17 @@ import type { PanelContext } from 'orca'
 import { BoardTab } from './panel-board'
 import { MapTab } from './panel-map'
 import { ProjectsTab } from './panel-projects'
+import { RefreshCard } from './panel-refresh'
 import {
+  applyRefreshProgress,
+  askRefreshProgress,
   currentTab,
   error,
   mapProject,
   newBoardReads,
   payload,
   refreshError,
+  refreshStartedAt,
   stopWaiting,
   tab
 } from './panel-state'
@@ -102,6 +106,16 @@ export function setup(ctx: PanelContext): () => void {
       void board.load()
     })
   )
+  // The agent says how far its refresh has come: the bar moves.
+  ctx.subscriptions.push(
+    plugin.on('board.progress.changed', (reported) => {
+      applyRefreshProgress(reported.progress)
+    })
+  )
+  // A refresh may already be running when this panel opens: ask what it has come to.
+  if (read(refreshStartedAt) !== null) {
+    void askRefreshProgress()
+  }
   // The sidebar has selected another workspace: the board follows it, and the map's own pick goes
   // with it — a project picked for the previous workspace is not a pick for this one.
   ctx.subscriptions.push(
@@ -135,6 +149,7 @@ export default function Panel() {
         </Callout>
       )}
       <BoardWarnings />
+      <RefreshCard />
       <Tabs label="看板视图" value={current} onChange={changeTab}>
         <Tab value="board" label="看板">
           <BoardTab />

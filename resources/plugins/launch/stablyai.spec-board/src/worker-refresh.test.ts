@@ -253,6 +253,84 @@ test('the scan list names the project of a paired Orca server, with its host', a
   await worker.deactivate()
 })
 
+test('the scan list tells the agent where the progress file is', async () => {
+  const root = await home()
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': {
+        workspaceId: 'w1',
+        branch: 'main',
+        displayName: 'demo',
+        terminals: []
+      },
+      'agent.launch': { terminalId: 't9' }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.refresh')
+  // The prompt has no room for the shape of the progress file, so it travels with the list the
+  // agent reads anyway: the agent is told where to write and what to write there.
+  const list = JSON.parse(await readFile(join(root, 'scan-list.json'), 'utf8'))
+  const progress = list.progress
+  assert.ok(isRecord(progress))
+  assert.equal(progress['path'], join(root, 'progress.json'))
+  assert.equal(progress['afterEachProject'], '每扫完一个项目就写一次')
+  await worker.deactivate()
+})
+
+test('the progress the agent wrote is what the worker answers', async () => {
+  const root = await home()
+  await writeFile(
+    join(root, 'progress.json'),
+    JSON.stringify({ done: 2, total: 5, current: 'ctjt-service' }),
+    'utf8'
+  )
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const answer = await worker.request('board.progress')
+  assert.deepEqual(answer.progress, { done: 2, total: 5, current: 'ctjt-service' })
+  await worker.deactivate()
+})
+
+test('a progress that is not one is no progress', async () => {
+  const root = await home()
+  // The agent is an LLM: a file it wrote may hold anything. A progress the panel cannot read is
+  // no progress — the bar says nothing rather than something false.
+  await writeFile(join(root, 'progress.json'), '{ not json', 'utf8')
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  assert.equal((await worker.request('board.progress')).progress, null)
+  await worker.deactivate()
+})
+
+test('a refresh takes the last refresh’s progress away', async () => {
+  const root = await home()
+  await writeFile(
+    join(root, 'progress.json'),
+    JSON.stringify({ done: 4, total: 5, current: 'ctjt-service' }),
+    'utf8'
+  )
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': {
+        workspaceId: 'w1',
+        branch: 'main',
+        displayName: 'demo',
+        terminals: []
+      },
+      'agent.launch': { terminalId: 't9' }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.refresh')
+  // The progress belongs to the refresh that is starting: a bar counting the last run's projects
+  // would say the agent is halfway when it has not begun.
+  assert.equal((await worker.request('board.progress')).progress, null)
+  await worker.deactivate()
+})
+
 test('a refresh that cannot write its prompt is refused with a message', async () => {
   const root = await home()
   // The store directory points inside a file, so neither it nor the prompt file can exist.

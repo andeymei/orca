@@ -6,7 +6,7 @@
 // cannot resolve — so a project-derived value has exactly one path into a shell.
 
 import { watch, type FSWatcher } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import type { OrcaWorkerApi } from 'orca/worker'
 import { resolveAction, type ActionFailure, type ActionRequest } from './action-resolution'
 import {
@@ -23,9 +23,11 @@ import {
 } from './board-projects'
 import { safeHostOf } from './host-identity'
 import { buildRefreshPrompt } from './refresh-prompt'
+import { progressInstructions, readRefreshProgress } from './refresh-progress'
 import { SNAPSHOT_FORMAT } from './snapshot-format'
 import {
   boardStoreDir,
+  progressPath,
   refreshPromptPath,
   registryPath,
   scanListPath,
@@ -210,6 +212,7 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent
   })
   await writeRefreshPrompt(orca, prompt)
   await writeScanList(orca, known.projects)
+  await clearProgress(orca)
   const agent = settings.refreshAgent === '' ? 'claude' : settings.refreshAgent
   const launched = await orca.host.call('agent.launch', {
     workspaceId,
@@ -227,6 +230,9 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent
  * Both are in a file, not in the prompt: the prompt has room for the task and the rules, and not
  * for the schema as well — `agent.launch` refuses a prompt over 4096 characters. Orca knows
  * projects the agent cannot see by itself, too: the ones on another host, above all.
+ *
+ * The progress file is named there too, for the same reason: the panel's bar needs the agent to
+ * say how far it has come, and the prompt has no room for the shape of that file.
  *
  * A project whose host cannot be named safely is left out: the agent runs `ssh -- <target> …`
  * with that host, and a name a shell would read as an option is not a host.
@@ -250,13 +256,37 @@ async function writeScanList(
   try {
     await writeFile(
       scanListPath(),
-      `${JSON.stringify({ projects: named, snapshotFormat: SNAPSHOT_FORMAT }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          projects: named,
+          snapshotFormat: SNAPSHOT_FORMAT,
+          progress: progressInstructions(progressPath())
+        },
+        null,
+        2
+      )}\n`,
       'utf8'
     )
   } catch (error) {
     throw requestError(
       'unavailable',
       `无法写入 ${scanListPath()}：${messageOf(error)}`)
+  }
+}
+
+/**
+ * Takes the last refresh's progress away.
+ *
+ * The progress belongs to the refresh that is starting: a bar that counts the projects of the
+ * last run would say the agent is halfway when it has not begun. A file that cannot be removed
+ * is logged — the agent overwrites it with its first report anyway — and never refuses the
+ * refresh, because the snapshot is what the board reads.
+ */
+async function clearProgress(orca: OrcaWorkerApi): Promise<void> {
+  try {
+    await rm(progressPath(), { force: true })
+  } catch (error) {
+    orca.log(`[spec-board] 无法清掉旧的进度文件：${messageOf(error)}`)
   }
 }
 
@@ -282,11 +312,23 @@ async function writeRefreshPrompt(orca: OrcaWorkerApi, prompt: string): Promise<
   }
 }
 
-/** Watches the store directory, so a new snapshot reaches the open panels. */
+/**
+ * Watches the store directory, so a new snapshot reaches the open panels — and so the agent's
+ * progress does too.
+ *
+ * The two files are told apart by their name: the snapshot is the board's, the progress is only
+ * how far the agent has come. A file that is neither is ignored.
+ */
 function startWatcher(orca: OrcaWorkerApi): FSWatcher | null {
   const dir = boardStoreDir()
   try {
     const created = watch(dir, (_event, filename) => {
+      if (filename === 'progress.json') {
+        void readRefreshProgress().then((progress) =>
+          orca.panels.post('board.progress.changed', { progress })
+        )
+        return
+      }
       if (filename !== null && filename !== 'board.json') {
         return
       }
@@ -309,6 +351,7 @@ export default async function activate(orca: OrcaWorkerApi): Promise<void> {
     return (await buildBoard(orca, warnings, state)).payload
   })
   orca.panels.handle('board.refresh', async () => refresh(orca))
+  orca.panels.handle('board.progress', async () => ({ progress: await readRefreshProgress() }))
   orca.panels.handle('action.run', async (input) => runAction(orca, input, state))
   try {
     await mkdir(boardStoreDir(), { recursive: true })

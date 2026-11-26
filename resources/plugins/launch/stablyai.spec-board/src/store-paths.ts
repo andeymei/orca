@@ -43,6 +43,16 @@ export function refreshPromptPath(): string {
   return join(boardStoreDir(), 'last-refresh-prompt.md')
 }
 
+/**
+ * How far the refresh in flight has come.
+ *
+ * The agent writes it after every project it scans, so the panel can draw a bar that moves
+ * instead of a board that sits still while the agent works.
+ */
+export function progressPath(): string {
+  return join(boardStoreDir(), 'progress.json')
+}
+
 /** The registry: the projects to scan, one entry each. */
 export type Registry = { schemaVersion: 1; projects: ProjectRef[] }
 

@@ -4,9 +4,11 @@
 // The agent writes this after every project, so the panel can draw a bar that moves. A file that
 // is not there, or that does not have the shape, means "no number to show" — never a failed
 // refresh: the snapshot is what the board reads, and this file only says how far the agent has come.
+//
+// Why this module reads no file: the panel draws the bar, and the panel runs in a frame that has
+// no file system — a module of its own that reached for one would fail to load at all, and the
+// panel with it. The reading lives in `refresh-progress-file.ts`, which only the worker uses.
 
-import { readFile } from 'node:fs/promises'
-import { progressPath } from './store-paths'
 import { isRecord } from './unknown-values'
 
 /** How far the refresh has come. */
@@ -46,21 +48,6 @@ export function parseRefreshProgress(raw: unknown): RefreshProgress | null {
     return null
   }
   return { done, total, current }
-}
-
-/** The progress on disk, or null when there is none to show. */
-export async function readRefreshProgress(): Promise<RefreshProgress | null> {
-  let raw: string
-  try {
-    raw = await readFile(progressPath(), 'utf8')
-  } catch {
-    return null
-  }
-  try {
-    return parseRefreshProgress(JSON.parse(raw))
-  } catch {
-    return null
-  }
 }
 
 /** How far along the percent a progress bar takes. */

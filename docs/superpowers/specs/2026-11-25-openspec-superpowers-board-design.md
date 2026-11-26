@@ -100,7 +100,12 @@ resources/plugins/launch/stablyai.spec-board/
 │   ├── local-scan-artifacts.ts 本地扫描的文件读取（OpenSpec / Superpowers 读取器）
 │   ├── workspace-match.ts   路径归一化、worktree 折叠、workspace 定位
 │   ├── actions.ts           动作推导（actionsForItem / frameworkActions）
+│   ├── action-workspace.ts  动作在哪个 workspace 跑（远程项目在本机跑）
 │   ├── framework-map.ts     两个框架的全貌静态知识（手写）
+│   ├── remote-host.ts       主机 id → ssh 名字的规则（刷新与远程动作共用）
+│   ├── remote-target.ts     远程项目的路径写在哪个文件里（路径不进提示词）
+│   ├── refresh-progress.ts  刷新进度的形状（面板侧，不读文件）
+│   ├── refresh-progress-file.ts 刷新进度的读取（worker 侧）
 │   ├── store-paths.ts       ~/.orca/spec-board 路径（测试可覆盖）
 │   └── refresh-prompt.ts    交给 agent 的采集指令
 └── README.md

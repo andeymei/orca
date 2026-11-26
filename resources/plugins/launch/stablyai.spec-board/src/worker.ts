@@ -24,7 +24,8 @@ import {
 } from './board-projects'
 import { safeHostOf } from './host-identity'
 import { buildRefreshPrompt } from './refresh-prompt'
-import { progressInstructions, readRefreshProgress } from './refresh-progress'
+import { progressInstructions } from './refresh-progress'
+import { readRefreshProgress } from './refresh-progress-file'
 import { SNAPSHOT_FORMAT } from './snapshot-format'
 import {
   boardStoreDir,

@@ -186,7 +186,9 @@ function readVerificationFacts(value: unknown, field: string): VerificationFacts
   if (passed > rounds) {
     fail(`${field}.passed`, `期望不大于 rounds（当前 ${rounds}）`)
   }
-  return { rounds, passed, lastPassed }
+  // A verdict with no passing round behind it is no verdict: the card would wear 「已验证 ×0」.
+  // Normalizing keeps the rest of the snapshot, which is worth more than this one field.
+  return { rounds, passed, lastPassed: passed === 0 && lastPassed === true ? null : lastPassed }
 }
 
 function readSuperpowersFacts(value: unknown, field: string): SuperpowersFacts {

@@ -100,6 +100,20 @@ test('更浅的标题（三个井号）不结束这一节', () => {
   assert.deepEqual(facts, { rounds: 1, passed: 1, lastPassed: true })
 })
 
+test('没有空格的标题也结束这一节', () => {
+  // 「##别的节」也是标题：这一节到那里为止。它后面的记录是别的节的，不能算进这一节——
+  // 算进来会把最近一轮的结论翻掉。
+  const facts = parseVerificationRecords(
+    [
+      '## 验证记录',
+      '- 2026-11-26 · 通过 · pnpm tc',
+      '##别的节',
+      '- 2026-11-27 · 未通过 · pnpm lint'
+    ].join('\n')
+  )
+  assert.deepEqual(facts, { rounds: 1, passed: 1, lastPassed: true })
+})
+
 test('复选框不是一轮', () => {
   // 一行复选框会被 countCheckboxes 算成计划进度；它不是一轮验证。
   const facts = parseVerificationRecords(

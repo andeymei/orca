@@ -179,6 +179,59 @@ test('没有轮次的记录也是合法的', () => {
   assert.equal(result.ok, true)
 })
 
+test('一轮都没通过的记录，不算「最后一轮通过了」', () => {
+  // 这份记录自相矛盾：它说最后一轮通过了，却一轮都没通过。
+  // 归一化成「没有结论」，而不是拒绝整份快照——快照里别的项目、别的字段都是好的。
+  const item = {
+    ...valid.items[0],
+    superpowers: superpowersFacts({ rounds: 0, passed: 0, lastPassed: true })
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, true)
+  if (!result.ok) {
+    return
+  }
+  assert.deepEqual(result.value.items[0]!.superpowers?.verification, {
+    rounds: 0,
+    passed: 0,
+    lastPassed: null
+  })
+})
+
+test('两轮都没通过的记录，也不算「最后一轮通过了」', () => {
+  const item = {
+    ...valid.items[0],
+    superpowers: superpowersFacts({ rounds: 2, passed: 0, lastPassed: true })
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, true)
+  if (!result.ok) {
+    return
+  }
+  assert.deepEqual(result.value.items[0]!.superpowers?.verification, {
+    rounds: 2,
+    passed: 0,
+    lastPassed: null
+  })
+})
+
+test('有一轮通过的记录，结论照旧', () => {
+  const item = {
+    ...valid.items[0],
+    superpowers: superpowersFacts({ rounds: 2, passed: 1, lastPassed: true })
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, true)
+  if (!result.ok) {
+    return
+  }
+  assert.deepEqual(result.value.items[0]!.superpowers?.verification, {
+    rounds: 2,
+    passed: 1,
+    lastPassed: true
+  })
+})
+
 test('accepts progress where done plus in-progress fills the total', () => {
   const item = {
     ...valid.items[0],

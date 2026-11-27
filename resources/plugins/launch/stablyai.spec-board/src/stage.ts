@@ -42,7 +42,10 @@ export function deriveStage(facts: StageFacts): UnifiedStage {
   // stage nor holds it back from 'validate'.
   const informative = pairs.filter((pair) => pair.total > 0)
   if (informative.length > 0 && informative.every((pair) => pair.done === pair.total)) {
-    return 'validate'
+    // The checklist is fully ticked. Whether the work counts as verified is a separate fact: the
+    // last round has to have passed — a card that says "verified" while the latest round failed
+    // would be lying.
+    return facts.superpowers?.verification?.lastPassed === true ? 'verified' : 'validate'
   }
   if (informative.some((pair) => pair.done + pair.inProgress > 0)) {
     return 'implement'

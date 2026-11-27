@@ -33,6 +33,8 @@ const PREFERRED_BY_STAGE: Readonly<Record<UnifiedStage, readonly string[]>> = {
   implement: ['superpowers.execute', 'openspec.implement'],
   // 校验：做完了，校验它；两边各有一套说法，OpenSpec 的先。
   validate: ['openspec.validate', 'superpowers.verify'],
+  // 已验证：这一栏还没有自己的下一步动作，所以这里不给偏好。
+  verified: [],
   // 归档：已经归档，没有什么可推进的了——能看的只是它归档了什么。
   archive: ['openspec.show', 'superpowers.review']
 }

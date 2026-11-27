@@ -105,7 +105,8 @@ test('the Superpowers side opens its design spec and its plan', () => {
       stage: 'planned',
       planDone: 0,
       planInProgress: 0,
-      planTotal: 3
+      planTotal: 3,
+      verification: null
     }
   })
   assert.deepEqual(pathsOf(entry), [
@@ -122,7 +123,8 @@ test('the design comes before the task list, the way the work happens', () => {
       stage: 'planned',
       planDone: 0,
       planInProgress: 0,
-      planTotal: 3
+      planTotal: 3,
+      verification: null
     }
   })
   assert.deepEqual(pathsOf(entry), [
@@ -160,7 +162,8 @@ test('a path that climbs out of the project opens nothing', () => {
       stage: 'designed',
       planDone: 0,
       planInProgress: 0,
-      planTotal: 0
+      planTotal: 0,
+      verification: null
     }
   })
   assert.deepEqual(pathsOf(entry), [])
@@ -175,7 +178,8 @@ test('the file names are the names a person recognizes', () => {
         stage: 'planned',
         planDone: 0,
         planInProgress: 0,
-        planTotal: 3
+        planTotal: 3,
+        verification: null
       }
     })
   )

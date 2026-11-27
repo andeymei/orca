@@ -187,7 +187,8 @@ test('the gaps of an item are what both sides say, one per code', () => {
               stage: 'designed',
               planDone: 0,
               planInProgress: 0,
-              planTotal: 0
+              planTotal: 0,
+              verification: null
             }
           })
         ]
@@ -222,7 +223,8 @@ test("the agent's gap wins when the two sides disagree about the same code", () 
     stage: 'executing' as const,
     planDone: 4,
     planInProgress: 0,
-    planTotal: 4
+    planTotal: 4,
+    verification: null
   }
   const facts = (tasksDone: number) => ({
     changeId: 'add-x',

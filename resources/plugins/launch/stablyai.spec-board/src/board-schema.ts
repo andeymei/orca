@@ -203,7 +203,8 @@ function readSuperpowersFacts(value: unknown, field: string): SuperpowersFacts {
       `期望 planDone + planInProgress 不大于 planTotal（当前 ${planDone} + ${planInProgress} > ${planTotal}）`
     )
   }
-  return { designSpec, plan, stage, planDone, planInProgress, planTotal }
+  // The snapshot carries no verification record yet, so the parsed facts say "no record".
+  return { designSpec, plan, stage, planDone, planInProgress, planTotal, verification: null }
 }
 
 function readNextAction(value: unknown, field: string): { label: string; detail: string } {

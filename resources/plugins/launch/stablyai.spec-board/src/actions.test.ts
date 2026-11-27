@@ -33,7 +33,8 @@ const item = {
     stage: 'executing' as const,
     planDone: 1,
     planInProgress: 0,
-    planTotal: 2
+    planTotal: 2,
+    verification: null
   }
 }
 

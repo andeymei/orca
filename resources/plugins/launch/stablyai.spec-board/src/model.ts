@@ -2,7 +2,14 @@
 // (the unified stage, the gaps, the actions) is the worker's own derivation from those facts.
 
 /** Where a piece of work sits in the process both frameworks describe. */
-export type UnifiedStage = 'proposal' | 'design' | 'plan' | 'implement' | 'validate' | 'archive'
+export type UnifiedStage =
+  | 'proposal'
+  | 'design'
+  | 'plan'
+  | 'implement'
+  | 'validate'
+  | 'verified'
+  | 'archive'
 
 /** A way the two frameworks' view of the same work disagree. */
 export type GapCode =
@@ -36,6 +43,8 @@ export type SuperpowersFacts = {
   planDone: number
   planInProgress: number
   planTotal: number
+  /** The verification records of the plan file; null when there is no record. */
+  verification: VerificationFacts | null
 }
 
 /** The verification records of a plan file: the rounds the verification agent wrote down. */

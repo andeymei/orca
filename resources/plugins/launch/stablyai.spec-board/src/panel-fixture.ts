@@ -117,7 +117,8 @@ export const fixturePayload: BoardPayload = {
         stage: 'executing',
         planDone: 1,
         planInProgress: 0,
-        planTotal: 8
+        planTotal: 8,
+        verification: null
       },
       sources: [
         {

@@ -416,7 +416,8 @@ test('a path that walks out of the project is not offered, on another host eithe
             stage: 'planned',
             planDone: 0,
             planInProgress: 0,
-            planTotal: 0
+            planTotal: 0,
+            verification: null
           }
         }
       ]

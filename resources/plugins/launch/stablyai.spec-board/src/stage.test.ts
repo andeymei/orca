@@ -21,6 +21,7 @@ const superpowers = (over: Partial<SuperpowersFacts> = {}) => ({
   planDone: 0,
   planInProgress: 0,
   planTotal: 0,
+  verification: null,
   ...over
 })
 
@@ -124,5 +125,73 @@ test('empty checklists on both sides are the plan stage, not validate', () => {
       superpowers: null
     }),
     'plan'
+  )
+})
+
+test('清单全勾且最近一轮通过，就是「已验证」', () => {
+  assert.equal(
+    deriveStage({
+      openspec: null,
+      superpowers: superpowers({
+        plan: 'p.md',
+        planTotal: 2,
+        planDone: 2,
+        verification: { rounds: 2, passed: 1, lastPassed: true }
+      })
+    }),
+    'verified'
+  )
+})
+
+test('最近一轮没过，就还留在「校验」', () => {
+  assert.equal(
+    deriveStage({
+      openspec: null,
+      superpowers: superpowers({
+        plan: 'p.md',
+        planTotal: 2,
+        planDone: 2,
+        verification: { rounds: 2, passed: 1, lastPassed: false }
+      })
+    }),
+    'validate'
+  )
+})
+
+test('没有记录就还是「校验」', () => {
+  // 旧行为不变：没有证据就没有「已验证」。
+  assert.equal(
+    deriveStage({
+      openspec: null,
+      superpowers: superpowers({ plan: 'p.md', planTotal: 2, planDone: 2 })
+    }),
+    'validate'
+  )
+})
+
+test('验证过了又加了新任务，就退回「实现」', () => {
+  // 阶段机先看清单：清单没勾完就不是验证过。
+  assert.equal(
+    deriveStage({
+      openspec: null,
+      superpowers: superpowers({
+        plan: 'p.md',
+        planTotal: 3,
+        planDone: 2,
+        verification: { rounds: 1, passed: 1, lastPassed: true }
+      })
+    }),
+    'implement'
+  )
+})
+
+test('只有 OpenSpec 一侧的工作项永远不会「已验证」', () => {
+  // 记录写在计划文件里；没有计划就没有地方写，也就没有证据。
+  assert.equal(
+    deriveStage({
+      openspec: openspec({ hasTasks: true, tasksTotal: 4, tasksDone: 4 }),
+      superpowers: null
+    }),
+    'validate'
   )
 })

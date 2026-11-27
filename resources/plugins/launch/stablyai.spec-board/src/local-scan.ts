@@ -82,7 +82,8 @@ function superpowersFacts(
     stage,
     planDone: done,
     planInProgress: inProgress,
-    planTotal: total
+    planTotal: total,
+    verification: null
   }
 }
 

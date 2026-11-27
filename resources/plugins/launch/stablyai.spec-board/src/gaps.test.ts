@@ -21,6 +21,7 @@ const superpowers = (over: Partial<SuperpowersFacts> = {}) => ({
   planDone: 1,
   planInProgress: 0,
   planTotal: 4,
+  verification: null,
   ...over
 })
 const codes = (item: Parameters<typeof detectGaps>[0]) => detectGaps(item).map((gap) => gap.code)

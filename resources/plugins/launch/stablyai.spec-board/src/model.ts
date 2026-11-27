@@ -53,7 +53,12 @@ export type VerificationFacts = {
   rounds: number
   /** How many of them passed. */
   passed: number
-  /** Whether the last one passed; null when there is no record at all. */
+  /**
+   * The verdict of the last counted round; null when there is no verdict.
+   *
+   * A record with rounds but no verdict is a record the agent wrote without a conclusion, and a
+   * verdict that contradicts the count is normalized away — null is what "no verdict" means.
+   */
   lastPassed: boolean | null
 }
 

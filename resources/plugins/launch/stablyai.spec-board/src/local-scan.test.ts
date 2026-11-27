@@ -345,6 +345,22 @@ test('没有记录的计划文件没有这项事实', async () => {
   assert.equal(result.items[0]!.superpowers?.verification, null)
 })
 
+test('本地扫到的计划全勾且最近一轮通过，工作项就是「已验证」', async () => {
+  // 本地那条路走到底的样子：扫出来的事实推出来的阶段。这一条之前没有跑过——
+  // 扫出来的记录全是最后一轮没过的样子，成功的那一半没被执行过。
+  const root = await mkdtemp(join(tmpdir(), 'spec-board-verified-'))
+  roots.push(root)
+  await mkdir(join(root, 'docs/superpowers/plans'), { recursive: true })
+  await writeFile(
+    join(root, 'docs/superpowers/plans/2026-11-20-add-x.md'),
+    ['- [x] a', '- [x] b', '', '## 验证记录', '', '- 2026-11-27 · 通过 · pnpm tc'].join('\n')
+  )
+  const result = await scanProject({ name: 'demo', host: 'local', path: root })
+  const item = result.items[0]!
+  assert.deepEqual(item.superpowers?.verification, { rounds: 1, passed: 1, lastPassed: true })
+  assert.equal(deriveStage(item), 'verified')
+})
+
 test('a greedy pairing would strand a change and a plan of the same work', async () => {
   const root = await mkdtemp(join(tmpdir(), 'spec-board-match-'))
   roots.push(root)

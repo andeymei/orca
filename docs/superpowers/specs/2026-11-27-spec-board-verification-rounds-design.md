@@ -35,22 +35,22 @@
 
 ## 3. 已核实的技术事实
 
-| 事实                                                                                                                      | 出处                                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| worker 派发完动作就返回，**不记录任何东西**——没有"某动作跑过没有"的记忆                                                   | `resources/plugins/launch/stablyai.spec-board/src/worker.ts:89-159`                                      |
-| `countCheckboxes` **不分节**：文件里任何一行的 `- [x]` 都被算成进度                                                       | `resources/plugins/launch/stablyai.spec-board/src/markdown-tasks.ts:12-64`                               |
-| `SUPERPOWERS_SKILLS` 五个技能，无归档                                                                                     | `resources/plugins/launch/stablyai.spec-board/src/action-catalog.ts:126-164`                             |
-| `openspec.archive` 的标签是"归档"，命令 `openspec archive <change-id> --yes`                                              | `resources/plugins/launch/stablyai.spec-board/src/action-catalog.ts:105-113`                             |
-| `archiveReady()` 要求 `openspec?.stage === 'validated'`——OpenSpec 侧为 null 时恒假                                        | `resources/plugins/launch/stablyai.spec-board/src/panel-primary-action.ts:49-51`                         |
-| `UnifiedStage` 六档：proposal / design / plan / implement / validate / archive                                            | `resources/plugins/launch/stablyai.spec-board/src/model.ts:5`                                            |
-| 导轨六栏，标签「提案 设计 计划 实现 校验 归档」                                                                           | `resources/plugins/launch/stablyai.spec-board/src/panel-board.tsx:19-27`                                 |
-| `Badge` 的 tone 枚举含 `success`                                                                                          | `src/shared/plugins/declarative/plugin-declarative-prop-schemas.ts:20-25`                                |
-| `agent.launch` 拒绝超过 **4096 字符**的提示词；刷新提示词有测试卡着这个上限                                               | `resources/plugins/launch/stablyai.spec-board/src/refresh-prompt.ts:24-28`、`refresh-prompt.test.ts:107` |
-| 刷新提示词在**真实路径**下只剩约 60 字符（单项目 4036 / 整盘约 3872）；超限时**远程刷新根本起不来**，本地扫描那条路不报错 | 2026-11-27 实测（记忆 `spec-board-refresh-prompt-is-near-the-host-limit`）                               |
-| 快照的形状由 `snapshot-format.ts` 给 agent 看，规则由校验器 `board-schema.ts` 强制                                        | `resources/plugins/launch/stablyai.spec-board/src/snapshot-format.ts`、`board-schema.ts:189`             |
-| `docs/superpowers/plans/` 下**每个 .md 都是一个 plan**——同目录放侧车文件会被当成另一个工作项                              | `resources/plugins/launch/stablyai.spec-board/src/local-scan-artifacts.ts:55-56,213-241`                 |
-| 插件不改任何文件，只发起动作                                                                                              | `docs/superpowers/specs/2026-11-25-openspec-superpowers-board-design.md:30-35`                           |
-| 阶段表是设计文档里的表，`stage.ts` 按它的次序推导                                                                         | `docs/superpowers/specs/2026-11-25-openspec-superpowers-board-design.md:303,366-377`                     |
+| 事实                                                                                                                     | 出处                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| worker 派发完动作就返回，**不记录任何东西**——没有"某动作跑过没有"的记忆                                                  | `resources/plugins/launch/stablyai.spec-board/src/worker.ts:89-159`                                      |
+| `countCheckboxes` **不分节**：文件里任何一行的 `- [x]` 都被算成进度                                                      | `resources/plugins/launch/stablyai.spec-board/src/markdown-tasks.ts:12-64`                               |
+| `SUPERPOWERS_SKILLS` 五个技能，无归档                                                                                    | `resources/plugins/launch/stablyai.spec-board/src/action-catalog.ts:126-164`                             |
+| `openspec.archive` 的标签是"归档"，命令 `openspec archive <change-id> --yes`                                             | `resources/plugins/launch/stablyai.spec-board/src/action-catalog.ts:105-113`                             |
+| `archiveReady()` 要求 `openspec?.stage === 'validated'`——OpenSpec 侧为 null 时恒假                                       | `resources/plugins/launch/stablyai.spec-board/src/panel-primary-action.ts:49-51`                         |
+| `UnifiedStage` 六档：proposal / design / plan / implement / validate / archive                                           | `resources/plugins/launch/stablyai.spec-board/src/model.ts:5`                                            |
+| 导轨六栏，标签「提案 设计 计划 实现 校验 归档」                                                                          | `resources/plugins/launch/stablyai.spec-board/src/panel-board.tsx:19-27`                                 |
+| `Badge` 的 tone 枚举含 `success`                                                                                         | `src/shared/plugins/declarative/plugin-declarative-prop-schemas.ts:20-25`                                |
+| `agent.launch` 拒绝超过 **4096 字符**的提示词；刷新提示词有测试卡着这个上限                                              | `resources/plugins/launch/stablyai.spec-board/src/refresh-prompt.ts:24-28`、`refresh-prompt.test.ts:107` |
+| 刷新提示词在**真实路径**下只剩约 100 字符（单项目 4008 / 整盘 3936）；超限时**远程刷新根本起不来**，本地扫描那条路不报错 | 2026-11-27 实测（记忆 `spec-board-refresh-prompt-is-near-the-host-limit`）                               |
+| 快照的形状由 `snapshot-format.ts` 给 agent 看，规则由校验器 `board-schema.ts` 强制                                       | `resources/plugins/launch/stablyai.spec-board/src/snapshot-format.ts`、`board-schema.ts:189`             |
+| `docs/superpowers/plans/` 下**每个 .md 都是一个 plan**——同目录放侧车文件会被当成另一个工作项                             | `resources/plugins/launch/stablyai.spec-board/src/local-scan-artifacts.ts:55-56,213-241`                 |
+| 插件不改任何文件，只发起动作                                                                                             | `docs/superpowers/specs/2026-11-25-openspec-superpowers-board-design.md:30-35`                           |
+| 阶段表是设计文档里的表，`stage.ts` 按它的次序推导                                                                        | `docs/superpowers/specs/2026-11-25-openspec-superpowers-board-design.md:303,366-377`                     |
 
 ## 4. 设计
 
@@ -112,11 +112,16 @@ export type VerificationFacts = {
 
 | 项目类型 | 谁来数 | 走哪条路 |
 | --- | --- | --- |
-| 本地 | 插件自己读计划文件 | `local-scan.ts` → `superpowersFacts()` |
+| 本地 | 插件自己读计划文件（精确解析器） | `local-scan.ts` → `superpowersFacts()`；整盘刷新时以快照里 agent 那块为准 |
 | 远程 | 刷新 agent ssh 过去读 | 写进快照 → `board-schema.ts` 校验 → 合并 |
 
-远程那条路的三个落点都要动：`snapshot-format.ts` 的示例里加上这个对象、`refresh-prompt.ts`
-加一条规则（**必须短，提示词有 4096 字符硬上限**）、`board-schema.ts` 校验它。
+**哪条路赢**：合并整块取用（`board-merge.ts:198` 的 `agent ?? local`），所以 **agent 覆盖到的
+项目——本地项目也一样——用的是 agent 数的那块**；插件自己那份精确的解析只在 agent 没有这个
+工作项时说了算（项目 tab 里单独刷新过的项目，或者 agent 跳过的那个）。插件的解析器是精确的，
+agent 的数法不是——但合并策略是取舍，不是本次改动。
+
+远程那条路的三个落点都要动：`snapshot-format.ts` 的示例里加上这个对象、清单文件（不是提示词）
+里带上数记录的规则、`board-schema.ts` 校验它。
 
 ### 4.3 新阶段「已验证」
 
@@ -150,10 +155,13 @@ export type VerificationFacts = {
 
 | 情况 | 徽标 | 色 |
 | --- | --- | --- |
-| 最近一轮通过 | `已验证 ×{passed}` | `success` |
+| 最近一轮通过，且卡片在「已验证」栏 | `已验证 ×{passed}` | `success` |
 | 最近一轮未通过 | `上次验证未通过` | `warning` |
 
 `passed` 是通过轮数——正是"成功跑完的轮数"。
+
+徽标说的是卡片的状态，不是那一轮的事实：验证过了又加了新任务，卡片退回「实现」栏，它就不再是
+「已验证」，那个徽标也就不戴了。「上次验证未通过」说的是事实——最后一轮没过——所以哪个栏都照说。
 
 ### 4.6 缺口规则
 
@@ -164,21 +172,27 @@ export type VerificationFacts = {
 
 **验证动作的提示词**（`action-catalog.ts:156-161` 的 `superpowers.verify` 任务文本）追加一句：
 
-> 验证结束后，在 `<plan>` 的「## 验证记录」一节末尾追加一行：`- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`；
+> 验证结束后，在 `<plan>` 的「## 验证记录」一节末尾追加一行：`- <YYYY-MM-DD> · <结论> · <跑了什么>`。
+> 日期写真实的 YYYY-MM-DD；结论只写「通过」或「未通过」里的一个整词，不要写「通过了」，也不要两个都写。
+> 例如 `- 2026-11-27 · 通过 · pnpm tc`。
 > 没有这一节就新建一节。**这一节不要写复选框**（`- [x]`），看板把复选框当任务进度数。
 
 只有工作项**有计划**时才带这句（没有计划就没有地方放记录；`actions.ts` 里计划路径缺省时是
 `'实施计划'` 这个占位串）。
 
-**刷新提示词**（`refresh-prompt.ts`）加一条规则，让刷新 agent 在远程项目上数记录：
+**刷新 agent 数记录的规则**（不在提示词里，在清单文件里，见下）：
 
 > 「## 验证记录」一节的轮次写进 `superpowers.verification`。
 
-⚠️ **这条规则必须短，而且必须先量长度。** 2026-11-27 实测（真实临时路径，非测试里的短
-示例路径）：单项目刷新提示词 **4043 字符（余 53）**，整盘那份 **3987（余 109）**。加上这条
-40 字符的规则后，单项目那份约 **4085——只剩 11 个字符**。
+规则的全文在 `snapshot-format.ts` 的 `VERIFICATION_COUNT_RULE`：它说清哪一行算一轮、结论只认
+「通过」与「未通过」两个整词、`lastPassed` 是**最后一条算作轮次的行**的结论。它与解析器读的
+是同一个格式（`verification-records.ts` 的 `RECORD_LINE_FORMAT`），漂移了就是静默丢轮次。
 
-**11 个字符不是余量，是抛硬币**：宿主那条线一超，**远程刷新根本起不来**（回
+⚠️ **这条规则进不了提示词，而且必须先量长度。** 2026-11-27 实测（真实临时路径，非测试里的
+短示例路径；项目文件名带 16 位十六进制的 hash）：单项目刷新提示词 **4008 字符（余 88）**，整盘
+那份 **3936（余 160）**。规则全文 **343 字符**，加上它单项目那份约 **4351——超了 255 个字符**。
+
+**超 255 个字符不是余量问题，是放不下**：宿主那条线一超，**远程刷新根本起不来**（回
 `Too big: expected string to have <=4096 characters`），而本地扫描那条路一声不吭。
 
 因此：
@@ -189,7 +203,11 @@ export type VerificationFacts = {
   清单文件没有长度上限，规则一个字都不用删短。
   （别把规则做成清单文件的**兄弟键**：提示词只指向 `snapshotFormat` 与 `progress` 两个字段，
   兄弟键 agent 可能根本不看。）
-- 提示词因此**一个字都不用改**，`refresh-prompt.ts` 也不必动。
+- 提示词因此**不用为规则改一个字**。
+- **余量是棘轮**：`refresh-prompt.test.ts` 除了断言提示词不超过 4096，还断言它在真实路径下至少
+  留 **64** 个字符的余量。真实路径比测试里那条长（用户名、home 的位置都算），提示词只在测试的
+  路径上合身，刷新就会静悄悄地起不来。剩下的那 88 个字符也放不下 343 字符的规则——规则因此留在
+  文件里。
 - 若日后仍要塞进提示词：正文 ≤20 字符，并且**用真实路径量一遍**再提交——
   `refresh-prompt.test.ts` 用的是短示例路径，它过了不代表真实路径过得了。
 
@@ -257,7 +275,7 @@ agent 写了但格式不对 → 解析不出来 → 同样当作没有记录。
 | agent 不写记录 | 轮次为 0，卡片留在「校验」——失败方向安全，但这个特性就没生效 |
 | agent 写了复选框 | 提示词明确禁止；解析器只认「·」分隔的行，复选框行会被忽略（但 `countCheckboxes` 仍会把它算成计划进度——所以提示词那句禁止是必需的，不是可选的） |
 | 远程项目的轮数由 agent 数 | 和现有的 `planDone` 一样是 agent 报的事实，本地路径才是精确的 |
-| 刷新提示词超 4096 | 规则**不进提示词**，进清单文件的 `snapshotFormat` 里（提示词一个字不改）；隔离 home 下单项目那份实测 4059/4096，只剩 37 字符，**11–37 个字符不是余量** |
+| 刷新提示词超 4096 | 规则**不进提示词**，进清单文件的 `snapshotFormat` 里；隔离 home 下单项目那份实测 4008/4096，只剩 88 字符，规则全文 343 字符——**它放不下**；提示词另留 64 字符的余量棘轮兜底 |
 | 多一个新阶段动到阶段机 | 阶段表在设计文档里，本次一并更新；`deriveStage` 只加一条分支，其余规则不动 |
 | **计划文件名带空格或非 ASCII**（如 `新增功能.md`） | `isSafeCommandPath` 拒收这样的路径 → 规则不随提示词走 → 这类工作项永远停在「校验」。失败方向安全（不会谎报已验证），但特性对它们**静默失效**。本仓库的计划命名约定是 ASCII slug，影响面小；别的项目若用中文命名就会中招 |
 

@@ -369,6 +369,94 @@ test('a project that is not there opens nothing', async () => {
   await worker.deactivate()
 })
 
+test('a path that walks out of the project is not offered, on another host either', async () => {
+  // The file would live on the other machine, so this one cannot resolve it. What still holds
+  // there is the path's own gate: a path that walks out of the project never becomes a file the
+  // board offers, so there is nothing for the host to open — the check that cannot resolve a
+  // path never gets one that names a file outside the project.
+  const root = await home()
+  await writeFile(
+    join(root, 'board.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: '2026-11-25T10:00:00.000Z',
+      generatedBy: { agent: 'claude' },
+      projects: [
+        {
+          id: 'ssh:yolo|C:/work/remote',
+          name: 'demo',
+          host: 'ssh:yolo',
+          path: 'C:/work/remote',
+          openspec: { present: true, capabilities: [], activeChanges: 1, archived: 0 },
+          superpowers: null,
+          openspecCli: { available: true, version: '1.8.0' },
+          scannedAt: '2026-11-25T10:00:00.000Z'
+        }
+      ],
+      items: [
+        {
+          id: 'ssh:yolo|C:/work/remote#add-x',
+          projectId: 'ssh:yolo|C:/work/remote',
+          title: 'Add X',
+          topic: 'add-x',
+          openspec: {
+            changeId: 'add-x',
+            stage: 'implementing',
+            hasProposal: true,
+            hasDesign: false,
+            hasTasks: false,
+            tasksDone: 1,
+            tasksInProgress: 0,
+            tasksTotal: 4,
+            capabilities: []
+          },
+          superpowers: {
+            designSpec: '../../../../etc/passwd',
+            plan: null,
+            stage: 'planned',
+            planDone: 0,
+            planInProgress: 0,
+            planTotal: 0
+          }
+        }
+      ]
+    }),
+    'utf8'
+  )
+  const host = mockHost({
+    results: {
+      'workspace.list': {
+        workspaces: [
+          {
+            id: 'w2',
+            kind: 'worktree',
+            name: 'remote',
+            project: 'remote',
+            projectId: 'p2',
+            path: 'C:/work/remote',
+            branch: 'main',
+            hostId: 'ssh:yolo'
+          }
+        ],
+        truncated: false
+      },
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  // The work item has no such file: the gate never let the path become one.
+  await assert.rejects(
+    worker.request('source.open', {
+      itemId: 'ssh:yolo|C:/work/remote#add-x',
+      sourceKey: 'superpowers-spec'
+    }),
+    /没有这个文件/
+  )
+  assert.deepEqual(host.callsOf('editor.open'), [])
+  await worker.deactivate()
+})
+
 test('a project on another host is opened on that host', async () => {
   const root = await home()
   // The file lives on the other machine, so this one cannot resolve it: the path's own gate is

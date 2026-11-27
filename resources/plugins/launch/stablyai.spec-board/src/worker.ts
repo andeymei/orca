@@ -169,6 +169,11 @@ async function runAction(
  * machine has no canonical path for it — so the path's own gate (no traversal, no absolute
  * path) is what holds for it, and the host opens the file on that machine.
  *
+ * What that gate cannot cover there is a link inside the project: only the machine that holds
+ * the project can say where a link points, and the plugin's host surface has no way to ask it.
+ * The link can only name a file on the user's own machine, and the agent that scanned that
+ * project already ran there — so nothing is opened that could not have been read already.
+ *
  * A project on this machine resolves or it does not. One that does not is a project that is not
  * there: nothing inside it can be opened, so the answer is no. It is never yes — a check that
  * cannot establish where a file is does not get to open it.

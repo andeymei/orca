@@ -1,6 +1,7 @@
 import { assert, test } from 'orca/testing'
 import {
   OPENSPEC_COMMANDS,
+  VERIFICATION_RECORD_RULE,
   buildOpenspecCommands,
   type OpenspecCommand
 } from './action-catalog'
@@ -13,6 +14,7 @@ import {
   needsChangeId,
   resolvePaletteAction
 } from './actions'
+import { parseVerificationRecords } from './verification-records'
 
 const item = {
   topic: 'add-x',
@@ -896,4 +898,16 @@ test('调色板里的验证动作不要求写记录', () => {
   const palette = frameworkActions(false)
   const verify = palette.superpowers.find((action) => action.id === 'superpowers.verify')!
   assert.equal(promptOf(verify).includes('## 验证记录'), false)
+})
+
+test('规则里的格式行，解析器读得出来', () => {
+  // 规则与解析器必须同时认同一行：规则是 agent 的唯一通道，漂移了就是静默丢轮次。
+  const format = VERIFICATION_RECORD_RULE.match(/`(- <[^`]+>)`/)?.[1]
+  assert.ok(format, 'the rule must spell the record line inside backticks')
+  const line = format
+    .replace('<YYYY-MM-DD>', '2026-11-27')
+    .replace('通过/未通过', '通过')
+    .replace('<跑了什么>', 'pnpm tc')
+  const facts = parseVerificationRecords(['## 验证记录', line].join('\n'))
+  assert.deepEqual(facts, { rounds: 1, passed: 1, lastPassed: true })
 })

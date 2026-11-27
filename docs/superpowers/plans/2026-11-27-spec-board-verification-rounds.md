@@ -959,7 +959,7 @@ git commit -- resources/plugins/launch/stablyai.spec-board/src \
   `VERIFICATION_RECORD_RULE` 的值：
 
   ```
-  验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：`- <日期> · 通过/未通过 · <跑了什么>`；没有这一节就新建一节。这一节不要写复选框（`- [x]`），看板把复选框当任务进度数。
+  验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：`- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`；没有这一节就新建一节。这一节不要写复选框（`- [x]`），看板把复选框当任务进度数。
   ```
 
 - [ ] **Step 1: 写失败的测试**
@@ -1012,7 +1012,7 @@ Expected: FAIL —— 验证的提示词里没有「## 验证记录」。
  * 按钮和规则因此不会各说各话。
  */
 export const VERIFICATION_RECORD_RULE =
-  '验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：`- <日期> · 通过/未通过 · <跑了什么>`；没有这一节就新建一节。这一节不要写复选框（`- [x]`），看板把复选框当任务进度数。'
+  '验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：`- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`；没有这一节就新建一节。这一节不要写复选框（`- [x]`），看板把复选框当任务进度数。'
 ```
 
 `SUPERPOWERS_SKILLS` 里 `superpowers.verify` 那一行（`src/action-catalog.ts:155-162`）：
@@ -1472,14 +1472,14 @@ export type SuperpowersFacts = {
 
 `:495-514` 的 Superpowers 动作表加一行，并把「验证」那一行改成：
 
-| 动作       | prompt 要点                                                                                                                                                                   |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 设计       | 用 `superpowers:brainstorming` 为 `<topic>` 产出设计 spec（卡片上的名字按事实分：还没有设计 spec 时是"写设计"，已经有了是"重新设计"）                                         |
-| 写实施计划 | 用 `superpowers:writing-plans` 基于 `<spec>` 写计划                                                                                                                           |
-| 执行计划   | 用 `superpowers:executing-plans` 执行 `<plan>`                                                                                                                                |
-| 代码评审   | 用 `superpowers:requesting-code-review` 审本次改动                                                                                                                            |
-| 验证       | 用 `superpowers:verification-before-completion` 验证；**有计划时**追加：在 `<plan>` 的「## 验证记录」一节末尾追加一行 `- <日期> · 通过/未通过 · <跑了什么>`，**不要写复选框** |
-| 收尾       | 用 `superpowers:finishing-a-development-branch` 收尾本次改动                                                                                                                  |
+| 动作       | prompt 要点                                                                                                                                                                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 设计       | 用 `superpowers:brainstorming` 为 `<topic>` 产出设计 spec（卡片上的名字按事实分：还没有设计 spec 时是"写设计"，已经有了是"重新设计"）                                               |
+| 写实施计划 | 用 `superpowers:writing-plans` 基于 `<spec>` 写计划                                                                                                                                 |
+| 执行计划   | 用 `superpowers:executing-plans` 执行 `<plan>`                                                                                                                                      |
+| 代码评审   | 用 `superpowers:requesting-code-review` 审本次改动                                                                                                                                  |
+| 验证       | 用 `superpowers:verification-before-completion` 验证；**有计划时**追加：在 `<plan>` 的「## 验证记录」一节末尾追加一行 `- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`，**不要写复选框** |
+| 收尾       | 用 `superpowers:finishing-a-development-branch` 收尾本次改动                                                                                                                        |
 
 - [ ] **Step 5: 在非目标里补一句**
 
@@ -1622,4 +1622,4 @@ Expected: 8/8 PASS。
 
 ## 验证记录
 
-（验证 agent 在这一节末尾追加记录：`- <日期> · 通过/未通过 · <跑了什么>`。这一节不要写复选框。）
+（验证 agent 在这一节末尾追加记录：`- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`。这一节不要写复选框。）

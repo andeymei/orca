@@ -174,5 +174,12 @@ export const SUPERPOWERS_SKILLS: readonly SuperpowersSkill[] = [
     skill: 'superpowers:verification-before-completion',
     task: '验证本次改动',
     recordRule: VERIFICATION_RECORD_RULE
+  },
+  {
+    id: 'superpowers.finish',
+    label: '收尾',
+    mutates: true,
+    skill: 'superpowers:finishing-a-development-branch',
+    task: '收尾本次改动'
   }
 ]

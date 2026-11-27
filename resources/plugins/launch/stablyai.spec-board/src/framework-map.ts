@@ -196,7 +196,8 @@ export const SUPERPOWERS_FLOW: readonly SuperpowersStep[] = [
     skill: 'finishing-a-development-branch',
     role: '收尾：测试全绿后决定怎么合并或清理分支',
     artifact: null,
-    gate: null
+    gate: null,
+    actionId: 'superpowers.finish'
   },
   {
     skill: 'diagnosing-superpowers',

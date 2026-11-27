@@ -147,7 +147,7 @@ test('the Superpowers steps name the catalog action of the skill they describe',
       ['requesting-code-review', 'superpowers.review'],
       ['receiving-code-review', null],
       ['verification-before-completion', 'superpowers.verify'],
-      ['finishing-a-development-branch', null],
+      ['finishing-a-development-branch', 'superpowers.finish'],
       ['diagnosing-superpowers', null],
       ['writing-skills', null]
     ]
@@ -166,8 +166,8 @@ test('every action the map names is an action of the catalog', () => {
     ),
     ...SUPERPOWERS_FLOW.map((step) => step.actionId)
   ].filter((actionId): actionId is string => actionId !== undefined)
-  // Twelve distinct actions: the seven OpenSpec commands of the palette and the five skills.
-  assert.equal(new Set(named).size, 12)
+  // Thirteen distinct actions: the seven OpenSpec commands of the palette and the six skills.
+  assert.equal(new Set(named).size, 13)
   for (const actionId of named) {
     assert.ok(catalog.has(actionId), `${actionId} is not an action of the catalog`)
   }

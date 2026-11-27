@@ -5,6 +5,14 @@ import {
   buildOpenspecCommands,
   type OpenspecCommand
 } from './action-catalog'
+import {
+  item,
+  itemWithChangeId,
+  itemWithSuperpowers,
+  openspecOnly,
+  promptOf,
+  superpowersOnly
+} from './action-fixture'
 import type { Action } from './model'
 import {
   CHANGE_ID_PLACEHOLDER,
@@ -15,52 +23,6 @@ import {
   resolvePaletteAction
 } from './actions'
 import { parseVerificationRecords } from './verification-records'
-
-const item = {
-  topic: 'add-x',
-  openspec: {
-    changeId: 'add-x',
-    stage: 'implementing' as const,
-    hasProposal: true,
-    hasDesign: true,
-    hasTasks: true,
-    tasksDone: 1,
-    tasksInProgress: 0,
-    tasksTotal: 2,
-    capabilities: []
-  },
-  superpowers: {
-    designSpec: 'docs/superpowers/specs/x-design.md',
-    plan: 'docs/superpowers/plans/x.md',
-    stage: 'executing' as const,
-    planDone: 1,
-    planInProgress: 0,
-    planTotal: 2,
-    verification: null
-  }
-}
-
-const openspecOnly = { topic: 'add-x', openspec: item.openspec, superpowers: null }
-const superpowersOnly = { topic: 'add-x', openspec: null, superpowers: item.superpowers }
-
-const promptOf = (action: Action): string => {
-  if (action.run.kind !== 'agent') {
-    throw new Error(`action ${action.id} does not run an agent prompt`)
-  }
-  return action.run.prompt
-}
-
-/** The fixture's item, carrying the change id it is given. */
-const itemWithChangeId = (changeId: string): typeof item => ({
-  ...item,
-  openspec: { ...item.openspec, changeId }
-})
-
-/** The fixture's item, with its Superpowers side changed. */
-const itemWithSuperpowers = (superpowers: Partial<typeof item.superpowers>): typeof item => ({
-  ...item,
-  superpowers: { ...item.superpowers, ...superpowers }
-})
 
 test('runs OpenSpec commands in a terminal when the CLI is there', () => {
   const actions = actionsForItem(item, true)
@@ -95,13 +57,6 @@ test('omits OpenSpec actions for an item with no change', () => {
   assert.ok(actions.length > 0)
 })
 
-test('the framework palette lists both frameworks', () => {
-  const palette = frameworkActions(false)
-  assert.ok(palette.openspec.length >= 4)
-  assert.ok(palette.superpowers.length >= 5)
-  assert.ok(palette.openspec.every((action) => action.run.kind === 'agent'))
-})
-
 test('an item offers the commands of its change and the skills of its work', () => {
   assert.deepEqual(
     actionsForItem(item, true).map((action) => action.id),
@@ -115,7 +70,8 @@ test('an item offers the commands of its change and the skills of its work', () 
       'superpowers.plan',
       'superpowers.execute',
       'superpowers.review',
-      'superpowers.verify'
+      'superpowers.verify',
+      'superpowers.finish'
     ]
   )
 })
@@ -141,7 +97,8 @@ test('an item with only Superpowers work offers only the Superpowers skills', ()
       'superpowers.plan',
       'superpowers.execute',
       'superpowers.review',
-      'superpowers.verify'
+      'superpowers.verify',
+      'superpowers.finish'
     ]
   )
 })
@@ -179,7 +136,8 @@ test('every action carries the label, the framework and the mutates flag of its 
       ['superpowers.plan', '写实施计划', 'superpowers', true],
       ['superpowers.execute', '执行计划', 'superpowers', true],
       ['superpowers.review', '代码评审', 'superpowers', false],
-      ['superpowers.verify', '验证', 'superpowers', false]
+      ['superpowers.verify', '验证', 'superpowers', false],
+      ['superpowers.finish', '收尾', 'superpowers', true]
     ]
   )
 })
@@ -249,7 +207,8 @@ test('every Superpowers prompt names the skill it dispatches', () => {
     'superpowers.plan': 'superpowers:writing-plans',
     'superpowers.execute': 'superpowers:executing-plans',
     'superpowers.review': 'superpowers:requesting-code-review',
-    'superpowers.verify': 'superpowers:verification-before-completion'
+    'superpowers.verify': 'superpowers:verification-before-completion',
+    'superpowers.finish': 'superpowers:finishing-a-development-branch'
   }
   for (const action of actionsForItem(item, true).filter((a) => a.framework === 'superpowers')) {
     assert.match(promptOf(action), new RegExp(skills[action.id]!), action.id)
@@ -280,107 +239,6 @@ test('a Superpowers skill with no artifact yet asks for the generic one', () => 
   )
   assert.match(promptOf(findAction(actions, 'superpowers.plan')!), /设计 spec/)
   assert.match(promptOf(findAction(actions, 'superpowers.execute')!), /实施计划/)
-})
-
-test('the palette lists every command of both frameworks', () => {
-  const palette = frameworkActions(false)
-  assert.deepEqual(
-    palette.openspec.map((action) => action.id),
-    [
-      'openspec.list',
-      'openspec.propose',
-      'openspec.validate',
-      'openspec.show',
-      'openspec.complete',
-      'openspec.implement',
-      'openspec.archive'
-    ]
-  )
-  assert.deepEqual(
-    palette.superpowers.map((action) => action.id),
-    [
-      'superpowers.brainstorm',
-      'superpowers.plan',
-      'superpowers.execute',
-      'superpowers.review',
-      'superpowers.verify'
-    ]
-  )
-})
-
-test('the palette runs the CLI where there is one and leaves the rest to the agent', () => {
-  const palette = frameworkActions(true)
-  assert.deepEqual(
-    palette.openspec
-      .filter((action) => action.run.kind === 'terminal')
-      .map((action) => action.run),
-    [
-      { kind: 'terminal', command: 'openspec list' },
-      { kind: 'terminal', command: 'openspec validate <change-id> --strict' },
-      { kind: 'terminal', command: 'openspec show <change-id> --json --deltas-only' },
-      { kind: 'terminal', command: 'openspec archive <change-id> --yes' }
-    ]
-  )
-  // The steps the CLI has no command for are the agent's: the proposal, filling a change in and
-  // implementing it.
-  for (const action of palette.openspec.filter((entry) => entry.run.kind === 'agent')) {
-    assert.match(promptOf(action), /openspec\/AGENTS\.md/, action.id)
-  }
-})
-
-test('the palette grades every command with the mutates flag of its row', () => {
-  const palette = frameworkActions(false)
-  assert.deepEqual(
-    palette.openspec.map((action) => [action.id, action.mutates]),
-    [
-      ['openspec.list', false],
-      ['openspec.propose', true],
-      ['openspec.validate', false],
-      ['openspec.show', false],
-      ['openspec.complete', true],
-      ['openspec.implement', true],
-      ['openspec.archive', true]
-    ]
-  )
-  assert.deepEqual(
-    palette.superpowers.map((action) => [action.id, action.mutates]),
-    [
-      ['superpowers.brainstorm', true],
-      ['superpowers.plan', true],
-      ['superpowers.execute', true],
-      ['superpowers.review', false],
-      ['superpowers.verify', false]
-    ]
-  )
-})
-
-test('the palette falls back to the agent for every OpenSpec command', () => {
-  const palette = frameworkActions(false)
-  for (const action of palette.openspec) {
-    assert.equal(action.run.kind, 'agent', action.id)
-    assert.match(promptOf(action), /openspec\/AGENTS\.md/, action.id)
-  }
-})
-
-test('every action id the design lists exists', () => {
-  const palette = frameworkActions(false)
-  assert.deepEqual(
-    [...palette.openspec, ...palette.superpowers].map((action) => action.id).sort(),
-    [
-      'openspec.archive',
-      'openspec.complete',
-      'openspec.implement',
-      'openspec.list',
-      'openspec.propose',
-      'openspec.show',
-      'openspec.validate',
-      'superpowers.brainstorm',
-      'superpowers.execute',
-      'superpowers.plan',
-      'superpowers.review',
-      'superpowers.verify'
-    ]
-  )
 })
 
 test('an unknown action id is not found', () => {
@@ -487,15 +345,10 @@ test('an archived change is not offered the archive command', () => {
       'superpowers.plan',
       'superpowers.execute',
       'superpowers.review',
-      'superpowers.verify'
+      'superpowers.verify',
+      'superpowers.finish'
     ]
   )
-})
-
-test("the palette's agent prompt still carries the placeholder", () => {
-  const palette = frameworkActions(false)
-  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
-  assert.match(promptOf(validate), /<change-id>/)
 })
 
 test('a change id that is the placeholder itself gets no OpenSpec action', () => {
@@ -516,72 +369,6 @@ test('a change id that is the placeholder itself gets no OpenSpec action in the 
   )
 })
 
-test("the palette's placeholder is exempt by provenance, not by content", () => {
-  const palette = frameworkActions(true)
-  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
-  assert.deepEqual(validate.run, {
-    kind: 'terminal',
-    command: 'openspec validate <change-id> --strict'
-  })
-  const resolved = resolvePaletteAction(validate, 'add-x')
-  assert.equal(resolved.ok, true)
-  assert.deepEqual(resolved.ok && resolved.action.run, {
-    kind: 'terminal',
-    command: 'openspec validate add-x --strict'
-  })
-})
-
-test('a palette command with no change id needs one', () => {
-  const palette = frameworkActions(true)
-  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
-  assert.deepEqual(resolvePaletteAction(validate, undefined), {
-    ok: false,
-    reason: 'needs-change-id'
-  })
-})
-
-test('a palette command with an unsafe change id is refused', () => {
-  const palette = frameworkActions(true)
-  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
-  assert.deepEqual(resolvePaletteAction(validate, 'x; rm -rf /'), {
-    ok: false,
-    reason: 'unsafe-change-id'
-  })
-})
-
-test('a palette command with a safe change id resolves to a runnable command', () => {
-  const palette = frameworkActions(true)
-  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
-  const resolved = resolvePaletteAction(validate, 'add-x')
-  assert.equal(resolved.ok, true)
-  assert.deepEqual(resolved.ok && resolved.action.run, {
-    kind: 'terminal',
-    command: 'openspec validate add-x --strict'
-  })
-})
-
-test("the palette's agent form resolves the change id too", () => {
-  const palette = frameworkActions(false)
-  const validate = palette.openspec.find((action) => action.id === 'openspec.validate')!
-  const resolved = resolvePaletteAction(validate, 'add-x')
-  assert.equal(resolved.ok, true)
-  const prompt = resolved.ok ? promptOf(resolved.action) : ''
-  assert.match(prompt, /严格校验变更 add-x/)
-  assert.equal(prompt.includes('<change-id>'), false)
-})
-
-test('a project-scoped palette action resolves to itself', () => {
-  const palette = frameworkActions(true)
-  const list = palette.openspec.find((action) => action.id === 'openspec.list')!
-  assert.deepEqual(resolvePaletteAction(list, undefined), { ok: true, action: list })
-})
-
-test('a project-scoped palette action ignores the change id', () => {
-  const palette = frameworkActions(true)
-  const list = palette.openspec.find((action) => action.id === 'openspec.list')!
-  assert.deepEqual(resolvePaletteAction(list, 'x; rm -rf /'), { ok: true, action: list })
-})
-
 test('the scope of an action is the scope of the command it came from', () => {
   const palette = frameworkActions(true)
   assert.deepEqual(
@@ -599,7 +386,7 @@ test('the scope of an action is the scope of the command it came from', () => {
   // Superpowers has no command that acts on one change: a skill acts on the project.
   assert.deepEqual(
     palette.superpowers.map((action) => action.scope),
-    ['project', 'project', 'project', 'project', 'project']
+    ['project', 'project', 'project', 'project', 'project', 'project']
   )
   // The item's own actions carry it too.
   assert.deepEqual(
@@ -610,6 +397,7 @@ test('the scope of an action is the scope of the command it came from', () => {
       'change',
       'change',
       'change',
+      'project',
       'project',
       'project',
       'project',
@@ -840,13 +628,6 @@ test('a step the CLI has no command for is the agent work either way', () => {
   const implement = findAction(actions, 'openspec.implement')!
   assert.equal(implement.run.kind, 'agent')
   assert.match(promptOf(implement), /openspec\/AGENTS\.md/)
-})
-
-test('the palette of a remote project is the agent form too', () => {
-  const palette = frameworkActions(true, { host: 'runtime:env-1', path: 'C:/work/remote' })
-  for (const action of palette.openspec) {
-    assert.equal(action.run.kind, 'agent', action.id)
-  }
 })
 
 test('验证这一按钮要求 agent 写下这一轮，并点名计划文件', () => {

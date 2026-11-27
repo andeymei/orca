@@ -45,6 +45,25 @@ function projectLine(project: SnapshotProject | null, item: WorkItem): string {
   return project === null ? item.projectId : `${project.name} · ${project.host}`
 }
 
+/**
+ * 验证的徽标：最近一轮过了说它被验证过几轮，最近一轮没过说没通过。
+ *
+ * 没有记录就没有徽标：没有证据就不说「已验证」。
+ */
+function verificationBadge(item: WorkItem) {
+  const verification = item.superpowers?.verification
+  if (verification === null || verification === undefined) {
+    return null
+  }
+  if (verification.lastPassed === true) {
+    return <Badge tone="success">{`已验证 ×${verification.passed}`}</Badge>
+  }
+  if (verification.lastPassed === false) {
+    return <Badge tone="warning">上次验证未通过</Badge>
+  }
+  return null
+}
+
 /** The label on an action's button: the action's own, or the question it asks first. */
 function actionLabel(
   scope: string,
@@ -153,6 +172,7 @@ export function WorkCard({
         <Row gap="xs" align="center" wrap>
           <Badge tone="neutral">{projectLine(project, item)}</Badge>
           {withoutCli ? <Badge tone="warning">无 CLI</Badge> : null}
+          {verificationBadge(item)}
         </Row>
         <Row gap="md" align="center" wrap>
           {item.openspec === null ? null : <OpenspecLane item={item} />}

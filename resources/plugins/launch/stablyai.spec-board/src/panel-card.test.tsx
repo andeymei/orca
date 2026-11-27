@@ -3,7 +3,17 @@
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
 import { fixturePayload } from './panel-fixture'
-import type { BoardPayload } from './model'
+import type { BoardPayload, VerificationFacts } from './model'
+
+/** 一张带验证记录的看板。 */
+function withVerification(id: string, verification: VerificationFacts): BoardPayload {
+  return {
+    ...fixturePayload,
+    items: fixturePayload.items.map((item) =>
+      item.id === id ? { ...item, superpowers: { ...item.superpowers!, verification } } : item
+    )
+  }
+}
 
 test('draws the change, both progress lanes and its gaps', async () => {
   const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
@@ -426,5 +436,41 @@ test('the actions of a project without a workspace are off, and they say why', a
   assert.deepEqual(calls, [])
   // The other project still has a workspace, so its card still works.
   assert.equal(view.find({ type: 'Button', text: '看增量' })?.disabled, false)
+  await view.unmount()
+})
+
+test('最近一轮通过，卡片说它被验证过几轮', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () =>
+        withVerification('local|/repo#add-z', { rounds: 2, passed: 1, lastPassed: true })
+    }
+  })
+  const view = await mount(panel, { host })
+  const badge = view.find({ type: 'Badge', text: '已验证 ×1' })
+  assert.ok(badge)
+  assert.equal(badge?.props.tone, 'success')
+  await view.unmount()
+})
+
+test('最近一轮没过，卡片说的是没通过', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () =>
+        withVerification('local|/repo#add-z', { rounds: 2, passed: 1, lastPassed: false })
+    }
+  })
+  const view = await mount(panel, { host })
+  const badge = view.find({ type: 'Badge', text: '上次验证未通过' })
+  assert.ok(badge)
+  assert.equal(badge?.props.tone, 'warning')
+  await view.unmount()
+})
+
+test('没有记录就不戴验证徽标', async () => {
+  const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
+  const view = await mount(panel, { host })
+  assert.equal(view.find({ type: 'Badge', text: '已验证 ×1' }), null)
+  assert.equal(view.find({ type: 'Badge', text: '上次验证未通过' }), null)
   await view.unmount()
 })

@@ -16,13 +16,14 @@ import {
   stage
 } from './panel-state'
 
-/** The six stages the rail shows, in the order the work flows. */
+/** The seven stages the rail shows, in the order the work flows. */
 const STAGES: readonly { id: UnifiedStage; label: string }[] = [
   { id: 'proposal', label: '提案' },
   { id: 'design', label: '设计' },
   { id: 'plan', label: '计划' },
   { id: 'implement', label: '实现' },
   { id: 'validate', label: '校验' },
+  { id: 'verified', label: '已验证' },
   { id: 'archive', label: '归档' }
 ]
 

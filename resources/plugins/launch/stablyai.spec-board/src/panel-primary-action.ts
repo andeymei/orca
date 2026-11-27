@@ -14,6 +14,9 @@
 // archived, and archiving is what moves it on. Such a card leads with 归档 rather than with
 // the check that comes before it, and that check stays behind 更多.
 //
+// The verified stage names one step: a card is verified on the Superpowers side, and 收尾 is
+// what it waits for; the OpenSpec side's 归档 stays behind 更多.
+//
 // The stage was derived by the worker and arrives in the payload; choosing which of the buttons
 // that already exist to promote is a presentation rule, so it lives here, in the panel. Moving it
 // into the worker would change the payload's shape (`WorkItem`) and the worker's own tests, for
@@ -33,8 +36,8 @@ const PREFERRED_BY_STAGE: Readonly<Record<UnifiedStage, readonly string[]>> = {
   implement: ['superpowers.execute', 'openspec.implement'],
   // 校验：做完了，校验它；两边各有一套说法，OpenSpec 的先。
   validate: ['openspec.validate', 'superpowers.verify'],
-  // 已验证：这一栏还没有自己的下一步动作，所以这里不给偏好。
-  verified: [],
+  // 已验证：验证过了，下一步是收尾；再验证一轮仍然可以，验证因此留在「更多」里。
+  verified: ['superpowers.finish'],
   // 归档：已经归档，没有什么可推进的了——能看的只是它归档了什么。
   archive: ['openspec.show', 'superpowers.review']
 }

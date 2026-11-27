@@ -126,3 +126,13 @@ test('a change whose tasks are not all ticked does not lead with the archive', (
   assert.equal(archiveReady(working), false)
   assert.equal(primaryAction(working)?.id, 'openspec.validate')
 })
+
+test('已验证的卡片主按钮是收尾', () => {
+  const card = item('verified', ['superpowers.verify', 'superpowers.finish'])
+  assert.equal(primaryAction(card)?.id, 'superpowers.finish')
+  // 再验证一轮仍然可以，所以验证留在「更多」里。
+  assert.deepEqual(
+    otherActions(card).map((entry) => entry.id),
+    ['superpowers.verify']
+  )
+})

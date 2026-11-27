@@ -24,6 +24,7 @@ import {
   refreshBoard,
   refreshFeedback,
   refreshProject,
+  refreshStartedAt,
   refreshing
 } from './panel-state'
 
@@ -124,6 +125,7 @@ function ProjectCard({
 }: {
   project: SnapshotProject
   focused: boolean
+  /** Whether a refresh is running: one at a time, or two agents would fight over the files. */
   refreshing: boolean
 }) {
   const cli = cliBadge(project.openspecCli)
@@ -176,6 +178,9 @@ export function ProjectsTab() {
   const projects = board?.projects ?? []
   const focus = board?.focus ?? null
   const isRefreshing = read(refreshing)
+  // A project's own refresh is off while any refresh is running: two agents would fight over
+  // the progress file and over the list the other one is reading.
+  const refreshRunning = isRefreshing || read(refreshStartedAt) !== null
   const said = read(refreshFeedback)
   return (
     <Stack gap="md">
@@ -216,7 +221,7 @@ export function ProjectsTab() {
               key={projectKey(project.id)}
               project={project}
               focused={focus !== null && project.id === focus.projectId}
-              refreshing={isRefreshing}
+              refreshing={refreshRunning}
             />
           ))}
         </Stack>

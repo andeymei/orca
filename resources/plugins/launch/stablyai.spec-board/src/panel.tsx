@@ -30,6 +30,7 @@ import {
   payload,
   refreshError,
   refreshStartedAt,
+  resumeRefreshWatch,
   stopWaiting,
   tab
 } from './panel-state'
@@ -115,6 +116,9 @@ export function setup(ctx: PanelContext): () => void {
   // A refresh may already be running when this panel opens: ask what it has come to.
   if (read(refreshStartedAt) !== null) {
     void askRefreshProgress()
+    // The watch the earlier panel started died with it: this one starts its own, so the bar
+    // still times out when the agent does not come back.
+    resumeRefreshWatch()
   }
   // The sidebar has selected another workspace: the board follows it, and the map's own pick goes
   // with it — a project picked for the previous workspace is not a pick for this one.

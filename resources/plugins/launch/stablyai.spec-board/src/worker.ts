@@ -24,7 +24,12 @@ import {
   readSettings
 } from './board-projects'
 import { safeHostOf } from './host-identity'
-import { isProjectSnapshotFile, queueMerge, refreshProject } from './project-refresh'
+import {
+  isProjectSnapshotFile,
+  mergePendingFragments,
+  queueMerge,
+  refreshProject
+} from './project-refresh'
 import { requestError } from './request-error'
 import { buildRefreshPrompt } from './refresh-prompt'
 import { progressInstructions } from './refresh-progress'
@@ -300,6 +305,9 @@ export default async function activate(orca: OrcaWorkerApi): Promise<void> {
     orca.log(`[spec-board] 无法创建 ${boardStoreDir()}：${messageOf(error)}`)
   }
   watcher = startWatcher(orca)
+  // A fragment may have landed while no worker was watching: the board would otherwise keep the
+  // facts it had before that refresh.
+  void mergePendingFragments(orca, boardState)
 }
 
 export function deactivate(): void {

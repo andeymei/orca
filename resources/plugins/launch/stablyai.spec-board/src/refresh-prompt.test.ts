@@ -162,3 +162,10 @@ test('the prompt of one project keeps the rules that keep a path out of a comman
 test('the prompt of one project fits the host too', () => {
   assert.ok(projectPrompt.length <= PROMPT_MAX_CHARS, `${projectPrompt.length} > ${PROMPT_MAX_CHARS}`)
 })
+
+test('the prompt of one project names the list it was given', () => {
+  // The progress rules travel in the list the agent reads: a prompt that names another list
+  // sends the agent to a file that is not there, or to the whole board's list.
+  assert.ok(projectPrompt.includes('/home/me/.orca/spec-board/scan-list-ab12cd34.json'))
+  assert.equal(projectPrompt.includes('scan-list.json'), false)
+})

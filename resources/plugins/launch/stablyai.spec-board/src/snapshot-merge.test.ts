@@ -1,7 +1,7 @@
 // The merge of one project's facts into the board's snapshot: the other projects are not touched,
 // and what wins is what was collected last.
 import { assert, test } from 'orca/testing'
-import { applyProjectFacts, factsOf, supersedes } from './snapshot-merge'
+import { applyProjectFacts, factsOf, scannedAtOf, supersedes } from './snapshot-merge'
 import type { BoardSnapshot, SnapshotItem, SnapshotProject } from './model'
 
 /** A project as the snapshot holds it. */
@@ -83,11 +83,21 @@ test('the facts of a project are the ones that belong to it', () => {
   assert.equal(factsOf(snapshot(), 'local|/nowhere'), null)
 })
 
-test('what was collected last is what the board shows', () => {
-  // A refresh of the whole board can land after a refresh of one project: the older facts must
-  // not overwrite the newer ones.
+test('the facts win by when they were collected, not by when the file was written', () => {
+  // The plugin writes the board's snapshot itself whenever it merges something into it, so the
+  // file's time says when the file was touched, not when the project was collected.
   assert.equal(supersedes(200, 100), true)
   assert.equal(supersedes(100, 200), false)
-  // A board with no snapshot at all is superseded by anything.
+  // A time nobody can read is no evidence: the new facts win.
+  assert.equal(supersedes(null, 100), true)
   assert.equal(supersedes(100, null), true)
+})
+
+test('a project that names no time gives no time', () => {
+  assert.equal(scannedAtOf(project('local|/a', '2026-11-25T10:00:00.000Z')), 1795600800000)
+  // A time without a zone is read as UTC: the snapshot is written by an agent, on a machine whose
+  // zone is not the reader's.
+  assert.equal(scannedAtOf(project('local|/a', '2026-11-25T10:00:00')), 1795600800000)
+  assert.equal(scannedAtOf(project('local|/a', '')), null)
+  assert.equal(scannedAtOf(project('local|/a', 'not-a-time')), null)
 })

@@ -348,8 +348,11 @@ export async function refreshBoard(): Promise<void> {
     watchForSnapshot(before)
   } catch (thrown) {
     set(refreshError, { code: codeOf(thrown), message: messageOf(thrown) })
-    // No refresh is running, so there is no bar to show.
-    clearRefresh()
+    // A refusal because another refresh is running is not this refresh's failure: the running one
+    // still has its bar.
+    if (codeOf(thrown) !== 'conflict') {
+      clearRefresh()
+    }
   } finally {
     set(refreshing, false)
   }
@@ -382,7 +385,9 @@ export async function refreshProject(projectId: string, name: string): Promise<v
     watchForSnapshot(read(payload)?.sources.agentAt ?? null)
   } catch (thrown) {
     set(refreshError, { code: codeOf(thrown), message: messageOf(thrown) })
-    clearRefresh()
+    if (codeOf(thrown) !== 'conflict') {
+      clearRefresh()
+    }
   } finally {
     set(refreshing, false)
   }
@@ -395,6 +400,19 @@ export function stopWaiting(): void {
     confirmTimer = null
   }
   set(pendingAction, null)
+}
+
+/**
+ * Starts watching for the snapshot a refresh in flight is waiting for.
+ *
+ * A panel that opens while the agent is working knows nothing about the watch the earlier panel
+ * started: the watch dies with it, and the bar would sit there until the app restarts.
+ */
+export function resumeRefreshWatch(): void {
+  if (read(refreshStartedAt) === null) {
+    return
+  }
+  watchForSnapshot(read(payload)?.sources.agentAt ?? null)
 }
 
 /** Asks for the second press: the button asks, and the press within the window runs the action. */

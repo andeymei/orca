@@ -7,7 +7,8 @@
 // The other projects are not this refresh's business: the snapshot holds every project, and a
 // refresh of one project must not cost the board the ones nobody re-read.
 
-import { writeFile } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { OrcaWorkerApi } from 'orca/worker'
 import {
   buildBoard,
@@ -26,10 +27,12 @@ import { progressInstructions } from './refresh-progress'
 import { clearProgress, writeRefreshPrompt } from './refresh-files'
 import { refreshWorkspace } from './refresh-workspace'
 import { requestError } from './request-error'
-import { applyProjectFacts, factsOf, supersedes } from './snapshot-merge'
+import { applyProjectFacts, factsOf, scannedAtOf, supersedes } from './snapshot-merge'
 import { SNAPSHOT_FORMAT } from './snapshot-format'
 import {
+  boardStoreDir,
   fileTime,
+  projectFileKey,
   progressPath,
   projectScanListPath,
   projectSnapshotPath,
@@ -38,7 +41,7 @@ import {
   writeJsonFile
 } from './store-paths'
 import { messageOf } from './unknown-values'
-import type { SnapshotProject } from './model'
+import type { BoardSnapshot, SnapshotProject } from './model'
 
 /** What the refresh did, and what the panel says about it. */
 export type ProjectRefresh = { kind: 'local' | 'agent'; terminalId?: string; agent?: string }
@@ -86,12 +89,13 @@ async function refreshLocalProject(
     path: project.path
   })
   const current = await readSnapshot([], state)
-  if (current.value !== null) {
-    await writeJsonFile(
-      snapshotPath(),
-      applyProjectFacts(current.value, { project: scan.project, items: scan.items })
-    )
-  }
+  // With no snapshot to put it in, the scan becomes the snapshot: this project was read, and the
+  // projects nobody read are not in it.
+  const base = current.value ?? { schemaVersion: 1, generatedAt: '', generatedBy: { agent: 'plugin' }, projects: [], items: [] }
+  await writeJsonFile(
+    snapshotPath(),
+    applyProjectFacts(base, { project: scan.project, items: scan.items })
+  )
   orca.panels.post('board.changed', { agentAt: await snapshotAt() })
 }
 
@@ -121,19 +125,13 @@ async function refreshRemoteProject(
   )
   const list = projectScanListPath(project.id)
   try {
-    await writeFile(
-      list,
-      `${JSON.stringify(
-        {
-          projects: [{ name: project.name, host: project.host, path: project.path }],
-          snapshotFormat: SNAPSHOT_FORMAT,
-          progress: progressInstructions(progressPath())
-        },
-        null,
-        2
-      )}\n`,
-      'utf8'
-    )
+    // The agent reads this list the moment it starts: a half-written list would be a list of
+    // another project's.
+    await writeJsonFile(list, {
+      projects: [{ name: project.name, host: project.host, path: project.path }],
+      snapshotFormat: SNAPSHOT_FORMAT,
+      progress: progressInstructions(progressPath())
+    })
   } catch (error) {
     // A raw errno reaches the panel as a code it does not recognise, and the person sees nothing
     // useful.
@@ -158,9 +156,9 @@ async function refreshRemoteProject(
  * Puts what the agent collected for one project into the snapshot.
  *
  * The agent writes a file of its own, so the board's snapshot is never half written by it: the
- * file lands first, and this puts it in. A file that is older than the snapshot is left alone — a
- * refresh of the whole board can land after a refresh of one project, and the older facts must not
- * overwrite the newer ones.
+ * file lands first, and this puts it in. Facts that are older than what the board already holds
+ * are left alone — a refresh of the whole board can land after a refresh of one project, and the
+ * older facts must not overwrite the newer ones.
  */
 export async function mergeProjectSnapshot(
   orca: OrcaWorkerApi,
@@ -176,22 +174,76 @@ export async function mergeProjectSnapshot(
     orca.log(`[spec-board] 项目快照无法读取：${path}（${parsed.error}）`)
     return
   }
+  const project = projectOfFile(path, parsed.value)
+  if (project === null) {
+    orca.log(`[spec-board] 项目快照不是它自己的项目：${path}`)
+    return
+  }
   const current = await readSnapshot([], state)
-  const collectedAt = await fileTime(path)
-  if (collectedAt === null || !supersedes(collectedAt, await snapshotAt())) {
+  const held = current.value?.projects.find((entry) => entry.id === project.id) ?? null
+  // The facts' own times, not the times the files were written: the plugin writes the snapshot
+  // itself whenever it merges something into it, so the file's time says when the file was
+  // touched, not when the project was collected.
+  const collectedAt = scannedAtOf(project) ?? (await fileTime(path))
+  const boardAt = held === null ? null : (scannedAtOf(held) ?? (await snapshotAt()))
+  if (!supersedes(collectedAt, boardAt)) {
+    orca.log(`[spec-board] 项目快照比看板里的旧，没有并入：${path}`)
     return
   }
   // With no snapshot to put it in, the file becomes the snapshot: this project was collected, and
   // the projects nobody collected are not in it.
-  let merged = current.value ?? { ...parsed.value, projects: [], items: [] }
-  for (const project of parsed.value.projects) {
-    const facts = factsOf(parsed.value, project.id)
-    if (facts !== null) {
-      merged = applyProjectFacts(merged, facts)
+  const base = current.value ?? { ...parsed.value, projects: [], items: [] }
+  const facts = factsOf(parsed.value, project.id)
+  if (facts === null) {
+    return
+  }
+  await writeJsonFile(snapshotPath(), applyProjectFacts(base, facts))
+  orca.panels.post('board.changed', { agentAt: await snapshotAt() })
+}
+
+/**
+ * The project a file holds, when it is the project the file is named after.
+ *
+ * The file's name is the project's own digest, so an agent that wrote about another project — or
+ * about the same directory under another name — cannot put that project on the board.
+ */
+function projectOfFile(path: string, snapshot: BoardSnapshot): SnapshotProject | null {
+  const key = projectFileKeyOf(path)
+  for (const project of snapshot.projects) {
+    if (projectFileKey(project.id) === key) {
+      return project
     }
   }
-  await writeJsonFile(snapshotPath(), merged)
-  orca.panels.post('board.changed', { agentAt: await snapshotAt() })
+  return null
+}
+
+/** The digest in a project's own file name, or null when the name is not one. */
+function projectFileKeyOf(path: string): string | null {
+  const name = path.slice(path.lastIndexOf('/') + 1)
+  const match = /^project-([0-9a-f]{16})\.json$/.exec(name)
+  return match === null ? null : match[1]!
+}
+
+/**
+ * Merges the fragments that are already on disk.
+ *
+ * The worker is reaped when it is idle, and an agent can take minutes: a fragment that landed
+ * while nobody was watching would otherwise never reach the snapshot, and the board would keep
+ * showing the facts it had before the refresh.
+ */
+export async function mergePendingFragments(
+  orca: OrcaWorkerApi,
+  state: BoardState
+): Promise<void> {
+  let names: string[]
+  try {
+    names = await readdir(boardStoreDir())
+  } catch {
+    return
+  }
+  for (const name of names.filter((entry) => isProjectSnapshotFile(entry)).sort()) {
+    await mergeProjectSnapshot(orca, join(boardStoreDir(), name), state)
+  }
 }
 
 /**

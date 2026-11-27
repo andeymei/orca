@@ -66,12 +66,32 @@ function byItemId(left: SnapshotItem, right: SnapshotItem): number {
 }
 
 /**
+ * The time a project was scanned, or null when the time cannot be read.
+ *
+ * A time without a zone is read as UTC: the snapshot is written by an agent, on a machine whose
+ * zone is not the reader's.
+ */
+export function scannedAtOf(project: SnapshotProject): number | null {
+  const value = project.scannedAt
+  if (value === '') {
+    return null
+  }
+  const hasZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  const at = Date.parse(hasZone ? value : `${value}Z`)
+  return Number.isNaN(at) ? null : at
+}
+
+/**
  * Whether what was collected at `collectedAt` is newer than what the board holds.
  *
- * The two times are the times the files were written, not the times the agent claims: an agent
- * that writes the wrong `scannedAt` must not get to decide whether its own facts are fresh. A
- * board with no snapshot at all is superseded by anything.
+ * The two times are the times the facts were collected, not the times the files were written:
+ * the plugin writes the board's snapshot itself whenever it merges something into it, so the
+ * file's time says when the file was touched, not when the facts were gathered. A time nobody
+ * can read is no evidence, so the new facts win.
  */
-export function supersedes(collectedAt: number, boardAt: number | null): boolean {
-  return boardAt === null || collectedAt >= boardAt
+export function supersedes(collectedAt: number | null, boardAt: number | null): boolean {
+  if (collectedAt === null || boardAt === null) {
+    return true
+  }
+  return collectedAt >= boardAt
 }

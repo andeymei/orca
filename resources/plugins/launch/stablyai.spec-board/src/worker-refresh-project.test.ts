@@ -1,7 +1,7 @@
 // The refresh of one project: a local one is read here, a remote one by an agent, and what the
 // agent wrote is merged into the board's snapshot without touching the other projects.
 import { afterEach, assert, mockHost, mountWorker, test } from 'orca/testing'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { projectScanListPath, projectSnapshotPath } from './store-paths'
@@ -90,6 +90,19 @@ async function registry(projects: readonly { name: string; host: string; path: s
     'utf8'
   )
   return store
+}
+
+/**
+ * Writes what the agent writes: a temporary file, then renamed over the real one.
+ *
+ * The watcher only learns the name of a file from the rename — a plain write tells it the
+ * directory's name, not the file's — so a test that writes the file directly would wait for a
+ * merge that the watcher never hears about.
+ */
+async function writeAgentFile(path: string, content: string): Promise<void> {
+  const temporary = `${path}.tmp`
+  await writeFile(temporary, content, 'utf8')
+  await rename(temporary, path)
 }
 
 /** The projects of a written file, as the reader sees them. */
@@ -211,7 +224,7 @@ test('what the agent wrote for one project lands in the snapshot, and the rest s
     }
   })
   const worker = await mountWorker(main, { host })
-  await writeFile(
+  await writeAgentFile(
     projectSnapshotPath(projectId),
     `${JSON.stringify(
       {
@@ -235,7 +248,6 @@ test('what the agent wrote for one project lands in the snapshot, and the rest s
       null,
       2
     )}\n`,
-    'utf8'
   )
   // The worker watches its directory: the file that lands is put into the snapshot.
   const merged = await waitForProjects(store, (projects) => {
@@ -288,7 +300,7 @@ test('the first project collected becomes the board snapshot itself', async () =
     }
   })
   const worker = await mountWorker(main, { host })
-  await writeFile(
+  await writeAgentFile(
     projectSnapshotPath(projectId),
     `${JSON.stringify(
       {
@@ -312,9 +324,136 @@ test('the first project collected becomes the board snapshot itself', async () =
       null,
       2
     )}\n`,
-    'utf8'
   )
   const projects = await waitForProjects(store, (list) => list.length === 1)
   assert.equal(projects[0]?.id, projectId)
+  await worker.deactivate()
+})
+
+test('a local project is written into the snapshot even when there is none', async () => {
+  // The board has never been collected: the refresh is the first thing that writes a snapshot,
+  // and the panel says the project was refreshed.
+  const repo = await project()
+  const store = await registry([{ name: 'demo', host: 'local', path: repo }])
+  const host = mockHost({
+    results: {
+      'workspace.list': { workspaces: [], truncated: false },
+      'workspace.readContext': null
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  const answer = await worker.request('board.refreshProject', { projectId: `local|${repo}` })
+  assert.equal(answer.kind, 'local')
+  const projects = projectsOf(await readFile(join(store, 'board.json'), 'utf8'))
+  assert.equal(projects.length, 1)
+  assert.equal(projects[0]?.id, `local|${repo}`)
+  await worker.deactivate()
+})
+
+test('a fragment about another project is not put on the board', async () => {
+  // The file's name is the project's own digest: an agent that wrote about a different project
+  // cannot put that project on the board.
+  const projectId = 'ssh:yolo|C:/work/app'
+  const store = await registry([{ name: 'app', host: 'ssh:yolo', path: 'C:/work/app' }])
+  await writeFile(
+    join(store, 'board.json'),
+    snapshotOf([projectFacts(projectId, 'app', 'ssh:yolo', 'C:/work/app')]),
+    'utf8'
+  )
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': null
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  // The file is named after the project the refresh asked for, but it holds another one: the
+  // agent wrote about the wrong project, and the board must not take it.
+  await writeAgentFile(
+    projectSnapshotPath(projectId),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        generatedAt: '2026-11-27T10:00:00.000Z',
+        generatedBy: { agent: 'claude' },
+        projects: [
+          {
+            id: 'ssh:yolo|C:/work/other',
+            name: 'other',
+            host: 'ssh:yolo',
+            path: 'C:/work/other',
+            openspec: { present: true, capabilities: [], activeChanges: 9, archived: 0 },
+            superpowers: null,
+            openspecCli: null,
+            scannedAt: '2026-11-27T10:00:00.000Z'
+          }
+        ],
+        items: []
+      },
+      null,
+      2
+    )}\n`,
+  )
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  const projects = projectsOf(await readFile(join(store, 'board.json'), 'utf8'))
+  // The board still holds one project: the one it had.
+  assert.equal(projects.length, 1)
+  assert.equal(projects[0]?.id, projectId)
+  assert.equal(projects[0]?.openspec, null)
+  await worker.deactivate()
+})
+
+test('a fragment left on disk is merged when the worker starts', async () => {
+  // The worker is reaped when it is idle, and an agent can take minutes: a fragment that landed
+  // while nobody watched would otherwise never reach the snapshot.
+  const projectId = 'ssh:yolo|C:/work/app'
+  const store = await registry([{ name: 'app', host: 'ssh:yolo', path: 'C:/work/app' }])
+  await writeFile(
+    join(store, 'board.json'),
+    snapshotOf([projectFacts(projectId, 'app', 'ssh:yolo', 'C:/work/app')]),
+    'utf8'
+  )
+  await writeAgentFile(
+    projectSnapshotPath(projectId),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        generatedAt: '2026-11-27T10:00:00.000Z',
+        generatedBy: { agent: 'claude' },
+        projects: [
+          {
+            id: projectId,
+            name: 'app',
+            host: 'ssh:yolo',
+            path: 'C:/work/app',
+            openspec: { present: true, capabilities: [], activeChanges: 3, archived: 0 },
+            superpowers: null,
+            openspecCli: null,
+            scannedAt: '2026-11-27T10:00:00.000Z'
+          }
+        ],
+        items: []
+      },
+      null,
+      2
+    )}\n`,
+  )
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': null
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  const projects = await waitForProjects(store, (list) => {
+    const app = list.find((entry) => entry.id === projectId)
+    return isRecord(app?.openspec) ? app.openspec['activeChanges'] === 3 : false
+  })
+  // The project's facts are the ones the fragment holds, and the board still holds one project:
+  // the fragment did not add a second card for the same project.
+  const app = projects.find((entry) => entry.id === projectId)
+  assert.ok(isRecord(app?.openspec))
+  assert.equal(app?.openspec['activeChanges'], 3)
+  assert.equal(projects.filter((entry) => entry.id === projectId).length, 1)
   await worker.deactivate()
 })

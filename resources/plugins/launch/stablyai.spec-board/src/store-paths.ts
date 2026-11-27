@@ -123,6 +123,9 @@ export async function fileTime(path: string): Promise<number | null> {
   }
 }
 
+/** How many temporary files this process has written; the name carries it. */
+let writeCounter = 0
+
 /**
  * Writes a JSON file in two steps: into a temporary file, then renamed over the real one.
  *
@@ -130,7 +133,10 @@ export async function fileTime(path: string): Promise<number | null> {
  * snapshot, and for the same reason.
  */
 export async function writeJsonFile(path: string, value: unknown): Promise<void> {
-  const temporary = `${path}.tmp`
+  // The name carries the pid and a counter: the agent writes its own temporary file next to the
+  // same path, and two writers must not share one temporary file.
+  writeCounter += 1
+  const temporary = `${path}.${process.pid}.${writeCounter}.tmp`
   await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
   await rename(temporary, path)
 }

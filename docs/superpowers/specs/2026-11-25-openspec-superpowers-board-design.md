@@ -87,6 +87,7 @@ resources/plugins/launch/stablyai.spec-board/
 ├── src/
 │   ├── panel.tsx            组件面板：看板 / 全貌 / 项目 三个 Tab
 │   ├── panel-board.tsx      看板 Tab：阶段导轨、卡片、缺口徽章、动作按钮
+│   ├── panel-card.tsx       卡片：徽标、进度、缺口、动作按钮
 │   ├── panel-state.ts       面板状态：负载、选中阶段、错误、待确认动作
 │   ├── panel.check.ts       orca plugin check 的场景
 │   ├── panel-fixture.ts     测试与 check 共用的样例负载
@@ -97,6 +98,7 @@ resources/plugins/launch/stablyai.spec-board/
 │   ├── stage.ts             统一阶段推导（deriveStage）
 │   ├── gaps.ts              缺口判定（detectGaps）
 │   ├── markdown-tasks.ts    勾选框计数（countCheckboxes）
+│   ├── verification-records.ts 验证记录解析（parseVerificationRecords）
 │   ├── correlation.ts       topic 归一化与配对（correlate）
 │   ├── local-scan.ts        本地扫描的编排（scanProject / projectIdFor / 组装 item）
 │   ├── local-scan-artifacts.ts 本地扫描的文件读取（OpenSpec / Superpowers 读取器）
@@ -519,14 +521,14 @@ type Action = {
 
 **Superpowers 动作集**（全部走 agent，因为它没有 shell 命令）
 
-| 动作       | prompt 要点                                                                                                                                                                         |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 设计       | 用 `superpowers:brainstorming` 为 `<topic>` 产出设计 spec（卡片上的名字按事实分：还没有设计 spec 时是"写设计"，已经有了是"重新设计"）                                               |
-| 写实施计划 | 用 `superpowers:writing-plans` 基于 `<spec>` 写计划                                                                                                                                 |
-| 执行计划   | 用 `superpowers:executing-plans` 执行 `<plan>`                                                                                                                                      |
-| 代码评审   | 用 `superpowers:requesting-code-review` 审本次改动                                                                                                                                  |
-| 验证       | 用 `superpowers:verification-before-completion` 验证；**有计划时**追加：在 `<plan>` 的「## 验证记录」一节末尾追加一行 `- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`，**不要写复选框** |
-| 收尾       | 用 `superpowers:finishing-a-development-branch` 收尾本次改动                                                                                                                        |
+| 动作       | prompt 要点                                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 设计       | 用 `superpowers:brainstorming` 为 `<topic>` 产出设计 spec（卡片上的名字按事实分：还没有设计 spec 时是"写设计"，已经有了是"重新设计"）                                                                         |
+| 写实施计划 | 用 `superpowers:writing-plans` 基于 `<spec>` 写计划                                                                                                                                                           |
+| 执行计划   | 用 `superpowers:executing-plans` 执行 `<plan>`                                                                                                                                                                |
+| 代码评审   | 用 `superpowers:requesting-code-review` 审本次改动                                                                                                                                                            |
+| 验证       | 用 `superpowers:verification-before-completion` 验证；**有计划时**追加：在 `<plan>` 的「## 验证记录」一节末尾追加一行 `- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`；**没有这一节就新建一节**，**不要写复选框** |
+| 收尾       | 用 `superpowers:finishing-a-development-branch` 收尾本次改动                                                                                                                                                  |
 
 **降级规则**：`project.openspecCli.available === false` 时，OpenSpec 动作的 `run` 从
 `terminal` 换成 `agent`，prompt 改成"按 `openspec/AGENTS.md` 执行 <动作>"，卡片上标
@@ -702,6 +704,7 @@ agent——按第二次不是"重试"，是"再开一个"。面板因此记住�
 - `detectGaps`：每种缺口规则的触发与不触发。
 - `correlation`：完全匹配、Jaccard 命中、不匹配三种路径。
 - `parseTasksMarkdown`：`- [ ]` / `- [x]` / `- [-]` / 嵌套 / 空文件的计数。
+- `verification-records`：只认「## 验证记录」一节下的固定格式行；未通过先于通过判定。
 - `actions`：CLI 可用 / 不可用两条分支下 OpenSpec 动作的 `run` 类型；`mutates`
   标记；Superpowers 动作一律是 `agent`。
 

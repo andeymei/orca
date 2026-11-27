@@ -38,6 +38,16 @@ export type SuperpowersFacts = {
   planTotal: number
 }
 
+/** The verification records of a plan file: the rounds the verification agent wrote down. */
+export type VerificationFacts = {
+  /** How many rounds the records hold. */
+  rounds: number
+  /** How many of them passed. */
+  passed: number
+  /** Whether the last one passed; null when there is no record at all. */
+  lastPassed: boolean | null
+}
+
 /** One scanned project — the place a board item belongs to. */
 export type SnapshotProject = {
   id: string

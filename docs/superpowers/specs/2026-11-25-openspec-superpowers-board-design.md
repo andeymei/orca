@@ -530,6 +530,8 @@ type Action = {
 | 验证       | 用 `superpowers:verification-before-completion` 验证；**有计划时**追加：在 `<plan>` 的「## 验证记录」一节末尾追加一行 `- <YYYY-MM-DD> · <结论> · <跑了什么>`（结论只写「通过」或「未通过」里的一个整词，例如 `- 2026-11-27 · 通过 · pnpm tc`）；**没有这一节就新建一节**，**不要写复选框** |
 | 收尾       | 用 `superpowers:finishing-a-development-branch` 收尾本次改动                                                                                                                                                                                                                               |
 
+**改状态**：设计、写实施计划、执行计划、**验证**、收尾 会改文件或分支（`mutates: true`，按钮两段式二次确认）；代码评审只读不改（`mutates: false`）。**验证**也在其中：它把这一轮写进计划文件的「## 验证记录」一节，所以它改的是用户仓库里的文件——误按一次会留下一条记录，而那条记录会让卡片说「已验证」、把主按钮变成「收尾」。
+
 **降级规则**：`project.openspecCli.available === false` 时，OpenSpec 动作的 `run` 从
 `terminal` 换成 `agent`，prompt 改成"按 `openspec/AGENTS.md` 执行 <动作>"，卡片上标
 `无 CLI` badge。
@@ -749,3 +751,7 @@ agent——按第二次不是"重试"，是"再开一个"。面板因此记住�
 - 宽看板 HTML 视图。
 - 命令执行历史与结果回显（需要 `terminal:read`）。
 - 支持 `runtime:<environmentId>` 主机。
+- **本地项目是否该以插件自己的解析为准。** §4 的合并模型是「同一项目以 agent 快照为准」，所以本地
+  项目的进度与验证轮次都取 agent 报的那份，而插件自己在每次载入看板时读文件得到的**更精确**的那份
+  只在 agent 没覆盖到该项目时说了算。插件的解析器是准的，agent 的数法不是——要改这个就是改看板的
+  信任模型（每个事实的来源），得单独一轮，不能顺手在某个功能里改。

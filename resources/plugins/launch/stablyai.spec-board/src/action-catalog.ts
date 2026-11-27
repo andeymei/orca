@@ -176,7 +176,10 @@ export const SUPERPOWERS_SKILLS: readonly SuperpowersSkill[] = [
   {
     id: 'superpowers.verify',
     label: '验证',
-    mutates: false,
+    // The round is written into the plan file, so this action changes the user's repository now:
+    // the flag has to say so, and the two-step button is what keeps a mis-touch from leaving a
+    // record that makes the card claim the work is verified.
+    mutates: true,
     skill: 'superpowers:verification-before-completion',
     task: '验证本次改动',
     recordRule: VERIFICATION_RECORD_RULE

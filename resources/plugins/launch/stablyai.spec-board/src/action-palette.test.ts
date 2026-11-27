@@ -79,7 +79,7 @@ test('the palette grades every command with the mutates flag of its row', () => 
       ['superpowers.plan', true],
       ['superpowers.execute', true],
       ['superpowers.review', false],
-      ['superpowers.verify', false],
+      ['superpowers.verify', true],
       ['superpowers.finish', true]
     ]
   )

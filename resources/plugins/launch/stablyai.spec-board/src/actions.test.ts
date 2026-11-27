@@ -137,7 +137,7 @@ test('every action carries the label, the framework and the mutates flag of its 
       ['superpowers.plan', '写实施计划', 'superpowers', true],
       ['superpowers.execute', '执行计划', 'superpowers', true],
       ['superpowers.review', '代码评审', 'superpowers', false],
-      ['superpowers.verify', '验证', 'superpowers', false],
+      ['superpowers.verify', '验证', 'superpowers', true],
       ['superpowers.finish', '收尾', 'superpowers', true]
     ]
   )

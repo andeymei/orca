@@ -8,7 +8,7 @@
 // refresh of one project must not cost the board the ones nobody re-read.
 
 import { readdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { OrcaWorkerApi } from 'orca/worker'
 import {
   buildBoard,
@@ -197,8 +197,22 @@ export async function mergeProjectSnapshot(
   if (facts === null) {
     return
   }
-  await writeJsonFile(snapshotPath(), applyProjectFacts(base, facts))
-  orca.panels.post('board.changed', { agentAt: await snapshotAt() })
+  // The snapshot that holds this fragment is the one in the fragment's own directory: a path
+  // derived again from the environment may name another directory by the time the merge runs.
+  const target = snapshotPathOf(path)
+  await writeJsonFile(target, applyProjectFacts(base, facts))
+  orca.panels.post('board.changed', { agentAt: await fileTime(target) })
+}
+
+/**
+ * The board's snapshot that a fragment belongs to.
+ *
+ * A fragment is written next to the board's snapshot, so the snapshot that holds it is the one in
+ * its own directory. Deriving the path from the environment instead would name whatever directory
+ * the plugin is pointed at now — which is not the directory the fragment came from.
+ */
+function snapshotPathOf(fragmentPath: string): string {
+  return join(dirname(fragmentPath), 'board.json')
 }
 
 /**
@@ -225,25 +239,40 @@ function projectFileKeyOf(path: string): string | null {
 }
 
 /**
+ * Merges the fragments that are in a directory, and waits for the merges to finish.
+ *
+ * The file event does not always name the file that changed: a batch of changes is reported as
+ * the directory's own change, and the name that comes with it is the directory's. So the
+ * directory is looked at instead of the name, and every fragment in it is merged — a fragment
+ * that is already in the snapshot is left alone by the merge itself.
+ */
+export async function mergeFragmentsIn(
+  dir: string,
+  orca: OrcaWorkerApi,
+  state: BoardState
+): Promise<void> {
+  let names: string[]
+  try {
+    names = await readdir(dir)
+  } catch {
+    // A directory that cannot be read holds no fragments.
+    return
+  }
+  for (const name of names.filter((entry) => isProjectSnapshotFile(entry)).sort()) {
+    queueMerge(orca, join(dir, name), state)
+  }
+  await merging
+}
+
+/**
  * Merges the fragments that are already on disk.
  *
  * The worker is reaped when it is idle, and an agent can take minutes: a fragment that landed
  * while nobody was watching would otherwise never reach the snapshot, and the board would keep
  * showing the facts it had before the refresh.
  */
-export async function mergePendingFragments(
-  orca: OrcaWorkerApi,
-  state: BoardState
-): Promise<void> {
-  let names: string[]
-  try {
-    names = await readdir(boardStoreDir())
-  } catch {
-    return
-  }
-  for (const name of names.filter((entry) => isProjectSnapshotFile(entry)).sort()) {
-    await mergeProjectSnapshot(orca, join(boardStoreDir(), name), state)
-  }
+export async function mergePendingFragments(orca: OrcaWorkerApi, state: BoardState): Promise<void> {
+  await mergeFragmentsIn(boardStoreDir(), orca, state)
 }
 
 /**
@@ -252,7 +281,7 @@ export async function mergePendingFragments(
  * The names are told apart by their shape: the board's snapshot, the progress, and a file per
  * project. A file that is none of them is ignored.
  */
-export function isProjectSnapshotFile(filename: string): boolean {
+function isProjectSnapshotFile(filename: string): boolean {
   return /^project-[0-9a-f]{16}\.json$/.test(filename)
 }
 
@@ -265,7 +294,7 @@ export function isProjectSnapshotFile(filename: string): boolean {
 let merging: Promise<void> = Promise.resolve()
 
 /** Puts a project's own snapshot into the board's snapshot, after the merges before it. */
-export function queueMerge(orca: OrcaWorkerApi, path: string, state: BoardState): void {
+function queueMerge(orca: OrcaWorkerApi, path: string, state: BoardState): void {
   merging = merging
     .then(() => mergeProjectSnapshot(orca, path, state))
     .catch((error: unknown) => {

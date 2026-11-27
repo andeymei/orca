@@ -740,29 +740,29 @@ test('a new snapshot reaches the open panels', async () => {
   await worker.request('board.get')
   const file = join(root, 'board.json')
   await writeFile(file, snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
-  const posted = await waitFor(() =>
-    worker.posts.some((post) => post.event === 'board.changed')
-  )
-  assert.equal(posted, true)
-  const mtime = (await stat(file)).mtimeMs
-  const posts = worker.posts.filter((post) => post.event === 'board.changed')
-  assert.ok(
-    posts.some((post) => {
+  // The panels are told about this snapshot: the post carries the time the file was written.
+  // An earlier post says nothing about this one, so the wait is for this time and not for any
+  // post at all.
+  const posted = await waitFor(async () => {
+    const mtime = (await stat(file)).mtimeMs
+    return worker.posts.some((post) => {
       const payload = post.payload
-      assert.ok(isRecord(payload))
-      return payload['agentAt'] === mtime
+      return (
+        post.event === 'board.changed' && isRecord(payload) && payload['agentAt'] === mtime
+      )
     })
-  )
+  })
+  assert.equal(posted, true)
   await worker.deactivate()
 })
 
 /** Waits for a condition the file watcher makes true; it is a filesystem event, not a promise. */
-async function waitFor(condition: () => boolean): Promise<boolean> {
+async function waitFor(condition: () => boolean | Promise<boolean>): Promise<boolean> {
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    if (condition()) {
+    if (await condition()) {
       return true
     }
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  return condition()
+  return await condition()
 }

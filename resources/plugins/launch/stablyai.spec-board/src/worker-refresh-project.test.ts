@@ -1,6 +1,6 @@
 // The refresh of one project: a local one is read here, a remote one by an agent, and what the
 // agent wrote is merged into the board's snapshot without touching the other projects.
-import { afterEach, assert, mockHost, mountWorker, test } from 'orca/testing'
+import { afterEach, assert, mockHost, mountWorker, test, type TestWorker } from 'orca/testing'
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -256,8 +256,9 @@ test('what the agent wrote for one project lands in the snapshot, and the rest s
       2
     )}\n`,
   )
-  // The worker watches its directory: the file that lands is put into the snapshot.
-  const merged = await waitForProjects(store, (projects) => {
+  // The board is read the way the panel reads it: the read is what merges what the agent
+  // wrote, so the facts arrive whether the file system said so or not.
+  const merged = await waitForBoard(worker, store, (projects) => {
     const app = projects.find((entry) => entry.id === projectId)
     return isRecord(app?.openspec) ? app.openspec['activeChanges'] === 2 : false
   })
@@ -267,6 +268,28 @@ test('what the agent wrote for one project lands in the snapshot, and the rest s
   assert.equal(other?.openspec, null)
   await worker.deactivate()
 })
+
+/**
+ * Waits for the snapshot to say what the person is waiting for, asking the worker for the board.
+ *
+ * The read is what merges what the agent wrote: the file system does not always report what
+ * changed in a watched directory, and the board does not wait for a report.
+ */
+async function waitForBoard(
+  worker: TestWorker,
+  store: string,
+  done: (projects: { id: string; openspec: unknown }[]) => boolean
+): Promise<{ id: string; openspec: unknown }[]> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    await worker.request('board.get')
+    const projects = await readProjects(store)
+    if (done(projects)) {
+      return projects
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error('项目快照没有并进看板的快照')
+}
 
 /** Waits for the snapshot to say what the person is waiting for. */
 async function waitForProjects(
@@ -332,7 +355,7 @@ test('the first project collected becomes the board snapshot itself', async () =
       2
     )}\n`,
   )
-  const projects = await waitForProjects(store, (list) => list.length === 1)
+  const projects = await waitForBoard(worker, store, (list) => list.length === 1)
   assert.equal(projects[0]?.id, projectId)
   await worker.deactivate()
 })
@@ -401,7 +424,8 @@ test('a fragment about another project is not put on the board', async () => {
       2
     )}\n`,
   )
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  // The board is read, so the fragment is offered to the merge: the board must still refuse it.
+  await worker.request('board.get')
   const projects = projectsOf(await readFile(join(store, 'board.json'), 'utf8'))
   // The board still holds one project: the one it had.
   assert.equal(projects.length, 1)

@@ -88,10 +88,13 @@ export function scannedAtOf(project: SnapshotProject): number | null {
  * the plugin writes the board's snapshot itself whenever it merges something into it, so the
  * file's time says when the file was touched, not when the facts were gathered. A time nobody
  * can read is no evidence, so the new facts win.
+ *
+ * Facts collected at the very same time are the same facts: merging them again would write the
+ * snapshot over and over, and every write is another thing that has to be noticed.
  */
 export function supersedes(collectedAt: number | null, boardAt: number | null): boolean {
   if (collectedAt === null || boardAt === null) {
     return true
   }
-  return collectedAt >= boardAt
+  return collectedAt > boardAt
 }

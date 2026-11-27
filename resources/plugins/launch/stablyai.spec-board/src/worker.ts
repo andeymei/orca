@@ -5,7 +5,6 @@
 // change it picked; the worker resolves that into a command or a prompt, and refuses anything it
 // cannot resolve — so a project-derived value has exactly one path into a shell.
 
-import { watch, type FSWatcher } from 'node:fs'
 import { mkdir, realpath, writeFile } from 'node:fs/promises'
 import { join, sep } from 'node:path'
 import type { OrcaWorkerApi } from 'orca/worker'
@@ -16,7 +15,6 @@ import {
   displayText,
   findProject,
   newBoardState,
-  snapshotAt,
   type BoardState
 } from './board-load'
 import {
@@ -25,13 +23,9 @@ import {
   readSettings
 } from './board-projects'
 import { safeHostOf } from './host-identity'
-import {
-  isProjectSnapshotFile,
-  mergePendingFragments,
-  queueMerge,
-  refreshProject
-} from './project-refresh'
+import { mergePendingFragments, refreshProject } from './project-refresh'
 import { requestError } from './request-error'
+import { startWatcher, type StoreWatcher } from './store-watcher'
 import { buildRefreshPrompt } from './refresh-prompt'
 import { progressInstructions } from './refresh-progress'
 import { readRefreshProgress } from './refresh-progress-file'
@@ -55,7 +49,7 @@ const recordedWarnings: string[] = []
 const MAX_RECORDED_WARNINGS = 20
 
 /** The watcher on the store directory, closed when the worker stops. */
-let watcher: FSWatcher | null = null
+let watcher: StoreWatcher | null = null
 
 /**
  * What the worker keeps between its requests.
@@ -328,48 +322,16 @@ async function writeScanList(
   }
 }
 
-/**
- * Watches the store directory, so a new snapshot reaches the open panels — and so the agent's
- * progress does too.
- *
- * The files are told apart by their name: the snapshot is the board's, the progress is only how
- * far the agent has come, and a project's own snapshot is what a refresh of one project writes.
- * A file that is none of them is ignored.
- */
-function startWatcher(orca: OrcaWorkerApi): FSWatcher | null {
-  const dir = boardStoreDir()
-  try {
-    const created = watch(dir, (_event, filename) => {
-      if (filename === 'progress.json') {
-        void readRefreshProgress().then((progress) =>
-          orca.panels.post('board.progress.changed', { progress })
-        )
-        return
-      }
-      if (filename !== null && isProjectSnapshotFile(filename)) {
-        // A refresh of one project wrote what it found: put it into the board's snapshot.
-        queueMerge(orca, join(dir, filename), boardState)
-        return
-      }
-      if (filename !== null && filename !== 'board.json') {
-        return
-      }
-      void snapshotAt().then((agentAt) => orca.panels.post('board.changed', { agentAt }))
-    })
-    // The watch must not keep the process alive: the worker's own lifetime decides that.
-    created.unref()
-    return created
-  } catch (error) {
-    orca.log(`[spec-board] 无法监听 ${dir}：${messageOf(error)}`)
-    return null
-  }
-}
-
 export default async function activate(orca: OrcaWorkerApi): Promise<void> {
   // What the worker keeps between its requests; it lives as long as the worker does.
   boardState = newBoardState()
   orca.panels.handle('board.get', async () => {
     const warnings = [...recordedWarnings]
+    // A refresh of one project writes a file of its own, and that file may land while the
+    // watcher is not looking: the file system does not always say what changed. So the board
+    // is merged on every read — the panel reads it again and again while a refresh runs, and
+    // the facts arrive that way too.
+    await mergePendingFragments(orca, boardState)
     return (await buildBoard(orca, warnings, boardState)).payload
   })
   orca.panels.handle('board.refresh', async () => refresh(orca))
@@ -386,7 +348,7 @@ export default async function activate(orca: OrcaWorkerApi): Promise<void> {
     // reads the projects it can, and the snapshot may well live somewhere else.
     orca.log(`[spec-board] 无法创建 ${boardStoreDir()}：${messageOf(error)}`)
   }
-  watcher = startWatcher(orca)
+  watcher = startWatcher(orca, boardState)
   // A fragment may have landed while no worker was watching: the board would otherwise keep the
   // facts it had before that refresh.
   void mergePendingFragments(orca, boardState)

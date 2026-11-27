@@ -174,17 +174,24 @@ export type VerificationFacts = {
 
 > 「## 验证记录」一节的轮次写进 `superpowers.verification`。
 
-⚠️ **这条规则必须短，而且必须先量长度。** 2026-11-27 实测：单项目刷新提示词在**真实临时
-路径**下是 4036 字符，**只剩约 60 字符**（整盘那份约 3872）。超限的失败方式很隐蔽——
-**远程刷新根本起不来**（宿主回 `Too big: expected string to have <=4096 characters`），
-本地扫描那条路不报错。
+⚠️ **这条规则必须短，而且必须先量长度。** 2026-11-27 实测（真实临时路径，非测试里的短
+示例路径）：单项目刷新提示词 **4043 字符（余 53）**，整盘那份 **3987（余 109）**。加上这条
+40 字符的规则后，单项目那份约 **4085——只剩 11 个字符**。
+
+**11 个字符不是余量，是抛硬币**：宿主那条线一超，**远程刷新根本起不来**（回
+`Too big: expected string to have <=4096 characters`），而本地扫描那条路一声不吭。
 
 因此：
 
-- 规则正文压到 **40 字符以内**（上面那句约 30 字符）。
-- **用真实路径量一遍**再提交：`refresh-prompt.test.ts` 用的是短示例路径，它过了不代表真实
-  路径过得了。
-- 放不下就不要硬塞：清单文件（`scan-list.json`）没有长度上限，规则可以写在那里让 agent 读。
+- **规则不进提示词，进清单文件。** 放清单文件里 **agent 一定会读到的地方**：
+  `scan-list.json` 的 `snapshotFormat` 里面（例如 `snapshotFormat.rules.verification`）——提示词
+  已经明确让 agent 去 `snapshotFormat` 看快照的形状，规则就写在那里，它读形状时一并读到。
+  清单文件没有长度上限，规则一个字都不用删短。
+  （别把规则做成清单文件的**兄弟键**：提示词只指向 `snapshotFormat` 与 `progress` 两个字段，
+  兄弟键 agent 可能根本不看。）
+- 提示词因此**一个字都不用改**，`refresh-prompt.ts` 也不必动。
+- 若日后仍要塞进提示词：正文 ≤20 字符，并且**用真实路径量一遍**再提交——
+  `refresh-prompt.test.ts` 用的是短示例路径，它过了不代表真实路径过得了。
 
 ### 4.8 失败方向是安全的
 
@@ -201,7 +208,8 @@ agent 写了但格式不对 → 解析不出来 → 同样当作没有记录。
 | `src/local-scan.ts` | 本地项目读计划文件，取记录 |
 | `src/board-schema.ts` | 校验快照里的 `superpowers.verification`；旧快照按无记录处理 |
 | `src/snapshot-format.ts` | 示例里加这个对象（agent 照着写） |
-| `src/refresh-prompt.ts` | 一条 ≤40 字符的规则（真实路径下只剩约 60 字符，见 §4.7） |
+| `src/refresh-prompt.ts` | **不必改**——规则进清单文件，不进提示词（见 §4.7） |
+| `src/worker.ts` | 写清单文件时多带一条规则（`snapshotFormat.rules.verification`） |
 | `src/action-catalog.ts` | `superpowers.verify` 的任务文本加记录要求；新增 `superpowers.finish` |
 | `src/actions.ts` | 把计划路径带进验证提示词；只有有计划时才带记录要求 |
 | `src/framework-map.ts` | `finishing-a-development-branch` 挂上 `superpowers.finish` |
@@ -249,7 +257,7 @@ agent 写了但格式不对 → 解析不出来 → 同样当作没有记录。
 | agent 不写记录 | 轮次为 0，卡片留在「校验」——失败方向安全，但这个特性就没生效 |
 | agent 写了复选框 | 提示词明确禁止；解析器只认「·」分隔的行，复选框行会被忽略（但 `countCheckboxes` 仍会把它算成计划进度——所以提示词那句禁止是必需的，不是可选的） |
 | 远程项目的轮数由 agent 数 | 和现有的 `planDone` 一样是 agent 报的事实，本地路径才是精确的 |
-| 刷新提示词超 4096 | 实测只剩约 60 字符；规则压到 40 字以内，放不下就写进清单文件；**提交前用真实路径量一遍**（测试用的短路径过了不代表真路径过得了） |
+| 刷新提示词超 4096 | 规则**不进提示词**，进清单文件的 `snapshotFormat` 里（提示词一个字不改）；隔离 home 下单项目那份实测 4059/4096，只剩 37 字符，**11–37 个字符不是余量** |
 | 多一个新阶段动到阶段机 | 阶段表在设计文档里，本次一并更新；`deriveStage` 只加一条分支，其余规则不动 |
 
 ## 8. 后续（不在本次范围）

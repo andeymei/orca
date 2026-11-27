@@ -30,6 +30,11 @@ export const fixturePayload: BoardPayload = {
         capabilities: []
       },
       superpowers: null,
+      sources: [
+        { key: 'openspec-proposal', label: 'proposal.md', path: 'openspec/changes/add-x/proposal.md' },
+        { key: 'openspec-design', label: 'design.md', path: 'openspec/changes/add-x/design.md' },
+        { key: 'openspec-tasks', label: 'tasks.md', path: 'openspec/changes/add-x/tasks.md' }
+      ],
       gaps: [
         {
           code: 'openspec-only',
@@ -74,6 +79,10 @@ export const fixturePayload: BoardPayload = {
         capabilities: []
       },
       superpowers: null,
+      sources: [
+        { key: 'openspec-proposal', label: 'proposal.md', path: 'openspec/changes/add-y/proposal.md' },
+        { key: 'openspec-tasks', label: 'tasks.md', path: 'openspec/changes/add-y/tasks.md' }
+      ],
       gaps: [
         {
           code: 'no-design',
@@ -103,13 +112,21 @@ export const fixturePayload: BoardPayload = {
       stage: 'implement',
       openspec: null,
       superpowers: {
-        designSpec: 'docs/superpowers/specs/add-z.md',
+        designSpec: 'docs/superpowers/specs/add-z-design.md',
         plan: 'docs/superpowers/plans/add-z.md',
         stage: 'executing',
         planDone: 1,
         planInProgress: 0,
         planTotal: 8
       },
+      sources: [
+        {
+          key: 'superpowers-spec',
+          label: 'add-z-design.md',
+          path: 'docs/superpowers/specs/add-z-design.md'
+        },
+        { key: 'superpowers-plan', label: 'add-z.md', path: 'docs/superpowers/plans/add-z.md' }
+      ],
       gaps: [
         {
           code: 'superpowers-only',
@@ -154,8 +171,30 @@ export const fixturePayload: BoardPayload = {
         capabilities: ['auth']
       },
       superpowers: null,
+      sources: [
+        { key: 'openspec-proposal', label: 'proposal.md', path: 'openspec/changes/add-w/proposal.md' },
+        { key: 'openspec-design', label: 'design.md', path: 'openspec/changes/add-w/design.md' },
+        { key: 'openspec-tasks', label: 'tasks.md', path: 'openspec/changes/add-w/tasks.md' }
+      ],
       gaps: [],
-      actions: []
+      actions: [
+        {
+          id: 'openspec.validate',
+          label: '校验',
+          framework: 'openspec',
+          run: { kind: 'terminal', command: 'openspec validate add-w --strict' },
+          mutates: false,
+          scope: 'change'
+        },
+        {
+          id: 'openspec.archive',
+          label: '归档',
+          framework: 'openspec',
+          run: { kind: 'terminal', command: 'openspec archive add-w --yes' },
+          mutates: true,
+          scope: 'change'
+        }
+      ]
     }
   ],
   projects: [

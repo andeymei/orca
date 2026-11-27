@@ -21,6 +21,7 @@ import {
 } from './board-load'
 import {
   boardProjects,
+  focusedWorkspaceId,
   readSettings
 } from './board-projects'
 import { safeHostOf } from './host-identity'
@@ -45,7 +46,7 @@ import {
 } from './store-paths'
 import { messageOf } from './unknown-values'
 import { remoteOf } from './remote-host'
-import type { ProjectRef } from './model'
+import type { ItemSourceKey, ProjectRef } from './model'
 
 /** The warnings the worker recorded while running an action; the next board.get carries them. */
 const recordedWarnings: string[] = []
@@ -161,6 +162,52 @@ async function runAction(
   })
   // The panel says who took the action; only the worker knows which agent it launched.
   return { kind: 'agent', terminalId: launched.terminalId, agent }
+}
+
+/**
+ * Opens one file of a work item in an editor tab of Orca's window.
+ *
+ * The panel names the item and which of its files; the path is the worker's own. It derives the
+ * item's files again and takes the one that was named, so a path the caller made up names
+ * nothing — the same rule every other project-derived value follows.
+ */
+async function openSource(
+  orca: OrcaWorkerApi,
+  request: { itemId: string; sourceKey: ItemSourceKey },
+  state: BoardState
+): Promise<{ opened: true }> {
+  const warnings: string[] = []
+  const board = await buildBoard(orca, warnings, state)
+  const item = board.payload.items.find((entry) => entry.id === request.itemId)
+  if (item === undefined) {
+    throw requestError('invalid_params', `找不到这个工作项：${request.itemId}`)
+  }
+  const source = item.sources.find((entry) => entry.key === request.sourceKey)
+  if (source === undefined) {
+    throw requestError('invalid_params', `这个工作项没有这个文件：${request.sourceKey}`)
+  }
+  const project = findProject(board, item.projectId)
+  if (project === null) {
+    throw requestError('invalid_params', `找不到这个项目：${item.projectId}`)
+  }
+  // The workspace that holds the project is the one the file lives in: the path is relative to it.
+  const workspaceId = actionWorkspaceId(board, project)
+  if (workspaceId === null) {
+    throw requestError('invalid_params', `该项目不在 Orca workspace 里：${project.path}`)
+  }
+  // A tab in a workspace that is not the one on screen is a tab nobody sees, so the workspace comes
+  // to the front first — unless it is already there. A workspace that will not come to the front
+  // does not stop the file from opening: a tab in the background is better than no tab.
+  const focused = await focusedWorkspaceId(orca, warnings)
+  if (focused !== workspaceId) {
+    try {
+      await orca.host.call('workspace.open', { workspaceId })
+    } catch (error) {
+      orca.log(`[spec-board] 无法切到 workspace ${workspaceId}：${messageOf(error)}`)
+    }
+  }
+  await orca.host.call('editor.open', { workspaceId, path: source.path })
+  return { opened: true }
 }
 
 /** Starts the agent that writes the snapshot. */
@@ -297,6 +344,7 @@ export default async function activate(orca: OrcaWorkerApi): Promise<void> {
   )
   orca.panels.handle('board.progress', async () => ({ progress: await readRefreshProgress() }))
   orca.panels.handle('action.run', async (input) => runAction(orca, input, boardState))
+  orca.panels.handle('source.open', async (input) => openSource(orca, input, boardState))
   try {
     await mkdir(boardStoreDir(), { recursive: true })
   } catch (error) {

@@ -96,8 +96,37 @@ export type Action = {
   scope: ActionScope
 }
 
+/** Which file of a work item a press names. */
+export type ItemSourceKey =
+  | 'openspec-proposal'
+  | 'openspec-design'
+  | 'openspec-tasks'
+  | 'superpowers-spec'
+  | 'superpowers-plan'
+
+/** One file of a work item: what it is called, and where it lives inside the project. */
+export type ItemSource = {
+  key: ItemSourceKey
+  /** The name the card shows: the file's own name. */
+  label: string
+  /** The path inside the project, `/`-separated. */
+  path: string
+}
+
 /** A snapshot item plus the worker's own derivations. */
-export type WorkItem = SnapshotItem & { stage: UnifiedStage; gaps: Gap[]; actions: Action[] }
+export type WorkItem = SnapshotItem & {
+  stage: UnifiedStage
+  gaps: Gap[]
+  actions: Action[]
+  /**
+   * The files this work item was written in, and may be opened from.
+   *
+   * They are the item's own files, so the board knows where each one is — but only the ones the
+   * project can be opened from are here: a file of a project Orca holds no workspace for cannot
+   * be opened in an editor tab, and a link that opens nothing is worse than no link.
+   */
+  sources: ItemSource[]
+}
 
 /** The file the agent writes. */
 export type BoardSnapshot = {

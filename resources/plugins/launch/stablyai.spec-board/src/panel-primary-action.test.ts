@@ -2,8 +2,8 @@
 // button has to be the step that moves it on — for a card that carries only one of the two
 // frameworks too.
 import { assert, test } from 'orca/testing'
-import type { Action, UnifiedStage, WorkItem } from './model'
-import { otherActions, primaryAction } from './panel-primary-action'
+import type { Action, OpenspecFacts, UnifiedStage, WorkItem } from './model'
+import { archiveReady, otherActions, primaryAction } from './panel-primary-action'
 
 function action(id: string): Action {
   return {
@@ -26,7 +26,27 @@ function item(stage: UnifiedStage, ids: readonly string[]): WorkItem {
     openspec: null,
     superpowers: null,
     gaps: [],
-    actions: ids.map(action)
+    actions: ids.map(action),
+    sources: []
+  }
+}
+
+/** A change whose tasks are all ticked, waiting to be archived. */
+function readyToArchive(): WorkItem {
+  const facts: OpenspecFacts = {
+    changeId: 'add-x',
+    stage: 'validated',
+    hasProposal: true,
+    hasDesign: true,
+    hasTasks: true,
+    tasksDone: 3,
+    tasksInProgress: 0,
+    tasksTotal: 3,
+    capabilities: []
+  }
+  return {
+    ...item('validate', ['openspec.validate', 'openspec.archive']),
+    openspec: facts
   }
 }
 
@@ -79,4 +99,30 @@ test('the other actions stay behind 更多', () => {
     otherActions(card).map((entry) => entry.id),
     ['superpowers.brainstorm', 'superpowers.execute']
   )
+})
+
+test('a change whose tasks are all ticked leads with the archive', () => {
+  // Archiving is the step that moves the change on; the check before it does not.
+  const card = readyToArchive()
+  assert.equal(archiveReady(card), true)
+  assert.equal(primaryAction(card)?.id, 'openspec.archive')
+  // The check stays behind 更多, where it can still be run.
+  assert.deepEqual(
+    otherActions(card).map((entry) => entry.id),
+    ['openspec.validate']
+  )
+})
+
+test('a change that is still being worked on does not lead with the archive', () => {
+  const card: WorkItem = { ...readyToArchive(), stage: 'implement' }
+  assert.equal(archiveReady(card), false)
+  assert.equal(primaryAction(card)?.id, 'openspec.validate')
+})
+
+test('a change whose tasks are not all ticked does not lead with the archive', () => {
+  const card = readyToArchive()
+  const facts = { ...card.openspec!, stage: 'implementing' as const }
+  const working = { ...card, openspec: facts }
+  assert.equal(archiveReady(working), false)
+  assert.equal(primaryAction(working)?.id, 'openspec.validate')
 })

@@ -180,6 +180,23 @@ test('the stage and the actions are the worker own derivations', () => {
   assert.deepEqual(validate?.run, { kind: 'terminal', command: 'openspec validate add-x --strict' })
 })
 
+test('an item carries the files it was written in', () => {
+  const merged = mergeBoard({
+    snapshot: snapshot({ projects: [project()], items: [item()] }),
+    localScans: [],
+    specCapabilities: new Map(),
+    knownProjects: []
+  })
+  assert.deepEqual(
+    merged.items[0]!.sources.map((source) => source.path),
+    [
+      'openspec/changes/add-x/proposal.md',
+      'openspec/changes/add-x/design.md',
+      'openspec/changes/add-x/tasks.md'
+    ]
+  )
+})
+
 test('a project without the CLI offers the agent form of the command', () => {
   const merged = mergeBoard({
     snapshot: snapshot({

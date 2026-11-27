@@ -165,6 +165,22 @@ test('the panel names the action, never the command', async () => {
   await view.unmount()
 })
 
+test('a command that is out is not sent again', async () => {
+  const calls: unknown[] = []
+  const view = await mapTab(hostRecording(calls))
+  await view.select({ label: '变更' }, 'add-x')
+  await view.press({ type: 'Button', text: '列出变更' })
+  assert.equal(calls.length, 1)
+  // The button says it is out, and pressing it again sends nothing: a second press would start
+  // a second terminal, not a second attempt at the first one.
+  const sent = view.find({ type: 'Button', text: '已发出' })
+  assert.ok(sent)
+  assert.equal(sent?.disabled, true)
+  await assert.rejects(() => view.press({ type: 'Button', text: '已发出' }))
+  assert.equal(calls.length, 1)
+  await view.unmount()
+})
+
 test('a mutating command of the palette waits for the second press', async () => {
   const calls: unknown[] = []
   const view = await mapTab(hostRecording(calls))
@@ -208,7 +224,7 @@ test('a command the plugin only documents draws no button', async () => {
   assert.equal(buttons.length, 13)
   assert.deepEqual(
     buttons.filter((button) => !button.disabled).map((button) => button.text),
-    ['列出变更', '新建提案', '设计', '写实施计划', '执行计划', '代码评审', '验证完成']
+    ['列出变更', '新建提案', '设计', '写实施计划', '执行计划', '代码评审', '验证']
   )
   // The six that act on a change wait for one.
   assert.equal(buttons.filter((button) => button.disabled).length, 6)

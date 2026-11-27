@@ -6,7 +6,15 @@
 import { Button, EmptyState, Row, Stack, Text, read, set } from 'orca'
 import type { BoardFocus, SnapshotProject, UnifiedStage, WorkItem } from './model'
 import { WorkCard } from './panel-card'
-import { busy, payload, stage } from './panel-state'
+import {
+  busy,
+  payload,
+  refreshBoard,
+  refreshProject,
+  refreshStartedAt,
+  refreshing,
+  stage
+} from './panel-state'
 
 /** The six stages the rail shows, in the order the work flows. */
 const STAGES: readonly { id: UnifiedStage; label: string }[] = [
@@ -79,6 +87,37 @@ function WorkList({
 }
 
 /**
+ * The button that puts the board back in step with the files.
+ *
+ * The board does not watch the files: it shows what the last scan found, so a change that only
+ * the files know about is invisible until somebody looks again. The button is here, where the work
+ * is, because a refresh in another tab is a refresh nobody presses.
+ *
+ * One refresh runs at a time: two agents would fight over the progress file and over the list
+ * the other one is reading, so the button is off while a refresh is in flight.
+ */
+function RefreshButton({ project }: { project: SnapshotProject | null }) {
+  const busy = read(refreshing) || read(refreshStartedAt) !== null
+  return (
+    <Button
+      size="sm"
+      icon="refresh"
+      disabled={busy}
+      tooltip={project === null ? '重新采集整块看板' : `重新采集 ${project.name}`}
+      onPress={() => {
+        if (project === null) {
+          void refreshBoard()
+          return
+        }
+        void refreshProject(project.id, project.name)
+      }}
+    >
+      {busy ? '刷新中…' : '刷新'}
+    </Button>
+  )
+}
+
+/**
  * The work of the project the sidebar has selected.
  *
  * The board follows the sidebar: the work of every project at once is nobody's work. A board with
@@ -114,7 +153,10 @@ export function BoardTab() {
           {`当前项目：${project.name} · ${project.host}`}
         </Text>
       )}
-      <StageRail items={items} current={current} />
+      <Row gap="sm" align="center" wrap>
+        <StageRail items={items} current={current} />
+        <RefreshButton project={project} />
+      </Row>
       {board === null ? (
         <Text muted>{read(busy) ? '读取中…' : '还没有读到看板。'}</Text>
       ) : (

@@ -27,6 +27,9 @@ export { CHANGE_ID_PLACEHOLDER }
 /** The guide the agent follows where the OpenSpec CLI is not installed. */
 const OPENSPEC_GUIDE = 'openspec/AGENTS.md'
 
+/** Where a project's OpenSpec rules live when it has no guide file. */
+const OPENSPEC_RULES = 'openspec/config.yaml'
+
 /** What the prompts talk about: the work itself, and the artifacts it already has. */
 type Subject = {
   /** What the work is called: its own topic. */
@@ -61,9 +64,19 @@ function changeText(change: ChangeRef): string | null {
   return isSafeCommandValue(change.changeId) ? change.changeId : null
 }
 
-/** The prompt the agent gets where the CLI is missing: the guide, and the task. */
+/**
+ * The prompt the agent gets where the CLI is missing: the guide, and the task.
+ *
+ * The guide is the project's own file, and a project may not have one — its rules may live in the
+ * config instead. So the prompt names both, and the agent reads whichever is there.
+ */
 function openspecPrompt(command: OpenspecCommand, changeId: string): string {
-  return `按 ${OPENSPEC_GUIDE} ${withChangeId(command.task, changeId)}`
+  return `按项目自己的 OpenSpec 规则（${OPENSPEC_GUIDE}，没有就 ${OPENSPEC_RULES}）${withChangeId(command.task, changeId)}`
+}
+
+/** The prompt the agent gets where the CLI is there: the command it is to run. */
+function openspecCommandPrompt(commandLine: string): string {
+  return `在项目目录里跑 \`${commandLine}\``
 }
 
 /**
@@ -82,13 +95,19 @@ function openspecAction(
   if (changeId === null) {
     return null
   }
-  // A remote project's command runs on that server, in that project's workspace there. The
-  // desktop cannot put it in a terminal of its own, so the agent does it there instead — in the
-  // project's own workspace, where the files are.
-  const run: ActionRun =
-    command.command !== null && cliAvailable && remote === null
-      ? { kind: 'terminal', command: withChangeId(command.command, changeId) }
-      : { kind: 'agent', prompt: openspecPrompt(command, changeId) }
+  const commandLine = command.command === null ? null : withChangeId(command.command, changeId)
+  let run: ActionRun
+  if (commandLine === null || !cliAvailable) {
+    // No command to run: the agent is asked to do the work by the project's own rules.
+    run = { kind: 'agent', prompt: openspecPrompt(command, changeId) }
+  } else if (remote === null) {
+    // This machine has the CLI, so the command runs in a terminal here.
+    run = { kind: 'terminal', command: commandLine }
+  } else {
+    // The project lives on another machine and the agent runs there, where the CLI is too: the
+    // prompt carries the command, because the guide is not what that machine has.
+    run = { kind: 'agent', prompt: openspecCommandPrompt(commandLine) }
+  }
   return {
     id: command.id,
     label: command.label,

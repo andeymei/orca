@@ -10,6 +10,10 @@
 // that does not move the work on says nothing about where the work is, and a card with no action
 // at all has no button. The rest of the actions stay behind 更多.
 //
+// One step comes before its stage: a change whose tasks are all ticked is ready to be
+// archived, and archiving is what moves it on. Such a card leads with 归档 rather than with
+// the check that comes before it, and that check stays behind 更多.
+//
 // The stage was derived by the worker and arrives in the payload; choosing which of the buttons
 // that already exist to promote is a presentation rule, so it lives here, in the panel. Moving it
 // into the worker would change the payload's shape (`WorkItem`) and the worker's own tests, for
@@ -34,10 +38,32 @@ const PREFERRED_BY_STAGE: Readonly<Record<UnifiedStage, readonly string[]>> = {
 }
 
 /**
+ * Whether the change is ready to be archived.
+ *
+ * The facts say that its tasks are all ticked: a change whose tasks are done is `validated`,
+ * and an archived one is `archived` — so a validated one is still in `changes/`. The stage says
+ * that the rest of the work is done too: a change whose tasks are done while the other side's
+ * plan is not is not ready, because the work item as a whole is still in flight and the drift
+ * between the two is what the board reports.
+ */
+export function archiveReady(item: WorkItem): boolean {
+  return item.stage === 'validate' && item.openspec?.stage === 'validated'
+}
+
+/**
  * The action the card leads with: the one that moves the work on, or the first one the card
  * offers when it cannot take that step — a card with no action at all leads with nothing.
  */
 export function primaryAction(item: WorkItem): Action | null {
+  // A change whose tasks are all ticked is waiting to be archived, and archiving is the step
+  // that moves it on. The check that comes before it stays behind 更多: it does not move the
+  // work anywhere, and a card cannot lead with both.
+  if (archiveReady(item)) {
+    const archive = item.actions.find((action) => action.id === 'openspec.archive')
+    if (archive) {
+      return archive
+    }
+  }
   for (const id of PREFERRED_BY_STAGE[item.stage]) {
     const found = item.actions.find((action) => action.id === id)
     if (found) {

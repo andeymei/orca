@@ -7,7 +7,14 @@
 import { Button, Stack, Text, read } from 'orca'
 import { needsChangeId } from './actions'
 import type { Action, SnapshotProject } from './model'
-import { feedback, pendingAction, pressAction } from './panel-state'
+import {
+  dispatchKey,
+  dispatched,
+  feedback,
+  pendingAction,
+  pressAction,
+  readNumber
+} from './panel-state'
 import { canRunActions, noRunMessage, runChannel } from './panel-workspace'
 
 /** What a command of the palette needs to run: the project, the change, and the actions. */
@@ -22,6 +29,12 @@ export type Palette = {
 
 /** The label on a button that cannot run yet: the person is one pick short. */
 const NEEDS_A_CHANGE = '先选一个变更'
+
+/** What a button says when its action is already out. */
+const SENT = '已发出'
+
+/** What that button's tooltip says: why it is off, and what to do about it. */
+const SENT_HINT = '已经发出去了，刷新看板看结果'
 
 /**
  * Where the press is filed: what the action will act on, and which button it was. A change
@@ -60,14 +73,17 @@ export function PaletteButton({
   const scope = scopeOf(project.id, palette.change, row, action)
   const asked = waiting !== null && waiting.scope === scope && waiting.actionId === action.id
   const done = read(feedback)[scope]
+  // The action this button has already sent, if it has sent one since the last read.
+  const sent = read(dispatched)[dispatchKey(scope, action.id)]
+  const out = sent !== undefined && sent.at === readNumber()
   return (
     <Stack gap="none">
       <Button
         size="sm"
         variant="outline"
         icon="play"
-        disabled={!ready || !runnable}
-        tooltip={runnable ? runChannel(action) : noRunMessage(project)}
+        disabled={!ready || !runnable || out}
+        tooltip={out ? SENT_HINT : runnable ? runChannel(action) : noRunMessage(project)}
         onPress={() => {
           pressAction({
             scope,
@@ -77,7 +93,7 @@ export function PaletteButton({
           })
         }}
       >
-        {asked ? '确认执行？' : ready ? action.label : NEEDS_A_CHANGE}
+        {out ? SENT : asked ? '确认执行？' : ready ? action.label : NEEDS_A_CHANGE}
       </Button>
       {done === undefined ? null : (
         <Text size="xs" tone="success">

@@ -15,6 +15,7 @@
 
 import { actionsForItem } from './actions'
 import { detectGaps } from './gaps'
+import { itemSources } from './item-sources'
 import { projectIdFor } from './project-identity'
 import { remoteOf } from './remote-host'
 import { deriveStage } from './stage'
@@ -188,6 +189,10 @@ export function mergeBoard(input: MergeInput): MergedBoard {
       ...facts,
       stage: deriveStage(facts),
       gaps,
+      // The files the work was written in. Whether they can be opened is not decided here: a
+      // project Orca holds no workspace for has no editor tab to open them in, and that is the
+      // board's business, not the merge's.
+      sources: itemSources(facts),
       // A project on another host cannot run a command here: its actions are prompts the agent
       // carries over there.
       actions: actionsForItem(facts, cliAvailable(project), remoteOf(project))

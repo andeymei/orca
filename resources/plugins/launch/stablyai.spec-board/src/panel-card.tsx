@@ -4,11 +4,25 @@
 // The card leads with one button — the one its stage waits for — and keeps the rest behind 更多,
 // because a card can offer eight actions and a person can only tell which one is next.
 
-import { Badge, Button, Card, Collapsible, Progress, Row, Stack, Text, read } from 'orca'
+import { Badge, Button, Card, Collapsible, Link, Progress, Row, Stack, Text, read } from 'orca'
 import type { Action, SnapshotProject, WorkItem } from './model'
 import { otherActions, primaryAction } from './panel-primary-action'
-import { feedback, pendingAction, pressAction } from './panel-state'
+import {
+  dispatchKey,
+  dispatched,
+  feedback,
+  openSource,
+  pendingAction,
+  pressAction,
+  readNumber
+} from './panel-state'
 import { canRunActions, noRunMessage, runChannel } from './panel-workspace'
+
+/** What a button says when its action is already out. */
+const SENT = '已发出'
+
+/** What that button's tooltip says: why it is off, and what to do about it. */
+const SENT_HINT = '已经发出去了，刷新看板看结果'
 
 /** How far a checklist is, in the percent a Progress bar takes. */
 function percent(done: number, total: number): number {
@@ -39,6 +53,17 @@ function actionLabel(
 ): string {
   const asked = waiting !== null && waiting.scope === scope && waiting.actionId === action.id
   return asked ? '确认执行？' : action.label
+}
+
+/**
+ * Whether an action is already out: it was sent, and the board has not been read since.
+ *
+ * The read is the only sign the panel has that the work moved on, so until it comes the button
+ * stays off: a second press would start a second agent, not a second attempt at the first one.
+ */
+function isSent(scope: string, action: Action): boolean {
+  const sent = read(dispatched)[dispatchKey(scope, action.id)]
+  return sent !== undefined && sent.at === readNumber()
 }
 
 /** The OpenSpec lane: the tasks the change's own checklist holds. */
@@ -93,6 +118,10 @@ export function WorkCard({
   const withoutCli = project?.openspecCli?.available === false
   const primary = primaryAction(item)
   const others = otherActions(item)
+  // The files the work was written in. The first one is the item's main file — the title opens
+  // it — and the rest are named under it, so every file of the work is one press away.
+  const mainSource = item.sources[0] ?? null
+  const otherSources = item.sources.slice(1)
   const done = results[item.id]
   // A project whose actions cannot run has nowhere to run them: the button is off, and it says so.
   const runnable = canRunActions(project)
@@ -100,7 +129,27 @@ export function WorkCard({
   return (
     <Card>
       <Stack gap="sm">
-        <Text weight="semibold">{item.title}</Text>
+        <Text weight="semibold">
+          {mainSource === null ? (
+            item.title
+          ) : (
+            <Link onPress={() => { void openSource(item.id, mainSource.key) }}>
+              {item.title}
+            </Link>
+          )}
+        </Text>
+        {otherSources.length === 0 ? null : (
+          <Row gap="xs" wrap>
+            {otherSources.map((source) => (
+              <Link
+                key={source.key}
+                onPress={() => { void openSource(item.id, source.key) }}
+              >
+                {source.label}
+              </Link>
+            ))}
+          </Row>
+        )}
         <Row gap="xs" align="center" wrap>
           <Badge tone="neutral">{projectLine(project, item)}</Badge>
           {withoutCli ? <Badge tone="warning">无 CLI</Badge> : null}
@@ -134,8 +183,8 @@ export function WorkCard({
               key={primary.id}
               size="sm"
               variant="solid"
-              disabled={!runnable}
-              tooltip={hint ?? runChannel(primary)}
+              disabled={!runnable || isSent(item.id, primary)}
+              tooltip={isSent(item.id, primary) ? SENT_HINT : hint ?? runChannel(primary)}
               onPress={() => {
                 pressAction({
                   scope: item.id,
@@ -145,7 +194,7 @@ export function WorkCard({
                 })
               }}
             >
-              {actionLabel(item.id, primary, waiting)}
+              {isSent(item.id, primary) ? SENT : actionLabel(item.id, primary, waiting)}
             </Button>
           )}
           {others.length === 0 ? null : (
@@ -156,8 +205,8 @@ export function WorkCard({
                     key={action.id}
                     size="sm"
                     variant="outline"
-                    disabled={!runnable}
-                    tooltip={hint ?? runChannel(action)}
+                    disabled={!runnable || isSent(item.id, action)}
+                    tooltip={isSent(item.id, action) ? SENT_HINT : hint ?? runChannel(action)}
                     onPress={() => {
                       pressAction({
                         scope: item.id,
@@ -167,7 +216,7 @@ export function WorkCard({
                       })
                     }}
                   >
-                    {actionLabel(item.id, action, waiting)}
+                    {isSent(item.id, action) ? SENT : actionLabel(item.id, action, waiting)}
                   </Button>
                 ))}
               </Row>

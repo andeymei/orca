@@ -265,7 +265,8 @@ test('a stored tab that names no tab falls back to the board', async () => {
   // The tab bar is told a tab it knows: a stored value that names no tab would show nothing.
   assert.equal(view.find({ type: 'Tabs' })?.props.value, 'board')
   assert.ok(view.find({ text: 'Add X' }))
-  assert.equal(view.find({ type: 'Button', text: '刷新' }), null)
+  // The board refreshes from where the work is: the button is here, not only in the projects tab.
+  assert.ok(view.find({ type: 'Button', text: '刷新' }))
   await view.unmount()
 })
 

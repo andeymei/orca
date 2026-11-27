@@ -168,7 +168,7 @@ test('every action carries the label, the framework and the mutates flag of its 
       ['superpowers.plan', '写实施计划', 'superpowers', true],
       ['superpowers.execute', '执行计划', 'superpowers', true],
       ['superpowers.review', '代码评审', 'superpowers', false],
-      ['superpowers.verify', '验证完成', 'superpowers', false]
+      ['superpowers.verify', '验证', 'superpowers', false]
     ]
   )
 })
@@ -196,8 +196,16 @@ test('the OpenSpec commands are the ones the CLI actually has', () => {
     [
       { kind: 'terminal', command: 'openspec validate add-x --strict' },
       { kind: 'terminal', command: 'openspec show add-x --json --deltas-only' },
-      { kind: 'agent', prompt: '按 openspec/AGENTS.md 为变更 add-x 补齐 design、tasks 和增量 spec' },
-      { kind: 'agent', prompt: '按 openspec/AGENTS.md 实现变更 add-x，按它的 tasks.md 做' },
+      {
+        kind: 'agent',
+        prompt:
+          '按项目自己的 OpenSpec 规则（openspec/AGENTS.md，没有就 openspec/config.yaml）为变更 add-x 补齐 design、tasks 和增量 spec'
+      },
+      {
+        kind: 'agent',
+        prompt:
+          '按项目自己的 OpenSpec 规则（openspec/AGENTS.md，没有就 openspec/config.yaml）实现变更 add-x，按它的 tasks.md 做'
+      },
       { kind: 'terminal', command: 'openspec archive add-x --yes' }
     ]
   )
@@ -833,9 +841,37 @@ test('a remote project is acted on by an agent, not by a command here', () => {
   }
   // The prompt names the work, not the machine: the agent is already there.
   const prompt = promptOf(findAction(actions, 'openspec.validate')!)
-  assert.match(prompt, /严格校验变更 add-x/)
+  assert.match(prompt, /add-x/)
   assert.equal(prompt.includes('ssh:yolo'), false)
   assert.equal(prompt.includes('C:/work/remote'), false)
+})
+
+test('a remote project with the CLI runs the command there', () => {
+  // The CLI is on the machine that holds the project, and the agent runs on that machine too:
+  // the prompt carries the command, so the work happens where the files are.
+  const actions = actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' })
+  const validate = findAction(actions, 'openspec.validate')!
+  assert.equal(validate.run.kind, 'agent')
+  assert.match(promptOf(validate), /openspec validate add-x --strict/)
+  const archive = findAction(actions, 'openspec.archive')!
+  assert.match(promptOf(archive), /openspec archive add-x --yes/)
+})
+
+test('a remote project without the CLI gets the guide, not a command', () => {
+  // No CLI on that machine: there is no command to run, so the agent is asked by the rules.
+  const actions = actionsForItem(item, false, { host: 'ssh:yolo', path: 'C:/work/remote' })
+  const validate = findAction(actions, 'openspec.validate')!
+  assert.equal(validate.run.kind, 'agent')
+  assert.match(promptOf(validate), /openspec\/AGENTS\.md/)
+  assert.equal(promptOf(validate).includes('openspec validate'), false)
+})
+
+test('a step the CLI has no command for is the agent work either way', () => {
+  // Implementing a change is the agent s work: there is no command line for it.
+  const actions = actionsForItem(item, true, { host: 'ssh:yolo', path: 'C:/work/remote' })
+  const implement = findAction(actions, 'openspec.implement')!
+  assert.equal(implement.run.kind, 'agent')
+  assert.match(promptOf(implement), /openspec\/AGENTS\.md/)
 })
 
 test('the palette of a remote project is the agent form too', () => {

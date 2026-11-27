@@ -1,0 +1,223 @@
+// Opening a file of a work item: the worker derives the path from the item's own facts, and
+// opens it in the workspace that holds the project.
+import { afterEach, assert, mockHost, mountWorker, test } from 'orca/testing'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import * as main from './worker'
+
+const roots: string[] = []
+
+afterEach(async () => {
+  for (const root of roots.splice(0)) {
+    await rm(root, { recursive: true, force: true })
+  }
+  delete process.env.SPEC_BOARD_HOME
+})
+
+/** The plugin's own files live in a directory of their own. */
+async function home(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'spec-board-home-'))
+  roots.push(root)
+  process.env.SPEC_BOARD_HOME = root
+  return root
+}
+
+/** One workspace on this machine and one on another host. */
+const workspaces = {
+  workspaces: [
+    {
+      id: 'w1',
+      kind: 'worktree',
+      name: 'demo',
+      project: 'demo',
+      projectId: 'p1',
+      path: '/repo/demo',
+      branch: 'main',
+      hostId: 'local'
+    },
+    {
+      id: 'w2',
+      kind: 'worktree',
+      name: 'remote',
+      project: 'remote',
+      projectId: 'p2',
+      path: 'C:/work/remote',
+      branch: 'main',
+      hostId: 'ssh:yolo'
+    }
+  ],
+  truncated: false
+}
+
+/** A snapshot with one project and one item, as the agent would write it. */
+function snapshotJson(projectId: string, changeId: string): string {
+  const separator = projectId.indexOf('|')
+  const host = separator > 0 ? projectId.slice(0, separator) : 'local'
+  const path = separator > 0 ? projectId.slice(separator + 1) : projectId
+  return JSON.stringify({
+    schemaVersion: 1,
+    generatedAt: '2026-11-25T10:00:00.000Z',
+    generatedBy: { agent: 'claude' },
+    projects: [
+      {
+        id: projectId,
+        name: 'demo',
+        host,
+        path,
+        openspec: { present: true, capabilities: [], activeChanges: 1, archived: 0 },
+        superpowers: null,
+        openspecCli: { available: true, version: '1.8.0' },
+        scannedAt: '2026-11-25T10:00:00.000Z'
+      }
+    ],
+    items: [
+      {
+        id: `${projectId}#${changeId}`,
+        projectId,
+        title: 'Add X',
+        topic: changeId,
+        openspec: {
+          changeId,
+          stage: 'implementing',
+          hasProposal: true,
+          hasDesign: true,
+          hasTasks: true,
+          tasksDone: 1,
+          tasksInProgress: 0,
+          tasksTotal: 4,
+          capabilities: []
+        },
+        superpowers: null
+      }
+    ]
+  })
+}
+
+test('opens a file of a work item in the editor', async () => {
+  const root = await home()
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.open': { opened: true },
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  const result = await worker.request('source.open', {
+    itemId: 'local|/repo/demo#add-x',
+    sourceKey: 'openspec-proposal'
+  })
+  assert.deepEqual(result, { opened: true })
+  // The path is the item's own: the worker derived it from the change the item holds.
+  assert.deepEqual(host.callsOf('editor.open'), [
+    { workspaceId: 'w1', path: 'openspec/changes/add-x/proposal.md' }
+  ])
+  // The workspace that holds the project comes to the front: a tab nobody sees is no answer.
+  assert.deepEqual(host.callsOf('workspace.open'), [{ workspaceId: 'w1' }])
+  await worker.deactivate()
+})
+
+test('opens the file that was named, not the first one', async () => {
+  const root = await home()
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.open': { opened: true },
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  await worker.request('source.open', {
+    itemId: 'local|/repo/demo#add-x',
+    sourceKey: 'openspec-tasks'
+  })
+  assert.deepEqual(host.callsOf('editor.open'), [
+    { workspaceId: 'w1', path: 'openspec/changes/add-x/tasks.md' }
+  ])
+  await worker.deactivate()
+})
+
+test('the file opens even when the workspace will not come to the front', async () => {
+  const root = await home()
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  await worker.request('source.open', {
+    itemId: 'local|/repo/demo#add-x',
+    sourceKey: 'openspec-proposal'
+  })
+  // The workspace could not be shown, but the file opened all the same: a tab in the background
+  // is better than no tab.
+  assert.deepEqual(host.callsOf('editor.open'), [
+    { workspaceId: 'w1', path: 'openspec/changes/add-x/proposal.md' }
+  ])
+  await worker.deactivate()
+})
+
+test('refuses a file the work item does not have', async () => {
+  const root = await home()
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.open': { opened: true },
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  await assert.rejects(
+    worker.request('source.open', {
+      itemId: 'local|/repo/demo#add-x',
+      sourceKey: 'superpowers-plan'
+    }),
+    /没有这个文件/
+  )
+  // Nothing was opened: the key named a file the item does not hold.
+  assert.deepEqual(host.callsOf('editor.open'), [])
+  await worker.deactivate()
+})
+
+test('refuses a work item the board does not have', async () => {
+  await home()
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  await assert.rejects(
+    worker.request('source.open', {
+      itemId: 'local|/repo/demo#nothing',
+      sourceKey: 'openspec-proposal'
+    }),
+    /找不到这个工作项/
+  )
+  assert.deepEqual(host.callsOf('editor.open'), [])
+  await worker.deactivate()
+})
+
+test('a project with no workspace offers no file to open', async () => {
+  const root = await home()
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/elsewhere', 'add-x'), 'utf8')
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  const item = payload.items.find((i) => i.id === 'local|/elsewhere#add-x')!
+  // There is no workspace to open the file in, so the card offers no link at all.
+  assert.deepEqual(item.sources, [])
+  await worker.deactivate()
+})

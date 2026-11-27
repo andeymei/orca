@@ -685,9 +685,10 @@ test('an action on a remote project runs in that project own workspace', async (
   assert.deepEqual(host.callsOf('terminal.create'), [])
   const launched = host.callsOf('agent.launch')[0]
   assert.equal(callString(launched, 'workspaceId'), 'w2')
-  // The prompt names the work, not the machine: the agent is already on it.
+  // The prompt carries the command, which the agent runs where the files are; it names the work,
+  // not the machine: the agent is already on it.
   const prompt = callString(launched, 'prompt')
-  assert.match(prompt, /严格校验变更 add-y/)
+  assert.match(prompt, /openspec validate add-y --strict/)
   assert.equal(prompt.includes('ssh:yolo'), false)
   assert.equal(prompt.includes('C:/work/remote'), false)
   await worker.deactivate()

@@ -75,6 +75,90 @@ test('the other actions are behind 更多', async () => {
   await view.unmount()
 })
 
+test('a change whose tasks are all ticked leads with the archive', async () => {
+  const host = mockHost({ requests: { 'board.get': () => fixturePayload } })
+  const view = await mount(panel, { host })
+  // Add W's tasks are all ticked, so it waits in the validate stage.
+  await view.press({ text: '校验 1' })
+  const archive = view.find({ type: 'Button', text: '归档' })
+  assert.ok(archive)
+  assert.equal(archive?.props.variant, 'solid')
+  // The check that comes before it is behind 更多, where it can still be run.
+  await view.toggle({ label: '更多' })
+  assert.equal(view.find({ type: 'Button', text: '校验' })?.props.variant, 'outline')
+  await view.unmount()
+})
+
+test('an action that is out is not sent again', async () => {
+  const calls: unknown[] = []
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
+      'action.run': (input) => {
+        calls.push(input)
+        return { kind: 'agent', terminalId: 't9', agent: 'claude' }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ text: '校验' })
+  assert.equal(calls.length, 1)
+  // The button says it is out, and pressing it again sends nothing: a second press would start
+  // a second agent, not a second attempt at the first one.
+  const sent = view.find({ type: 'Button', text: '已发出' })
+  assert.ok(sent)
+  assert.equal(sent?.disabled, true)
+  await assert.rejects(() => view.press({ type: 'Button', text: '已发出' }))
+  assert.equal(calls.length, 1)
+  await view.unmount()
+})
+
+test('a read of the board lets the action be sent again', async () => {
+  const calls: unknown[] = []
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
+      'action.run': (input) => {
+        calls.push(input)
+        return { kind: 'agent', terminalId: 't10', agent: 'claude' }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ text: '校验' })
+  assert.equal(calls.length, 1)
+  // The board was read again, so the work may have moved on: the button is live once more.
+  await view.post('board.changed', { agentAt: null })
+  const again = view.find({ type: 'Button', text: '校验' })
+  assert.equal(again?.disabled, false)
+  await view.press({ text: '校验' })
+  assert.equal(calls.length, 2)
+  await view.unmount()
+})
+
+test('another action of the same card does not re-arm the one that is out', async () => {
+  const calls: unknown[] = []
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
+      'action.run': (input) => {
+        calls.push(input)
+        return { kind: 'agent', terminalId: 't11', agent: 'claude' }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ text: '校验' })
+  assert.equal(calls.length, 1)
+  // Another action of the same card goes out; the first one is still out.
+  await view.toggle({ label: '更多' })
+  await view.press({ text: '归档' })
+  await view.press({ text: '确认执行？' })
+  assert.equal(calls.length, 2)
+  assert.equal(view.find({ type: 'Button', text: '已发出' })?.disabled, true)
+  await view.unmount()
+})
+
 test('runs a non-mutating action on the first press', async () => {
   const calls: unknown[] = []
   const host = mockHost({
@@ -244,6 +328,75 @@ test('the next action is a hint, not a button', async () => {
   assert.ok(view.find({ text: '写下设计' }))
   assert.ok(view.find({ text: '先写设计 spec，再改代码' }))
   assert.equal(view.find({ type: 'Button', text: '写下设计' }), null)
+  await view.unmount()
+})
+
+test('the title opens the file the work was written in', async () => {
+  const calls: unknown[] = []
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
+      'source.open': (input) => {
+        calls.push(input)
+        return { opened: true }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  // The title is the work item's main file: the first of the files it was written in.
+  assert.ok(view.find({ type: 'Link', text: 'Add X' }))
+  await view.press({ type: 'Link', text: 'Add X' })
+  assert.deepEqual(calls, [{ itemId: 'local|/repo#add-x', sourceKey: 'openspec-proposal' }])
+  await view.unmount()
+})
+
+test('the other files of the work are named under the title', async () => {
+  const calls: unknown[] = []
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
+      'source.open': (input) => {
+        calls.push(input)
+        return { opened: true }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  assert.ok(view.find({ type: 'Link', text: 'design.md' }))
+  assert.ok(view.find({ type: 'Link', text: 'tasks.md' }))
+  await view.press({ type: 'Link', text: 'tasks.md' })
+  assert.deepEqual(calls, [{ itemId: 'local|/repo#add-x', sourceKey: 'openspec-tasks' }])
+  await view.unmount()
+})
+
+test('a work item with no file to open keeps its plain title', async () => {
+  const board: BoardPayload = {
+    ...fixturePayload,
+    items: fixturePayload.items.map((item) =>
+      item.id === 'local|/repo#add-x' ? { ...item, sources: [] } : item
+    )
+  }
+  const host = mockHost({ requests: { 'board.get': () => board } })
+  const view = await mount(panel, { host })
+  // A link that opens nothing is worse than no link: the title stays plain text.
+  assert.equal(view.find({ type: 'Link', text: 'Add X' }), null)
+  assert.ok(view.find({ type: 'Text', text: 'Add X' }))
+  await view.unmount()
+})
+
+test('says what could not be opened', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => fixturePayload,
+      'source.open': () => {
+        throw hostError('invalid_params', '这个工作项没有这个文件')
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'Link', text: 'Add X' })
+  assert.ok(view.find({ label: 'invalid_params' }))
+  assert.ok(view.find({ text: '这个工作项没有这个文件' }))
   await view.unmount()
 })
 

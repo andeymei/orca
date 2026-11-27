@@ -6,7 +6,7 @@
 // can reach a terminal.
 
 import { atom, plugin, read, set } from 'orca'
-import type { Action, BoardPayload, UnifiedStage } from './model'
+import type { Action, BoardPayload, ItemSourceKey, UnifiedStage } from './model'
 import type { RefreshProgress } from './refresh-progress'
 
 /** Which of the three tabs the panel shows. */
@@ -90,6 +90,41 @@ export const pendingAction = atom<{ scope: string; actionId: string } | null>(nu
 /** What the last action on each button did, by the scope the press was filed under. */
 export const feedback = atom<Record<string, string>>({})
 
+/**
+ * The action each scope has sent out, and the read it was sent after.
+ *
+ * A press that runs an agent is not undone by pressing again: the second press starts a second
+ * agent. So the panel remembers what it sent, and the button says so until the board is read
+ * again — the read is the only sign the panel has that the work may have moved on.
+ *
+ * The record is filed under the scope *and* the action: sending another action of the same card
+ * does not clear the one that is still out.
+ */
+export const dispatched = atom<Record<string, { at: number }>>({})
+
+/**
+ * The key a dispatch is filed under.
+ *
+ * The scope and the action are joined by a character no scope holds, so one action's record can
+ * never be mistaken for another's.
+ */
+export function dispatchKey(scope: string, actionId: string): string {
+  return `${scope}\u0000${actionId}`
+}
+
+/**
+ * How many times the board has been read.
+ *
+ * A dispatch remembers the number it happened at, so a button can tell that the board has been
+ * read again since — the only signal the panel has that the work may have moved on.
+ */
+let boardReads = 0
+
+/** The number of the read the board on screen came from. */
+export function readNumber(): number {
+  return boardReads
+}
+
 /** How long a mutating action waits for its second press. */
 const CONFIRM_WINDOW_MS = 3000
 
@@ -138,6 +173,8 @@ async function loadBoard(reads: BoardReads): Promise<void> {
       return
     }
     reads.applied = number
+    // The board on screen is a new one: a button that waits for a read can wait for this one.
+    boardReads += 1
     set(payload, answer)
     set(error, null)
     // The snapshot that just landed is newer than the refresh that was waiting for it: the
@@ -315,6 +352,12 @@ async function run(press: ActionPress): Promise<void> {
   try {
     const answer = await plugin.request('action.run', requestOf(press))
     set(feedback, { ...read(feedback), [press.scope]: feedbackOf(answer) })
+    // The action is out: pressing the same button again would start a second one, so the button
+    // says so until the board is read again.
+    set(dispatched, {
+      ...read(dispatched),
+      [dispatchKey(press.scope, press.action.id)]: { at: readNumber() }
+    })
   } catch (thrown) {
     set(error, { code: codeOf(thrown), message: messageOf(thrown) })
   }
@@ -393,6 +436,22 @@ export async function refreshProject(projectId: string, name: string): Promise<v
   }
 }
 
+/**
+ * Opens one file of a work item in an editor tab of Orca's window.
+ *
+ * The panel names the item and which of its files; the worker derives the path from the item's
+ * own facts. A refusal is the board's to show: the callout above the tabs says what could not be
+ * opened.
+ */
+export async function openSource(itemId: string, sourceKey: ItemSourceKey): Promise<void> {
+  set(error, null)
+  try {
+    await plugin.request('source.open', { itemId, sourceKey })
+  } catch (thrown) {
+    set(error, { code: codeOf(thrown), message: messageOf(thrown) })
+  }
+}
+
 /** Cancels the confirmation that is waiting, so nothing is pending any more. */
 export function stopWaiting(): void {
   if (confirmTimer !== null) {
@@ -429,6 +488,12 @@ function ask(scope: string, actionId: string): void {
 
 /** What a press on an action's button does: run it, or ask for the second press first. */
 export function pressAction(press: ActionPress): void {
+  // An action that is already out is not sent again: the second press would start a second
+  // agent, and the board has not been read since the first one.
+  const sent = read(dispatched)[dispatchKey(press.scope, press.action.id)]
+  if (sent !== undefined && sent.at === readNumber()) {
+    return
+  }
   const waiting = read(pendingAction)
   const asked =
     waiting !== null && waiting.scope === press.scope && waiting.actionId === press.action.id

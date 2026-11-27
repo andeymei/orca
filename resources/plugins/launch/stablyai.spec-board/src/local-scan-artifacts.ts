@@ -5,24 +5,20 @@
 import type { Dirent } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import {
+  OPENSPEC_ARCHIVE_DIR,
+  OPENSPEC_CHANGES_DIR,
+  OPENSPEC_DESIGN_FILE,
+  OPENSPEC_DIR,
+  OPENSPEC_PROPOSAL_FILE,
+  OPENSPEC_SPECS_DIR,
+  OPENSPEC_TASKS_FILE,
+  SUPERPOWERS_DIRS
+} from './artifact-layout'
 import { normalizeTopic } from './correlation'
 import { countCheckboxes, type CheckboxCount } from './markdown-tasks'
 import type { SnapshotProject } from './model'
 import { errorCode } from './unknown-values'
-
-const OPENSPEC_DIR = 'openspec'
-const CHANGES_DIR = 'changes'
-const SPECS_DIR = 'specs'
-const ARCHIVE_DIR = 'archive'
-const PROPOSAL_FILE = 'proposal.md'
-const DESIGN_FILE = 'design.md'
-const TASKS_FILE = 'tasks.md'
-
-/** The Superpowers folders, and the kind of artifact each one holds. */
-const SUPERPOWERS_DIRS = [
-  { kind: 'spec', path: 'docs/superpowers/specs' },
-  { kind: 'plan', path: 'docs/superpowers/plans' }
-] as const
 
 /** A task list with no boxes in it. */
 export const NO_CHECKBOXES: CheckboxCount = { done: 0, total: 0, inProgress: 0 }
@@ -154,13 +150,13 @@ async function readChange(
   // The task list is named once, and both the existence check and the count read that name: two
   // derivations of one file could drift, and then the board would say a change has tasks while
   // counting none.
-  const tasks = `${relative}/${TASKS_FILE}`
+  const tasks = `${relative}/${OPENSPEC_TASKS_FILE}`
   const [hasProposal, hasDesign, hasTasks] = await Promise.all([
-    fileExists(root, `${relative}/${PROPOSAL_FILE}`, warnings),
-    fileExists(root, `${relative}/${DESIGN_FILE}`, warnings),
+    fileExists(root, `${relative}/${OPENSPEC_PROPOSAL_FILE}`, warnings),
+    fileExists(root, `${relative}/${OPENSPEC_DESIGN_FILE}`, warnings),
     fileExists(root, tasks, warnings)
   ])
-  const delta = await readDirectory(root, `${relative}/${SPECS_DIR}`, warnings)
+  const delta = await readDirectory(root, `${relative}/${OPENSPEC_SPECS_DIR}`, warnings)
   return {
     path: relative,
     topic: normalizeTopic(changeId),
@@ -179,14 +175,14 @@ export async function scanOpenspec(
   root: string,
   warnings: string[]
 ): Promise<{ facts: SnapshotProject['openspec']; changes: ChangeOnDisk[] }> {
-  const changes = `${OPENSPEC_DIR}/${CHANGES_DIR}`
+  const changes = `${OPENSPEC_DIR}/${OPENSPEC_CHANGES_DIR}`
   const changesDir = await readDirectory(root, changes, warnings)
-  const specsDir = await readDirectory(root, `${OPENSPEC_DIR}/${SPECS_DIR}`, warnings)
-  const archive = await readDirectory(root, `${changes}/${ARCHIVE_DIR}`, warnings)
+  const specsDir = await readDirectory(root, `${OPENSPEC_DIR}/${OPENSPEC_SPECS_DIR}`, warnings)
+  const archive = await readDirectory(root, `${changes}/${OPENSPEC_ARCHIVE_DIR}`, warnings)
   const changeIds =
     changesDir === null
       ? []
-      : namesOf(changesDir, isDirectory).filter((name) => name !== ARCHIVE_DIR)
+      : namesOf(changesDir, isDirectory).filter((name) => name !== OPENSPEC_ARCHIVE_DIR)
   const archivedIds = archive === null ? [] : namesOf(archive, isDirectory)
   const found: ChangeOnDisk[] = []
   for (const changeId of changeIds) {
@@ -196,7 +192,7 @@ export async function scanOpenspec(
   // still shows it — in the archive stage, and with the gap that says its spec never arrived.
   for (const changeId of archivedIds) {
     found.push(
-      await readChange(root, `${changes}/${ARCHIVE_DIR}/${changeId}`, changeId, true, warnings)
+      await readChange(root, `${changes}/${OPENSPEC_ARCHIVE_DIR}/${changeId}`, changeId, true, warnings)
     )
   }
   const present = changesDir !== null || specsDir !== null

@@ -208,14 +208,31 @@ export async function buildBoard(
   // A remote project's action is an agent that runs on this machine and reaches the other machine
   // over ssh, so it needs a workspace here rather than one there.
   const localWorkspace = workspaces.find(isLocalWorkspace)?.id ?? null
+  // The workspace that holds each project, or null when none does. It is the workspace the
+  // project's files live in, so it is also the one they can be opened in: a project Orca holds no
+  // workspace for has no editor tab to open its files in.
+  const workspaceOf = new Map<string, string | null>()
+  for (const project of merged.projects) {
+    workspaceOf.set(
+      project.id,
+      findWorkspaceId(workspaces, { path: project.path, host: project.host })
+    )
+  }
   const projects = merged.projects.map((project) => ({
     ...project,
     canRun:
       project.host === 'local'
-        ? findWorkspaceId(workspaces, { path: project.path, host: project.host }) !== null
+        ? (workspaceOf.get(project.id) ?? null) !== null
         : localWorkspace !== null
   }))
-  for (const item of merged.items) {
+  // A work item offers the files it can be opened from. The files of a project with no workspace
+  // are not among them: there is no tab to open them in, and a link that opens nothing is worse
+  // than no link.
+  const items = merged.items.map((item) => ({
+    ...item,
+    sources: (workspaceOf.get(item.projectId) ?? null) === null ? [] : item.sources
+  }))
+  for (const item of items) {
     const changeId = item.openspec?.changeId
     if (changeId !== undefined && !isSafeCommandValue(changeId)) {
       warnings.push(
@@ -224,7 +241,7 @@ export async function buildBoard(
     }
   }
   const payload: BoardPayload = {
-    items: merged.items,
+    items,
     projects,
     focus,
     sources: { localAt: localScans.length > 0 ? Date.now() : null, agentAt: snapshot.at },

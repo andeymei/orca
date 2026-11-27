@@ -1,5 +1,5 @@
 // The panel <-> worker contract, declared once: src/panel.tsx and src/worker.ts both read it.
-import type { BoardPayload } from './model'
+import type { BoardPayload, ItemSourceKey } from './model'
 import type { RefreshProgress } from './refresh-progress'
 
 declare module 'orca' {
@@ -32,6 +32,16 @@ declare module 'orca' {
     'board.refreshProject': {
       input: { projectId: string }
       output: { kind: 'local' | 'agent'; terminalId?: string; agent?: string }
+    }
+    /**
+     * Opens one file of a work item in an editor tab of Orca's window.
+     *
+     * The panel names the item and which of its files — never a path: the worker derives the path
+     * from the item's own facts, so a file that is not the item's cannot be opened.
+     */
+    'source.open': {
+      input: { itemId: string; sourceKey: ItemSourceKey }
+      output: { opened: true }
     }
     /**
      * Runs one action. The panel names the action and, for a change-scoped command, the change

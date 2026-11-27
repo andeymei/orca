@@ -154,7 +154,7 @@ export const SUPERPOWERS_SKILLS: readonly SuperpowersSkill[] = [
   },
   {
     id: 'superpowers.verify',
-    label: '验证完成',
+    label: '验证',
     mutates: false,
     skill: 'superpowers:verification-before-completion',
     task: '验证本次改动'

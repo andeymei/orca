@@ -77,6 +77,69 @@ test('a project only the local scan saw is on the board', () => {
   )
 })
 
+test('a project the agent places somewhere else is not on the board', () => {
+  // The id is the host and the path. A project whose fields say another place than its id is
+  // not the project it names, and the board cannot say where it is.
+  const merged = mergeBoard({
+    snapshot: snapshot({
+      projects: [project({ id: 'local|/repo', path: '/somewhere/else' })]
+    }),
+    localScans: [],
+    specCapabilities: new Map(),
+    knownProjects: [{ name: 'repo', host: 'local', path: '/repo' }]
+  })
+  assert.deepEqual(merged.projects, [])
+})
+
+test('a project the agent found is on the board', () => {
+  // The agent may find a project Orca does not list: it is on the board with what the agent
+  // found, and its actions are off until a workspace holds it.
+  const merged = mergeBoard({
+    snapshot: snapshot({
+      projects: [project({ id: 'local|/invented', path: '/invented' })]
+    }),
+    localScans: [],
+    specCapabilities: new Map(),
+    knownProjects: [{ name: 'repo', host: 'local', path: '/repo' }]
+  })
+  assert.ok(merged.projects.some((entry) => entry.id === 'local|/invented'))
+})
+
+test('the work of a project that is not on the board is not on the board either', () => {
+  const merged = mergeBoard({
+    snapshot: snapshot({
+      projects: [project({ id: 'local|/repo', path: '/somewhere/else' })],
+      items: [item({ id: 'local|/repo#add-x', projectId: 'local|/repo' })]
+    }),
+    localScans: [],
+    specCapabilities: new Map(),
+    knownProjects: [{ name: 'repo', host: 'local', path: '/repo' }]
+  })
+  assert.deepEqual(merged.projects, [])
+  assert.deepEqual(merged.items, [])
+})
+
+test('a remote project the registry names is on the board', () => {
+  const merged = mergeBoard({
+    snapshot: snapshot({
+      projects: [
+        project({
+          id: 'runtime:env-1|D:/work/remote',
+          host: 'runtime:env-1',
+          path: 'D:/work/remote'
+        })
+      ]
+    }),
+    localScans: [],
+    specCapabilities: new Map(),
+    knownProjects: [{ name: 'remote', host: 'runtime:env-1', path: 'D:/work/remote' }]
+  })
+  assert.deepEqual(
+    merged.projects.map((entry) => entry.id),
+    ['runtime:env-1|D:/work/remote']
+  )
+})
+
 test('an item the agent covered takes the agent facts', () => {
   const merged = mergeBoard({
     snapshot: snapshot({ items: [item({ title: 'from-the-agent' })] }),
@@ -228,7 +291,16 @@ test('an archived change of a remote project is not reported as stale', () => {
     }
   })
   const unknown = mergeBoard({
-    snapshot: snapshot({ items: [archived] }),
+    snapshot: snapshot({
+      projects: [
+        project({
+          id: 'ssh:yolo|C:/work/remote',
+          host: 'ssh:yolo',
+          path: 'C:/work/remote'
+        })
+      ],
+      items: [archived]
+    }),
     localScans: [],
     specCapabilities: new Map(),
     knownProjects: []
@@ -239,7 +311,16 @@ test('an archived change of a remote project is not reported as stale', () => {
   )
 
   const known = mergeBoard({
-    snapshot: snapshot({ items: [archived] }),
+    snapshot: snapshot({
+      projects: [
+        project({
+          id: 'ssh:yolo|C:/work/remote',
+          host: 'ssh:yolo',
+          path: 'C:/work/remote'
+        })
+      ],
+      items: [archived]
+    }),
     localScans: [],
     specCapabilities: new Map<string, string[] | undefined>([[archived.projectId, ['other']]]),
     knownProjects: []

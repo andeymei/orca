@@ -7,6 +7,8 @@
 // - a project the agent covered is the agent's — it is the fresher copy of the same project —
 //   and a field the agent left unknown is filled in from the local scan; a project only the
 //   local scan saw is the local scan's;
+// - where a project *is* is not the agent's to say: its id is its host and its path, and a
+//   project the registry and the local scan do not hold is not a project this board is about;
 // - an item the agent covered is the agent's, whole: the local scan's facts are not merged into
 //   it, so a task ticked since the last refresh is not shown — the agent's snapshot is the
 //   authority for the project it covers;
@@ -53,6 +55,10 @@ export type MergedBoard = { projects: SnapshotProject[]; items: WorkItem[] }
  *
  * A project nobody read is still a project: it is on the board with no facts, and the panel says
  * it needs collecting.
+ *
+ * What the agent may not say is where the project is. Its own rule for an id is the host and the
+ * path, so a project whose id is not the host and the path it claims is not about the project it
+ * names — the board cannot say where it is, and neither does anything else that reads the path.
  */
 function mergeProject(
   agent: SnapshotProject | undefined,
@@ -71,6 +77,11 @@ function mergeProject(
       delete merged.error
     }
     return merged
+  }
+  if (agent && projectIdFor(agent.host, agent.path) !== agent.id) {
+    // The id says one host and one path, the fields say another: the project is not the one its
+    // own id names, so it is not on the board.
+    return null
   }
   return agent ?? local ?? known ?? null
 }
@@ -185,6 +196,11 @@ export function mergeBoard(input: MergeInput): MergedBoard {
       local ? gapsOf(local, specCapabilities) : []
     ])
     const project = projects.find((entry) => entry.id === facts.projectId)
+    if (project === undefined) {
+      // The project is not on the board, so its work is not either: the card would name a
+      // project the board cannot place.
+      continue
+    }
     items.push({
       ...facts,
       stage: deriveStage(facts),

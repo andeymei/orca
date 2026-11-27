@@ -18,7 +18,8 @@ import {
 } from './board-projects'
 import { isSafeCommandValue } from './command-values'
 import { scanProject } from './local-scan'
-import type { BoardPayload, BoardSnapshot, SnapshotProject } from './model'
+import { projectIdFor } from './project-identity'
+import type { BoardPayload, BoardSnapshot, ProjectRef, SnapshotProject } from './model'
 import { cliProbe } from './openspec-cli'
 import { readSpecCapabilities } from './spec-capabilities'
 import { snapshotPath, type Registry } from './store-paths'
@@ -102,10 +103,18 @@ function lastValid(state: BoardState): { value: BoardSnapshot | null; at: number
   }
 }
 
-/** The capability directories of every local project; a remote project has none to read. */
+/**
+ * The capability directories of every local project; a remote project has none to read.
+ *
+ * A directory is only read for a project Orca holds: the local scan's own projects, and the
+ * projects the registry names. The agent's snapshot says what a project holds, not where it is,
+ * so a path it carries is only followed when the project it names is one of those and its own id
+ * agrees with the host and the path it says.
+ */
 async function specCapabilitiesOf(
   localScans: readonly LocalScan[],
-  snapshot: BoardSnapshot | null
+  snapshot: BoardSnapshot | null,
+  known: readonly ProjectRef[]
 ): Promise<Map<string, string[] | undefined>> {
   const paths = new Map<string, string>()
   for (const scan of localScans) {
@@ -113,10 +122,15 @@ async function specCapabilitiesOf(
       paths.set(scan.project.id, scan.project.path)
     }
   }
+  const held = new Set(known.map((ref) => projectIdFor(ref.host, ref.path)))
   for (const project of snapshot?.projects ?? []) {
-    if (project.host === 'local') {
-      paths.set(project.id, project.path)
+    if (project.host !== 'local') {
+      continue
     }
+    if (!held.has(project.id) || projectIdFor(project.host, project.path) !== project.id) {
+      continue
+    }
+    paths.set(project.id, project.path)
   }
   const capabilities = new Map<string, string[] | undefined>()
   for (const [id, path] of paths) {
@@ -194,7 +208,7 @@ export async function buildBoard(
     localScans.push({ project: scan.project, items: scan.items })
   }
   const snapshot = await readSnapshot(warnings, state)
-  const specCapabilities = await specCapabilitiesOf(localScans, snapshot.value)
+  const specCapabilities = await specCapabilitiesOf(localScans, snapshot.value, known)
   await applyCliProbe(localScans, snapshot.value)
   const merged = mergeBoard({
     snapshot: snapshot.value,

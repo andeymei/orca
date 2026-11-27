@@ -254,7 +254,9 @@ async function waitForProjects(
   store: string,
   done: (projects: { id: string; openspec: unknown }[]) => boolean
 ): Promise<{ id: string; openspec: unknown }[]> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  // The merge waits for the file watcher, and a watcher under a busy machine is slow: the wait is
+  // long enough that a build running alongside does not decide the test.
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     // The snapshot may not be there yet: the board has never been collected.
     const projects = await readProjects(store)
     if (done(projects)) {

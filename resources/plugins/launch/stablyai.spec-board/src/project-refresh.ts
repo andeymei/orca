@@ -22,6 +22,7 @@ import { readSettings } from './board-projects'
 import { parseBoardSnapshot } from './board-schema'
 import { safeHostOf } from './host-identity'
 import { scanProject } from './local-scan'
+import { projectIdFor } from './project-identity'
 import { buildProjectRefreshPrompt } from './refresh-prompt'
 import { progressInstructions } from './refresh-progress'
 import { clearProgress, writeRefreshPrompt } from './refresh-files'
@@ -177,6 +178,12 @@ export async function mergeProjectSnapshot(
   const project = projectOfFile(path, parsed.value)
   if (project === null) {
     orca.log(`[spec-board] 项目快照不是它自己的项目：${path}`)
+    return
+  }
+  if (projectIdFor(project.host, project.path) !== project.id) {
+    // The fragment says the project is somewhere its own id does not name. It is not the
+    // project the file was written for, so none of it goes on the board.
+    orca.log(`[spec-board] 项目快照说的位置不是它自己的项目：${path}`)
     return
   }
   const current = await readSnapshot([], state)

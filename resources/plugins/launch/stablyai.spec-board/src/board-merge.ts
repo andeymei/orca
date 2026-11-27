@@ -8,7 +8,7 @@
 //   and a field the agent left unknown is filled in from the local scan; a project only the
 //   local scan saw is the local scan's;
 // - where a project *is* is not the agent's to say: its id is its host and its path, and a
-//   project the registry and the local scan do not hold is not a project this board is about;
+//   project whose fields disagree with its id keeps the place Orca knows it at;
 // - an item the agent covered is the agent's, whole: the local scan's facts are not merged into
 //   it, so a task ticked since the last refresh is not shown — the agent's snapshot is the
 //   authority for the project it covers;

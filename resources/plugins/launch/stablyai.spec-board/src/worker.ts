@@ -6,8 +6,8 @@
 // cannot resolve — so a project-derived value has exactly one path into a shell.
 
 import { watch, type FSWatcher } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, realpath, writeFile } from 'node:fs/promises'
+import { join, sep } from 'node:path'
 import type { OrcaWorkerApi } from 'orca/worker'
 import { resolveAction, type ActionFailure, type ActionRequest } from './action-resolution'
 import { actionWorkspaceId } from './action-workspace'
@@ -46,7 +46,7 @@ import {
 } from './store-paths'
 import { messageOf } from './unknown-values'
 import { remoteOf } from './remote-host'
-import type { ItemSourceKey, ProjectRef } from './model'
+import type { ItemSourceKey, ProjectRef, SnapshotProject } from './model'
 
 /** The warnings the worker recorded while running an action; the next board.get carries them. */
 const recordedWarnings: string[] = []
@@ -165,6 +165,31 @@ async function runAction(
 }
 
 /**
+ * Whether the file the path names is inside the project.
+ *
+ * The path the board derived cannot see a symlink: a link inside the project may point
+ * anywhere, and opening it would open a file the project never held. So the project and the
+ * file are resolved, and the resolved file has to be inside the resolved project.
+ *
+ * A project on another host is not here to be resolved — the file is opened there — so the
+ * path's own gate (no traversal, no absolute path) is what holds for it. A project that is not
+ * on this machine at all is the same: there is nothing here to resolve, and the host refuses
+ * an open it cannot place.
+ */
+async function staysInsideProject(project: SnapshotProject, relative: string): Promise<boolean> {
+  const root = await realpath(project.path).catch(() => null)
+  if (root === null) {
+    return true
+  }
+  const target = await realpath(join(root, relative)).catch(() => null)
+  if (target === null) {
+    // The file is gone, or it points nowhere: there is nothing inside the project to open.
+    return false
+  }
+  return target === root || target.startsWith(root + sep)
+}
+
+/**
  * Opens one file of a work item in an editor tab of Orca's window.
  *
  * The panel names the item and which of its files; the path is the worker's own. It derives the
@@ -189,6 +214,9 @@ async function openSource(
   const project = findProject(board, item.projectId)
   if (project === null) {
     throw requestError('invalid_params', `找不到这个项目：${item.projectId}`)
+  }
+  if (!(await staysInsideProject(project, source.path))) {
+    throw requestError('invalid_params', `这个文件不在项目里：${source.path}`)
   }
   // The workspace that holds the project is the one the file lives in: the path is relative to it.
   const workspaceId = actionWorkspaceId(board, project)

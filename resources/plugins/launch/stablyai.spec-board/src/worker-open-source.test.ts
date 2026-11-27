@@ -1,7 +1,7 @@
 // Opening a file of a work item: the worker derives the path from the item's own facts, and
 // opens it in the workspace that holds the project.
 import { afterEach, assert, mockHost, mountWorker, test } from 'orca/testing'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as main from './worker'
@@ -219,5 +219,90 @@ test('a project with no workspace offers no file to open', async () => {
   const item = payload.items.find((i) => i.id === 'local|/elsewhere#add-x')!
   // There is no workspace to open the file in, so the card offers no link at all.
   assert.deepEqual(item.sources, [])
+  await worker.deactivate()
+})
+
+test('a file that points outside the project is not opened', async () => {
+  const root = await home()
+  // A repository may hold a link that points out of itself: the path that names it cannot see
+  // that, so the worker resolves the file and checks where it landed.
+  const project = join(root, 'project')
+  const outside = join(root, 'outside.md')
+  const change = join(project, 'openspec', 'changes', 'add-x')
+  await mkdir(change, { recursive: true })
+  await writeFile(outside, '# not the project', 'utf8')
+  await symlink(outside, join(change, 'proposal.md'))
+  await writeFile(join(root, 'board.json'), snapshotJson(`local|${project}`, 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': {
+        workspaces: [
+          {
+            id: 'w1',
+            kind: 'worktree',
+            name: 'demo',
+            project: 'demo',
+            projectId: 'p1',
+            path: project,
+            branch: 'main',
+            hostId: 'local'
+          }
+        ],
+        truncated: false
+      },
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  await assert.rejects(
+    worker.request('source.open', {
+      itemId: `local|${project}#add-x`,
+      sourceKey: 'openspec-proposal'
+    }),
+    /不在项目里/
+  )
+  // Nothing was opened: the file the link named lives outside the project.
+  assert.deepEqual(host.callsOf('editor.open'), [])
+  await worker.deactivate()
+})
+
+test('a file of the project itself is opened', async () => {
+  const root = await home()
+  const project = join(root, 'project')
+  const change = join(project, 'openspec', 'changes', 'add-x')
+  await mkdir(change, { recursive: true })
+  await writeFile(join(change, 'proposal.md'), '# the project', 'utf8')
+  await writeFile(join(root, 'board.json'), snapshotJson(`local|${project}`, 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': {
+        workspaces: [
+          {
+            id: 'w1',
+            kind: 'worktree',
+            name: 'demo',
+            project: 'demo',
+            projectId: 'p1',
+            path: project,
+            branch: 'main',
+            hostId: 'local'
+          }
+        ],
+        truncated: false
+      },
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  const result = await worker.request('source.open', {
+    itemId: `local|${project}#add-x`,
+    sourceKey: 'openspec-proposal'
+  })
+  assert.deepEqual(result, { opened: true })
+  assert.deepEqual(host.callsOf('editor.open'), [
+    { workspaceId: 'w1', path: 'openspec/changes/add-x/proposal.md' }
+  ])
   await worker.deactivate()
 })

@@ -6,10 +6,10 @@ import { linesOutsideFences } from './markdown-fences'
 import type { VerificationFacts } from './model'
 
 /** The heading of the section the records live in. */
-const SECTION_HEADING = /^##[ \t]+验证记录[ \t]*$/
+const SECTION_HEADING = /^##[ \t\u3000]+验证记录[ \t\u3000]*$/
 
 /** A level-1 or level-2 heading: the section runs until the next one of these. */
-const SECTION_END = /^#{1,2}[ \t]+/
+const SECTION_END = /^#{1,2}[ \t\u3000]+/
 
 /** The bullet a record line starts with. */
 const BULLET = /^[-*][ \t]+/
@@ -93,7 +93,11 @@ export function parseVerificationRecords(markdown: string): VerificationFacts | 
   let passed = 0
   let lastPassed: boolean | null = null
 
-  for (const line of linesOutsideFences(markdown)) {
+  for (const raw of linesOutsideFences(markdown)) {
+    // The plan file is read as it is on disk: a checkout on Windows keeps the carriage return of
+    // every line, and the heading is end-anchored — a line that ends with one would never match.
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+
     if (!inSection) {
       inSection = SECTION_HEADING.test(line)
       continue

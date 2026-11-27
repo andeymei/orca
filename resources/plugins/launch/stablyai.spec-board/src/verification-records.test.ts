@@ -107,3 +107,25 @@ test('跑了什么里面也可以有分隔符', () => {
   )
   assert.deepEqual(facts, { rounds: 1, passed: 1, lastPassed: true })
 })
+
+test('Windows 的换行也算一轮', () => {
+  // 计划文件是原样读进来的：Windows 的检出里每行都留着 \r，标题后面那个 \r 会让这一节
+  // 永远进不去，于是每一份计划都成了「没有验证过」。
+  const facts = parseVerificationRecords('## 验证记录\r\n\r\n- 2026-11-27 · 通过 · pnpm tc\r\n')
+  assert.deepEqual(facts, { rounds: 1, passed: 1, lastPassed: true })
+})
+
+test('没有项目符号的行不是一轮', () => {
+  // 缩进了四格的代码块不是围栏，它里面的例子照样会到达解析器；没有项目符号的行不是一轮。
+  const facts = parseVerificationRecords(
+    ['## 验证记录', '2026-11-27 · 通过 · pnpm tc'].join('\n')
+  )
+  assert.equal(facts, null)
+})
+
+test('标题里的全角空格也是分隔符', () => {
+  const facts = parseVerificationRecords(
+    ['##　验证记录', '- 2026-11-27 · 通过 · pnpm tc'].join('\n')
+  )
+  assert.deepEqual(facts, { rounds: 1, passed: 1, lastPassed: true })
+})

@@ -359,3 +359,45 @@ test('a refused refresh says so, and the button asks again', async () => {
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
+
+test('a project card has a refresh of its own, and it asks for that project', async () => {
+  const asked: string[] = []
+  const host = mockHost({
+    requests: {
+      'board.get': () => boardWith([repo, remote]),
+      'board.refreshProject': (input) => {
+        asked.push(input.projectId)
+        return { kind: 'local' }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.select({ label: '看板视图' }, 'projects')
+  // Every project has its own button, and the button names the project it refreshes.
+  assert.ok(view.find({ type: 'IconButton', label: '刷新 repo' }))
+  assert.ok(view.find({ type: 'IconButton', label: '刷新 app' }))
+
+  await view.press({ type: 'IconButton', label: '刷新 repo' })
+  assert.deepEqual(asked, ['local|/repo'])
+  // The worker read it here, so the work is done and the card says so.
+  assert.ok(view.find({ text: '已刷新 repo' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a refresh an agent takes says who took it, and which project it is on', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () => boardWith([remote]),
+      'board.refreshProject': () => ({ kind: 'agent', terminalId: 't1', agent: 'claude' })
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.select({ label: '看板视图' }, 'projects')
+  await view.press({ type: 'IconButton', label: '刷新 app' })
+  assert.ok(view.find({ text: '已派发 claude 刷新 app' }))
+  // The bar says which project the agent is working on.
+  assert.ok(view.find({ text: '正在刷新 app' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})

@@ -20,6 +20,20 @@ declare module 'orca' {
      */
     'board.progress': { output: { progress: RefreshProgress | null } }
     /**
+     * Refreshes one project.
+     *
+     * A project on this machine is read here: the worker scans it and puts what it found into the
+     * snapshot. A project on another host cannot be read here, so an agent collects it and writes
+     * what it found into a file of its own, which the worker merges into the snapshot.
+     *
+     * The project is named by the id the board knows it by. The worker looks that id up on the
+     * board and refuses one that is not there: the caller's string is never read back as a path.
+     */
+    'board.refreshProject': {
+      input: { projectId: string }
+      output: { kind: 'local' | 'agent'; terminalId?: string; agent?: string }
+    }
+    /**
      * Runs one action. The panel names the action and, for a change-scoped command, the change
      * it picked — never a command line: the worker resolves that itself.
      *

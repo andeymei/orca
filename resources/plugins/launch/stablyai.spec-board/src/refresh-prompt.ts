@@ -9,6 +9,11 @@
 // The projects and the snapshot's shape are in a file the agent reads, not in the prompt: the
 // prompt has a hard limit of 4096 characters, and Orca knows projects this machine cannot see by
 // itself — the ones on another host, above all.
+//
+// There are two prompts. The board's refresh scans every project and writes the board's snapshot;
+// a refresh of one project scans that one project and writes a file of its own, which the plugin
+// merges into the board's snapshot. The rules for reading a project and for writing the file are
+// the same in both, so they are written once here.
 
 import { remoteHostRules } from './remote-host'
 
@@ -22,50 +27,8 @@ const SLUG_RULE = '/^[A-Za-z0-9][A-Za-z0-9._-]*$/'
  */
 export const PROMPT_MAX_CHARS = 4096
 
-/**
- * The prompt the refresh sends. It names the projects to scan, the artifacts to look for, the rule
- * for a remote project, and the schema with every rule the validator enforces.
- */
-export function buildRefreshPrompt(input: {
-  registryPath: string
-  scanListPath: string
-  snapshotPath: string
-}): string {
-  return `你的任务是扫描一批项目，把它们的 OpenSpec 与 Superpowers 产物写成一份快照，供看板读取。
-
-## 第一步：扫哪些项目
-
-要扫的项目在这个文件里：
-${input.scanListPath}
-
-文件里每一项都要扫，每项一个对象：
-
-\`\`\`json
-{ "name": "prism_orca", "host": "local", "path": "/Users/me/code/prism_orca" }
-\`\`\`
-
-- \`name\`：项目的名字，看板上显示用。
-- \`host\`：项目所在的主机。\`local\` 表示就在这台机器上；\`ssh:<id>\` 表示一台 SSH 主机；\`runtime:<id>\` 表示一台配对的 Orca 服务器。
-- \`path\`：项目在那台主机上的绝对路径。
-
-**每一项都要扫**，包括别的机器上的。漏掉一项，看板上那个项目就是空的。
-
-注册表在：
-${input.registryPath}
-
-它可能还列了清单里没有的项目（比如不在 Orca 里的仓库）——也扫掉它。
-
-### 远程主机怎么连
-
-清单里的 \`host\` 是 Orca 的主机 id，不能直接拿去 ssh。
-
-${remoteHostRules()}
-
-换出来的 ssh 名字，那台机器上所有项目都用它。
-
-## 第二步：逐个项目扫描
-
-每个项目要看的产物：
+/** How one project is read, and what is read out of it. The same for every project. */
+const SCAN_RULES = `每个项目要看的产物：
 
 - OpenSpec：\`openspec/changes/\`（进行中的变更）和 \`openspec/specs/\`（已归档的能力）。
 - Superpowers：\`docs/superpowers/specs/\`（设计 spec）和 \`docs/superpowers/plans/\`（实施计划），都是 \`.md\` 文件。
@@ -89,12 +52,12 @@ ${remoteHostRules()}
 
 每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，结果写进这个项目的 \`openspecCli\`——本地项目在本地跑，远程项目 ssh 到那台主机跑（\`ssh -- <名字> openspec --version\`）。有就写 \`{ "available": true, "version": "1.8.0" }\`，没有写 \`{ "available": false }\`。写漏了这一项，远程项目的命令就会悄悄变成交给 agent 的提示词。
 
-**每扫完一个项目就写一次进度**：按 \`scan-list.json\` 里 \`progress\` 说的路径和字段写。看板靠它显示进度条，所以每扫完一个就写一次，不要攒到最后。
+**每扫完一个项目就写一次进度**：按 \`scan-list.json\` 里 \`progress\` 说的路径和字段写。看板靠它显示进度条，所以每扫完一个就写一次，不要攒到最后。`
 
-## 第三步：写快照
-
-快照要写到：
-${input.snapshotPath}
+/** How the file is written, and the rules the validator enforces. */
+function snapshotRules(snapshotPath: string): string {
+  return `快照要写到：
+${snapshotPath}
 
 先写同一个路径加上 \`.tmp\`，写完再 rename 成正式文件——这样读的人永远看不到写了一半的文件。
 
@@ -111,6 +74,7 @@ ${input.snapshotPath}
 - \`openspec.stage\` 只能是 \`proposed\` / \`implementing\` / \`validated\` / \`archived\`；\`superpowers.stage\` 只能是 \`designed\` / \`planned\` / \`executing\` / \`done\`。
 - \`openspec.capabilities\` 是这次变更改到的能力名（\`openspec/changes/<变更>/specs/\` 下的目录名）；项目级的 \`openspec.capabilities\` 是 \`openspec/specs/\` 下的目录名。
 - \`superpowers.designSpec\` 与 \`superpowers.plan\` 是相对项目根目录的路径，没有就写 \`null\`。
+- \`scannedAt\` 写这次扫描的时刻（ISO 8601）。
 - 可选字段——\`error\`、\`summary\`、\`nextAction\`、\`openspecCli.version\`、\`openspecCli.path\`、\`generatedBy.workspace\`、\`generatedBy.host\`、\`notes\`——**没有就整个省略，不要写成 \`null\`**。
 - 某个项目读不了，就把错误写进那个项目的 \`error\`，其他项目照常写。
 
@@ -120,9 +84,111 @@ ${input.snapshotPath}
 ${SLUG_RULE}
 \`\`\`
 
-首字符必须是字母或数字，后面只能是字母、数字、点、短横和下划线。这些值会被拼进终端命令和 agent 提示词，一个不合规的变更 id 会让这个工作项一个命令都没有。写不出来就换一个名字，不要把不合规的值写进快照。
+首字符必须是字母或数字，后面只能是字母、数字、点、短横和下划线。这些值会被拼进终端命令和 agent 提示词，一个不合规的变更 id 会让这个工作项一个命令都没有。写不出来就换一个名字，不要把不合规的值写进快照。`
+}
+
+/**
+ * The prompt the refresh sends. It names the projects to scan, the artifacts to look for, the rule
+ * for a remote project, and the schema with every rule the validator enforces.
+ *
+ * The list is the whole of what there is to scan: the plugin filtered it, and a host it could not
+ * name safely is not in it. The agent is therefore told to scan the list and nothing else — it is
+ * not sent to the registry, whose projects are in the list already and whose host ids nobody
+ * checked.
+ */
+export function buildRefreshPrompt(input: {
+  scanListPath: string
+  snapshotPath: string
+}): string {
+  return `你的任务是扫描一批项目，把它们的 OpenSpec 与 Superpowers 产物写成一份快照，供看板读取。
+
+## 第一步：扫哪些项目
+
+要扫的项目在这个文件里：
+${input.scanListPath}
+
+文件里每一项都要扫，每项一个对象：
+
+\`\`\`json
+{ "name": "prism_orca", "host": "local", "path": "/Users/me/code/prism_orca" }
+\`\`\`
+
+- \`name\`：项目的名字，看板上显示用。
+- \`host\`：项目所在的主机。\`local\` 表示就在这台机器上；\`ssh:<id>\` 表示一台 SSH 主机；\`runtime:<id>\` 表示一台配对的 Orca 服务器。
+- \`path\`：项目在那台主机上的绝对路径。
+
+**每一项都要扫**，包括别的机器上的。漏掉一项，看板上那个项目就是空的。
+
+### 远程主机怎么连
+
+清单里的 \`host\` 是 Orca 的主机 id，不能直接拿去 ssh。
+
+${remoteHostRules()}
+
+换出来的 ssh 名字，那台机器上所有项目都用它。
+
+## 第二步：逐个项目扫描
+
+${SCAN_RULES}
+
+## 第三步：写快照
+
+${snapshotRules(input.snapshotPath)}
 
 ## 第四步：报告
 
 最后用几句话说明你扫到了什么：扫了几个项目、哪些项目没扫到、哪些变更卡在了哪一步。`
+}
+
+/**
+ * The prompt a refresh of one project sends.
+ *
+ * It is the same task for one project: scan it, and write what you found. The file it writes is
+ * the project's own, and the plugin merges that file into the board's snapshot — so the other
+ * projects are not this agent's to touch.
+ */
+export function buildProjectRefreshPrompt(input: {
+  scanListPath: string
+  snapshotPath: string
+}): string {
+  return `你的任务是扫描一个项目，把它的 OpenSpec 与 Superpowers 产物写成一份快照，供看板读取。
+
+## 第一步：扫哪一个项目
+
+要扫的项目在这个文件里：
+${input.scanListPath}
+
+文件里只有一项，就是这一个项目：
+
+\`\`\`json
+{ "name": "prism_orca", "host": "local", "path": "/Users/me/code/prism_orca" }
+\`\`\`
+
+- \`name\`：项目的名字，看板上显示用。
+- \`host\`：项目所在的主机。\`local\` 表示就在这台机器上；\`ssh:<id>\` 表示一台 SSH 主机；\`runtime:<id>\` 表示一台配对的 Orca 服务器。
+- \`path\`：项目在那台主机上的绝对路径。
+
+**只扫这一个项目**，别的项目不在这次的范围里。
+
+### 远程主机怎么连
+
+清单里的 \`host\` 是 Orca 的主机 id，不能直接拿去 ssh。
+
+${remoteHostRules()}
+
+换出来的 ssh 名字，这个项目就在那台机器上，用它。
+
+## 第二步：扫描这个项目
+
+${SCAN_RULES}
+
+## 第三步：写快照
+
+${snapshotRules(input.snapshotPath)}
+
+这个快照里**只写这一个项目**：\`projects\` 只有它一项，\`items\` 只有属于它的工作项。
+
+## 第四步：报告
+
+最后用几句话说明你扫到了什么：这个项目有什么、哪些变更卡在了哪一步。`
 }

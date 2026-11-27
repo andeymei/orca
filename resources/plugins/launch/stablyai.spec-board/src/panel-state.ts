@@ -60,6 +60,16 @@ export const refreshStartedAt = atom<number | null>('spec-board.refresh-started-
 /** What the agent last said about the refresh; null when it has not said. */
 export const refreshProgress = atom<RefreshProgress | null>(null)
 
+/**
+ * The project the refresh in flight is about; null when the refresh is the whole board.
+ *
+ * It is persisted, like the start of the refresh: the refresh outlives the panel, and a person who
+ * comes back to it should be told which project the agent is working on.
+ */
+export const refreshTarget = atom<string | null>('spec-board.refresh-target', null, {
+  persist: 'plugin'
+})
+
 /** Whether the refresh has waited longer than it may. */
 export const refreshTimedOut = atom<boolean>(false)
 
@@ -227,6 +237,7 @@ export function clearRefresh(): void {
   set(refreshStartedAt, null)
   set(refreshProgress, null)
   set(refreshTimedOut, false)
+  set(refreshTarget, null)
 }
 
 /** What the agent said about the refresh it is doing. */
@@ -333,10 +344,44 @@ export async function refreshBoard(): Promise<void> {
     set(refreshStartedAt, startedAt)
     set(refreshProgress, null)
     set(refreshTimedOut, false)
+    set(refreshTarget, null)
     watchForSnapshot(before)
   } catch (thrown) {
     set(refreshError, { code: codeOf(thrown), message: messageOf(thrown) })
     // No refresh is running, so there is no bar to show.
+    clearRefresh()
+  } finally {
+    set(refreshing, false)
+  }
+}
+
+/**
+ * Asks the worker to refresh one project.
+ *
+ * A project on this machine is read by the worker itself, so the answer comes back with the work
+ * already done and there is nothing to wait for. A project on another host is collected by an
+ * agent, and the board waits for the snapshot to land — the bar says which project it is on.
+ */
+export async function refreshProject(projectId: string, name: string): Promise<void> {
+  set(refreshError, null)
+  set(refreshFeedback, null)
+  set(refreshing, true)
+  try {
+    const answer = await plugin.request('board.refreshProject', { projectId })
+    if (answer.kind === 'local') {
+      // The worker read it here and put it in the snapshot: the work is done.
+      set(refreshFeedback, `已刷新 ${name}`)
+      return
+    }
+    set(refreshFeedback, `已派发 ${answer.agent ?? 'agent'} 刷新 ${name}`)
+    const startedAt = Date.now()
+    set(refreshStartedAt, startedAt)
+    set(refreshProgress, null)
+    set(refreshTimedOut, false)
+    set(refreshTarget, name)
+    watchForSnapshot(read(payload)?.sources.agentAt ?? null)
+  } catch (thrown) {
+    set(refreshError, { code: codeOf(thrown), message: messageOf(thrown) })
     clearRefresh()
   } finally {
     set(refreshing, false)

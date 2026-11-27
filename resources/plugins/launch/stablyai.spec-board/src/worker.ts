@@ -6,7 +6,8 @@
 // cannot resolve — so a project-derived value has exactly one path into a shell.
 
 import { watch, type FSWatcher } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { OrcaWorkerApi } from 'orca/worker'
 import { resolveAction, type ActionFailure, type ActionRequest } from './action-resolution'
 import { actionWorkspaceId } from './action-workspace'
@@ -15,31 +16,31 @@ import {
   displayText,
   findProject,
   newBoardState,
-  snapshotAt
+  snapshotAt,
+  type BoardState
 } from './board-load'
 import {
   boardProjects,
-  readSettings,
-  type Settings
+  readSettings
 } from './board-projects'
 import { safeHostOf } from './host-identity'
+import { isProjectSnapshotFile, queueMerge, refreshProject } from './project-refresh'
+import { requestError } from './request-error'
 import { buildRefreshPrompt } from './refresh-prompt'
 import { progressInstructions } from './refresh-progress'
 import { readRefreshProgress } from './refresh-progress-file'
+import { clearProgress, writeRefreshPrompt } from './refresh-files'
+import { refreshWorkspace } from './refresh-workspace'
 import { SNAPSHOT_FORMAT } from './snapshot-format'
 import {
   boardStoreDir,
   progressPath,
-  refreshPromptPath,
-  registryPath,
   scanListPath,
   snapshotPath
 } from './store-paths'
-import { isLocalWorkspace, type WorkspaceRow } from './workspace-match'
 import { messageOf } from './unknown-values'
 import { remoteOf } from './remote-host'
 import type { ProjectRef } from './model'
-import type { BoardState } from './board-load'
 
 /** The warnings the worker recorded while running an action; the next board.get carries them. */
 const recordedWarnings: string[] = []
@@ -50,20 +51,21 @@ const MAX_RECORDED_WARNINGS = 20
 /** The watcher on the store directory, closed when the worker stops. */
 let watcher: FSWatcher | null = null
 
+/**
+ * What the worker keeps between its requests.
+ *
+ * It lives as long as the worker does, and the watcher needs it too: a project's own snapshot
+ * lands long after the request that asked for it, and the merge reads the snapshot the board
+ * reads — the last one that parsed.
+ */
+let boardState: BoardState = newBoardState()
+
 /** Records a warning the board shows on its next read. */
 function record(message: string): void {
   recordedWarnings.push(message)
   while (recordedWarnings.length > MAX_RECORDED_WARNINGS) {
     recordedWarnings.shift()
   }
-}
-
-/**
- * An error the panel can act on: the host reads the code off the error, and an error without a
- * known code reaches the panel as `action_failed`.
- */
-function requestError(code: string, message: string): Error {
-  return Object.assign(new Error(message), { code })
 }
 
 /** Why an action could not be run, in the words the person reads. */
@@ -156,31 +158,6 @@ async function runAction(
   return { kind: 'agent', terminalId: launched.terminalId, agent }
 }
 
-/**
- * The workspace the refresh runs in.
- *
- * It runs on this machine, always: the snapshot it writes has to be where this worker reads it
- * from, and a snapshot written on another host is a file nobody ever opens. The agent reaches the
- * other hosts over ssh, so a remote project is still collected — it is only the agent that runs
- * here.
- *
- * The workspace is the one the person named, else the focused one, else any local workspace.
- */
-function refreshWorkspaceId(
-  settings: Settings,
-  workspaces: readonly WorkspaceRow[],
-  focusedId: string | null
-): string | null {
-  if (settings.refreshWorkspace !== '') {
-    return settings.refreshWorkspace
-  }
-  const focused = focusedId === null ? undefined : workspaces.find((row) => row.id === focusedId)
-  if (focused !== undefined && (focused.hostId === null || focused.hostId === 'local')) {
-    return focused.id
-  }
-  return workspaces.find((row) => row.hostId === null || row.hostId === 'local')?.id ?? null
-}
-
 /** Starts the agent that writes the snapshot. */
 async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent: string }> {
   const settings = await readSettings(orca)
@@ -196,19 +173,8 @@ async function refresh(orca: OrcaWorkerApi): Promise<{ terminalId: string; agent
       warnings.push(`无法读取当前 workspace：${messageOf(error)}`)
     }
   }
-  const workspaceId = refreshWorkspaceId(settings, known.workspaces, focusedId)
-  if (workspaceId === null) {
-    throw requestError('invalid_params', '本机没有可用的 workspace 来刷新')
-  }
-  const named = known.workspaces.find((row) => row.id === workspaceId)
-  if (named !== undefined && !isLocalWorkspace(named)) {
-    throw requestError(
-      'invalid_params',
-      '刷新必须在本机运行：快照只有写在本机，看板才读得到它。请把「刷新在哪个 workspace 运行」指向本机的 workspace。'
-    )
-  }
+  const workspaceId = refreshWorkspace(settings, known.workspaces, focusedId)
   const prompt = buildRefreshPrompt({
-    registryPath: registryPath(),
     scanListPath: scanListPath(),
     snapshotPath: snapshotPath()
   })
@@ -277,49 +243,12 @@ async function writeScanList(
 }
 
 /**
- * Takes the last refresh's progress away.
- *
- * The progress belongs to the refresh that is starting: a bar that counts the projects of the
- * last run would say the agent is halfway when it has not begun. A file that cannot be removed
- * is logged — the agent overwrites it with its first report anyway — and never refuses the
- * refresh, because the snapshot is what the board reads.
- */
-async function clearProgress(orca: OrcaWorkerApi): Promise<void> {
-  try {
-    await rm(progressPath(), { force: true })
-  } catch (error) {
-    orca.log(`[spec-board] 无法清掉旧的进度文件：${messageOf(error)}`)
-  }
-}
-
-/**
- * Writes the prompt of this refresh, so a person can read what the agent was asked. A store
- * directory that cannot be made is logged and the write is tried anyway; a write that fails is a
- * refusal the panel can show, with the reason in it — a raw errno reaches the panel as a code it
- * does not recognise, and the person sees nothing useful.
- */
-async function writeRefreshPrompt(orca: OrcaWorkerApi, prompt: string): Promise<void> {
-  try {
-    await mkdir(boardStoreDir(), { recursive: true })
-  } catch (error) {
-    orca.log(`[spec-board] 无法创建 ${boardStoreDir()}：${messageOf(error)}`)
-  }
-  try {
-    await writeFile(refreshPromptPath(), prompt, 'utf8')
-  } catch (error) {
-    throw requestError(
-      'unavailable',
-      `无法写入 ${refreshPromptPath()}：${messageOf(error)}`
-    )
-  }
-}
-
-/**
  * Watches the store directory, so a new snapshot reaches the open panels — and so the agent's
  * progress does too.
  *
- * The two files are told apart by their name: the snapshot is the board's, the progress is only
- * how far the agent has come. A file that is neither is ignored.
+ * The files are told apart by their name: the snapshot is the board's, the progress is only how
+ * far the agent has come, and a project's own snapshot is what a refresh of one project writes.
+ * A file that is none of them is ignored.
  */
 function startWatcher(orca: OrcaWorkerApi): FSWatcher | null {
   const dir = boardStoreDir()
@@ -329,6 +258,11 @@ function startWatcher(orca: OrcaWorkerApi): FSWatcher | null {
         void readRefreshProgress().then((progress) =>
           orca.panels.post('board.progress.changed', { progress })
         )
+        return
+      }
+      if (filename !== null && isProjectSnapshotFile(filename)) {
+        // A refresh of one project wrote what it found: put it into the board's snapshot.
+        queueMerge(orca, join(dir, filename), boardState)
         return
       }
       if (filename !== null && filename !== 'board.json') {
@@ -347,14 +281,17 @@ function startWatcher(orca: OrcaWorkerApi): FSWatcher | null {
 
 export default async function activate(orca: OrcaWorkerApi): Promise<void> {
   // What the worker keeps between its requests; it lives as long as the worker does.
-  const state = newBoardState()
+  boardState = newBoardState()
   orca.panels.handle('board.get', async () => {
     const warnings = [...recordedWarnings]
-    return (await buildBoard(orca, warnings, state)).payload
+    return (await buildBoard(orca, warnings, boardState)).payload
   })
   orca.panels.handle('board.refresh', async () => refresh(orca))
+  orca.panels.handle('board.refreshProject', async (input) =>
+    refreshProject(orca, input.projectId, boardState)
+  )
   orca.panels.handle('board.progress', async () => ({ progress: await readRefreshProgress() }))
-  orca.panels.handle('action.run', async (input) => runAction(orca, input, state))
+  orca.panels.handle('action.run', async (input) => runAction(orca, input, boardState))
   try {
     await mkdir(boardStoreDir(), { recursive: true })
   } catch (error) {

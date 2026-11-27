@@ -63,7 +63,7 @@ export async function snapshotAt(): Promise<number | null> {
 }
 
 /** The snapshot on disk, and when it was written. */
-async function readSnapshot(
+export async function readSnapshot(
   warnings: string[],
   state: BoardState
 ): Promise<{ value: BoardSnapshot | null; at: number | null }> {

@@ -1,18 +1,28 @@
 // The prompt the refresh hands the agent. It has to state the task and the schema exactly as the
 // validator enforces it: a mismatch shows the user a broken-snapshot card instead of a board.
 import { assert, test } from 'orca/testing'
-import { buildRefreshPrompt, PROMPT_MAX_CHARS } from './refresh-prompt'
+import { buildProjectRefreshPrompt, buildRefreshPrompt, PROMPT_MAX_CHARS } from './refresh-prompt'
 
 const prompt = buildRefreshPrompt({
-  registryPath: '/home/me/.orca/spec-board/projects.json',
   scanListPath: '/home/me/.orca/spec-board/scan-list.json',
   snapshotPath: '/home/me/.orca/spec-board/board.json'
 })
 
-test('names the registry, the scan list and the snapshot file', () => {
-  assert.ok(prompt.includes('/home/me/.orca/spec-board/projects.json'))
+const projectPrompt = buildProjectRefreshPrompt({
+  scanListPath: '/home/me/.orca/spec-board/scan-list-ab12cd34.json',
+  snapshotPath: '/home/me/.orca/spec-board/project-ab12cd34.json'
+})
+
+test('names the scan list and the snapshot file', () => {
   assert.ok(prompt.includes('/home/me/.orca/spec-board/scan-list.json'))
   assert.ok(prompt.includes('/home/me/.orca/spec-board/board.json'))
+})
+
+test('sends the agent to the list and nowhere else', () => {
+  // The list is what the plugin filtered: a host it could not name safely is not in it, and the
+  // registry holds ids nobody checked. The agent that reads the registry would ssh them.
+  assert.equal(prompt.includes('注册表'), false)
+  assert.equal(projectPrompt.includes('注册表'), false)
 })
 
 test('says every project of the list has to be scanned, the remote ones included', () => {
@@ -32,8 +42,7 @@ test('tells the agent how to turn a host id into an ssh name', () => {
   assert.match(prompt, /environment\.orcadDeployment\.sshTargetId/)
 })
 
-test('states the task: read the registry, scan the projects, write the snapshot', () => {
-  assert.match(prompt, /注册表/)
+test('states the task: scan the projects, write the snapshot', () => {
   assert.match(prompt, /扫描/)
   assert.match(prompt, /openspec\/changes\//)
   assert.match(prompt, /openspec\/specs\//)
@@ -131,4 +140,25 @@ test('asks the agent to report the progress after every project', () => {
   assert.match(prompt, /进度/)
   // The shape of the progress file travels in the list the agent reads, not in the prompt.
   assert.match(prompt, /`progress`/)
+})
+
+test('the prompt of one project says it is one project', () => {
+  assert.match(projectPrompt, /只扫这一个项目/)
+  assert.match(projectPrompt, /只写这一个项目/)
+  // The board's snapshot is the plugin's to write: the agent writes the project's own file, and
+  // the plugin merges that file in.
+  assert.equal(projectPrompt.includes('/home/me/.orca/spec-board/board.json'), false)
+  assert.ok(projectPrompt.includes('/home/me/.orca/spec-board/project-ab12cd34.json'))
+})
+
+test('the prompt of one project keeps the rules that keep a path out of a command', () => {
+  assert.match(projectPrompt, /路径永远不要拼进命令/)
+  assert.match(projectPrompt, /base64/)
+  assert.match(projectPrompt, /ssh -- <名字>/)
+  assert.match(projectPrompt, /每扫完一个项目/)
+  assert.match(projectPrompt, /snapshotFormat/)
+})
+
+test('the prompt of one project fits the host too', () => {
+  assert.ok(projectPrompt.length <= PROMPT_MAX_CHARS, `${projectPrompt.length} > ${PROMPT_MAX_CHARS}`)
 })

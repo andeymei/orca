@@ -5,9 +5,27 @@
 // the snapshot. The board does not change when that agent finishes — the worker's watcher posts
 // `board.changed`, and the panel reads the board again.
 
-import { Badge, Button, Card, EmptyState, RelativeTime, Row, Stack, Text, read } from 'orca'
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  IconButton,
+  RelativeTime,
+  Row,
+  Stack,
+  Text,
+  read
+} from 'orca'
 import type { SnapshotProject } from './model'
-import { busy, payload, refreshBoard, refreshFeedback, refreshing } from './panel-state'
+import {
+  busy,
+  payload,
+  refreshBoard,
+  refreshFeedback,
+  refreshProject,
+  refreshing
+} from './panel-state'
 
 /** What the card says about a project nobody scanned yet. */
 const NEVER_SCANNED = '尚未扫描'
@@ -101,10 +119,12 @@ function projectKey(id: string): string {
 /** One project: where it is, what it carries, and what went wrong with it. */
 function ProjectCard({
   project,
-  focused
+  focused,
+  refreshing
 }: {
   project: SnapshotProject
   focused: boolean
+  refreshing: boolean
 }) {
   const cli = cliBadge(project.openspecCli)
   const failure = failureOf(project)
@@ -127,11 +147,23 @@ function ProjectCard({
           </Badge>
           <Badge tone={cli.tone}>{cli.text}</Badge>
         </Row>
-        <Row gap="xs" align="center">
-          <Text size="xs" muted>
-            扫描时间
-          </Text>
-          <ScannedAt scannedAt={project.scannedAt} />
+        <Row gap="xs" align="center" justify="between">
+          <Row gap="xs" align="center">
+            <Text size="xs" muted>
+              扫描时间
+            </Text>
+            <ScannedAt scannedAt={project.scannedAt} />
+          </Row>
+          <IconButton
+            icon="refresh"
+            label={`刷新 ${project.name}`}
+            tooltip="只重新采集这个项目"
+            size="sm"
+            disabled={refreshing}
+            onPress={() => {
+              void refreshProject(project.id, project.name)
+            }}
+          />
         </Row>
       </Stack>
     </Card>
@@ -184,6 +216,7 @@ export function ProjectsTab() {
               key={projectKey(project.id)}
               project={project}
               focused={focus !== null && project.id === focus.projectId}
+              refreshing={isRefreshing}
             />
           ))}
         </Stack>

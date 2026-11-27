@@ -7,7 +7,7 @@
 
 import { Card, Progress, RelativeTime, Row, Spinner, Stack, Text, read } from 'orca'
 import { progressPercent } from './refresh-progress'
-import { refreshProgress, refreshStartedAt, refreshTimedOut } from './panel-state'
+import { refreshProgress, refreshStartedAt, refreshTarget, refreshTimedOut } from './panel-state'
 
 /** What the card says when the refresh has waited longer than it may. */
 const TIMED_OUT = '刷新没有完成：等了很久也没有新的快照。'
@@ -20,6 +20,7 @@ export function RefreshCard() {
   const startedAt = read(refreshStartedAt)
   const progress = read(refreshProgress)
   const timedOut = read(refreshTimedOut)
+  const target = read(refreshTarget)
   if (startedAt === null) {
     return null
   }
@@ -36,7 +37,7 @@ export function RefreshCard() {
         <Row gap="xs" align="center">
           <Spinner label="刷新中" labelHidden />
           <Text size="sm" weight="medium">
-            刷新中
+            {target === null ? '刷新中' : `正在刷新 ${target}`}
           </Text>
         </Row>
         <Progress

@@ -6,7 +6,8 @@
 // is not there is not an error, and a file that cannot be read or does not have the shape is a
 // warning and no registry — never a thrown error, because one bad file must not blank the board.
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ProjectRef } from './model'
@@ -51,6 +52,87 @@ export function refreshPromptPath(): string {
  */
 export function progressPath(): string {
   return join(boardStoreDir(), 'progress.json')
+}
+
+/**
+ * A file name for a project id.
+ *
+ * A project's id is a host and a path (`ssh:yolo|C:/work/app`), and neither is a file name: the
+ * path holds a separator and the host holds a colon. The name is a digest of the id, so it is
+ * short, safe, and the same for the same project every time — a refresh of one project writes
+ * over the last one's file instead of piling files up.
+ */
+export function projectFileKey(projectId: string): string {
+  return createHash('sha256').update(projectId).digest('hex').slice(0, 16)
+}
+
+/**
+ * The snapshot of one project.
+ *
+ * A refresh of one project writes here, not into the board's snapshot: the board's file holds
+ * every project, and a refresh of one project must not cost the board the others. The plugin
+ * merges this file into the board's snapshot once it lands.
+ */
+export function projectSnapshotPath(projectId: string): string {
+  return join(boardStoreDir(), `project-${projectFileKey(projectId)}.json`)
+}
+
+/**
+ * The list a refresh of one project hands the agent.
+ *
+ * It is a file of its own, so a refresh of one project and a refresh of the whole board never
+ * read each other's list: the agent reads the list when it starts, and a list that changed
+ * under it would change what it collects.
+ */
+export function projectScanListPath(projectId: string): string {
+  return join(boardStoreDir(), `scan-list-${projectFileKey(projectId)}.json`)
+}
+
+/**
+ * A JSON file, or null when there is none to read.
+ *
+ * A file that is not there, not JSON, or not readable is no file: the caller decides what a
+ * missing file means, and a broken one never becomes an exception that blanks the board.
+ */
+export async function readJsonFile(path: string): Promise<unknown> {
+  let raw: string
+  try {
+    raw = await readFile(path, 'utf8')
+  } catch {
+    return null
+  }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * When a file was written, or null when there is none to read.
+ *
+ * The time the file was written is the time the facts in it were collected: the agent says when
+ * it scanned, but what it says is only a claim, while the file's own time is not.
+ */
+export async function fileTime(path: string): Promise<number | null> {
+  try {
+    const info = await stat(path)
+    return info.mtimeMs
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Writes a JSON file in two steps: into a temporary file, then renamed over the real one.
+ *
+ * A reader never sees half a file — the same rule the agent follows when it writes the board's
+ * snapshot, and for the same reason.
+ */
+export async function writeJsonFile(path: string, value: unknown): Promise<void> {
+  const temporary = `${path}.tmp`
+  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+  await rename(temporary, path)
 }
 
 /** The registry: the projects to scan, one entry each. */

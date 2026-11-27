@@ -1,7 +1,12 @@
 // The prompt the refresh hands the agent. It has to state the task and the schema exactly as the
 // validator enforces it: a mismatch shows the user a broken-snapshot card instead of a board.
 import { assert, test } from 'orca/testing'
-import { buildProjectRefreshPrompt, buildRefreshPrompt, PROMPT_MAX_CHARS } from './refresh-prompt'
+import {
+  PROMPT_HEADROOM,
+  PROMPT_MAX_CHARS,
+  buildProjectRefreshPrompt,
+  buildRefreshPrompt
+} from './refresh-prompt'
 import { VERIFICATION_COUNT_RULE } from './snapshot-format'
 import { projectFileKey } from './store-paths'
 
@@ -23,6 +28,19 @@ const projectPrompt = buildProjectRefreshPrompt({
  * measures is the same everywhere the suite runs.
  */
 const realHome = '/var/folders/db/vtj54kp928z7sqphxz7_t9bm0000gn/T/spec-board-home-BMNsqV'
+
+/**
+ * The prompt fits the host, and keeps the room the headroom asks for.
+ *
+ * The limit is a hard line the host refuses to cross, and the prompt is measured on one path
+ * while the real one is longer on some machines: a prompt that sits on the line passes the test
+ * and breaks the refresh. The headroom is the room that absorbs that difference.
+ */
+function assertFits(text: string): void {
+  assert.ok(text.length <= PROMPT_MAX_CHARS, `${text.length} > ${PROMPT_MAX_CHARS}`)
+  const margin = PROMPT_MAX_CHARS - text.length
+  assert.ok(margin >= PROMPT_HEADROOM, `margin ${margin} < ${PROMPT_HEADROOM}`)
+}
 
 test('names the scan list and the snapshot file', () => {
   assert.ok(prompt.includes('/home/me/.orca/spec-board/scan-list.json'))
@@ -197,7 +215,7 @@ test('the prompt of the whole board fits the host on a real path', () => {
     scanListPath: `${realHome}/scan-list.json`,
     snapshotPath: `${realHome}/board.json`
   })
-  assert.ok(real.length <= PROMPT_MAX_CHARS, `${real.length} > ${PROMPT_MAX_CHARS}`)
+  assertFits(real)
 })
 
 test('the prompt of one project fits the host on a real path', () => {
@@ -209,7 +227,7 @@ test('the prompt of one project fits the host on a real path', () => {
     scanListPath: `${realHome}/scan-list-${key}.json`,
     snapshotPath: `${realHome}/project-${key}.json`
   })
-  assert.ok(real.length <= PROMPT_MAX_CHARS, `${real.length} > ${PROMPT_MAX_CHARS}`)
+  assertFits(real)
 })
 
 test('the rule that counts the verification records is not in the prompt', () => {

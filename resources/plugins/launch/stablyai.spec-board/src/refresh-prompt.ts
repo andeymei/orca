@@ -27,6 +27,16 @@ const SLUG_RULE = '/^[A-Za-z0-9][A-Za-z0-9._-]*$/'
  */
 export const PROMPT_MAX_CHARS = 4096
 
+/**
+ * The room the prompt has to keep under the limit.
+ *
+ * The limit is a hard line and the prompt is measured on one path, while the real one is longer
+ * on some machines: a prompt that sits on the line fits the test and breaks the refresh. The
+ * headroom is the room that absorbs that difference — and it is smaller than the rule that would
+ * fit into it, so a rule still goes into the file the agent reads.
+ */
+export const PROMPT_HEADROOM = 64
+
 /** How one project is read, and what is read out of it. The same for every project. */
 const SCAN_RULES = `每个项目要看的产物：
 
@@ -52,7 +62,7 @@ const SCAN_RULES = `每个项目要看的产物：
 
 每个项目还要写下它自己的 OpenSpec CLI：在**项目所在的那台机器上**运行 \`openspec --version\`，结果写进这个项目的 \`openspecCli\`——本地项目在本地跑，远程项目 ssh 到那台主机跑（\`ssh -- <名字> openspec --version\`）。有就写 \`{ "available": true, "version": "1.8.0" }\`，没有写 \`{ "available": false }\`。写漏了这一项，远程项目的命令就会悄悄变成交给 agent 的提示词。
 
-**每扫完一个项目就写一次进度**：按第一步那个清单文件里 \`progress\` 说的路径和字段写。看板靠它显示进度条，所以每扫完一个就写一次，不要攒到最后。`
+**每扫完一个项目就写一次进度**：按第一步那个清单文件里 \`progress\` 说的路径和字段写。看板靠它显示进度条，不要攒到最后。`
 
 /** How the file is written, and the rules the validator enforces. */
 function snapshotRules(snapshotPath: string): string {
@@ -121,8 +131,6 @@ ${input.scanListPath}
 
 ### 远程主机怎么连
 
-清单里的 \`host\` 是 Orca 的主机 id，不能直接拿去 ssh。
-
 ${remoteHostRules()}
 
 换出来的 ssh 名字，那台机器上所有项目都用它。
@@ -171,8 +179,6 @@ ${input.scanListPath}
 **只扫这一个项目**，别的项目不在这次的范围里。
 
 ### 远程主机怎么连
-
-清单里的 \`host\` 是 Orca 的主机 id，不能直接拿去 ssh。
 
 ${remoteHostRules()}
 

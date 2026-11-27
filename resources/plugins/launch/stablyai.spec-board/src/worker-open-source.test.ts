@@ -10,7 +10,14 @@ const roots: string[] = []
 
 afterEach(async () => {
   for (const root of roots.splice(0)) {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, {
+      recursive: true,
+      force: true,
+      // The worker may still be writing into the directory it was given: the removal
+      // waits for it, rather than failing on a file that appeared while it ran.
+      maxRetries: 5,
+      retryDelay: 50
+    })
   }
   delete process.env.SPEC_BOARD_HOME
 })

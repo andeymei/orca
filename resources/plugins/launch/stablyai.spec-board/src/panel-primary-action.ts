@@ -4,11 +4,11 @@
 // on: a card in the design stage leads with the plan, because a plan is what turns a design into
 // work. A card in the proposal stage has no design yet, so it leads with the one that writes it.
 //
-// Every stage names its step for both frameworks, because a card may carry only one of them: an
-// OpenSpec change has no Superpowers plan, and its own step is the one that finishes it. A stage
-// whose step this work item cannot take leads with the first action the card offers — a button
-// that does not move the work on says nothing about where the work is, and a card with no action
-// at all has no button. The rest of the actions stay behind 更多.
+// Every stage names its step for the frameworks a card may carry, because a card may hold only
+// one of them: an OpenSpec change has no Superpowers plan, and its own step is the one that
+// finishes it. A stage whose step this work item cannot take leads with the first action the card
+// offers — a button that does not move the work on says nothing about where the work is, and a
+// card with no action at all has no button. The rest of the actions stay behind 更多.
 //
 // One step comes before its stage: a change whose tasks are all ticked is ready to be
 // archived, and archiving is what moves it on. Such a card leads with 归档 rather than with

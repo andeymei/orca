@@ -52,6 +52,11 @@ function verificationBadge(item: WorkItem) {
     return null
   }
   if (verification.lastPassed === true) {
+    // The badge says the work is verified, so it waits for the stage that says so as well: a card
+    // that went back to 实现 was not verified any more, and wearing the badge would claim it was.
+    if (item.stage !== 'verified') {
+      return null
+    }
     return <Badge tone="success">{`已验证 ×${verification.passed}`}</Badge>
   }
   if (verification.lastPassed === false) {

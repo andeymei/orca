@@ -30,11 +30,11 @@ export const item = {
   }
 }
 
-/** The item with only a change of its own. */
-export const openspecOnly = { topic: 'add-x', openspec: item.openspec, superpowers: null }
+/** The item with only a change of its own: a copy, so a test that writes into it poisons nothing. */
+export const openspecOnly = { topic: 'add-x', openspec: { ...item.openspec }, superpowers: null }
 
-/** The item with only Superpowers work of its own. */
-export const superpowersOnly = { topic: 'add-x', openspec: null, superpowers: item.superpowers }
+/** The item with only Superpowers work of its own: a copy, for the same reason. */
+export const superpowersOnly = { topic: 'add-x', openspec: null, superpowers: { ...item.superpowers } }
 
 /** The prompt an agent action carries. */
 export const promptOf = (action: Action): string => {

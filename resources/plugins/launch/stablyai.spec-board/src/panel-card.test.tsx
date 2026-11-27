@@ -3,14 +3,20 @@
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
 import { fixturePayload } from './panel-fixture'
-import type { BoardPayload, VerificationFacts } from './model'
+import type { BoardPayload, UnifiedStage, VerificationFacts } from './model'
 
 /** 一张带验证记录的看板。 */
-function withVerification(id: string, verification: VerificationFacts): BoardPayload {
+function withVerification(
+  id: string,
+  verification: VerificationFacts,
+  stage: UnifiedStage = 'implement'
+): BoardPayload {
   return {
     ...fixturePayload,
     items: fixturePayload.items.map((item) =>
-      item.id === id ? { ...item, superpowers: { ...item.superpowers!, verification } } : item
+      item.id === id
+        ? { ...item, stage, superpowers: { ...item.superpowers!, verification } }
+        : item
     )
   }
 }
@@ -443,13 +449,30 @@ test('最近一轮通过，卡片说它被验证过几轮', async () => {
   const host = mockHost({
     requests: {
       'board.get': () =>
-        withVerification('local|/repo#add-z', { rounds: 2, passed: 1, lastPassed: true })
+        withVerification('local|/repo#add-z', { rounds: 2, passed: 1, lastPassed: true }, 'verified')
     }
   })
   const view = await mount(panel, { host })
+  // 卡片在「已验证」那一栏里。
+  await view.press({ type: 'Button', text: '已验证 1' })
   const badge = view.find({ type: 'Badge', text: '已验证 ×1' })
   assert.ok(badge)
   assert.equal(badge?.props.tone, 'success')
+  await view.unmount()
+})
+
+test('卡片不在「已验证」，就不戴成功的徽标', async () => {
+  // 验证过了又加了新任务，卡片退回「实现」：它没有再被验证过，戴着「已验证」就是撒谎。
+  const host = mockHost({
+    requests: {
+      'board.get': () =>
+        withVerification('local|/repo#add-z', { rounds: 2, passed: 2, lastPassed: true }, 'implement')
+    }
+  })
+  const view = await mount(panel, { host })
+  // 卡片画出来了，它只是不戴那个徽标。
+  assert.ok(view.find({ text: 'Add Z' }))
+  assert.equal(view.find({ type: 'Badge', text: '已验证 ×2' }), null)
   await view.unmount()
 })
 

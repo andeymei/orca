@@ -22,7 +22,8 @@ import {
   needsChangeId,
   resolvePaletteAction
 } from './actions'
-import { parseVerificationRecords } from './verification-records'
+import { RECORD_LINE_FORMAT, parseVerificationRecords } from './verification-records'
+import { filledRecordLine } from './verification-rule-fixture'
 
 test('runs OpenSpec commands in a terminal when the CLI is there', () => {
   const actions = actionsForItem(item, true)
@@ -638,7 +639,7 @@ test('验证这一按钮要求 agent 写下这一轮，并点名计划文件', (
   assert.match(prompt, /不要写复选框/)
   // 规则里的那一行和解析器读回来的一行必须逐字相同：分隔符、结论词、日期格式都是死的。
   assert.ok(
-    prompt.includes('`- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`'),
+    prompt.includes(`\`${RECORD_LINE_FORMAT}\``),
     'the rule must spell the record line the way the parser reads it'
   )
 })
@@ -685,10 +686,17 @@ test('规则里的格式行，解析器读得出来', () => {
   // 规则与解析器必须同时认同一行：规则是 agent 的唯一通道，漂移了就是静默丢轮次。
   const format = VERIFICATION_RECORD_RULE.match(/`(- <[^`]+>)`/)?.[1]
   assert.ok(format, 'the rule must spell the record line inside backticks')
-  const line = format
-    .replace('<YYYY-MM-DD>', '2026-11-27')
-    .replace('通过/未通过', '通过')
-    .replace('<跑了什么>', 'pnpm tc')
-  const facts = parseVerificationRecords(['## 验证记录', line].join('\n'))
+  const facts = parseVerificationRecords(
+    ['## 验证记录', filledRecordLine(format)].join('\n')
+  )
   assert.deepEqual(facts, { rounds: 1, passed: 1, lastPassed: true })
+})
+
+test('验证规则说清结论只有两个词', () => {
+  // 解析器只认整词。规则把两个词用斜杠并列，agent 照抄就写出一行不算轮的记录——
+  // 轮次静默丢掉，卡片一直停在「校验」。
+  assert.match(VERIFICATION_RECORD_RULE, /通过/)
+  assert.match(VERIFICATION_RECORD_RULE, /未通过/)
+  assert.equal(VERIFICATION_RECORD_RULE.includes('通过/未通过'), false)
+  assert.match(VERIFICATION_RECORD_RULE, /一个整词/)
 })

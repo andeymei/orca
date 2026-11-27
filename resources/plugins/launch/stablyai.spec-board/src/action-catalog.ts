@@ -3,6 +3,7 @@
 // the CLI is not installed. The derivation of the actions themselves lives in `actions.ts`.
 
 import type { ActionScope } from './model'
+import { FAILED, PASSED, RECORD_LINE_FORMAT, SEPARATOR } from './verification-records'
 
 /** The change a palette command names until the panel picks a concrete one. */
 export const CHANGE_ID_PLACEHOLDER = '<change-id>'
@@ -133,9 +134,14 @@ export type SuperpowersSkill = {
  * The record is the agent's own: the plugin writes no file, so the agent is what leaves the
  * evidence behind. The rule rides on this step, so the button and the rule cannot tell each
  * other something different.
+ *
+ * The line the rule spells is the line the parser reads — both come from `verification-records`,
+ * so the agent cannot be told to write a line the board would not count.
  */
-export const VERIFICATION_RECORD_RULE =
-  '验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：`- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`；没有这一节就新建一节。这一节不要写复选框（`- [x]`），看板把复选框当任务进度数。'
+export const VERIFICATION_RECORD_RULE = `验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：\`${RECORD_LINE_FORMAT}\`。
+日期写真实的 YYYY-MM-DD；结论只写「${PASSED}」或「${FAILED}」里的一个整词，不要写「${PASSED}了」，也不要两个都写。
+例如 \`- 2026-11-27${SEPARATOR}${PASSED}${SEPARATOR}pnpm tc\`。
+没有这一节就新建一节。这一节不要写复选框（\`- [x]\`），看板把复选框当任务进度数。`
 
 /** Superpowers' steps, in the order the design's table lists them. */
 export const SUPERPOWERS_SKILLS: readonly SuperpowersSkill[] = [

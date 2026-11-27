@@ -11,6 +11,8 @@
 // `snapshotFormat` and nothing else, so a rule in a field it does not name is a rule nobody
 // reads.
 
+import { FAILED, PASSED, RECORD_LINE_FORMAT, SEPARATOR } from './verification-records'
+
 export const SNAPSHOT_FORMAT = {
   schemaVersion: 1,
   generatedAt: '2026-11-25T10:00:00.000Z',
@@ -51,7 +53,9 @@ export const SNAPSHOT_FORMAT = {
         planDone: 1,
         planInProgress: 0,
         planTotal: 4,
-        verification: { rounds: 2, passed: 1, lastPassed: true }
+        // The last counted round failed: an example where the last round passed would not say
+        // which round `lastPassed` is about, and the agent imitates this shape.
+        verification: { rounds: 2, passed: 1, lastPassed: false }
       }
     }
   ]
@@ -64,8 +68,14 @@ export const SNAPSHOT_FORMAT = {
  * It travels in the list file, not in the prompt: the prompt is within a few dozen characters of
  * the limit on a real path, and a rule that does not fit stops the refresh from starting at all —
  * silently, and with the local scan path saying nothing.
+ *
+ * The rule says what the parser says: which lines are rounds, which two words are verdicts, and
+ * that `lastPassed` is the verdict of the last counted line — the agent that reads "was it ever
+ * verified" would write `true` after a failed round, and the card would lie.
  */
-export const VERIFICATION_COUNT_RULE = '「## 验证记录」轮次写进 `superpowers.verification`'
+export const VERIFICATION_COUNT_RULE = `「## 验证记录」一节里，只有 \`${RECORD_LINE_FORMAT}\` 这样的行才算一轮：日期是真实的 YYYY-MM-DD，结论只认「${PASSED}」或「${FAILED}」两个整词，复选框行（\`- [x] 验证通过\`）不算一轮。
+\`rounds\` 是算作轮次的行数，\`passed\` 是其中结论为「${PASSED}」的行数；\`lastPassed\` 是**最后一条算作轮次的行**的结论——最后一轮没通过就是 \`false\`，哪怕前面有通过的。
+例：\`- 2026-11-26${SEPARATOR}${PASSED}${SEPARATOR}pnpm tc\` 与 \`- 2026-11-27${SEPARATOR}${FAILED}${SEPARATOR}pnpm lint\` 两行 → \`{"rounds": 2, "passed": 1, "lastPassed": false}\`。`
 
 /**
  * What the agent is shown about the snapshot: its shape, and the rules for filling it.

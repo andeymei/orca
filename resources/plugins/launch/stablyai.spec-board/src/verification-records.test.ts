@@ -1,6 +1,13 @@
 // 计划文件末尾的「验证记录」一节：验证 agent 自己写的每一轮。解析器只认格式，不判断对错。
 import { assert, test } from 'orca/testing'
-import { parseVerificationRecords } from './verification-records'
+import { VERIFICATION_RECORD_RULE } from './action-catalog'
+import { VERIFICATION_COUNT_RULE } from './snapshot-format'
+import {
+  PASSED,
+  SEPARATOR,
+  parseVerificationRecords
+} from './verification-records'
+import { filledRecordLine, recordLinesOf } from './verification-rule-fixture'
 
 test('一节里的一行是一轮', () => {
   const facts = parseVerificationRecords(
@@ -128,4 +135,21 @@ test('标题里的全角空格也是分隔符', () => {
     ['##　验证记录', '- 2026-11-27 · 通过 · pnpm tc'].join('\n')
   )
   assert.deepEqual(facts, { rounds: 1, passed: 1, lastPassed: true })
+})
+
+test('两条规则里的每一行记录，解析器都读得出来', () => {
+  // 写记录的 agent 与数记录的 agent 读的是两条规则：规则与解析器认的行不一样，轮次就静默地
+  // 丢掉——验证 agent 写了一行，刷新 agent 没数进去，看板上没有一处报错。
+  for (const rule of [VERIFICATION_RECORD_RULE, VERIFICATION_COUNT_RULE]) {
+    const lines = recordLinesOf(rule)
+    assert.ok(lines.length > 0, 'the rule must show a record line')
+    for (const line of lines) {
+      const filled = filledRecordLine(line)
+      const facts = parseVerificationRecords(['## 验证记录', filled].join('\n'))
+      assert.ok(facts !== null, line)
+      assert.equal(facts.rounds, 1, line)
+      // 这一行自己的结论，就是解析器读出来的结论。
+      assert.equal(facts.lastPassed, filled.split(SEPARATOR)[1]!.trim() === PASSED, line)
+    }
+  }
 })

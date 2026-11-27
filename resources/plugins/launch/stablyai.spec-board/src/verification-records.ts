@@ -15,13 +15,22 @@ const SECTION_END = /^#{1,2}[ \t\u3000]+/
 const BULLET = /^[-*][ \t]+/
 
 /** The separator between the three fields of a record. */
-const SEPARATOR = ' · '
+export const SEPARATOR = ' · '
 
 /** The verdict of a round that passed. */
-const PASSED = '通过'
+export const PASSED = '通过'
 
 /** The verdict of a round that failed. */
-const FAILED = '未通过'
+export const FAILED = '未通过'
+
+/**
+ * The record line, as the rules show it: the date, the verdict, and what ran.
+ *
+ * The rules an agent reads and the parser that reads the line are one format: a rule that
+ * described another line would make the agent write a line the parser does not count, and the
+ * round would vanish with no error anywhere.
+ */
+export const RECORD_LINE_FORMAT = `- <YYYY-MM-DD>${SEPARATOR}<结论>${SEPARATOR}<跑了什么>`
 
 /** The shape of the date a record carries. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/

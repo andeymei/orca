@@ -171,15 +171,21 @@ async function runAction(
  * anywhere, and opening it would open a file the project never held. So the project and the
  * file are resolved, and the resolved file has to be inside the resolved project.
  *
- * A project on another host is not here to be resolved — the file is opened there — so the
- * path's own gate (no traversal, no absolute path) is what holds for it. A project that is not
- * on this machine at all is the same: there is nothing here to resolve, and the host refuses
- * an open it cannot place.
+ * A project on another host is not here to be resolved — the file is opened there, and this
+ * machine has no canonical path for it — so the path's own gate (no traversal, no absolute
+ * path) is what holds for it, and the host opens the file on that machine.
+ *
+ * A project on this machine resolves or it does not. One that does not is a project that is not
+ * there: nothing inside it can be opened, so the answer is no. It is never yes — a check that
+ * cannot establish where a file is does not get to open it.
  */
 async function staysInsideProject(project: SnapshotProject, relative: string): Promise<boolean> {
+  if (remoteOf(project) !== null) {
+    return true
+  }
   const root = await realpath(project.path).catch(() => null)
   if (root === null) {
-    return true
+    return false
   }
   const target = await realpath(join(root, relative)).catch(() => null)
   if (target === null) {

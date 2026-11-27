@@ -94,12 +94,43 @@ function snapshotJson(projectId: string, changeId: string): string {
   })
 }
 
-test('opens a file of a work item in the editor', async () => {
+/** A project on this machine, with a change in it, and the store the snapshot goes to. */
+async function localProject(): Promise<{ root: string; path: string; id: string }> {
   const root = await home()
-  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const path = join(root, 'project')
+  const change = join(path, 'openspec', 'changes', 'add-x')
+  await mkdir(change, { recursive: true })
+  await writeFile(join(change, 'proposal.md'), '# the change', 'utf8')
+  await writeFile(join(change, 'tasks.md'), '- [ ] one\n', 'utf8')
+  return { root, path, id: `local|${path}` }
+}
+
+/** The workspace rows Orca reports: the one that holds a project on this machine, and one on
+ * another host. */
+function workspacesOf(path: string): unknown {
+  return {
+    workspaces: [
+      {
+        id: 'w1',
+        kind: 'worktree',
+        name: 'demo',
+        project: 'demo',
+        projectId: 'p1',
+        path,
+        branch: 'main',
+        hostId: 'local'
+      }
+    ],
+    truncated: false
+  }
+}
+
+test('opens a file of a work item in the editor', async () => {
+  const project = await localProject()
+  await writeFile(join(project.root, 'board.json'), snapshotJson(project.id, 'add-x'), 'utf8')
   const host = mockHost({
     results: {
-      'workspace.list': workspaces,
+      'workspace.list': workspacesOf(project.path),
       'workspace.open': { opened: true },
       'editor.open': { opened: true }
     }
@@ -107,7 +138,7 @@ test('opens a file of a work item in the editor', async () => {
   const worker = await mountWorker(main, { host })
   await worker.request('board.get')
   const result = await worker.request('source.open', {
-    itemId: 'local|/repo/demo#add-x',
+    itemId: `${project.id}#add-x`,
     sourceKey: 'openspec-proposal'
   })
   assert.deepEqual(result, { opened: true })
@@ -121,11 +152,11 @@ test('opens a file of a work item in the editor', async () => {
 })
 
 test('opens the file that was named, not the first one', async () => {
-  const root = await home()
-  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const project = await localProject()
+  await writeFile(join(project.root, 'board.json'), snapshotJson(project.id, 'add-x'), 'utf8')
   const host = mockHost({
     results: {
-      'workspace.list': workspaces,
+      'workspace.list': workspacesOf(project.path),
       'workspace.open': { opened: true },
       'editor.open': { opened: true }
     }
@@ -133,7 +164,7 @@ test('opens the file that was named, not the first one', async () => {
   const worker = await mountWorker(main, { host })
   await worker.request('board.get')
   await worker.request('source.open', {
-    itemId: 'local|/repo/demo#add-x',
+    itemId: `${project.id}#add-x`,
     sourceKey: 'openspec-tasks'
   })
   assert.deepEqual(host.callsOf('editor.open'), [
@@ -143,18 +174,18 @@ test('opens the file that was named, not the first one', async () => {
 })
 
 test('the file opens even when the workspace will not come to the front', async () => {
-  const root = await home()
-  await writeFile(join(root, 'board.json'), snapshotJson('local|/repo/demo', 'add-x'), 'utf8')
+  const project = await localProject()
+  await writeFile(join(project.root, 'board.json'), snapshotJson(project.id, 'add-x'), 'utf8')
   const host = mockHost({
     results: {
-      'workspace.list': workspaces,
+      'workspace.list': workspacesOf(project.path),
       'editor.open': { opened: true }
     }
   })
   const worker = await mountWorker(main, { host })
   await worker.request('board.get')
   await worker.request('source.open', {
-    itemId: 'local|/repo/demo#add-x',
+    itemId: `${project.id}#add-x`,
     sourceKey: 'openspec-proposal'
   })
   // The workspace could not be shown, but the file opened all the same: a tab in the background
@@ -303,6 +334,68 @@ test('a file of the project itself is opened', async () => {
   assert.deepEqual(result, { opened: true })
   assert.deepEqual(host.callsOf('editor.open'), [
     { workspaceId: 'w1', path: 'openspec/changes/add-x/proposal.md' }
+  ])
+  await worker.deactivate()
+})
+
+test('a project that is not there opens nothing', async () => {
+  const root = await home()
+  // The workspace names a directory this machine does not have: there is nothing inside it to
+  // open, and a check that cannot say where a file is does not get to open it.
+  await writeFile(join(root, 'board.json'), snapshotJson('local|/nowhere/demo', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': workspacesOf('/nowhere/demo'),
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  await assert.rejects(
+    worker.request('source.open', {
+      itemId: 'local|/nowhere/demo#add-x',
+      sourceKey: 'openspec-proposal'
+    }),
+    /不在项目里/
+  )
+  assert.deepEqual(host.callsOf('editor.open'), [])
+  await worker.deactivate()
+})
+
+test('a project on another host is opened on that host', async () => {
+  const root = await home()
+  // The file lives on the other machine, so this one cannot resolve it: the path's own gate is
+  // what holds, and the host opens the file over there.
+  await writeFile(join(root, 'board.json'), snapshotJson('ssh:yolo|C:/work/remote', 'add-x'), 'utf8')
+  const host = mockHost({
+    results: {
+      'workspace.list': {
+        workspaces: [
+          {
+            id: 'w2',
+            kind: 'worktree',
+            name: 'remote',
+            project: 'remote',
+            projectId: 'p2',
+            path: 'C:/work/remote',
+            branch: 'main',
+            hostId: 'ssh:yolo'
+          }
+        ],
+        truncated: false
+      },
+      'editor.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.get')
+  const result = await worker.request('source.open', {
+    itemId: 'ssh:yolo|C:/work/remote#add-x',
+    sourceKey: 'openspec-proposal'
+  })
+  assert.deepEqual(result, { opened: true })
+  assert.deepEqual(host.callsOf('editor.open'), [
+    { workspaceId: 'w2', path: 'openspec/changes/add-x/proposal.md' }
   ])
   await worker.deactivate()
 })

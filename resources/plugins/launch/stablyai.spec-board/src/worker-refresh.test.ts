@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as main from './worker'
+import { VERIFICATION_COUNT_RULE } from './snapshot-format'
 import { errorCode, isRecord } from './unknown-values'
 
 const roots: string[] = []
@@ -276,6 +277,34 @@ test('the scan list tells the agent where the progress file is', async () => {
   assert.ok(isRecord(progress))
   assert.equal(progress['path'], join(root, 'progress.json'))
   assert.equal(progress['afterEachProject'], '每扫完一个项目就写一次')
+  await worker.deactivate()
+})
+
+test('the scan list tells the agent how to count the verification records', async () => {
+  const root = await home()
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': {
+        workspaceId: 'w1',
+        branch: 'main',
+        displayName: 'demo',
+        terminals: []
+      },
+      'agent.launch': { terminalId: 't9' }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.refresh')
+  // A project on another host cannot be read by the plugin: the agent counts the rounds the
+  // verification agent wrote into the plan and writes the count into the snapshot. The rule
+  // travels in the list, beside the shape of the snapshot — the prompt has no room for it.
+  const list = JSON.parse(await readFile(join(root, 'scan-list.json'), 'utf8'))
+  const format = list.snapshotFormat
+  assert.ok(isRecord(format))
+  const rules = format['rules']
+  assert.ok(isRecord(rules))
+  assert.equal(rules['verification'], VERIFICATION_COUNT_RULE)
   await worker.deactivate()
 })
 

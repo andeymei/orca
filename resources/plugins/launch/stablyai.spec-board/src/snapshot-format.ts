@@ -6,6 +6,10 @@
 //
 // The example is a real snapshot: `snapshot-format.test.ts` runs it through the validator, so the
 // shape the agent is shown is a shape the board accepts.
+//
+// The rules for filling that shape travel with it, in the same field: the prompt names
+// `snapshotFormat` and nothing else, so a rule in a field it does not name is a rule nobody
+// reads.
 
 export const SNAPSHOT_FORMAT = {
   schemaVersion: 1,
@@ -51,4 +55,27 @@ export const SNAPSHOT_FORMAT = {
       }
     }
   ]
+}
+
+/**
+ * The rule that tells the agent to count the verification rounds and write the count into the
+ * snapshot.
+ *
+ * It travels in the list file, not in the prompt: the prompt is within a few dozen characters of
+ * the limit on a real path, and a rule that does not fit stops the refresh from starting at all —
+ * silently, and with the local scan path saying nothing.
+ */
+export const VERIFICATION_COUNT_RULE = '「## 验证记录」轮次写进 `superpowers.verification`'
+
+/**
+ * What the agent is shown about the snapshot: its shape, and the rules for filling it.
+ *
+ * The `rules` key sits beside the shape's own fields, so an agent that copies the whole thing
+ * into its snapshot writes a key the board does not know — and the board drops it.
+ */
+export const AGENT_SNAPSHOT_FORMAT = {
+  ...SNAPSHOT_FORMAT,
+  rules: {
+    verification: VERIFICATION_COUNT_RULE
+  }
 }

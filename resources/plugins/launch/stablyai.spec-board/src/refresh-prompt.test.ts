@@ -2,6 +2,8 @@
 // validator enforces it: a mismatch shows the user a broken-snapshot card instead of a board.
 import { assert, test } from 'orca/testing'
 import { buildProjectRefreshPrompt, buildRefreshPrompt, PROMPT_MAX_CHARS } from './refresh-prompt'
+import { VERIFICATION_COUNT_RULE } from './snapshot-format'
+import { projectFileKey } from './store-paths'
 
 const prompt = buildRefreshPrompt({
   scanListPath: '/home/me/.orca/spec-board/scan-list.json',
@@ -12,6 +14,15 @@ const projectPrompt = buildProjectRefreshPrompt({
   scanListPath: '/home/me/.orca/spec-board/scan-list-ab12cd34.json',
   snapshotPath: '/home/me/.orca/spec-board/project-ab12cd34.json'
 })
+
+/**
+ * The home a temp directory makes, as the isolated profiles and the packaged app's own check make
+ * one: long, and the file names in it carry the sixteen hex characters a project id hashes to.
+ *
+ * It is spelled out rather than taken from this machine's temp directory, so that the margin it
+ * measures is the same everywhere the suite runs.
+ */
+const realHome = '/var/folders/db/vtj54kp928z7sqphxz7_t9bm0000gn/T/spec-board-home-BMNsqV'
 
 test('names the scan list and the snapshot file', () => {
   assert.ok(prompt.includes('/home/me/.orca/spec-board/scan-list.json'))
@@ -177,4 +188,35 @@ test('the prompt of one project names the list it was given', () => {
   // sends the agent to a file that is not there, or to the whole board's list.
   assert.ok(projectPrompt.includes('/home/me/.orca/spec-board/scan-list-ab12cd34.json'))
   assert.equal(projectPrompt.includes('scan-list.json'), false)
+})
+
+test('the prompt of the whole board fits the host on a real path', () => {
+  // The example above is shorter than the truth: a real home is longer, and a prompt that fits
+  // the example may not fit the machine.
+  const real = buildRefreshPrompt({
+    scanListPath: `${realHome}/scan-list.json`,
+    snapshotPath: `${realHome}/board.json`
+  })
+  assert.ok(real.length <= PROMPT_MAX_CHARS, `${real.length} > ${PROMPT_MAX_CHARS}`)
+})
+
+test('the prompt of one project fits the host on a real path', () => {
+  // The file names of a project carry the sixteen hex characters its id hashes to: eight of them
+  // are sixteen characters shorter than the truth, and sixteen characters is the whole margin
+  // there is.
+  const key = projectFileKey('ssh:yolo|C:/work/app')
+  const real = buildProjectRefreshPrompt({
+    scanListPath: `${realHome}/scan-list-${key}.json`,
+    snapshotPath: `${realHome}/project-${key}.json`
+  })
+  assert.ok(real.length <= PROMPT_MAX_CHARS, `${real.length} > ${PROMPT_MAX_CHARS}`)
+})
+
+test('the rule that counts the verification records is not in the prompt', () => {
+  // It travels in the list file the agent reads: on a real path the prompt is a few dozen
+  // characters short of the limit, and the rule is over that. A prompt over the limit is refused
+  // by the host, and the refresh never starts.
+  for (const text of [prompt, projectPrompt]) {
+    assert.equal(text.includes(VERIFICATION_COUNT_RULE), false)
+  }
 })

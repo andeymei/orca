@@ -29,7 +29,7 @@ import { clearProgress, writeRefreshPrompt } from './refresh-files'
 import { refreshWorkspace } from './refresh-workspace'
 import { requestError } from './request-error'
 import { applyProjectFacts, factsOf, scannedAtOf, supersedes } from './snapshot-merge'
-import { SNAPSHOT_FORMAT } from './snapshot-format'
+import { AGENT_SNAPSHOT_FORMAT } from './snapshot-format'
 import {
   boardStoreDir,
   fileTime,
@@ -130,7 +130,7 @@ async function refreshRemoteProject(
     // another project's.
     await writeJsonFile(list, {
       projects: [{ name: project.name, host: project.host, path: project.path }],
-      snapshotFormat: SNAPSHOT_FORMAT,
+      snapshotFormat: AGENT_SNAPSHOT_FORMAT,
       progress: progressInstructions(progressPath())
     })
   } catch (error) {

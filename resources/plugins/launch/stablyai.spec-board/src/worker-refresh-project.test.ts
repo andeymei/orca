@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { projectScanListPath, projectSnapshotPath } from './store-paths'
+import { VERIFICATION_COUNT_RULE } from './snapshot-format'
 import { errorCode, isRecord } from './unknown-values'
 import * as main from './worker'
 
@@ -191,6 +192,29 @@ test('a remote project is collected by an agent that is told to scan only it', a
   const prompt = isRecord(launched) ? String(launched['prompt'] ?? '') : ''
   assert.ok(prompt.includes(projectSnapshotPath(projectId)))
   assert.equal(prompt.includes(join(store, 'board.json')), false)
+  await worker.deactivate()
+})
+
+test('the list of one project tells the agent how to count the verification records', async () => {
+  const projectId = 'ssh:yolo|C:/work/app'
+  await registry([{ name: 'app', host: 'ssh:yolo', path: 'C:/work/app' }])
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': null,
+      'agent.launch': { terminalId: 't9' }
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await worker.request('board.refreshProject', { projectId })
+  // This list is the one the agent of a single project reads, and it is the one whose prompt has
+  // the least room: the rule has to be here, or the project is never counted.
+  const list = JSON.parse(await readFile(projectScanListPath(projectId), 'utf8'))
+  const format = list.snapshotFormat
+  assert.ok(isRecord(format))
+  const rules = format['rules']
+  assert.ok(isRecord(rules))
+  assert.equal(rules['verification'], VERIFICATION_COUNT_RULE)
   await worker.deactivate()
 })
 

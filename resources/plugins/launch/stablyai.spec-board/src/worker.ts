@@ -31,7 +31,7 @@ import { progressInstructions } from './refresh-progress'
 import { readRefreshProgress } from './refresh-progress-file'
 import { clearProgress, writeRefreshPrompt } from './refresh-files'
 import { refreshWorkspace } from './refresh-workspace'
-import { SNAPSHOT_FORMAT } from './snapshot-format'
+import { AGENT_SNAPSHOT_FORMAT } from './snapshot-format'
 import {
   boardStoreDir,
   progressPath,
@@ -312,7 +312,7 @@ async function writeScanList(
       `${JSON.stringify(
         {
           projects: named,
-          snapshotFormat: SNAPSHOT_FORMAT,
+          snapshotFormat: AGENT_SNAPSHOT_FORMAT,
           progress: progressInstructions(progressPath())
         },
         null,

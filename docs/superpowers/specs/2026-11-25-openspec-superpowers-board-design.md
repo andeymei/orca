@@ -521,14 +521,14 @@ type Action = {
 
 **Superpowers 动作集**（全部走 agent，因为它没有 shell 命令）
 
-| 动作       | prompt 要点                                                                                                                                                                                                   |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 设计       | 用 `superpowers:brainstorming` 为 `<topic>` 产出设计 spec（卡片上的名字按事实分：还没有设计 spec 时是"写设计"，已经有了是"重新设计"）                                                                         |
-| 写实施计划 | 用 `superpowers:writing-plans` 基于 `<spec>` 写计划                                                                                                                                                           |
-| 执行计划   | 用 `superpowers:executing-plans` 执行 `<plan>`                                                                                                                                                                |
-| 代码评审   | 用 `superpowers:requesting-code-review` 审本次改动                                                                                                                                                            |
-| 验证       | 用 `superpowers:verification-before-completion` 验证；**有计划时**追加：在 `<plan>` 的「## 验证记录」一节末尾追加一行 `- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`；**没有这一节就新建一节**，**不要写复选框** |
-| 收尾       | 用 `superpowers:finishing-a-development-branch` 收尾本次改动                                                                                                                                                  |
+| 动作       | prompt 要点                                                                                                                                                                                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 设计       | 用 `superpowers:brainstorming` 为 `<topic>` 产出设计 spec（卡片上的名字按事实分：还没有设计 spec 时是"写设计"，已经有了是"重新设计"）                                                                                                                                                      |
+| 写实施计划 | 用 `superpowers:writing-plans` 基于 `<spec>` 写计划                                                                                                                                                                                                                                        |
+| 执行计划   | 用 `superpowers:executing-plans` 执行 `<plan>`                                                                                                                                                                                                                                             |
+| 代码评审   | 用 `superpowers:requesting-code-review` 审本次改动                                                                                                                                                                                                                                         |
+| 验证       | 用 `superpowers:verification-before-completion` 验证；**有计划时**追加：在 `<plan>` 的「## 验证记录」一节末尾追加一行 `- <YYYY-MM-DD> · <结论> · <跑了什么>`（结论只写「通过」或「未通过」里的一个整词，例如 `- 2026-11-27 · 通过 · pnpm tc`）；**没有这一节就新建一节**，**不要写复选框** |
+| 收尾       | 用 `superpowers:finishing-a-development-branch` 收尾本次改动                                                                                                                                                                                                                               |
 
 **降级规则**：`project.openspecCli.available === false` 时，OpenSpec 动作的 `run` 从
 `terminal` 换成 `agent`，prompt 改成"按 `openspec/AGENTS.md` 执行 <动作>"，卡片上标

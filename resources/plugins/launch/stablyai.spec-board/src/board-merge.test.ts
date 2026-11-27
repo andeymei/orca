@@ -77,9 +77,9 @@ test('a project only the local scan saw is on the board', () => {
   )
 })
 
-test('a project the agent places somewhere else is not on the board', () => {
-  // The id is the host and the path. A project whose fields say another place than its id is
-  // not the project it names, and the board cannot say where it is.
+test('a project the agent places somewhere else keeps the place Orca knows it at', () => {
+  // The id is the host and the path. A project whose fields say another place than its id does
+  // not know where it is, so the board keeps the place the registry and the local scan know.
   const merged = mergeBoard({
     snapshot: snapshot({
       projects: [project({ id: 'local|/repo', path: '/somewhere/else' })]
@@ -88,7 +88,23 @@ test('a project the agent places somewhere else is not on the board', () => {
     specCapabilities: new Map(),
     knownProjects: [{ name: 'repo', host: 'local', path: '/repo' }]
   })
-  assert.deepEqual(merged.projects, [])
+  assert.equal(merged.projects.length, 1)
+  assert.equal(merged.projects[0]!.path, '/repo')
+})
+
+test('the local scan places a project the agent moved', () => {
+  // The agent's facts are about the project its id names; the placement it claims is dropped,
+  // so the project keeps the place Orca knows it at.
+  const merged = mergeBoard({
+    snapshot: snapshot({
+      projects: [project({ id: 'local|/repo', path: '/somewhere/else', name: 'from-the-agent' })]
+    }),
+    localScans: [{ project: project({ name: 'from-the-scan' }), items: [] }],
+    specCapabilities: new Map(),
+    knownProjects: []
+  })
+  assert.equal(merged.projects.length, 1)
+  assert.equal(merged.projects[0]!.path, '/repo')
 })
 
 test('a project the agent found is on the board', () => {
@@ -106,16 +122,21 @@ test('a project the agent found is on the board', () => {
 })
 
 test('the work of a project that is not on the board is not on the board either', () => {
+  // A project nobody places is not on the board, and a card would name a project the board
+  // cannot say where it is.
   const merged = mergeBoard({
     snapshot: snapshot({
-      projects: [project({ id: 'local|/repo', path: '/somewhere/else' })],
-      items: [item({ id: 'local|/repo#add-x', projectId: 'local|/repo' })]
+      projects: [project({ id: 'local|/invented', path: '/somewhere/else' })],
+      items: [item({ id: 'local|/invented#add-x', projectId: 'local|/invented' })]
     }),
     localScans: [],
     specCapabilities: new Map(),
     knownProjects: [{ name: 'repo', host: 'local', path: '/repo' }]
   })
-  assert.deepEqual(merged.projects, [])
+  assert.deepEqual(
+    merged.projects.map((entry) => entry.id),
+    ['local|/repo']
+  )
   assert.deepEqual(merged.items, [])
 })
 

@@ -49,6 +49,17 @@ export type MergeInput = {
 export type MergedBoard = { projects: SnapshotProject[]; items: WorkItem[] }
 
 /**
+ * Whether a project says where it is.
+ *
+ * The id of a project is its host and its path — that is the plugin's own rule, and the one the
+ * agent is told. So a project whose fields disagree with its id does not know where it is, and
+ * nothing that reads the path may follow it.
+ */
+function placesItself(project: SnapshotProject): boolean {
+  return projectIdFor(project.host, project.path) === project.id
+}
+
+/**
  * One project from both sides. A field the agent left null is unknown, not empty, so the local
  * scan fills it in; the agent's own values win. The agent's verdict on the project wins whole:
  * a project it read successfully has no error, even when the local scan could not read it.
@@ -59,31 +70,28 @@ export type MergedBoard = { projects: SnapshotProject[]; items: WorkItem[] }
  * What the agent may not say is where the project is. Its own rule for an id is the host and the
  * path, so a project whose id is not the host and the path it claims is not about the project it
  * names — the board cannot say where it is, and neither does anything else that reads the path.
+ * Its facts are still about the project its id names; only the placement is dropped.
  */
 function mergeProject(
   agent: SnapshotProject | undefined,
   local: SnapshotProject | undefined,
   known: SnapshotProject | undefined
 ): SnapshotProject | null {
-  if (agent && local) {
+  const told = agent !== undefined && placesItself(agent) ? agent : undefined
+  if (told && local) {
     const merged: SnapshotProject = {
       ...local,
-      ...agent,
-      openspec: agent.openspec ?? local.openspec,
-      superpowers: agent.superpowers ?? local.superpowers,
-      openspecCli: agent.openspecCli ?? local.openspecCli
+      ...told,
+      openspec: told.openspec ?? local.openspec,
+      superpowers: told.superpowers ?? local.superpowers,
+      openspecCli: told.openspecCli ?? local.openspecCli
     }
-    if (agent.error === undefined) {
+    if (told.error === undefined) {
       delete merged.error
     }
     return merged
   }
-  if (agent && projectIdFor(agent.host, agent.path) !== agent.id) {
-    // The id says one host and one path, the fields say another: the project is not the one its
-    // own id names, so it is not on the board.
-    return null
-  }
-  return agent ?? local ?? known ?? null
+  return told ?? local ?? known ?? null
 }
 
 /** A project nobody has read: on the board, with nothing said about it yet. */

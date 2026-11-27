@@ -11,8 +11,8 @@ const SECTION_HEADING = /^##[ \t\u3000]+验证记录[ \t\u3000]*$/
 /**
  * A level-1 or level-2 heading: the section runs until the next one of these.
  *
- * The space after the hashes is optional: `##\u522b\u7684\u8282` is a heading too, and the record lines after
- * it belong to that section, not to this one. A level-3 heading does not end it \u2014 it is a part of
+ * The space after the hashes is optional: `##别的节` is a heading too, and the record lines after
+ * it belong to that section, not to this one. A level-3 heading does not end it — it is a part of
  * this section.
  */
 const SECTION_END = /^#{1,2}(?![#])/

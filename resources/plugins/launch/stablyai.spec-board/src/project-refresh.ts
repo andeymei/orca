@@ -18,7 +18,7 @@ import {
   type Board,
   type BoardState
 } from './board-load'
-import { readSettings } from './board-projects'
+import { boardProjects, readSettings } from './board-projects'
 import { parseBoardSnapshot } from './board-schema'
 import { safeHostOf } from './host-identity'
 import { scanProject } from './local-scan'
@@ -186,6 +186,13 @@ export async function mergeProjectSnapshot(
     orca.log(`[spec-board] 项目快照说的位置不是它自己的项目：${path}`)
     return
   }
+  if (!(await placedByOrca(orca, project))) {
+    // Orca's own list of projects and the person's registry say where the project is. A
+    // fragment that puts it anywhere else is not about that project, and the path it carries is
+    // not one anything here follows.
+    orca.log(`[spec-board] 项目快照说的位置不是 Orca 知道的位置：${path}`)
+    return
+  }
   const current = await readSnapshot([], state)
   const held = current.value?.projects.find((entry) => entry.id === project.id) ?? null
   // The facts' own times, not the times the files were written: the plugin writes the snapshot
@@ -209,6 +216,22 @@ export async function mergeProjectSnapshot(
   const target = snapshotPathOf(path)
   await writeJsonFile(target, applyProjectFacts(base, facts))
   orca.panels.post('board.changed', { agentAt: await fileTime(target) })
+}
+
+/**
+ * Whether Orca knows the project where the fragment says it is.
+ *
+ * The projects Orca holds — the ones its own host API lists, and the ones the person's registry
+ * names — are where a project is. A fragment may say what the project holds; where it is, only
+ * these say. A project none of them places is not a project this board is about, and the path
+ * it carries is not one anything here follows.
+ */
+async function placedByOrca(orca: OrcaWorkerApi, project: SnapshotProject): Promise<boolean> {
+  const warnings: string[] = []
+  const settings = await readSettings(orca)
+  const known = await boardProjects(orca, settings, warnings)
+  const place = known.projects.find((ref) => projectIdFor(ref.host, ref.path) === project.id)
+  return place !== undefined && place.host === project.host && place.path === project.path
 }
 
 /**

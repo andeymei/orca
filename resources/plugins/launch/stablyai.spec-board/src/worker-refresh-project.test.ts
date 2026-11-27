@@ -485,6 +485,57 @@ test('a fragment that places the project somewhere else is refused', async () =>
   await worker.deactivate()
 })
 
+test('a fragment about a project Orca does not hold is refused', async () => {
+  // The fragment may say what a project holds; where it is, only Orca's own list and the
+  // person's registry say. A project neither of them names is not one this board is about.
+  const projectId = 'ssh:yolo|C:/work/app'
+  const store = await registry([])
+  await writeFile(
+    join(store, 'board.json'),
+    snapshotOf([projectFacts(projectId, 'app', 'ssh:yolo', 'C:/work/app')]),
+    'utf8'
+  )
+  const host = mockHost({
+    results: {
+      'workspace.list': workspaces,
+      'workspace.readContext': null
+    }
+  })
+  const worker = await mountWorker(main, { host })
+  await writeAgentFile(
+    projectSnapshotPath(projectId),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        generatedAt: '2026-11-27T10:00:00.000Z',
+        generatedBy: { agent: 'claude' },
+        projects: [
+          {
+            id: projectId,
+            name: 'app',
+            host: 'ssh:yolo',
+            path: 'C:/work/app',
+            openspec: { present: true, capabilities: ['core'], activeChanges: 3, archived: 0 },
+            superpowers: null,
+            openspecCli: null,
+            scannedAt: '2026-11-27T10:00:00.000Z'
+          }
+        ],
+        items: []
+      },
+      null,
+      2
+    )}\n`,
+  )
+  await worker.request('board.get')
+  const projects = projectsOf(await readFile(join(store, 'board.json'), 'utf8'))
+  // The board still holds the one project it had, with no facts of the fragment's.
+  assert.equal(projects.length, 1)
+  assert.equal(projects[0]?.id, projectId)
+  assert.equal(projects[0]?.openspec, null)
+  await worker.deactivate()
+})
+
 test('a fragment left on disk is merged when the worker starts', async () => {
   const projectId = 'ssh:yolo|C:/work/app'
   const store = await registry([{ name: 'app', host: 'ssh:yolo', path: 'C:/work/app' }])

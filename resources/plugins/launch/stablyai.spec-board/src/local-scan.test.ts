@@ -312,6 +312,39 @@ test('a change and a close plan land on one card, and the card is not a gap', as
   )
 })
 
+test('计划文件里的验证记录被读成事实', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'spec-board-verify-'))
+  roots.push(root)
+  await mkdir(join(root, 'docs/superpowers/plans'), { recursive: true })
+  await writeFile(
+    join(root, 'docs/superpowers/plans/2026-11-20-add-x.md'),
+    [
+      '- [x] a',
+      '- [x] b',
+      '',
+      '## 验证记录',
+      '',
+      '- 2026-11-26 · 通过 · pnpm tc',
+      '- 2026-11-27 · 未通过 · pnpm lint'
+    ].join('\n')
+  )
+  const result = await scanProject({ name: 'demo', host: 'local', path: root })
+  const item = result.items[0]!
+  assert.deepEqual(item.superpowers?.verification, { rounds: 2, passed: 1, lastPassed: false })
+  // 复选框照旧是进度：记录那一节里没有复选框。
+  assert.equal(item.superpowers?.planTotal, 2)
+  assert.equal(item.superpowers?.planDone, 2)
+})
+
+test('没有记录的计划文件没有这项事实', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'spec-board-noverify-'))
+  roots.push(root)
+  await mkdir(join(root, 'docs/superpowers/plans'), { recursive: true })
+  await writeFile(join(root, 'docs/superpowers/plans/2026-11-20-add-x.md'), '- [x] a\n- [x] b\n')
+  const result = await scanProject({ name: 'demo', host: 'local', path: root })
+  assert.equal(result.items[0]!.superpowers?.verification, null)
+})
+
 test('a greedy pairing would strand a change and a plan of the same work', async () => {
   const root = await mkdtemp(join(tmpdir(), 'spec-board-match-'))
   roots.push(root)

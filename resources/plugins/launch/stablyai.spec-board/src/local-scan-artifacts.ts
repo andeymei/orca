@@ -95,7 +95,7 @@ async function fileExists(root: string, relative: string, warnings: string[]): P
 }
 
 /** Reads a file's text; null when it is not there, and a warning when it cannot be read. */
-async function readFileText(
+export async function readFileText(
   root: string,
   relative: string,
   warnings: string[]

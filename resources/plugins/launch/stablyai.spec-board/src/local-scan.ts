@@ -5,18 +5,25 @@
 
 import { correlate } from './correlation'
 import {
-  countBoxes,
   messageOf,
   NO_CHECKBOXES,
+  readFileText,
   rootProblem,
   scanOpenspec,
   scanSuperpowers,
   type ArtifactOnDisk,
   type ChangeOnDisk
 } from './local-scan-artifacts'
-import type { CheckboxCount } from './markdown-tasks'
-import type { OpenspecFacts, SnapshotItem, SnapshotProject, SuperpowersFacts } from './model'
+import { countCheckboxes, type CheckboxCount } from './markdown-tasks'
+import type {
+  OpenspecFacts,
+  SnapshotItem,
+  SnapshotProject,
+  SuperpowersFacts,
+  VerificationFacts
+} from './model'
 import { projectIdFor } from './project-identity'
+import { parseVerificationRecords } from './verification-records'
 
 /** What one scan of one project found. */
 export type ScanProjectResult = {
@@ -64,7 +71,8 @@ function openspecFacts(change: ChangeOnDisk): OpenspecFacts {
 function superpowersFacts(
   designSpec: ArtifactOnDisk | null,
   plan: ArtifactOnDisk | null,
-  planTasks: CheckboxCount
+  planTasks: CheckboxCount,
+  verification: VerificationFacts | null
 ): SuperpowersFacts {
   const { done, inProgress, total } = planTasks
   let stage: SuperpowersFacts['stage'] = 'designed'
@@ -83,7 +91,7 @@ function superpowersFacts(
     planDone: done,
     planInProgress: inProgress,
     planTotal: total,
-    verification: null
+    verification
   }
 }
 
@@ -210,7 +218,10 @@ async function buildItem(
   warnings: string[]
 ): Promise<SnapshotItem> {
   const plan = superpowers?.plan ?? null
-  const planTasks = plan === null ? NO_CHECKBOXES : await countBoxes(root, plan.path, warnings)
+  // One read of the plan file: its checkboxes are the progress, its '## 验证记录' section the history.
+  const planText = plan === null ? null : await readFileText(root, plan.path, warnings)
+  const planTasks = planText === null ? NO_CHECKBOXES : countCheckboxes(planText)
+  const verification = planText === null ? null : parseVerificationRecords(planText)
   return {
     id: `${projectId}#${topic}`,
     projectId,
@@ -220,7 +231,7 @@ async function buildItem(
     superpowers:
       superpowers === null
         ? null
-        : superpowersFacts(superpowers.spec, superpowers.plan, planTasks)
+        : superpowersFacts(superpowers.spec, superpowers.plan, planTasks, verification)
   }
 }
 

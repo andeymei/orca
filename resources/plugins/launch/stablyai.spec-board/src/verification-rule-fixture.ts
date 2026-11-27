@@ -4,7 +4,7 @@
 // The rules and the parser are one format (see `verification-records`), so a rule that drifted
 // from the parser would be a round the board never counts — with no error anywhere.
 
-import { PASSED, SEPARATOR } from './verification-records'
+import { PASSED } from './verification-records'
 
 /** The placeholders a rule's record line may carry, and the values that fill them. */
 const FILLED: readonly (readonly [RegExp, string])[] = [
@@ -18,9 +18,14 @@ export function filledRecordLine(line: string): string {
   return FILLED.reduce((text, [pattern, value]) => text.replaceAll(pattern, value), line)
 }
 
-/** The record lines a rule shows, in backticks: the ones shaped like a record. */
+/**
+ * The record lines a rule shows, in backticks.
+ *
+ * Every bullet a rule shows counts, except a checkbox: the parser reads no checkbox as a round,
+ * and a rule that showed one would be teaching the agent the wrong thing.
+ */
 export function recordLinesOf(rule: string): string[] {
   return [...rule.matchAll(/`([^`]+)`/g)]
     .map((match) => match[1]!)
-    .filter((chunk) => chunk.startsWith('- ') && chunk.includes(SEPARATOR))
+    .filter((chunk) => chunk.startsWith('- ') && !chunk.startsWith('- ['))
 }

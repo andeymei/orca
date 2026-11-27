@@ -96,12 +96,13 @@ export type VerificationFacts = {
   rounds: number
   /** 其中通过的几轮。 */
   passed: number
-  /** 最近一轮通过了吗；没有记录时为 null。 */
+  /** 最后一条算作轮次的行的结论；没有结论时为 null。 */
   lastPassed: boolean | null
 }
 ```
 
-`lastPassed` 取**文件里最后一条算一轮的行**的结论，不是"最后一次通过"。
+`lastPassed` 取**文件里最后一条算一轮的行**的结论，不是"最后一次通过"。有轮次却没有结论的记录
+是合法的（`lastPassed` 为 `null`）；结论与计数矛盾的记录会被归一化成 `null`。
 
 ```
 
@@ -180,13 +181,14 @@ agent 的数法不是——但合并策略是取舍，不是本次改动。
 只有工作项**有计划**时才带这句（没有计划就没有地方放记录；`actions.ts` 里计划路径缺省时是
 `'实施计划'` 这个占位串）。
 
-**刷新 agent 数记录的规则**（不在提示词里，在清单文件里，见下）：
+**刷新 agent 数记录的规则**（不在提示词里，在清单文件里，见下）：规则的全文在
+`snapshot-format.ts` 的 `VERIFICATION_COUNT_RULE`——
 
-> 「## 验证记录」一节的轮次写进 `superpowers.verification`。
+> 「## 验证记录」一节里，只有 `- <YYYY-MM-DD> · <结论> · <跑了什么>` 这样的行才算一轮：日期是真实的 YYYY-MM-DD，结论只认「通过」或「未通过」两个整词，复选框行（`- [x] 验证通过`）不算一轮。
+> `rounds` 是算作轮次的行数，`passed` 是其中结论为「通过」的行数；`lastPassed` 是**最后一条算作轮次的行**的结论——最后一轮没通过就是 `false`，哪怕前面有通过的。
 
-规则的全文在 `snapshot-format.ts` 的 `VERIFICATION_COUNT_RULE`：它说清哪一行算一轮、结论只认
-「通过」与「未通过」两个整词、`lastPassed` 是**最后一条算作轮次的行**的结论。它与解析器读的
-是同一个格式（`verification-records.ts` 的 `RECORD_LINE_FORMAT`），漂移了就是静默丢轮次。
+它与解析器读的是同一个格式（`verification-records.ts` 的 `RECORD_LINE_FORMAT`，两条规则都由
+同一批常量插值而成），漂移了就是静默丢轮次。
 
 ⚠️ **这条规则进不了提示词，而且必须先量长度。** 2026-11-27 实测（真实临时路径，非测试里的
 短示例路径；项目文件名带 16 位十六进制的 hash）：单项目刷新提示词 **4008 字符（余 88）**，整盘

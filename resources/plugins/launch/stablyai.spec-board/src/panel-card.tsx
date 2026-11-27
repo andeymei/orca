@@ -45,11 +45,7 @@ function projectLine(project: SnapshotProject | null, item: WorkItem): string {
   return project === null ? item.projectId : `${project.name} · ${project.host}`
 }
 
-/**
- * 验证的徽标：最近一轮过了说它被验证过几轮，最近一轮没过说没通过。
- *
- * 没有记录就没有徽标：没有证据就不说「已验证」。
- */
+/** The verification badge: without a verdict there is none, because no evidence is no claim. */
 function verificationBadge(item: WorkItem) {
   const verification = item.superpowers?.verification
   if (verification === null || verification === undefined) {

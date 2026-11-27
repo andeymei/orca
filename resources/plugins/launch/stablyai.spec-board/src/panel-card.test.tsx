@@ -474,3 +474,20 @@ test('没有记录就不戴验证徽标', async () => {
   assert.equal(view.find({ type: 'Badge', text: '上次验证未通过' }), null)
   await view.unmount()
 })
+
+test('记录里没有结论，卡片就不说话', async () => {
+  const host = mockHost({
+    requests: {
+      'board.get': () =>
+        withVerification('local|/repo#add-z', { rounds: 2, passed: 1, lastPassed: null })
+    }
+  })
+  const view = await mount(panel, { host })
+  // A record with rounds but no verdict is no evidence: neither badge is drawn.
+  assert.equal(view.find({ type: 'Badge', text: '已验证 ×1' }), null)
+  assert.equal(view.find({ type: 'Badge', text: '上次验证未通过' }), null)
+  // Asking for the texts would miss an empty badge, so ask for the count: the board still wears
+  // its seven badges — three project lines, 无 CLI and three gaps.
+  assert.equal(view.findAll({ type: 'Badge' }).length, 7)
+  await view.unmount()
+})

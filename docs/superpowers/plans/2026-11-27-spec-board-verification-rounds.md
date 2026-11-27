@@ -1224,12 +1224,16 @@ test('导轨有一栏「已验证」，排在校验和归档之间', async () =>
   const view = await mount(panel, { host })
   const rail = view
     .findAll({ type: 'Button' })
-    .map((button) => String(button.props.children))
+    .map((button) => button.text)
     .filter((text) => /^(提案|设计|计划|实现|校验|已验证|归档) \d+$/.test(text))
   assert.deepEqual(rail, ['提案 0', '设计 0', '计划 0', '实现 3', '校验 1', '已验证 0', '归档 0'])
   await view.unmount()
 })
 ```
+
+（按钮的标签要读 `button.text`：画出来的 `Button` 的 props 里只有 size、variant 和 onPress，
+标签不在 props 里。读 `props.children` 的话过滤器什么也匹配不到，断言会读到空数组——
+测试看着是红的，其实是"红在别处"。）
 
 - [ ] **Step 2: 跑测试，确认它失败**
 

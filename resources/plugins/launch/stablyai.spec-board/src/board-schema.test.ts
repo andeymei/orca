@@ -1,6 +1,7 @@
 import { assert, test } from 'orca/testing'
 import { parseBoardSnapshot } from './board-schema'
 import type { ParseResult } from './board-schema'
+import type { VerificationFacts } from './model'
 
 const valid = {
   schemaVersion: 1,
@@ -51,6 +52,19 @@ function parseSilently(raw: unknown): { result: ParseResult; logged: unknown[][]
     return { result: parseBoardSnapshot(raw), logged }
   } finally {
     console.error = original
+  }
+}
+
+/** 一份 Superpowers 事实，带不带验证记录由参数说了算。 */
+function superpowersFacts(verification?: VerificationFacts) {
+  return {
+    designSpec: null,
+    plan: 'docs/superpowers/plans/2026-11-25-add-x.md',
+    stage: 'executing',
+    planDone: 1,
+    planInProgress: 0,
+    planTotal: 3,
+    ...(verification === undefined ? {} : { verification })
   }
 }
 
@@ -112,6 +126,57 @@ test('rejects a plan whose in-progress boxes exceed its total', () => {
     return
   }
   assert.match(result.error, /\.planInProgress:/)
+})
+
+test('接受带验证记录的快照，并读出它的数', () => {
+  const item = {
+    ...valid.items[0],
+    superpowers: superpowersFacts({ rounds: 2, passed: 1, lastPassed: true })
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, true)
+  if (!result.ok) {
+    return
+  }
+  assert.deepEqual(result.value.items[0]!.superpowers?.verification, {
+    rounds: 2,
+    passed: 1,
+    lastPassed: true
+  })
+})
+
+test('没有这个字段的旧快照照旧被接受', () => {
+  const item = { ...valid.items[0], superpowers: superpowersFacts() }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, true)
+  if (!result.ok) {
+    return
+  }
+  // 旧快照没有这一项：它没有记录，不是坏掉。
+  assert.equal(result.value.items[0]!.superpowers?.verification, null)
+})
+
+test('拒绝通过数大于轮数的记录', () => {
+  const item = {
+    ...valid.items[0],
+    superpowers: superpowersFacts({ rounds: 1, passed: 2, lastPassed: true })
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, false)
+  if (result.ok) {
+    return
+  }
+  assert.match(result.error, /\.verification\.passed:/)
+})
+
+test('没有轮次的记录也是合法的', () => {
+  // agent 也许会写一个空记录：它不是「通过」，也不是坏快照。
+  const item = {
+    ...valid.items[0],
+    superpowers: superpowersFacts({ rounds: 0, passed: 0, lastPassed: null })
+  }
+  const result = parseBoardSnapshot({ ...valid, items: [item] })
+  assert.equal(result.ok, true)
 })
 
 test('accepts progress where done plus in-progress fills the total', () => {

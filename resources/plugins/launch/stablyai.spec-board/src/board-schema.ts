@@ -7,7 +7,8 @@ import type {
   OpenspecFacts,
   SnapshotItem,
   SnapshotProject,
-  SuperpowersFacts
+  SuperpowersFacts,
+  VerificationFacts
 } from './model'
 import { isRecord } from './unknown-values'
 
@@ -73,10 +74,7 @@ function readNonEmptyString(value: unknown, field: string): string {
 
 /** An optional field: absent and null both mean "not written". */
 function readOptionalString(value: unknown, field: string): string | undefined {
-  if (value === undefined || value === null) {
-    return undefined
-  }
-  return readString(value, field)
+  return readNullableString(value, field) ?? undefined
 }
 
 /** A field whose type allows null: there null is a value, not an absence. */
@@ -107,18 +105,11 @@ function readStringArray(value: unknown, field: string): string[] {
 
 /** An optional field: absent and null both mean "not written". */
 function readOptionalStringArray(value: unknown, field: string): string[] | undefined {
-  if (value === undefined || value === null) {
-    return undefined
-  }
-  return readStringArray(value, field)
+  return value === undefined || value === null ? undefined : readStringArray(value, field)
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[], field: string): T {
-  if (typeof value !== 'string') {
-    fail(field, `期望 ${allowed.join(' | ')}`)
-  }
-  const text = value
-  const found = allowed.find((entry) => entry === text)
+  const found = allowed.find((entry) => entry === value)
   if (found === undefined) {
     fail(field, `期望 ${allowed.join(' | ')}`)
   }
@@ -186,6 +177,18 @@ function readOpenspecFacts(value: unknown, field: string): OpenspecFacts {
   }
 }
 
+/** The verification records a snapshot carries: the rounds, how many passed, the last verdict. */
+function readVerificationFacts(value: unknown, field: string): VerificationFacts {
+  const source = readObject(value, field)
+  const rounds = readCount(source['rounds'], `${field}.rounds`)
+  const passed = readCount(source['passed'], `${field}.passed`)
+  const lastPassed = readNullable(source['lastPassed'], `${field}.lastPassed`, readBoolean)
+  if (passed > rounds) {
+    fail(`${field}.passed`, `期望不大于 rounds（当前 ${rounds}）`)
+  }
+  return { rounds, passed, lastPassed }
+}
+
 function readSuperpowersFacts(value: unknown, field: string): SuperpowersFacts {
   const source = readObject(value, field)
   const designSpec = readNullableString(source['designSpec'], `${field}.designSpec`)
@@ -203,8 +206,12 @@ function readSuperpowersFacts(value: unknown, field: string): SuperpowersFacts {
       `期望 planDone + planInProgress 不大于 planTotal（当前 ${planDone} + ${planInProgress} > ${planTotal}）`
     )
   }
-  // The snapshot carries no verification record yet, so the parsed facts say "no record".
-  return { designSpec, plan, stage, planDone, planInProgress, planTotal, verification: null }
+  const verification = readNullable(
+    source['verification'],
+    `${field}.verification`,
+    readVerificationFacts
+  )
+  return { designSpec, plan, stage, planDone, planInProgress, planTotal, verification }
 }
 
 function readNextAction(value: unknown, field: string): { label: string; detail: string } {

@@ -46,7 +46,8 @@ export const SNAPSHOT_FORMAT = {
         stage: 'executing',
         planDone: 1,
         planInProgress: 0,
-        planTotal: 4
+        planTotal: 4,
+        verification: { rounds: 2, passed: 1, lastPassed: true }
       }
     }
   ]

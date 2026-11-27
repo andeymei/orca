@@ -70,7 +70,8 @@ function placesItself(project: SnapshotProject): boolean {
  * What the agent may not say is where the project is. Its own rule for an id is the host and the
  * path, so a project whose id is not the host and the path it claims is not about the project it
  * names — the board cannot say where it is, and neither does anything else that reads the path.
- * Its facts are still about the project its id names; only the placement is dropped.
+ * So none of it goes on the board: a project that cannot say where it is has no facts to offer
+ * either, and what the board says about the project is what Orca knows about it.
  */
 function mergeProject(
   agent: SnapshotProject | undefined,

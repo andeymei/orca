@@ -88,6 +88,9 @@ test('the facts win by when they were collected, not by when the file was writte
   // file's time says when the file was touched, not when the project was collected.
   assert.equal(supersedes(200, 100), true)
   assert.equal(supersedes(100, 200), false)
+  // Facts collected at the very same moment are the same facts: merging them again would write
+  // the snapshot over and over, and every write is another thing that has to be noticed.
+  assert.equal(supersedes(100, 100), false)
   // A time nobody can read is no evidence: the new facts win.
   assert.equal(supersedes(null, 100), true)
   assert.equal(supersedes(100, null), true)

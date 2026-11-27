@@ -256,6 +256,34 @@ test('a local project that has the capability reports the archived change as sta
   await worker.deactivate()
 })
 
+test('a project the agent names but Orca does not hold does not have its directory read', async () => {
+  // The agent writes the board's snapshot itself, so a project it names is a project the board is
+  // told about. A project Orca does not hold is not one of them: the directory it names is not
+  // read, so what the board says about that project does not come from a place nobody placed.
+  const root = await home()
+  const elsewhere = await mkdtemp(join(tmpdir(), 'spec-board-elsewhere-'))
+  roots.push(elsewhere)
+  await mkdir(join(elsewhere, 'openspec', 'specs', 'core'), { recursive: true })
+  await writeFile(
+    join(root, 'board.json'),
+    snapshotJson(`local|${elsewhere}`, 'add-x', {
+      stage: 'archived',
+      tasksDone: 4,
+      capabilities: ['other']
+    }),
+    'utf8'
+  )
+  const host = mockHost({ results: { 'workspace.list': workspaces } })
+  const worker = await mountWorker(main, { host })
+  const payload = await worker.request('board.get')
+  const item = payload.items.find((i) => i.projectId === `local|${elsewhere}`)
+  assert.ok(item)
+  // The capability directory was not read, so the board cannot call the archived change stale on
+  // the strength of a directory Orca never placed.
+  assert.equal(item.gaps.some((gap) => gap.code === 'archived-spec-stale'), false)
+  await worker.deactivate()
+})
+
 test('runs a terminal action on the workspace that owns the project', async () => {
   const root = await home()
   machineHasCli(true)

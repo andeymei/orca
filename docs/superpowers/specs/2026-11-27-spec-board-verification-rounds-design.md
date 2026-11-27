@@ -215,7 +215,7 @@ agent 写了但格式不对 → 解析不出来 → 同样当作没有记录。
 - `verification-records.test.ts`：只认「## 验证记录」标题下的行；**`未通过` 必须先于 `通过` 判定**
   （一行 `- 2026-11-27 · 未通过 · …` 不得被数成通过）；结论词不认识就不算一轮；日期格式不对
   就不算一轮；没有这一节 → 无记录；标题前的内容不算；代码块里的行不算。
-- `stage.test.ts`（或既有阶段测试）：清单全勾 + 最近一轮通过 → `verified`；清单全勾 + 最近一轮
+- `stage.test.ts`：清单全勾 + 最近一轮通过 → `verified`；清单全勾 + 最近一轮
   未通过 → `validate`；清单全勾 + 无记录 → `validate`（旧行为不变）；清单没勾完 → `implement`。
 - `panel-primary-action.test.ts`：`verified` 的主按钮是 `superpowers.finish`；`superpowers.verify`
   落到「更多」。

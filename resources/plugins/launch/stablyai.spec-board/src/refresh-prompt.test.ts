@@ -102,6 +102,15 @@ test('points the agent at the file that holds the projects and the snapshot shap
   assert.match(prompt, /snapshotFormat/)
 })
 
+test('says the path is copied from the list as it stands, because the board compares it', () => {
+  // The board compares the path and the id as strings, so a path spelled a little differently is
+  // a different place — and the snapshot of that project is not taken.
+  for (const text of [prompt, projectPrompt]) {
+    assert.match(text, /逐字照抄清单里的/)
+    assert.match(text, /项目 id 形如 `<host>\|<path>`/)
+  }
+})
+
 test('fits the prompt the host accepts', () => {
   // `agent.launch` refuses a longer prompt, and a refresh that cannot start collects nothing.
   assert.ok(prompt.length <= PROMPT_MAX_CHARS, `${prompt.length} > ${PROMPT_MAX_CHARS}`)

@@ -54,6 +54,12 @@ const itemWithChangeId = (changeId: string): typeof item => ({
   openspec: { ...item.openspec, changeId }
 })
 
+/** The fixture's item, with its Superpowers side changed. */
+const itemWithSuperpowers = (superpowers: Partial<typeof item.superpowers>): typeof item => ({
+  ...item,
+  superpowers: { ...item.superpowers, ...superpowers }
+})
+
 test('runs OpenSpec commands in a terminal when the CLI is there', () => {
   const actions = actionsForItem(item, true)
   const validate = findAction(actions, 'openspec.validate')!
@@ -143,11 +149,7 @@ test('the design button says whether it writes a design or designs it again', ()
   const withDesign = actionsForItem(item, true).find((action) => action.id === 'superpowers.brainstorm')
   assert.equal(withDesign?.label, '重新设计')
   const withoutDesign = actionsForItem(
-    {
-      topic: 'add-y',
-      openspec: item.openspec,
-      superpowers: { ...item.superpowers, designSpec: null }
-    },
+    { ...item, topic: 'add-y', superpowers: { ...item.superpowers, designSpec: null } },
     true
   ).find((action) => action.id === 'superpowers.brainstorm')
   assert.equal(withoutDesign?.label, '写设计')
@@ -437,30 +439,21 @@ test('an unsafe topic falls back to the generic label', () => {
 })
 
 test('an unsafe spec path falls back to the generic label', () => {
-  const actions = actionsForItem(
-    { ...item, superpowers: { ...item.superpowers, designSpec: 'docs/; rm -rf /' } },
-    true
-  )
+  const actions = actionsForItem(itemWithSuperpowers({ designSpec: 'docs/; rm -rf /' }), true)
   const plan = promptOf(findAction(actions, 'superpowers.plan')!)
   assert.match(plan, /基于 设计 spec 写实施计划/)
   assert.equal(plan.includes('rm -rf'), false)
 })
 
 test('a path segment that walks up the tree is refused', () => {
-  const actions = actionsForItem(
-    { ...item, superpowers: { ...item.superpowers, plan: '../etc/passwd' } },
-    true
-  )
+  const actions = actionsForItem(itemWithSuperpowers({ plan: '../etc/passwd' }), true)
   const execute = promptOf(findAction(actions, 'superpowers.execute')!)
   assert.match(execute, /执行 实施计划/)
   assert.equal(execute.includes('passwd'), false)
 })
 
 test('an empty artifact path falls back to the generic label', () => {
-  const actions = actionsForItem(
-    { ...item, superpowers: { ...item.superpowers, designSpec: '', plan: '' } },
-    true
-  )
+  const actions = actionsForItem(itemWithSuperpowers({ designSpec: '', plan: '' }), true)
   assert.match(
     promptOf(findAction(actions, 'superpowers.plan')!),
     /基于 设计 spec 写实施计划/
@@ -469,13 +462,7 @@ test('an empty artifact path falls back to the generic label', () => {
 })
 
 test('an absolute artifact path is allowed', () => {
-  const actions = actionsForItem(
-    {
-      ...item,
-      superpowers: { ...item.superpowers, designSpec: '/abs/specs/x-design.md' }
-    },
-    true
-  )
+  const actions = actionsForItem(itemWithSuperpowers({ designSpec: '/abs/specs/x-design.md' }), true)
   assert.match(
     promptOf(findAction(actions, 'superpowers.plan')!),
     /基于 \/abs\/specs\/x-design\.md 写实施计划/
@@ -866,6 +853,11 @@ test('验证这一按钮要求 agent 写下这一轮，并点名计划文件', (
   assert.match(prompt, /docs\/superpowers\/plans\/x\.md/)
   // 复选框那一句是必需的：agent 写复选框是很自然的事，不说它就会那么写。
   assert.match(prompt, /不要写复选框/)
+  // 规则里的那一行和解析器读回来的一行必须逐字相同：分隔符、结论词、日期格式都是死的。
+  assert.ok(
+    prompt.includes('`- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`'),
+    'the rule must spell the record line the way the parser reads it'
+  )
 })
 
 test('没有计划的工作项不要求写记录', () => {
@@ -875,6 +867,26 @@ test('没有计划的工作项不要求写记录', () => {
       actionsForItem({ ...item, superpowers: { ...item.superpowers, plan: null } }, true),
       'superpowers.verify'
     )!
+  )
+  assert.equal(prompt.includes('## 验证记录'), false)
+})
+
+test('计划路径不能命名时也不要求写记录', () => {
+  // 文件名是目录里读出来的，「一份副本」就是真的名字。规则点名通用字样的话，agent 会去找一份
+  // 叫「实施计划」的文件——它不存在，agent 说不定还会建一个。
+  const prompt = promptOf(
+    findAction(
+      actionsForItem(itemWithSuperpowers({ plan: 'docs/superpowers/plans/x (copy).md' }), true),
+      'superpowers.verify'
+    )!
+  )
+  assert.equal(prompt.includes('## 验证记录'), false)
+})
+
+test('空计划路径也不要求写记录', () => {
+  // 空路径不是一条计划：它不是 null，规则却会指向通用字样。
+  const prompt = promptOf(
+    findAction(actionsForItem(itemWithSuperpowers({ plan: '' }), true), 'superpowers.verify')!
   )
   assert.equal(prompt.includes('## 验证记录'), false)
 })

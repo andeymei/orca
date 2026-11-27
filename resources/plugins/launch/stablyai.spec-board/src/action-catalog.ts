@@ -135,7 +135,7 @@ export type SuperpowersSkill = {
  * other something different.
  */
 export const VERIFICATION_RECORD_RULE =
-  '验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：`- <日期> · 通过/未通过 · <跑了什么>`；没有这一节就新建一节。这一节不要写复选框（`- [x]`），看板把复选框当任务进度数。'
+  '验证结束后，在 <plan> 的「## 验证记录」一节末尾追加一行：`- <YYYY-MM-DD> · 通过/未通过 · <跑了什么>`；没有这一节就新建一节。这一节不要写复选框（`- [x]`），看板把复选框当任务进度数。'
 
 /** Superpowers' steps, in the order the design's table lists them. */
 export const SUPERPOWERS_SKILLS: readonly SuperpowersSkill[] = [
